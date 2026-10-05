@@ -1,0 +1,73 @@
+name: Build Theos Projects
+
+on:
+  push:
+    paths:
+      - 'debs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Theos
+        run: |
+          brew install ldid xz
+          git clone --recursive https://github.com/roothide/theos.git "$HOME/theos"
+          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
+          git clone --depth 1 https://github.com/theos/sdks.git "$HOME/sdks"
+          mkdir -p "$HOME/theos/sdks"
+          cp -R "$HOME/sdks/iPhoneOS16.5.sdk" "$HOME/theos/sdks/"
+
+      - name: Build rootless arm64
+        run: |
+          set -e
+          for dir in debs/*/; do
+            [ -f "$dir/Makefile" ] || continue
+            echo "==> rootless arm64: $dir"
+            ( cd "$dir" && make clean || true )
+            ( cd "$dir" && make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless )
+          done
+
+      - name: Build roothide arm64e
+        run: |
+          set -e
+          for dir in debs/*/; do
+            [ -f "$dir/Makefile" ] || continue
+            echo "==> roothide arm64e: $dir"
+            ( cd "$dir" && make clean || true )
+            ( cd "$dir" && make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide )
+          done
+
+      - name: Collect debs
+        run: |
+          mkdir -p packages
+          find debs -name '*.deb' -exec cp -v {} packages/ \;
+
+      - name: Commit packages
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add packages/
+          git commit -m "自动构建 deb 包" || true
+          git pull --rebase origin main || true
+          git push origin main
+
+      - name: Clean debs source
+        run: |
+          find debs -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} +
+          find debs -mindepth 1 -maxdepth 1 -type f ! -name '.gitkeep' -delete
+          touch debs/.gitkeep
+          git add debs/
+          git commit -m "编译完成，清除源码" || true
+          git pull --rebase origin main || true
+          git push origin main
