@@ -24,9 +24,11 @@ jobs:
           brew install ldid xz
           git clone --recursive https://github.com/roothide/theos.git "$HOME/theos"
           echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
-          git clone --depth 1 https://github.com/theos/sdks.git "$HOME/sdks"
+          # iPhoneOS15.5.sdk（theos/sdks 无 15.5，改用 xybp888/iOS-SDKs 稀疏检出）
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/xybp888/iOS-SDKs.git "$HOME/iossdks"
+          ( cd "$HOME/iossdks" && git sparse-checkout set iPhoneOS15.5.sdk )
           mkdir -p "$HOME/theos/sdks"
-          cp -R "$HOME/sdks/iPhoneOS16.5.sdk" "$HOME/theos/sdks/"
+          cp -R "$HOME/iossdks/iPhoneOS15.5.sdk" "$HOME/theos/sdks/"
 
       - name: Build rootless arm64
         run: |
