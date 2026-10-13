@@ -1,0 +1,9 @@
+Package: cn.zqbb.hmsdiagnostic
+Name: Hello Memory Status Diagnostic
+Version: 0.1.0
+Architecture: iphoneos-arm64
+Description: Observation-only process priority and memorystatus call trace for Hello Memory Status daemon
+Maintainer: Minis
+Author: Minis
+Section: Tweaks
+Depends: mobilesubstrate (>= 0.9.5000), firmware (>= 15.0)
