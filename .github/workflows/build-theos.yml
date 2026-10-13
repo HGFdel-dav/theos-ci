@@ -30,6 +30,15 @@ jobs:
           mkdir -p "$HOME/theos/sdks"
           cp -R "$HOME/iossdks/iPhoneOS15.5.sdk" "$HOME/theos/sdks/"
 
+      - name: Test HMS diagnostic log sink
+        run: |
+          set -e
+          test_file=debs/HMSDiagnostic/tests/logsink.c
+          if [ -f "$test_file" ]; then
+            /usr/bin/clang -Wall -Wextra -Werror "$test_file" -o "$RUNNER_TEMP/hmsdiag-test"
+            "$RUNNER_TEMP/hmsdiag-test"
+          fi
+
       - name: Build rootless arm64
         run: |
           set -e
