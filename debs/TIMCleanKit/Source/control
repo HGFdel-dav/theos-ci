@@ -1,9 +1,0 @@
-Package: com.nanaminis.timcleankit
-Name: TIMCleanKit
-Version: 1.0.4
-Description: TIM settings help text, blank-tap wake and recall setter revision.
-Author: TIMCleanKit
-Section: Tweaks
-Depends: mobilesubstrate
-Architecture: iphoneos-arm64
-Maintainer: TIMCleanKit <maintainer@localhost>

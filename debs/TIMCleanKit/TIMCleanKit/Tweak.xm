@@ -620,7 +620,7 @@ static void TKAutoOpenPreView(id self,SEL cmd) {
         for(NSUInteger i=0;i<views.count&&i<1000;i++){
             UIView *view=views[i];
             if([view isKindOfClass:NSClassFromString(@"QQWalletPreOpenHBView")]) {
-                SEL dataSel=NSSelectorFromString(@"grapHBData");id data=TKObjectCall(view,@"grapHBData");
+                id data=TKObjectCall(view,@"grapHBData");
                 id aio=TKObjectCall(data,@"aioData");id list=TKObjectCall(aio,@"listId");
                 BOOL identityOK=!gTKCurrentClaimIdentity||!list||[list isEqual:gTKCurrentClaimIdentity];
                 if(identityOK){SEL open=NSSelectorFromString(@"openButtonClick");if([view respondsToSelector:open])((void(*)(id,SEL))objc_msgSend)(view,open);}
