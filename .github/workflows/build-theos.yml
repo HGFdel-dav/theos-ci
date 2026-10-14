@@ -59,10 +59,20 @@ jobs:
             ( cd "$dir" && make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide )
           done
 
-      - name: Collect debs
+      - name: Collect debs and dylibs
         run: |
           mkdir -p packages
-          find debs -name '*.deb' -exec cp -v {} packages/ \;
+          find debs -name '*.deb' -exec cp -v {} packages/ \; || true
+          # 同时收集 dylib + 同名 plist（供 TrollFools / Patcher 注入使用）
+          for dir in debs/*/; do
+            [ -f "$dir/Makefile" ] || continue
+            find "$dir/.theos" -name '*.dylib' -exec cp -v {} packages/ \; 2>/dev/null || true
+          done
+          # 把根目录的 plist 也复制过去
+          for p in debs/*/*.plist; do
+            [ -f "$p" ] || continue
+            cp -v "$p" packages/ || true
+          done
 
       - name: Commit packages
         run: |
