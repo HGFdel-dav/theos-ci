@@ -1,6 +1,7 @@
 // TIM 4.1.0.81 Objective-C bridge methods verified in kernel-targets.json.
 // Included after message cache helpers. No chat text is logged or written to disk.
 static NSString *const TKListenerClass=@"_TtC13GuildNTKernel20SWIKernelMsgListener";
+static void TKRefreshRecallLabels(void);
 static unsigned long long gTKRecallBlocked,gTKRepeatFailures,gTKMessageBinds;
 static void TKRestoreRecord(id record) {
     NSDictionary *saved=TKCachedMessage(record);NSArray *elements=saved[@"elements"];if(!elements.count)return;
@@ -25,7 +26,7 @@ static void TKBridgeRecall(id self,SEL cmd,int chat,id peer,unsigned long long s
             }
         }
     }
-    if(blocked){__atomic_fetch_add(&gTKRecallBlocked,1,__ATOMIC_RELAXED);return;}
+    if(blocked){__atomic_fetch_add(&gTKRecallBlocked,1,__ATOMIC_RELAXED);TKRefreshRecallLabels();return;}
     if(orig)((void(*)(id,SEL,int,id,unsigned long long))orig)(self,cmd,chat,peer,seq);
 }
 static NSArray *TKPreserveUpdateRecords(id records) {
@@ -47,6 +48,7 @@ static NSArray *TKPreserveUpdateRecords(id records) {
 static void TKBridgeUpdate(id self,SEL cmd,id records) {
     IMP orig=OrigIMP(TKListenerClass,cmd);id preserved=TKPreserveUpdateRecords(records);
     if(orig)((void(*)(id,SEL,id))orig)(self,cmd,preserved);
+    TKRefreshRecallLabels();
 }
 static void TKBridgeReceive(id self,SEL cmd,id records) {
     IMP orig=OrigIMP(TKListenerClass,cmd);

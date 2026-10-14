@@ -67,6 +67,16 @@ static void TKUpdateRecallLabel(UIView *cell) {
     }
     label.hidden=NO;
     CGFloat width=70,height=18,x=MAX(6,cell.bounds.size.width-width-12),y=MAX(0,cell.bounds.size.height-height);
+    NSMutableArray *queue=[NSMutableArray arrayWithArray:cell.subviews];
+    for(NSUInteger i=0;i<queue.count&&i<150;i++) {
+        UIView *view=queue[i];NSString *name=NSStringFromClass(view.class);
+        if(!view.hidden&&view.alpha>.01&&[name hasSuffix:@"AIOBubbleView"]&&view.bounds.size.width>0) {
+            CGRect bubble=[view convertRect:view.bounds toView:cell];
+            x=MIN(MAX(6,CGRectGetMaxX(bubble)+5),MAX(6,cell.bounds.size.width-width-6));
+            y=MIN(MAX(0,CGRectGetMaxY(bubble)-height),MAX(0,cell.bounds.size.height-height));break;
+        }
+        [queue addObjectsFromArray:view.subviews];
+    }
     label.frame=CGRectMake(x,y,width,height);[cell bringSubviewToFront:label];
 }
 static BOOL TKCellBind(id self,SEL cmd,id vm) {

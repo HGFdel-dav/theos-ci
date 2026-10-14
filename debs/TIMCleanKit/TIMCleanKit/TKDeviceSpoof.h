@@ -36,7 +36,7 @@ static const char *TKHardwareIdentifier(void) {
 }
 static int TKCopyHardwareValue(void *output,size_t *length,const char *value) {
     if(!length){errno=EFAULT;return -1;}
-    size_t required=strlen(value)+1,capacity=*length;*length=required;
+    size_t required=strlen(value)+1,capacity=output?*length:0;*length=required;
     if(!output)return 0;
     if(capacity<required){if(capacity)memcpy(output,value,capacity);errno=ENOMEM;return -1;}
     memcpy(output,value,required);return 0;
