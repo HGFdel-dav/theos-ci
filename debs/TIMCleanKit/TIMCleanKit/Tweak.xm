@@ -1,6 +1,6 @@
 //  TIMCleanKit.dylib — TIM (com.tencent.tim) 净化/增强插件
-//  目标：TIM 4.1.0 (NT 架构)，1.0.4 功能修订与诊断版
-//  功能：消息监听 / 前台自动红包领取 / 内存防撤回 / 复读 / 闪照保存 / 原生设置
+//  目标：TIM 4.1.0 (NT 架构)，1.0.5 消息与金额范围修订版
+//  功能：消息监听 / 前台自动红包领取 / 内存防撤回 / 双击复读 / 原生设置
 //  构建：Theos (Logos)，arm64 + arm64e
 //
 //  设计原则：所有 Hook 均通过 NSClassFromString 动态获取类，
@@ -21,20 +21,26 @@
 static NSString *const kDomain      = @"com.tencent.tim";
 static NSString *const kAutoRed = @"TIMCK.autoRed";
 static NSString *const kRepeater = @"TIMCK.repeater";
-static NSString *const kBlankTap = @"TIMCK.blankTap";
 static NSString *const kEnabled     = @"TIMCK.enabled";         // 总开关
 static NSString *const kAntiRecall  = @"TIMCK.antiRecall";      // 防撤回
-static NSString *const kFlashPhoto  = @"TIMCK.flashPhoto";      // 闪照/截屏
 static NSString *const kDeviceSpoof = @"TIMCK.deviceSpoof";     // 设备伪装
 static NSString *const kSpoofModel  = @"TIMCK.spoofModel";      // 伪装机型
 static NSString *const kRedPacket   = @"TIMCK.redPacket";       // 红包过滤总开关
-static NSString *const kRedMinAmount= @"TIMCK.redMinAmount";    // 小额阈值(分)，0=不启用
-static NSString *const kRedSkipTest = @"TIMCK.redSkipTest";     // 测试红包不抢
+static NSString *const kRedMinAmount= @"TIMCK.redMinAmount";    // 最低金额，分
+static NSString *const kRedMaxAmount= @"TIMCK.redMaxAmount";    // 最高金额，分；0不设上限
+static NSString *const kRedUnknownAllow= @"TIMCK.redUnknownAllow"; // 未知金额是否放行
+static NSString *const kRedSkipTest = @"TIMCK.redSkipTest";     // 沿用旧配置键：关键词过滤
+static NSString *const kRedKeywords = @"TIMCK.redKeywords";    // 可编辑的红包文案关键词
 static NSString *const kRedSkipCmd  = @"TIMCK.redSkipCommand";  // 口令红包不抢
 
+#ifdef TIMCK_STRIP_LOGS
+#define NSLog(...) do {} while(0)
+#define LOG(...) do {} while(0)
+#else
 #define LOG(fmt, ...) do { \
     if (getenv("TIMCK_DEBUG")) NSLog(@"[TIMCleanKit] " fmt, ##__VA_ARGS__); \
 } while (0)
+#endif
 
 // ---------------------------------------------------------- 配置读写
 static NSUserDefaults *prefs(void) {
@@ -59,16 +65,17 @@ static void registerDefaultsOnce(void) {
     dispatch_once(&once, ^{
         NSDictionary *d = @{
             kEnabled:     @YES,
-            kBlankTap:    @YES,
             kAutoRed:     @YES,
             kRepeater:    @YES,
             kAntiRecall:  @YES,
-            kFlashPhoto:  @YES,
             kDeviceSpoof: @NO,
             kSpoofModel:  @"iPhone 15 Pro",
             kRedPacket:   @YES,
-            kRedMinAmount:@(100),      // 默认 1.00 元以下不抢
+            kRedMinAmount:@(100),
+            kRedMaxAmount:@0,
+            kRedUnknownAllow:@YES, // 保留1.0.4随机红包领取行为；UI明确可选严格跳过未知
             kRedSkipTest: @YES,
+            kRedKeywords: @"测试\n外挂\n体验",
             kRedSkipCmd:  @NO,
         };
         [prefs() registerDefaults:d];
@@ -120,21 +127,8 @@ static id msgRecordElement(NSArray *elements) {
 // 从红包元素尽量取出金额(单位:分)。返回 -1 表示无法确定
 static long long redPacketAmount(id element) {
     if (!element) return -1;
-    // 1) 直接取 grabbedAmount (TIM 客户端已知的金额字段)
-    if ([element respondsToSelector:@selector(grabbedAmount)]) {
-        // 属性为 unsigned long long，用 NSInvocation 规避编译器类型
-        NSMethodSignature *sig = [element methodSignatureForSelector:@selector(grabbedAmount)];
-        if (sig && sig.numberOfArguments == 2 && sig.methodReturnLength == sizeof(unsigned long long) && !strcmp(sig.methodReturnType, @encode(unsigned long long))) {
-            NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
-            [inv setSelector:@selector(grabbedAmount)];
-            [inv setTarget:element];
-            [inv invoke];
-            unsigned long long v = 0;
-            [inv getReturnValue:&v];
-            if (v > 0 && v < 1000000000000LL) return (long long)v;
-        }
-    }
-    // 2) 从 OCWalletAio 的 title/content 里正则抓 "1.23元" / "¥1.23"
+    // grabbedAmount 是领取后的到账金额，不用于领取前判断。
+    // 仅可读取原生消息公开展示的金额文字；未知随机金额不可预测。
     id aio = TK_performObject(element, @"sender");
     if (!aio) aio = TK_performObject(element, @"receiver");
     if (!aio) return -1;
@@ -155,46 +149,38 @@ static long long redPacketAmount(id element) {
 }
 
 static long long amountFromString(NSString *s) {
-    if (![s isKindOfClass:[NSString class]] || !s.length) return -1;
-    // 形如 1.23 / 12.34，支持中文"元"
-    NSString *pat = @"([0-9]+(?:\\.[0-9]+)?)\\s*(?:元|块|\\$)";
-    NSRegularExpression *re = [NSRegularExpression regularExpressionWithPattern:pat options:0 error:nil];
-    NSTextCheckingResult *m = [re firstMatchInString:s options:0 range:NSMakeRange(0, s.length)];
-    if (!m) return -1;
-    NSString *num = [s substringWithRange:[m rangeAtIndex:1]];
-    NSDecimalNumber *d = [NSDecimalNumber decimalNumberWithString:num];
-    if ([d isEqualToNumber:[NSDecimalNumber notANumber]]) return -1;
-    return (long long)([d doubleValue] * 100.0);
+    if (![s isKindOfClass:NSString.class] || !s.length) return -1;
+    NSString *pat=@"(?:[¥￥]\\s*([0-9]+(?:\\.[0-9]{1,2})?)(?![0-9.]))|(?<![0-9.])([0-9]+(?:\\.[0-9]{1,2})?)\\s*(?:元|块)";
+    NSRegularExpression *re=[NSRegularExpression regularExpressionWithPattern:pat options:0 error:nil];
+    NSTextCheckingResult *m=[re firstMatchInString:s options:0 range:NSMakeRange(0,s.length)];
+    if(!m)return -1;
+    NSRange range=[m rangeAtIndex:1];if(range.location==NSNotFound)range=[m rangeAtIndex:2];
+    NSDecimalNumber *d=[NSDecimalNumber decimalNumberWithString:[s substringWithRange:range] locale:@{NSLocaleDecimalSeparator:@"."}];
+    NSDecimalNumber *cents=[d decimalNumberByMultiplyingBy:[NSDecimalNumber decimalNumberWithString:@"100"]];
+    if([cents isEqualToNumber:NSDecimalNumber.notANumber] || [cents compare:[NSDecimalNumber decimalNumberWithString:@"100000000000"]]==NSOrderedDescending)return -1;
+    return cents.longLongValue;
 }
 
-// 判断是否"测试红包"
+// 只匹配红包公开文案，不读取或记录账单/凭据。
 static BOOL isTestRedPacket(id element) {
     if (!element) return NO;
-    NSMutableArray *texts = [NSMutableArray array];
-    id aio = TK_performObject(element, @"sender");
-    if (!aio) aio = TK_performObject(element, @"receiver");
-    if (aio) {
-        for (NSString *prop in @[@"title", @"content", @"notice", @"subTitle"]) {
-            SEL s = NSSelectorFromString(prop);
-            if ([aio respondsToSelector:s]) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-                id v = [aio performSelector:s];
-#pragma clang diagnostic pop
-                if ([v isKindOfClass:[NSString class]]) [texts addObject:v];
-            }
+    id raw=[prefs() objectForKey:kRedKeywords];
+    NSString *rules=[raw isKindOfClass:NSString.class]?raw:@"测试\n外挂\n体验";
+    NSMutableCharacterSet *separators=[NSCharacterSet.whitespaceAndNewlineCharacterSet mutableCopy];
+    [separators addCharactersInString:@",，;；、"];
+    NSArray *words=[rules componentsSeparatedByCharactersInSet:separators];
+    NSMutableArray *texts=[NSMutableArray new];
+    for(NSString *side in @[@"sender",@"receiver"]) {
+        id aio=TK_performObject(element,side);
+        for(NSString *field in @[@"title",@"content",@"notice",@"subTitle"]) {
+            id text=TK_performObject(aio,field);
+            if([text isKindOfClass:NSString.class])[texts addObject:text];
         }
     }
-    for (NSString *prop in @[@"name", @"billNo"]) {
-        id v = TK_performObject(element, prop);
-        if ([v isKindOfClass:[NSString class]]) [texts addObject:v];
-    }
-    for (NSString *t in texts) {
-        NSRange r = [t rangeOfString:@"测试" options:NSCaseInsensitiveSearch];
-        if (r.location != NSNotFound) return YES;
-        NSRange r2 = [t rangeOfString:@"体验" options:NSCaseInsensitiveSearch];
-        if (r2.location != NSNotFound) return YES;
-    }
+    id name=TK_performObject(element,@"name");
+    if([name isKindOfClass:NSString.class])[texts addObject:name];
+    for(NSString *word in words)if(word.length)for(NSString *text in texts)
+        if([text rangeOfString:word options:NSCaseInsensitiveSearch].location!=NSNotFound)return YES;
     return NO;
 }
 
@@ -235,15 +221,11 @@ static BOOL shouldSkipRedPacket(id record) {
     if (prefBool(kRedSkipTest, YES) && isTestRedPacket(element)) {
         LOG(@"skip test red packet"); return YES;
     }
-    // 小额
-    NSInteger min = prefInt(kRedMinAmount, 100);
-    if (min > 0) {
-        long long amount = redPacketAmount(element);
-        if (amount >= 0 && amount < (long long)min) {
-            LOG(@"skip small red packet: %lld < %ld", amount, (long)min);
-            return YES;
-        }
-    }
+    NSInteger min=MAX(0,prefInt(kRedMinAmount,100));
+    NSInteger max=MAX(0,prefInt(kRedMaxAmount,0));
+    long long amount=redPacketAmount(element);
+    if(amount<0) return !prefBool(kRedUnknownAllow,YES);
+    if(amount<min || (max>0 && amount>max))return YES;
     return NO;
 }
 
@@ -254,7 +236,7 @@ static BOOL shouldSkipRedPacket(id record) {
 //   TIM 与 QQ 共用的消息内核类两端通用。
 
 typedef struct { const char *className; SEL selector; IMP original; IMP replacement; const char *encoding; unsigned state; unsigned long long hits; } TKHookRecord;
-static TKHookRecord gHooks[32];
+static TKHookRecord gHooks[160];
 static unsigned gHookCount;
 static unsigned gRegistrationRounds;
 static const char *TKExpectedEncoding(NSString *name, SEL selector) {
@@ -281,10 +263,18 @@ static const char *TKExpectedEncoding(NSString *name, SEL selector) {
         if(!strcmp(sel,"grabCommandRedPackIfCanWithMsgRecord:"))return "v24@0:8@16";
         if(!strcmp(sel,"shouldShowRedPackBubbleWithRootVC:msgRecord:"))return "B32@0:8@16@24";
     }
-    if([name isEqualToString:@"PhotoBrowserFlashPictureService"])return "@24@0:8@16";
     if([name isEqualToString:@"QQWalletPreGrapHBResultViewController"])return "v16@0:8";
-    if([name isEqualToString:@"_TtC15AIOPhotoBrowser43NTAIOFlashPicturePhotoBrowserViewController"])return "v24@0:8@16";
-    if([name isEqualToString:@"UIDevice"])return "@16@0:8";
+    if([name isEqualToString:@"UIDevice"] || [name isEqualToString:@"DeviceInfoUtil"] || [name isEqualToString:@"QAnaDeviceUtil"])return "@16@0:8";
+    if([name isEqualToString:@"_TtC13GuildNTKernel20SWIKernelMsgListener"]) {
+        if(!strcmp(sel,"onMsgRecall:peerUid:seq:"))return "v36@0:8i16@20Q28";
+        if(!strcmp(sel,"onMsgDelete:msgIds:"))return "v32@0:8@16@24";
+        return "v24@0:8@16";
+    }
+    if([name isEqualToString:@"_TtC13NTAIOBaseCell17NTAIOBaseCellView"]) {
+        if(!strcmp(sel,"bindViewModel:"))return "B24@0:8@16";
+        if(!strcmp(sel,"layoutViewWithViewModel:"))return "v24@0:8@16";
+        return "v16@0:8";
+    }
     return NULL;
 }
 static BOOL TKTypesEqual(const char *a,const char *b) {
@@ -309,7 +299,7 @@ static TKHookRecord *TKRecord(NSString *name,SEL sel) {
 static void InstallHook(NSString *name,SEL sel,IMP replacement,BOOL isClassMethod) {
     TKHookRecord *r=TKRecord(name,sel);
     if(!r){
-        unsigned count=gHookCount;if(count>=32)return;
+        unsigned count=gHookCount;if(count>=160)return;
         r=&gHooks[count];r->className=strdup(name.UTF8String);r->selector=sel;r->replacement=replacement;
         __atomic_store_n(&gHookCount,count+1,__ATOMIC_RELEASE);
     }
@@ -338,19 +328,26 @@ static IMP OrigIMP(NSString *name,SEL sel) {
 //   -[OCMsgRecord setRecallTime:]       标记撤回时间
 //   -[OCIKernelMsgService recallMsg:msgIds:cb:]  触发撤回
 static char kTKRecallFlag;
+static NSRecursiveLock *gTKCacheLock;
+static NSMutableSet *gTKRecalledIDs;
+static unsigned long long gTKRecallEvents,gTKRecallRestores;
+static BOOL TKHasCachedContent(id record);
+static void TKMarkRecall(id record);
+static BOOL TKWasRecalled(id record);
+
 static BOOL TKAntiRecallEnabled(void) {return prefBool(kEnabled,YES)&&prefBool(kAntiRecall,YES);}
 static void AR_setRecallTime(id self,SEL cmd,long long value) {
     IMP orig=OrigIMP(@"OCMsgRecord",cmd);
-    if(TKAntiRecallEnabled()) {
-        if(value>0)objc_setAssociatedObject(self,&kTKRecallFlag,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        return;
+    if(value>0 && TKAntiRecallEnabled()) {
+        TKMarkRecall(self);
+        if(TKHasCachedContent(self))value=0;
     }
     if(orig)((void(*)(id,SEL,long long))orig)(self,cmd,value);
 }
 static long long AR_recallTime(id self,SEL cmd) {
     IMP orig=OrigIMP(@"OCMsgRecord",cmd);
     long long value=orig?((long long(*)(id,SEL))orig)(self,cmd):0;
-    return TKAntiRecallEnabled()?0:value;
+    return TKAntiRecallEnabled() && TKWasRecalled(self) && TKHasCachedContent(self)?0:value;
 }
 static BOOL AR_includeDelete(id self,SEL cmd) {
     IMP orig=OrigIMP(@"OCMsgsReq",cmd);
@@ -373,8 +370,6 @@ static void AR_queryTime(id self,SEL cmd,id peer,long long time,long long client
 // ============================================================ 2. 复读
 // initWithCpp: and automatic duplicate forwarding intentionally unhooked.
 
-// ============================================================ 3. 闪照/截屏
-// TIM 使用 UIScreen.isCaptured（已确认 TIM 二进制引用该 selector）
 // ============================================================ 4. 设备伪装
 static NSString *SP_model(id self, SEL _cmd) {
     IMP orig = OrigIMP(@"UIDevice", _cmd);
@@ -390,7 +385,7 @@ static NSString *SP_localizedModel(id self, SEL _cmd) {
     }
     return orig ? ((NSString *(*)(id, SEL))orig)(self, _cmd) : @"iPhone";
 }
-// sysctl/sysctlbyname unhooked: no Foundation calls in low-level system functions.
+#include "TKDeviceSpoof.h"
 
 // ============================================================ 5. 红包过滤
 // TIM 4.1.0 红包核心：NTRedPackRouterService（类方法，已从二进制核对 26 个方法）
@@ -423,7 +418,7 @@ static void RPkt_grabCommand(id self, SEL _cmd, id record) {
     if (orig) ((void (*)(id, SEL, id))orig)(self, _cmd, record);
 }
 static BOOL RPkt_shouldShowBubble(id self, SEL _cmd, id vc, id record) {
-    if (shouldSkipRedPacket(record)) { (void)OrigIMP(@"NTRedPackRouterService",_cmd); return NO; }
+    // 过滤只决定是否领取；保留TIM原生红包气泡及提示。
     IMP orig = OrigIMP(@"NTRedPackRouterService", _cmd);
     return orig ? ((BOOL (*)(id, SEL, id, id))orig)(self, _cmd, vc, record) : NO;
 }
@@ -436,7 +431,7 @@ static NSMutableDictionary *gTKMessageCache;
 static NSMutableArray *gTKRecentMessages;
 static NSMutableSet *gTKSeenRedPackets;
 static NSString *gTKCurrentClaimIdentity;
-static unsigned long long gTKReceived,gTKAutoAttempts,gTKAutoCompleted,gTKAutoErrors,gTKFlashSaved,gTKRepeats;
+static unsigned long long gTKReceived,gTKAutoAttempts,gTKAutoCompleted,gTKAutoErrors,gTKRepeats;
 static NSString *gTKEngineStatus=@"等待登录会话";
 static BOOL gTKAutoBusy;
 static unsigned long long gTKAutoGeneration;
@@ -461,47 +456,76 @@ static NSString *TKMessageIdentity(id record) {
     int chat=(int)TKScalar(record,@"chatType","i");
     return [peer isKindOfClass:NSString.class]&&mid?[NSString stringWithFormat:@"%d:%@:%lld",chat,peer,mid]:nil;
 }
+static NSDictionary *TKCachedMessage(id record) {
+    NSString *identity=TKMessageIdentity(record);if(!identity)return nil;
+    [gTKCacheLock lock];NSDictionary *saved=gTKMessageCache[identity];[gTKCacheLock unlock];
+    return saved;
+}
+static BOOL TKHasCachedContent(id record) {return [TKCachedMessage(record)[@"elements"] count]>0;}
+static BOOL TKWasRecalled(id record) {
+    if([objc_getAssociatedObject(record,&kTKRecallFlag) boolValue])return YES;
+    NSString *identity=TKMessageIdentity(record);if(!identity)return NO;
+    [gTKCacheLock lock];BOOL recalled=[gTKRecalledIDs containsObject:identity];[gTKCacheLock unlock];
+    return recalled;
+}
+static void TKMarkRecall(id record) {
+    objc_setAssociatedObject(record,&kTKRecallFlag,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    NSString *identity=TKMessageIdentity(record);if(!identity)return;
+    [gTKCacheLock lock];
+    if(!gTKRecalledIDs)gTKRecalledIDs=[NSMutableSet new];
+    if(![gTKRecalledIDs containsObject:identity]){[gTKRecalledIDs addObject:identity];__atomic_fetch_add(&gTKRecallEvents,1,__ATOMIC_RELAXED);}
+    if(gTKRecalledIDs.count>2000)[gTKRecalledIDs removeAllObjects];
+    [gTKCacheLock unlock];
+}
 static void TKRememberMessage(id record) {
-    if(!gTKMessageCache)gTKMessageCache=[NSMutableDictionary new];
-    if(!gTKRecentMessages)gTKRecentMessages=[NSMutableArray new];
+    if(!record || TKWasRecalled(record))return;
     NSString *identity=TKMessageIdentity(record);if(!identity)return;
     NSArray *elements=TKObjectCall(record,@"elements");
     if(![elements isKindOfClass:NSArray.class]||!elements.count)return;
-    if(!gTKMessageCache[identity]) {
-        gTKMessageCache[identity]=@{@"record":record,@"elements":[elements copy],@"msgType":@(TKScalar(record,@"msgType","i"))};
-        [gTKRecentMessages addObject:identity];
-        if(gTKRecentMessages.count>200){NSString *old=gTKRecentMessages.firstObject;[gTKRecentMessages removeObjectAtIndex:0];[gTKMessageCache removeObjectForKey:old];}
+    TKHookRecord *recallHook=TKRecord(@"OCMsgRecord",@selector(recallTime));
+    IMP recall=recallHook?recallHook->original:NULL;
+    if(recall && ((long long(*)(id,SEL))recall)(record,@selector(recallTime))>0)return;
+    NSMutableArray *snapshot=[NSMutableArray new];
+    for(id element in elements){
+        id copy=[element conformsToProtocol:@protocol(NSCopying)]?[element copy]:element;
+        if(copy)[snapshot addObject:copy];
     }
-}
-static NSArray *TKCachedElements(id record) {
-    if(![NSThread isMainThread])return nil;
-    NSString *identity=TKMessageIdentity(record);return identity?gTKMessageCache[identity][@"elements"]:nil;
+    int type=(int)TKScalar(record,@"msgType","i");
+    [gTKCacheLock lock];
+    if(!gTKMessageCache)gTKMessageCache=[NSMutableDictionary new];
+    if(!gTKRecentMessages)gTKRecentMessages=[NSMutableArray new];
+    if(!gTKMessageCache[identity]) {
+        gTKMessageCache[identity]=@{@"record":record,@"elements":[snapshot copy],@"msgType":@(type)};
+        [gTKRecentMessages addObject:identity];
+        if(gTKRecentMessages.count>500){NSString *old=gTKRecentMessages.firstObject;[gTKRecentMessages removeObjectAtIndex:0];[gTKMessageCache removeObjectForKey:old];[gTKRecalledIDs removeObject:old];}
+    }
+    [gTKCacheLock unlock];
 }
 static void AR_setElements(id self,SEL cmd,id elements) {
     IMP orig=OrigIMP(@"OCMsgRecord",cmd);
-    if(TKAntiRecallEnabled()&&[objc_getAssociatedObject(self,&kTKRecallFlag) boolValue]) {
-        NSArray *saved=TKCachedElements(self);if(saved.count)elements=saved;
+    if(TKAntiRecallEnabled()&&TKWasRecalled(self)) {
+        NSArray *saved=TKCachedMessage(self)[@"elements"];if(saved.count){elements=saved;__atomic_fetch_add(&gTKRecallRestores,1,__ATOMIC_RELAXED);}
     }
     if(orig)((void(*)(id,SEL,id))orig)(self,cmd,elements);
 }
 static id AR_elements(id self,SEL cmd) {
     IMP orig=OrigIMP(@"OCMsgRecord",cmd);id actual=orig?((id(*)(id,SEL))orig)(self,cmd):nil;
-    if(TKAntiRecallEnabled()&&[objc_getAssociatedObject(self,&kTKRecallFlag) boolValue]) {
-        NSArray *saved=TKCachedElements(self);if(saved.count)return saved;
+    if(TKAntiRecallEnabled()&&TKWasRecalled(self)) {
+        NSArray *saved=TKCachedMessage(self)[@"elements"];if(saved.count)return saved;
     }
     return actual;
 }
 static int AR_msgType(id self,SEL cmd) {
     IMP orig=OrigIMP(@"OCMsgRecord",cmd);int value=orig?((int(*)(id,SEL))orig)(self,cmd):0;
-    if([NSThread isMainThread]&&TKAntiRecallEnabled()&&[objc_getAssociatedObject(self,&kTKRecallFlag) boolValue]) {
-        NSString *identity=TKMessageIdentity(self);NSNumber *saved=identity?gTKMessageCache[identity][@"msgType"]:nil;if(saved)return saved.intValue;
+    if(TKAntiRecallEnabled()&&TKWasRecalled(self)) {
+        NSNumber *saved=TKCachedMessage(self)[@"msgType"];if(saved)return saved.intValue;
     }
     return value;
 }
 static void AR_setMsgType(id self,SEL cmd,int value) {
     IMP orig=OrigIMP(@"OCMsgRecord",cmd);
-    if([NSThread isMainThread]&&TKAntiRecallEnabled()&&[objc_getAssociatedObject(self,&kTKRecallFlag) boolValue]) {
-        NSString *identity=TKMessageIdentity(self);NSNumber *saved=identity?gTKMessageCache[identity][@"msgType"]:nil;if(saved)value=saved.intValue;
+    if(TKAntiRecallEnabled()&&TKWasRecalled(self)) {
+        NSNumber *saved=TKCachedMessage(self)[@"msgType"];if(saved)value=saved.intValue;
     }
     if(orig)((void(*)(id,SEL,int))orig)(self,cmd,value);
 }
@@ -565,7 +589,7 @@ static void TKAttachListener(void) {
     SEL remove=NSSelectorFromString(@"removeKernelMsgListener:");
     if(gTKMessageService&&gTKListenerRegistered&&TKMethodABI(gTKMessageService,remove,"v24@0:8Q16"))((void(*)(id,SEL,unsigned long long))objc_msgSend)(gTKMessageService,remove,gTKListenerToken);
     gTKListenerToken=0;gTKListenerRegistered=NO;gTKListener=nil;gTKMessageService=service;
-    [gTKMessageCache removeAllObjects];[gTKRecentMessages removeAllObjects];[gTKSeenRedPackets removeAllObjects];[gTKRedQueue removeAllObjects];
+    [gTKCacheLock lock];[gTKMessageCache removeAllObjects];[gTKRecentMessages removeAllObjects];[gTKRecalledIDs removeAllObjects];[gTKCacheLock unlock];[gTKSeenRedPackets removeAllObjects];[gTKRedQueue removeAllObjects];
     gTKAutoBusy=NO;++gTKAutoGeneration;
     Class listener=NSClassFromString(@"GuildNTKernel.SWIKernelMsgListener");if(!listener)listener=NSClassFromString(@"_TtC13GuildNTKernel20SWIKernelMsgListener");
     id object=[[listener alloc] init];
@@ -588,27 +612,9 @@ static BOOL TKRepeatRecord(id record) {
     ((void(*)(id,SEL,id,id,id,id,id))objc_msgSend)(gTKMessageService,forward,@[@(mid)],contact,@[contact],nil,nil);
     gTKRepeats++;return YES;
 }
-static id FS_decryptImage(id self,SEL cmd,id path) {
-    IMP orig=OrigIMP(@"PhotoBrowserFlashPictureService",cmd);id image=orig?((id(*)(id,SEL,id))orig)(self,cmd,path):nil;
-    if(prefBool(kEnabled,YES)&&prefBool(kFlashPhoto,YES)&&[image isKindOfClass:UIImage.class]) {
-        UIImage *copy=image;
-        dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{@autoreleasepool {
-            NSData *data=UIImagePNGRepresentation(copy);NSString *documents=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
-            NSString *folder=[documents stringByAppendingPathComponent:@"TIMCleanKit/FlashPhotos"];
-            if(data&&folder){[NSFileManager.defaultManager createDirectoryAtPath:folder withIntermediateDirectories:YES attributes:nil error:nil];
-                NSString *file=[folder stringByAppendingPathComponent:[NSUUID.UUID.UUIDString stringByAppendingPathExtension:@"png"]];
-                if([data writeToFile:file atomically:YES])__atomic_fetch_add(&gTKFlashSaved,1,__ATOMIC_RELAXED);
-            }
-        }});
-    }
-    return image;
-}
-static void FS_screenshotNotify(id self,SEL cmd,id notify) {
-    NSString *name=@"_TtC15AIOPhotoBrowser43NTAIOFlashPicturePhotoBrowserViewController";
-    IMP orig=OrigIMP(name,cmd);
-    if(prefBool(kEnabled,YES)&&prefBool(kFlashPhoto,YES))return;
-    if(orig)((void(*)(id,SEL,id))orig)(self,cmd,notify);
-}
+#include "TKMessageBridge.h"
+#include "TKCellBridge.h"
+
 static void TKAutoOpenPreView(id self,SEL cmd) {
     IMP orig=OrigIMP(@"QQWalletPreGrapHBResultViewController",cmd);
     if(orig)((void(*)(id,SEL))orig)(self,cmd);
@@ -640,7 +646,7 @@ static NSDictionary *TKRuntimeSnapshot(void) {
         unsigned long long hits=__atomic_load_n(&r->hits,__ATOMIC_RELAXED);
         [rows addObject:@{@"name":[NSString stringWithFormat:@"%s\n%s",r->className,sel_getName(r->selector)],@"state":hits?@"已实际调用":states[MIN(state,4)],@"hits":@(hits),@"lastHit":@""}];
     }
-    return @{@"engine":@{@"status":gTKEngineStatus?:@"未知",@"listenerRegistered":@(gTKListenerRegistered),@"received":@(gTKReceived),@"claimRequests":@(gTKAutoAttempts),@"claimCallbacks":@(gTKAutoCompleted),@"claimFailures":@(gTKAutoErrors),@"savedPhotos":@(__atomic_load_n(&gTKFlashSaved,__ATOMIC_RELAXED)),@"repeatRequests":@(gTKRepeats)},@"version":@"1.0.4",@"process":[NSString stringWithFormat:@"TIM %@ · PID %d · 注册检查 %u 轮\nUIDevice.model = %@",[NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"],getpid(),gRegistrationRounds,UIDevice.currentDevice.model],@"hookRows":rows,@"warnings":@[@"调用次数只能证明该入口被调用，不能证明防撤回或过滤效果。",@"自动领取：只处理前台两分钟内新收到的红包，不保证后台唤醒；完成回调不等于到账，请核对结果。",@"防撤回：缓存仅在内存保留最近200条收到的消息；启动前丢失内容无法恢复。"]};
+    return @{@"engine":@{@"status":gTKEngineStatus?:@"未知",@"listenerRegistered":@(gTKListenerRegistered),@"received":@(gTKReceived),@"claimRequests":@(gTKAutoAttempts),@"claimCallbacks":@(gTKAutoCompleted),@"claimFailures":@(gTKAutoErrors),@"repeatRequests":@(gTKRepeats),@"repeatFailures":@(gTKRepeatFailures),@"messageCellBinds":@(gTKMessageBinds),@"recordReadFailures":@(gTKRecordReadFailures),@"recallBlocked":@(__atomic_load_n(&gTKRecallBlocked,__ATOMIC_RELAXED)),@"hardwareReads":@(__atomic_load_n(&gTKHardwareReads,__ATOMIC_RELAXED)),@"recallEvents":@(__atomic_load_n(&gTKRecallEvents,__ATOMIC_RELAXED)),@"recallRestores":@(__atomic_load_n(&gTKRecallRestores,__ATOMIC_RELAXED))},@"version":@"1.0.5",@"process":[NSString stringWithFormat:@"TIM %@ · PID %d · 注册检查 %u 轮\nUIDevice.model = %@",[NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"],getpid(),gRegistrationRounds,UIDevice.currentDevice.model],@"hookRows":rows,@"warnings":@[@"调用次数只能证明该入口被调用，不能证明防撤回或过滤效果。",@"自动领取：只处理前台两分钟内新收到的红包，不保证后台唤醒；完成回调不等于到账，请核对结果。",@"防撤回：本次进程缓存最近500条收到/显示的消息；启动前丢失内容无法恢复。"]};
 }
 
 
@@ -654,84 +660,56 @@ static char kGestureAddedKey;
 - (BOOL)isSettingsWindow:(UIWindow *)window {
     UIViewController *vc=window.rootViewController;
     while(vc.presentedViewController)vc=vc.presentedViewController;
-    if([vc isKindOfClass:[UINavigationController class]]){
+    if([vc isKindOfClass:[TKGlassPopupController class]])return YES;
+    if([vc isKindOfClass:[UINavigationController class]])
         for(UIViewController *page in ((UINavigationController *)vc).viewControllers)
-            if([page isKindOfClass:[TKSettingsController class]]) return YES;
-    }
+            if([page isKindOfClass:[TKSettingsController class]])return YES;
     return NO;
 }
 - (void)onLongPress:(UILongPressGestureRecognizer *)g {
-    if(g.state==UIGestureRecognizerStateBegan && [g.view isKindOfClass:[UIWindow class]] && ![self isSettingsWindow:(UIWindow *)g.view]) TKPresentSettings((UIWindow *)g.view);
+    if(g.state==UIGestureRecognizerStateBegan && [g.view isKindOfClass:UIWindow.class] && ![self isSettingsWindow:(UIWindow *)g.view])TKPresentSettings((UIWindow *)g.view);
 }
-- (id)recordAtView:(UIView *)view {
-    Class recordClass=NSClassFromString(@"OCMsgRecord");
-    for(UIView *v=view;v&&! [v isKindOfClass:[UIWindow class]];v=v.superview){
-        if([v isKindOfClass:[UIControl class]]||[v isKindOfClass:[UITextView class]])return nil;
-        for(NSString *selector in @[@"msgRecord",@"record",@"ocMsgRecord"]){
-            id record=TKObjectCall(v,selector);if([record isKindOfClass:recordClass])return record;
-        }
-        id model=TKObjectCall(v,@"viewModel");
-        for(NSString *selector in @[@"msgRecord",@"record",@"ocMsgRecord"]){
-            id record=TKObjectCall(model,selector);if([record isKindOfClass:recordClass])return record;
-        }
-    }
+- (UIView *)messageCellAtView:(UIView *)view {
+    Class base=NSClassFromString(TKCellClass);
+    for(UIView *v=view;v && ![v isKindOfClass:UIWindow.class];v=v.superview)
+        if([v isKindOfClass:base])return v;
     return nil;
 }
 - (void)onMessageDoubleTap:(UITapGestureRecognizer *)g {
-    if(!prefBool(kEnabled,YES)||!prefBool(kRepeater,YES)||[self isSettingsWindow:(UIWindow *)g.view])return;
-    UIView *hit=[g.view hitTest:[g locationInView:g.view] withEvent:nil];id record=[self recordAtView:hit];
-    if(!record)return;
-    UIViewController *vc=((UIWindow *)g.view).rootViewController;
-    while(vc.presentedViewController)vc=vc.presentedViewController;
-    if(!vc||[vc isKindOfClass:[UIAlertController class]])return;
-    UIAlertController *a=[UIAlertController alertControllerWithTitle:@"复读这条消息？" message:@"确认后转发到原会话一次。" preferredStyle:UIAlertControllerStyleAlert];
-    [a addAction:[UIAlertAction actionWithTitle:@"发送一次" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){TKRepeatRecord(record);}]];
-    [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-    [vc presentViewController:a animated:YES completion:nil];
-}
-- (void)onBlankTap:(UITapGestureRecognizer *)g {
-    if(g.state==UIGestureRecognizerStateRecognized && [g.view isKindOfClass:[UIWindow class]]) TKPresentSettings((UIWindow *)g.view);
+    if(g.state!=UIGestureRecognizerStateRecognized || !prefBool(kEnabled,YES) || !prefBool(kRepeater,YES) || [self isSettingsWindow:(UIWindow *)g.view])return;
+    UIView *hit=[g.view hitTest:[g locationInView:g.view] withEvent:nil];UIView *cell=[self messageCellAtView:hit];
+    id record=TKRecordForCell(cell);if(!record)return;
+    static NSTimeInterval previous;NSTimeInterval now=NSDate.date.timeIntervalSince1970;
+    if(now-previous<.45)return;previous=now;
+    if(!TKNativeRepeat(record)) {
+        gTKRepeatFailures++;
+        UIImpactFeedbackGenerator *feedback=[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];[feedback impactOccurred];
+    }
 }
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)g shouldReceiveTouch:(UITouch *)touch {
-    if(![g isKindOfClass:[UITapGestureRecognizer class]])return YES;
     if([self isSettingsWindow:(UIWindow *)g.view])return NO;
-    if(((UITapGestureRecognizer *)g).numberOfTapsRequired==2) return prefBool(kEnabled,YES)&&prefBool(kRepeater,YES)&&[self recordAtView:touch.view]!=nil;
-    if(!prefBool(kBlankTap,YES))return NO;
-    UIView *hit=touch.view;
-    // Fail closed on cells, controls and custom interactive content. Do not steal app taps.
-    for(UIView *v=hit;v && v!=g.view;v=v.superview) {
-        if([v isKindOfClass:[UIControl class]] || [v isKindOfClass:[UITextView class]] ||
-           [v isKindOfClass:[UITableViewCell class]] || [v isKindOfClass:[UICollectionViewCell class]] ||
-           [v isKindOfClass:[UILabel class]] || [v isKindOfClass:[UIImageView class]] ||
-           [v isKindOfClass:[UINavigationBar class]] || [v isKindOfClass:[UITabBar class]])return NO;
+    if([g isKindOfClass:UILongPressGestureRecognizer.class])return YES; // All TIM regions, including chat content/controls.
+    if(!prefBool(kEnabled,YES)||!prefBool(kRepeater,YES))return NO;
+    UIView *cell=[self messageCellAtView:touch.view];if(!cell||!TKRecordForCell(cell))return NO;
+    // Double-tap is confined to a real message cell and never to the avatar, input or button.
+    for(UIView *v=touch.view;v && v!=cell;v=v.superview) {
+        if([v isKindOfClass:UIControl.class]||[v isKindOfClass:UITextField.class])return NO;
         NSString *name=NSStringFromClass(v.class).lowercaseString;
-        if([name containsString:@"keyboard"] || [name containsString:@"input"] ||
-           [name containsString:@"bubble"] || [name containsString:@"messagecell"] ||
-           [name containsString:@"chatcell"])return NO;
-        for(UIGestureRecognizer *other in v.gestureRecognizers) {
-            if(other!=g && other.enabled && ![other isKindOfClass:[UIPanGestureRecognizer class]])return NO;
-        }
-        if([v isKindOfClass:[UIScrollView class]] && (((UIScrollView *)v).dragging || ((UIScrollView *)v).decelerating))return NO;
+        if([name containsString:@"avatar"]||[name containsString:@"titleview"]||[name containsString:@"input"])return NO;
     }
     return YES;
 }
-- (BOOL)gestureRecognizer:(UIGestureRecognizer *)a shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)b {
-    return ![b isKindOfClass:[UIPanGestureRecognizer class]];
-}
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)a shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)b {return YES;}
 @end
 static void InstallGesture(UIWindow *w) {
-    if(!w || ![NSThread isMainThread] || objc_getAssociatedObject(w,&kGestureAddedKey))return;
+    if(!w || !NSThread.isMainThread || objc_getAssociatedObject(w,&kGestureAddedKey))return;
     TIMCKGestureTarget *target=[TIMCKGestureTarget shared];
-    UILongPressGestureRecognizer *longPress=[[UILongPressGestureRecognizer alloc] initWithTarget:target action:@selector(onLongPress:)];
-    longPress.numberOfTouchesRequired=2;longPress.minimumPressDuration=0.8;longPress.cancelsTouchesInView=NO;
-    longPress.delaysTouchesBegan=NO;longPress.delaysTouchesEnded=NO;longPress.delegate=target;
-    UITapGestureRecognizer *tap=[[UITapGestureRecognizer alloc] initWithTarget:target action:@selector(onBlankTap:)];
-    tap.numberOfTapsRequired=1;tap.numberOfTouchesRequired=1;tap.cancelsTouchesInView=NO;
-    tap.delaysTouchesBegan=NO;tap.delaysTouchesEnded=NO;tap.delegate=target;
+    UILongPressGestureRecognizer *press=[[UILongPressGestureRecognizer alloc] initWithTarget:target action:@selector(onLongPress:)];
+    press.numberOfTouchesRequired=2;press.minimumPressDuration=.8;press.cancelsTouchesInView=NO;press.allowableMovement=28;
+    press.delaysTouchesBegan=NO;press.delaysTouchesEnded=NO;press.delegate=target;
     UITapGestureRecognizer *repeat=[[UITapGestureRecognizer alloc] initWithTarget:target action:@selector(onMessageDoubleTap:)];
-    repeat.numberOfTapsRequired=2;repeat.cancelsTouchesInView=NO;repeat.delaysTouchesBegan=NO;repeat.delaysTouchesEnded=NO;repeat.delegate=target;
-    [w addGestureRecognizer:repeat];[w addGestureRecognizer:longPress];[w addGestureRecognizer:tap];
-    objc_setAssociatedObject(w,&kGestureAddedKey,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    repeat.numberOfTapsRequired=2;repeat.numberOfTouchesRequired=1;repeat.cancelsTouchesInView=NO;repeat.delaysTouchesBegan=NO;repeat.delaysTouchesEnded=NO;repeat.delegate=target;
+    [w addGestureRecognizer:press];[w addGestureRecognizer:repeat];objc_setAssociatedObject(w,&kGestureAddedKey,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 static void TKWriteStatus(void) {
     NSDictionary *snapshot=TKRuntimeSnapshot();
@@ -758,10 +736,18 @@ static void RegisterBusinessHooks(void) {
     InstallHook(@"OCMsgRecord",@selector(setElements:),(IMP)AR_setElements,NO);
     InstallHook(@"OCMsgRecord",@selector(msgType),(IMP)AR_msgType,NO);
     InstallHook(@"OCMsgRecord",@selector(setMsgType:),(IMP)AR_setMsgType,NO);
-    InstallHook(@"PhotoBrowserFlashPictureService",@selector(decryptImageWithImagePath:),(IMP)FS_decryptImage,YES);
-    InstallHook(@"_TtC15AIOPhotoBrowser43NTAIOFlashPicturePhotoBrowserViewController",@selector(handleDidTakeScreenshotWithNotify:),(IMP)FS_screenshotNotify,NO);
     InstallHook(@"QQWalletPreGrapHBResultViewController",@selector(viewDidLoad),(IMP)TKAutoOpenPreView,NO);
-    TKAttachListener();TKDrainRedQueue();
+    TKInstallDeviceHooks();
+    InstallHook(TKListenerClass,@selector(onRecvMsg:),(IMP)TKBridgeReceive,NO);
+    InstallHook(TKListenerClass,@selector(onMsgInfoListAdd:),(IMP)TKBridgeReceive,NO);
+    InstallHook(TKListenerClass,@selector(onMsgRecall:peerUid:seq:),(IMP)TKBridgeRecall,NO);
+    InstallHook(TKListenerClass,@selector(onMsgInfoListUpdate:),(IMP)TKBridgeUpdate,NO);
+    InstallHook(TKListenerClass,@selector(onMsgDelete:msgIds:),(IMP)TKBridgeDelete,NO);
+    InstallHook(TKCellClass,@selector(bindViewModel:),(IMP)TKCellBind,NO);
+    InstallHook(TKCellClass,@selector(unbindViewModel),(IMP)TKCellClear,NO);
+    InstallHook(TKCellClass,@selector(prepareForReuse),(IMP)TKCellClear,NO);
+    InstallHook(TKCellClass,@selector(layoutSubviews),(IMP)TKCellLayout,NO);
+    TKAttachListener();TKDrainRedQueue();TKRefreshRecallLabels();
     for(UIWindow *w in UIApplication.sharedApplication.windows)InstallGesture(w);
     TKWriteStatus();
 }
@@ -769,7 +755,7 @@ __attribute__((constructor)) static void TIMCKInit(void) {
     @autoreleasepool {
         if(![[NSBundle mainBundle].bundleIdentifier isEqualToString:kDomain])return;
         dispatch_async(dispatch_get_main_queue(),^{
-            registerDefaultsOnce();RegisterBusinessHooks();
+            gTKCacheLock=[NSRecursiveLock new];registerDefaultsOnce();RegisterBusinessHooks();
             NSNotificationCenter *nc=NSNotificationCenter.defaultCenter;
             [nc addObserverForName:UIApplicationDidFinishLaunchingNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){RegisterBusinessHooks();}];
             [nc addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){RegisterBusinessHooks();}];
