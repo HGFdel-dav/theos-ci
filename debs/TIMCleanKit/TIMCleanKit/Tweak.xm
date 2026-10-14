@@ -70,6 +70,22 @@ static void registerDefaultsOnce(void) {
 
 // 从字符串中解析金额(单位:分)，找不到返回 -1
 static long long amountFromString(NSString *s);
+// 动态取值：避免依赖未声明的类接口
+static id TK_performObject(id obj, NSString *prop) {
+    if (!obj || !prop) return nil;
+    SEL s = NSSelectorFromString(prop);
+    if (![obj respondsToSelector:s]) return nil;
+    NSMethodSignature *sig = [obj methodSignatureForSelector:s];
+    if (!sig || sig.methodReturnLength == 0) return nil;
+    NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
+    [inv setSelector:s];
+    [inv setTarget:obj];
+    [inv invoke];
+    if (strcmp(sig.methodReturnType, "@") != 0) return nil;
+    id __unsafe_unretained r = nil;
+    [inv getReturnValue:&r];
+    return r;
+}
 
 // ------------------------------------------------------ 红包金额/类型解析
 // TIM 与 QQ 共用 OCWalletElement。属性(已从 TIM 4.1.0 二进制核对):
@@ -108,9 +124,8 @@ static long long redPacketAmount(id element) {
         }
     }
     // 2) 从 OCWalletAio 的 title/content 里正则抓 "1.23元" / "¥1.23"
-    id aio = nil;
-    if ([element respondsToSelector:@selector(sender)]) aio = [element sender];
-    if (!aio && [element respondsToSelector:@selector(receiver)]) aio = [element receiver];
+    id aio = TK_performObject(element, @"sender");
+    if (!aio) aio = TK_performObject(element, @"receiver");
     if (!aio) return -1;
     for (NSString *prop in @[@"title", @"content", @"notice", @"subTitle"]) {
         SEL s = NSSelectorFromString(prop);
@@ -137,7 +152,7 @@ static long long amountFromString(NSString *s) {
     if (!m) return -1;
     NSString *num = [s substringWithRange:[m rangeAtIndex:1]];
     NSDecimalNumber *d = [NSDecimalNumber decimalNumberWithString:num];
-    if ([d isEqualTo:[NSDecimalNumber notANumber]]) return -1;
+    if ([d isEqualToNumber:[NSDecimalNumber notANumber]]) return -1;
     return (long long)([d doubleValue] * 100.0);
 }
 
@@ -145,9 +160,8 @@ static long long amountFromString(NSString *s) {
 static BOOL isTestRedPacket(id element) {
     if (!element) return NO;
     NSMutableArray *texts = [NSMutableArray array];
-    id aio = nil;
-    if ([element respondsToSelector:@selector(sender)]) aio = [element sender];
-    if (!aio && [element respondsToSelector:@selector(receiver)]) aio = [element receiver];
+    id aio = TK_performObject(element, @"sender");
+    if (!aio) aio = TK_performObject(element, @"receiver");
     if (aio) {
         for (NSString *prop in @[@"title", @"content", @"notice", @"subTitle"]) {
             SEL s = NSSelectorFromString(prop);
@@ -161,14 +175,8 @@ static BOOL isTestRedPacket(id element) {
         }
     }
     for (NSString *prop in @[@"name", @"billNo"]) {
-        SEL s = NSSelectorFromString(prop);
-        if ([element respondsToSelector:s]) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-            id v = [element performSelector:s];
-#pragma clang diagnostic pop
-            if ([v isKindOfClass:[NSString class]]) [texts addObject:v];
-        }
+        id v = TK_performObject(element, prop);
+        if ([v isKindOfClass:[NSString class]]) [texts addObject:v];
     }
     for (NSString *t in texts) {
         NSRange r = [t rangeOfString:@"测试" options:NSCaseInsensitiveSearch];
@@ -247,11 +255,11 @@ static void InstallHook(NSString *clsName, SEL sel, IMP newImp, BOOL isClassMeth
     IMP old = method_getImplementation(m);
     method_setImplementation(m, newImp);
     NSString *key = [NSString stringWithFormat:@"%@::%@", clsName, NSStringFromSelector(sel)];
-    gOrigMap[key] = [NSValue valueWithPointer:old];
-    LOG(@"hooked %@[%@ %@]%s", isClassMethod ? "+" : "-", clsName, NSStringFromSelector(sel), "");
+    gOrigMap[key] = [NSValue valueWithPointer:(const void *)old];
+    LOG(@"hooked %@ %@ %@", isClassMethod ? @"+" : @"-", clsName, NSStringFromSelector(sel));
 }
 static IMP OrigIMP(NSString *clsName, SEL sel) {
-    return [gOrigMap[[NSString stringWithFormat:@"%@::%@", clsName, NSStringFromSelector(sel)]] pointerValue];
+    return (IMP)[gOrigMap[[NSString stringWithFormat:@"%@::%@", clsName, NSStringFromSelector(sel)]] pointerValue];
 }
 
 // ============================================================ 1. 防撤回
@@ -425,7 +433,7 @@ static void ShowPanel(UIWindow *w) {
     while (vc.presentedViewController) vc = vc.presentedViewController;
     if (!vc) return;
 
-    PanelItem items[] = {
+    static PanelItem items[] = {
         {@"防撤回",   kAntiRecall,  YES},
         {@"复读",     kRepeater,    YES},
         {@"闪照/截屏", kFlashPhoto,  YES},
