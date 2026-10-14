@@ -312,16 +312,22 @@ static void InstallHook(NSString *name,SEL sel,IMP replacement,BOOL isClassMetho
     if(!method){__atomic_store_n(&r->state,1,__ATOMIC_RELEASE);return;}
     r->encoding=method_getTypeEncoding(method);
     if(!TKSameSignature(r->encoding,TKExpectedEncoding(name,sel))){__atomic_store_n(&r->state,2,__ATOMIC_RELEASE);return;}
-    // Preseed fallback before publishing replacement; installation is serialized on main.
-    r->original=method_getImplementation(method);
-    MSHookMessageEx(target,sel,replacement,&r->original);
+    // Publish a fallback first. Substrate writes its result to a local slot so
+    // callbacks never race with a non-atomic write to the shared original IMP.
+    IMP original=method_getImplementation(method);
+    __atomic_store_n(&r->original,original,__ATOMIC_RELEASE);
+    MSHookMessageEx(target,sel,replacement,&original);
+    __atomic_store_n(&r->original,original,__ATOMIC_RELEASE);
     IMP installed=class_getMethodImplementation(target,sel);
     __atomic_store_n(&r->state,(installed==replacement)?3:4,__ATOMIC_RELEASE);
+}
+static IMP TKOriginalIMP(TKHookRecord *record) {
+    return record?__atomic_load_n(&record->original,__ATOMIC_ACQUIRE):NULL;
 }
 static IMP OrigIMP(NSString *name,SEL sel) {
     TKHookRecord *r=TKRecord(name,sel);
     if(r)__atomic_fetch_add(&r->hits,1,__ATOMIC_RELAXED);
-    return r?r->original:NULL;
+    return TKOriginalIMP(r);
 }
 // ============================================================ 1. 防撤回
 // TIM 与 QQ 共用 NT 消息内核，方法名一致：
@@ -483,7 +489,7 @@ static void TKRememberMessage(id record) {
     NSArray *elements=TKObjectCall(record,@"elements");
     if(![elements isKindOfClass:NSArray.class]||!elements.count)return;
     TKHookRecord *recallHook=TKRecord(@"OCMsgRecord",@selector(recallTime));
-    IMP recall=recallHook?recallHook->original:NULL;
+    IMP recall=TKOriginalIMP(recallHook);
     if(recall && ((long long(*)(id,SEL))recall)(record,@selector(recallTime))>0)return;
     NSMutableArray *snapshot=[NSMutableArray new];
     for(id element in elements){

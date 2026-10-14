@@ -5,12 +5,12 @@ static void TKRefreshRecallLabels(void);
 static unsigned long long gTKRecallBlocked,gTKRepeatFailures,gTKMessageBinds;
 static void TKRestoreRecord(id record) {
     NSDictionary *saved=TKCachedMessage(record);NSArray *elements=saved[@"elements"];if(!elements.count)return;
-    TKHookRecord *h=TKRecord(@"OCMsgRecord",@selector(setElements:));
-    if(h&&h->original)((void(*)(id,SEL,id))h->original)(record,@selector(setElements:),elements);
-    h=TKRecord(@"OCMsgRecord",@selector(setMsgType:));
-    if(h&&h->original)((void(*)(id,SEL,int))h->original)(record,@selector(setMsgType:),[saved[@"msgType"] intValue]);
-    h=TKRecord(@"OCMsgRecord",@selector(setRecallTime:));
-    if(h&&h->original)((void(*)(id,SEL,long long))h->original)(record,@selector(setRecallTime:),0);
+    IMP original=TKOriginalIMP(TKRecord(@"OCMsgRecord",@selector(setElements:)));
+    if(original)((void(*)(id,SEL,id))original)(record,@selector(setElements:),elements);
+    original=TKOriginalIMP(TKRecord(@"OCMsgRecord",@selector(setMsgType:)));
+    if(original)((void(*)(id,SEL,int))original)(record,@selector(setMsgType:),[saved[@"msgType"] intValue]);
+    original=TKOriginalIMP(TKRecord(@"OCMsgRecord",@selector(setRecallTime:)));
+    if(original)((void(*)(id,SEL,long long))original)(record,@selector(setRecallTime:),0);
     __atomic_fetch_add(&gTKRecallRestores,1,__ATOMIC_RELAXED);
 }
 static void TKBridgeRecall(id self,SEL cmd,int chat,id peer,unsigned long long seq) {
@@ -33,10 +33,10 @@ static NSArray *TKPreserveUpdateRecords(id records) {
     if(![records isKindOfClass:NSArray.class])return records;
     Class recordClass=NSClassFromString(@"OCMsgRecord");
     NSMutableArray *result=[NSMutableArray arrayWithCapacity:[records count]];
-    TKHookRecord *h=TKRecord(@"OCMsgRecord",@selector(recallTime));
+    IMP originalRecall=TKOriginalIMP(TKRecord(@"OCMsgRecord",@selector(recallTime)));
     for(id record in records) {
         if(![record isKindOfClass:recordClass]){[result addObject:record];continue;}
-        long long recall=h&&h->original?((long long(*)(id,SEL))h->original)(record,@selector(recallTime)):0;
+        long long recall=originalRecall?((long long(*)(id,SEL))originalRecall)(record,@selector(recallTime)):0;
         if(TKAntiRecallEnabled()&&(recall>0||TKWasRecalled(record))&&TKHasCachedContent(record)) {
             TKMarkRecall(record);TKRestoreRecord(record);
             id old=TKCachedMessage(record)[@"record"];
