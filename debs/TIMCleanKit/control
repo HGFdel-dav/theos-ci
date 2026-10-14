@@ -1,0 +1,9 @@
+Package: com.nanaminis.timcleankit
+Name: TIMCleanKit
+Version: 1.0.3
+Description: TIM 4.1.0 functional revision and observable settings.
+Author: TIMCleanKit
+Section: Tweaks
+Depends: mobilesubstrate
+Architecture: iphoneos-arm64
+Maintainer: TIMCleanKit <maintainer@localhost>
