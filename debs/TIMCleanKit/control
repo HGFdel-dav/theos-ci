@@ -1,7 +1,0 @@
-Package: com.nanaminis.timcleankit
-Name: TIMCleanKit
-Description: TIM (com.tencent.tim) 净化增强插件：防撤回、复读、闪照、设备伪装、红包过滤(小额不抢/测试不抢)。TIM 4.1.0 NT 架构适配。
-Author: TIMCleanKit
-Section: Tweaks
-Depends: mobilesubstrate
-Architecture: iphoneos-arm64
