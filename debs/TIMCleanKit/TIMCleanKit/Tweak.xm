@@ -1,23 +1,25 @@
 //  TIMCleanKit.dylib — TIM (com.tencent.tim) 净化/增强插件
-//  目标：TIM 4.1.0 (NT 架构) + 兼容 QQ
-//  功能：防撤回 / 复读 / 闪照 / 设备伪装 / 红包过滤(小额不抢、测试不抢) / 设置面板
+//  目标：TIM 4.1.0 (NT 架构)，1.0.2 隔离测试版
+//  功能：防撤回标记 / 截屏状态 / UIDevice机型 / 红包过滤 / 设置面板
 //  构建：Theos (Logos)，arm64 + arm64e
 //
 //  设计原则：所有 Hook 均通过 NSClassFromString 动态获取类，
-//  类不存在时自动跳过，绝不崩溃。TIM 与 QQ 共用的消息内核类
+//  目标不存在或签名不匹配时跳过。TIM 与 QQ 共用的消息内核类
 //  (OCMsgRecord/OCMsgsReq/OCIKernelMsgService) 双端通用。
 
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
 #import <substrate.h>
 #import <sys/sysctl.h>
+#import <objc/runtime.h>
+#import <objc/message.h>
+#import <string.h>
 
 // ---------------------------------------------------------------- 配置键
 //  TIMCleanKit 自有前缀，避免与其它插件冲突
 static NSString *const kDomain      = @"com.tencent.tim";
 static NSString *const kEnabled     = @"TIMCK.enabled";         // 总开关
 static NSString *const kAntiRecall  = @"TIMCK.antiRecall";      // 防撤回
-static NSString *const kRepeater    = @"TIMCK.repeater";        // 复读
 static NSString *const kFlashPhoto  = @"TIMCK.flashPhoto";      // 闪照/截屏
 static NSString *const kDeviceSpoof = @"TIMCK.deviceSpoof";     // 设备伪装
 static NSString *const kSpoofModel  = @"TIMCK.spoofModel";      // 伪装机型
@@ -54,7 +56,6 @@ static void registerDefaultsOnce(void) {
         NSDictionary *d = @{
             kEnabled:     @YES,
             kAntiRecall:  @YES,
-            kRepeater:    @YES,
             kFlashPhoto:  @YES,
             kDeviceSpoof: @NO,
             kSpoofModel:  @"iPhone 15 Pro",
@@ -70,6 +71,22 @@ static void registerDefaultsOnce(void) {
 
 // 从字符串中解析金额(单位:分)，找不到返回 -1
 static long long amountFromString(NSString *s);
+// 动态取值：避免依赖未声明的类接口
+static id TK_performObject(id obj, NSString *prop) {
+    if (!obj || !prop) return nil;
+    SEL s = NSSelectorFromString(prop);
+    if (![obj respondsToSelector:s]) return nil;
+    NSMethodSignature *sig = [obj methodSignatureForSelector:s];
+    if (!sig || sig.numberOfArguments != 2 || sig.methodReturnType[0] != '@' || sig.methodReturnLength != sizeof(id)) return nil;
+    NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
+    [inv setSelector:s];
+    [inv setTarget:obj];
+    [inv invoke];
+    
+    id __unsafe_unretained r = nil;
+    [inv getReturnValue:&r];
+    return r;
+}
 
 // ------------------------------------------------------ 红包金额/类型解析
 // TIM 与 QQ 共用 OCWalletElement。属性(已从 TIM 4.1.0 二进制核对):
@@ -97,7 +114,7 @@ static long long redPacketAmount(id element) {
     if ([element respondsToSelector:@selector(grabbedAmount)]) {
         // 属性为 unsigned long long，用 NSInvocation 规避编译器类型
         NSMethodSignature *sig = [element methodSignatureForSelector:@selector(grabbedAmount)];
-        if (sig) {
+        if (sig && sig.numberOfArguments == 2 && sig.methodReturnLength == sizeof(unsigned long long) && !strcmp(sig.methodReturnType, @encode(unsigned long long))) {
             NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
             [inv setSelector:@selector(grabbedAmount)];
             [inv setTarget:element];
@@ -108,9 +125,8 @@ static long long redPacketAmount(id element) {
         }
     }
     // 2) 从 OCWalletAio 的 title/content 里正则抓 "1.23元" / "¥1.23"
-    id aio = nil;
-    if ([element respondsToSelector:@selector(sender)]) aio = [element sender];
-    if (!aio && [element respondsToSelector:@selector(receiver)]) aio = [element receiver];
+    id aio = TK_performObject(element, @"sender");
+    if (!aio) aio = TK_performObject(element, @"receiver");
     if (!aio) return -1;
     for (NSString *prop in @[@"title", @"content", @"notice", @"subTitle"]) {
         SEL s = NSSelectorFromString(prop);
@@ -137,7 +153,7 @@ static long long amountFromString(NSString *s) {
     if (!m) return -1;
     NSString *num = [s substringWithRange:[m rangeAtIndex:1]];
     NSDecimalNumber *d = [NSDecimalNumber decimalNumberWithString:num];
-    if ([d isEqualTo:[NSDecimalNumber notANumber]]) return -1;
+    if ([d isEqualToNumber:[NSDecimalNumber notANumber]]) return -1;
     return (long long)([d doubleValue] * 100.0);
 }
 
@@ -145,9 +161,8 @@ static long long amountFromString(NSString *s) {
 static BOOL isTestRedPacket(id element) {
     if (!element) return NO;
     NSMutableArray *texts = [NSMutableArray array];
-    id aio = nil;
-    if ([element respondsToSelector:@selector(sender)]) aio = [element sender];
-    if (!aio && [element respondsToSelector:@selector(receiver)]) aio = [element receiver];
+    id aio = TK_performObject(element, @"sender");
+    if (!aio) aio = TK_performObject(element, @"receiver");
     if (aio) {
         for (NSString *prop in @[@"title", @"content", @"notice", @"subTitle"]) {
             SEL s = NSSelectorFromString(prop);
@@ -161,14 +176,8 @@ static BOOL isTestRedPacket(id element) {
         }
     }
     for (NSString *prop in @[@"name", @"billNo"]) {
-        SEL s = NSSelectorFromString(prop);
-        if ([element respondsToSelector:s]) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-            id v = [element performSelector:s];
-#pragma clang diagnostic pop
-            if ([v isKindOfClass:[NSString class]]) [texts addObject:v];
-        }
+        id v = TK_performObject(element, prop);
+        if ([v isKindOfClass:[NSString class]]) [texts addObject:v];
     }
     for (NSString *t in texts) {
         NSRange r = [t rangeOfString:@"测试" options:NSCaseInsensitiveSearch];
@@ -232,26 +241,55 @@ static BOOL shouldSkipRedPacket(id record) {
 
 // ================================================================ Hook 框架
 // 全部采用「NSClassFromString + MSHookMessageEx」动态注册：
-//   类/方法不存在时静默跳过，目标 App 不崩溃。
+//   验证真实方法签名，缺失或签名不匹配时跳过。
 //   TIM 与 QQ 共用的消息内核类两端通用。
 
-static NSMutableDictionary *gOrigMap = nil;
+// C storage: original IMP lookup never calls Foundation during replacement.
+typedef struct { const char *className; SEL selector; IMP original; } TKHookRecord;
+static TKHookRecord gHooks[16];
+static unsigned gHookCount;
 
+static const char *TKExpectedEncoding(NSString *name, SEL selector) {
+    const char *sel = sel_getName(selector);
+    if ([name isEqualToString:@"OCMsgRecord"] && !strcmp(sel,"setRecallTime:")) return "v24@0:8q16";
+    if ([name isEqualToString:@"NTRedPackRouterService"]) {
+        if (!strcmp(sel,"handleRedPackViewClickWithRootVC:msgRecord:gesture:completion:")) return "v48@0:8@16@24@32@?40";
+        if (!strcmp(sel,"checkCanOpenRedPack:resultTip:")) return "B32@0:8@16^@24";
+        if (!strcmp(sel,"grabCommandRedPackIfCanWithMsgRecord:")) return "v24@0:8@16";
+        if (!strcmp(sel,"shouldShowRedPackBubbleWithRootVC:msgRecord:")) return "B32@0:8@16@24";
+    }
+    if ([name isEqualToString:@"UIScreen"]) return "B16@0:8";
+    if ([name isEqualToString:@"UIDevice"]) return "@16@0:8";
+    if ([name isEqualToString:@"UIWindow"]) return "v16@0:8";
+    return NULL;
+}
+static BOOL TKSameSignature(const char *actual, const char *expected) {
+    if (!actual || !expected) return NO;
+    NSMethodSignature *a = [NSMethodSignature signatureWithObjCTypes:actual];
+    NSMethodSignature *b = [NSMethodSignature signatureWithObjCTypes:expected];
+    if (!a || !b || a.numberOfArguments != b.numberOfArguments || strcmp(a.methodReturnType,b.methodReturnType)) return NO;
+    for (NSUInteger i=0;i<a.numberOfArguments;i++) if (strcmp([a getArgumentTypeAtIndex:i],[b getArgumentTypeAtIndex:i])) return NO;
+    return YES;
+}
 static void InstallHook(NSString *clsName, SEL sel, IMP newImp, BOOL isClassMethod) {
     Class cls = NSClassFromString(clsName);
-    if (!cls)            { LOG(@"skip: class %@ absent", clsName); return; }
-    if (isClassMethod) cls = object_getClass(cls);
-    Method m = isClassMethod ? class_getClassMethod(cls, sel)
-                             : class_getInstanceMethod(cls, sel);
-    if (!m) { LOG(@"skip: -[%@ %@] absent", clsName, NSStringFromSelector(sel)); return; }
-    IMP old = method_getImplementation(m);
-    method_setImplementation(m, newImp);
-    NSString *key = [NSString stringWithFormat:@"%@::%@", clsName, NSStringFromSelector(sel)];
-    gOrigMap[key] = [NSValue valueWithPointer:old];
-    LOG(@"hooked %@[%@ %@]%s", isClassMethod ? "+" : "-", clsName, NSStringFromSelector(sel), "");
+    if (!cls || gHookCount >= 16) return;
+    Class target = isClassMethod ? object_getClass(cls) : cls;
+    Method m = class_getInstanceMethod(target,sel);
+    if (!m || !TKSameSignature(method_getTypeEncoding(m),TKExpectedEncoding(clsName,sel))) {
+        LOG(@"skip signature %@ %@",clsName,NSStringFromSelector(sel)); return;
+    }
+    TKHookRecord *r = &gHooks[gHookCount++];
+    r->className = strdup(clsName.UTF8String);
+    r->selector = sel;
+    // Use substrate/ElleKit to avoid replacing an inherited superclass Method.
+    MSHookMessageEx(target,sel,newImp,&r->original);
+    LOG(@"hooked %@ %@ %@",isClassMethod ? @"+" : @"-",clsName,NSStringFromSelector(sel));
 }
 static IMP OrigIMP(NSString *clsName, SEL sel) {
-    return [gOrigMap[[NSString stringWithFormat:@"%@::%@", clsName, NSStringFromSelector(sel)]] pointerValue];
+    const char *name = clsName.UTF8String;
+    for (unsigned i=0;i<gHookCount;i++) if (gHooks[i].selector==sel && !strcmp(gHooks[i].className,name)) return gHooks[i].original;
+    return NULL;
 }
 
 // ============================================================ 1. 防撤回
@@ -260,35 +298,15 @@ static IMP OrigIMP(NSString *clsName, SEL sel) {
 //   -[OCIKernelMsgService recallMsg:msgIds:cb:]  触发撤回
 static void AR_setRecallTime(id self, SEL _cmd, long long t) {
     if (!prefBool(kEnabled, YES) || !prefBool(kAntiRecall, YES)) {
-        ((void (*)(id, SEL, long long))OrigIMP(@"OCMsgRecord", _cmd))(self, _cmd, t);
+        IMP orig = OrigIMP(@"OCMsgRecord", _cmd);
+        if (orig) ((void (*)(id, SEL, long long))orig)(self, _cmd, t);
         return;
     }
     LOG(@"blocked setRecallTime: %lld", t);   // 不写入撤回时间 => 消息不会显示已撤回
 }
-static void AR_recallMsg(id self, SEL _cmd, id a1, id a2, id a3) {
-    if (!prefBool(kEnabled, YES) || !prefBool(kAntiRecall, YES)) {
-        ((void (*)(id, SEL, id, id, id))OrigIMP(@"OCIKernelMsgService", _cmd))(self, _cmd, a1, a2, a3);
-        return;
-    }
-    LOG(@"blocked recallMsg:msgIds:cb:");     // 不转发撤回请求 => 服务端撤回被吞掉
-}
 
 // ============================================================ 2. 复读
-static id RP_initWithCpp(id self, SEL _cmd, const void *cpp) {
-    return ((id (*)(id, SEL, const void *))OrigIMP(@"OCIKernelMsgService", _cmd))(self, _cmd, cpp);
-}
-static void RP_forwardMsg(id self, SEL _cmd, id msg, id src, id dsts, id attrs, id cb) {
-    BOOL on = prefBool(kEnabled, YES) && prefBool(kRepeater, YES);
-    typedef void (*Fn)(id, SEL, id, id, id, id, id);
-    Fn orig = (Fn)OrigIMP(@"OCIKernelMsgService", _cmd);
-    if (!orig) return;
-    if (!on) { orig(self, _cmd, msg, src, dsts, attrs, cb); return; }
-    // 复读：同一条消息再次转发一次（模拟重复发送）
-    orig(self, _cmd, msg, src, dsts, attrs, cb);
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        orig(self, _cmd, msg, src, dsts, attrs, cb);
-    });
-}
+// initWithCpp: and automatic duplicate forwarding intentionally unhooked.
 
 // ============================================================ 3. 闪照/截屏
 // TIM 使用 UIScreen.isCaptured（已确认 TIM 二进制引用该 selector）
@@ -297,7 +315,8 @@ static BOOL FS_isCaptured(id self, SEL _cmd) {
         LOG(@"spoof isCaptured -> NO");
         return NO;
     }
-    return ((BOOL (*)(id, SEL))OrigIMP(@"UIScreen", _cmd))(self, _cmd);
+    IMP orig = OrigIMP(@"UIScreen", _cmd);
+    return orig ? ((BOOL (*)(id, SEL))orig)(self, _cmd) : NO;
 }
 
 // ============================================================ 4. 设备伪装
@@ -305,41 +324,17 @@ static NSString *SP_model(id self, SEL _cmd) {
     if (prefBool(kEnabled, YES) && prefBool(kDeviceSpoof, NO)) {
         return prefStr(kSpoofModel, @"iPhone 15 Pro");
     }
-    return ((NSString *(*)(id, SEL))OrigIMP(@"UIDevice", _cmd))(self, _cmd);
+    IMP orig = OrigIMP(@"UIDevice", _cmd);
+    return orig ? ((NSString *(*)(id, SEL))orig)(self, _cmd) : @"iPhone";
 }
 static NSString *SP_localizedModel(id self, SEL _cmd) {
     if (prefBool(kEnabled, YES) && prefBool(kDeviceSpoof, NO)) {
         return prefStr(kSpoofModel, @"iPhone 15 Pro");
     }
-    return ((NSString *(*)(id, SEL))OrigIMP(@"UIDevice", _cmd))(self, _cmd);
+    IMP orig = OrigIMP(@"UIDevice", _cmd);
+    return orig ? ((NSString *(*)(id, SEL))orig)(self, _cmd) : @"iPhone";
 }
-// sysctl 层：hw.machine / hw.model（C 函数 Hook）
-static int (*gOrigSysctl)(int *, u_int, void *, size_t *, void *, size_t);
-static int HK_sysctl(int *name, u_int namelen, void *oldp, size_t *oldlenp, void *newp, size_t newlen) {
-    if (prefBool(kEnabled, YES) && prefBool(kDeviceSpoof, NO) && name && namelen >= 2
-        && name[0] == CTL_HW && (name[1] == HW_MACHINE || name[1] == HW_MODEL)) {
-        const char *fake = [prefStr(kSpoofModel, @"iPhone 15 Pro") UTF8String];
-        if (oldp && oldlenp && *oldlenp >= strlen(fake) + 1) {
-            strlcpy((char *)oldp, fake, *oldlenp);
-            *oldlenp = strlen(fake) + 1;
-            return 0;
-        }
-    }
-    return gOrigSysctl(name, namelen, oldp, oldlenp, newp, newlen);
-}
-static int (*gOrigSysctlbyname)(const char *, void *, size_t *, void *, size_t);
-static int HK_sysctlbyname(const char *name, void *oldp, size_t *oldlenp, void *newp, size_t newlen) {
-    if (name && (strcmp(name, "hw.machine") == 0 || strcmp(name, "hw.model") == 0)
-        && prefBool(kEnabled, YES) && prefBool(kDeviceSpoof, NO)) {
-        const char *fake = [prefStr(kSpoofModel, @"iPhone 15 Pro") UTF8String];
-        if (oldp && oldlenp && *oldlenp >= strlen(fake) + 1) {
-            strlcpy((char *)oldp, fake, *oldlenp);
-            *oldlenp = strlen(fake) + 1;
-            return 0;
-        }
-    }
-    return gOrigSysctlbyname(name, oldp, oldlenp, newp, newlen);
-}
+// sysctl/sysctlbyname unhooked: no Foundation calls in low-level system functions.
 
 // ============================================================ 5. 红包过滤
 // TIM 4.1.0 红包核心：NTRedPackRouterService（类方法，已从二进制核对 26 个方法）
@@ -353,52 +348,162 @@ static void RPkt_handleClick(id self, SEL _cmd, id vc, id record, id gesture, id
         LOG(@"red packet click blocked");
         return;
     }
-    ((void (*)(id, SEL, id, id, id, id))OrigIMP(@"NTRedPackRouterService", _cmd))(self, _cmd, vc, record, gesture, completion);
+    IMP orig = OrigIMP(@"NTRedPackRouterService", _cmd);
+    if (orig) ((void (*)(id, SEL, id, id, id, id))orig)(self, _cmd, vc, record, gesture, completion);
 }
 static BOOL RPkt_checkCanOpen(id self, SEL _cmd, id pack, NSString **tip) {
     if (shouldSkipRedPacket(pack)) {
         if (tip) *tip = @"TIMCleanKit 已拦截";
         return NO;
     }
-    return ((BOOL (*)(id, SEL, id, NSString **))OrigIMP(@"NTRedPackRouterService", _cmd))(self, _cmd, pack, tip);
+    IMP orig = OrigIMP(@"NTRedPackRouterService", _cmd);
+    return orig ? ((BOOL (*)(id, SEL, id, NSString **))orig)(self, _cmd, pack, tip) : NO;
 }
 static void RPkt_grabCommand(id self, SEL _cmd, id record) {
     if (shouldSkipRedPacket(record)) { LOG(@"command red packet blocked"); return; }
-    ((void (*)(id, SEL, id))OrigIMP(@"NTRedPackRouterService", _cmd))(self, _cmd, record);
+    IMP orig = OrigIMP(@"NTRedPackRouterService", _cmd);
+    if (orig) ((void (*)(id, SEL, id))orig)(self, _cmd, record);
 }
 static BOOL RPkt_shouldShowBubble(id self, SEL _cmd, id vc, id record) {
     if (shouldSkipRedPacket(record)) return NO;
-    return ((BOOL (*)(id, SEL, id, id))OrigIMP(@"NTRedPackRouterService", _cmd))(self, _cmd, vc, record);
+    IMP orig = OrigIMP(@"NTRedPackRouterService", _cmd);
+    return orig ? ((BOOL (*)(id, SEL, id, id))orig)(self, _cmd, vc, record) : NO;
 }
 
 
-// ============================================================ 6. 设置面板（已移除 — 导致闪退）
-// 如需调试：在 ~/.launchd.conf 或启动脚本设置环境变量 TIMCK_DEBUG=1
-// 日志前缀 [TIMCleanKit]，查看每个 Hook 是否注册成功
-// 若确认无闪退，可逐步加回面板（去掉本注释并启用 InstallHook UIWindow）
+// ==================================================== 6. 设置面板（双指长按 0.8s）
+static char kGestureAddedKey;
+static const NSTimeInterval kLongPress = 0.8;
 
+static void ShowPanel(UIWindow *w);
+
+@interface TIMCKGestureTarget : NSObject
+@end
+@implementation TIMCKGestureTarget
++ (instancetype)shared {
+    static TIMCKGestureTarget *s = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ s = [self new]; });
+    return s;
+}
+- (void)onLongPress:(UILongPressGestureRecognizer *)g {
+    if (g.state != UIGestureRecognizerStateBegan) return;
+    if (!prefBool(kEnabled, YES)) return;
+    if (![g.view isKindOfClass:[UIWindow class]]) return;
+    ShowPanel((UIWindow *)g.view);
+}
+@end
+
+static void InstallGesture(UIWindow *w) {
+    if (!w || ![NSThread isMainThread] || !prefBool(kEnabled, YES)) return;
+    if (objc_getAssociatedObject(w, &kGestureAddedKey)) return;
+    UILongPressGestureRecognizer *g =
+        [[UILongPressGestureRecognizer alloc] initWithTarget:[TIMCKGestureTarget shared]
+                                                   action:@selector(onLongPress:)];
+    g.numberOfTouchesRequired = 2;
+    g.minimumPressDuration = kLongPress;
+    g.cancelsTouchesInView = NO;
+    [w addGestureRecognizer:g];
+    objc_setAssociatedObject(w, &kGestureAddedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+static void ObserveWindows(void) {
+    [[NSNotificationCenter defaultCenter] addObserverForName:UIWindowDidBecomeKeyNotification
+        object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
+        if ([note.object isKindOfClass:[UIWindow class]]) InstallGesture(note.object);
+    }];
+    for (UIWindow *window in UIApplication.sharedApplication.windows) InstallGesture(window);
+}
+
+// ------------------------------------------------------------ 面板内容
+typedef struct { NSString *title; NSString *key; BOOL def; } PanelItem;
+
+static void ShowPanel(UIWindow *w) {
+    UIViewController *vc = w.rootViewController;
+    if (!vc) vc = UIApplication.sharedApplication.keyWindow.rootViewController;
+    while (vc.presentedViewController) vc = vc.presentedViewController;
+    if (!vc || [vc isKindOfClass:[UIAlertController class]]) return;
+
+    static PanelItem items[] = {
+        {@"防撤回",   kAntiRecall,  YES},
+        {@"闪照/截屏", kFlashPhoto,  YES},
+        {@"设备伪装", kDeviceSpoof, NO},
+    };
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"TIMCleanKit"
+                                                                   message:@"1.0.2 启动隔离测试版：复读与底层机型伪装暂不启用"
+                                                            preferredStyle:UIAlertControllerStyleActionSheet];
+    for (int i = 0; i < (int)(sizeof(items)/sizeof(items[0])); i++) {
+        BOOL on = prefBool(items[i].key, items[i].def);
+        NSString *t = [NSString stringWithFormat:@"%@ %@", on ? @"✅" : @"⬜️", items[i].title];
+        UIAlertAction *a = [UIAlertAction actionWithTitle:t
+                                                   style:UIAlertActionStyleDefault
+                                                 handler:^(UIAlertAction *_) {
+            [prefs() setBool:!on forKey:items[i].key];
+            [prefs() synchronize];
+            dispatch_async(dispatch_get_main_queue(), ^{ ShowPanel(w); });
+        }];
+        [alert addAction:a];
+    }
+    // 小额红包阈值
+    NSInteger min = prefInt(kRedMinAmount, 100);
+    NSString *minTitle = [NSString stringWithFormat:@"小额阈值：%@",
+        min == 0 ? @"关闭" : [NSString stringWithFormat:@"%.2f 元", min / 100.0]];
+    [alert addAction:[UIAlertAction actionWithTitle:minTitle style:UIAlertActionStyleDefault handler:^(UIAlertAction *_) {
+        UIAlertController *sub = [UIAlertController alertControllerWithTitle:@"小额红包阈值"
+                                                                    message:nil preferredStyle:UIAlertControllerStyleAlert];
+        NSArray *presets = @[@0, @1, @5, @10, @20, @100];
+        for (NSNumber *n in presets) {
+            NSString *label = [n integerValue] == 0 ? @"关闭" :
+                [NSString stringWithFormat:@"%.2f 元", [n integerValue] / 100.0];
+            [sub addAction:[UIAlertAction actionWithTitle:label style:UIAlertActionStyleDefault handler:^(UIAlertAction *_) {
+                [prefs() setInteger:[n integerValue] forKey:kRedMinAmount];
+                [prefs() synchronize];
+            }]];
+        }
+        [sub addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+        [vc presentViewController:sub animated:YES completion:nil];
+    }]];
+    // 测试/口令红包
+    BOOL skipTest = prefBool(kRedSkipTest, YES);
+    [alert addAction:[UIAlertAction actionWithTitle:
+        [NSString stringWithFormat:@"%@ 测试红包不抢", skipTest ? @"✅" : @"⬜️"]
+        style:UIAlertActionStyleDefault handler:^(UIAlertAction *_) {
+            [prefs() setBool:!skipTest forKey:kRedSkipTest];
+            [prefs() synchronize];
+            dispatch_async(dispatch_get_main_queue(), ^{ ShowPanel(w); });
+    }]];
+    BOOL skipCmd = prefBool(kRedSkipCmd, NO);
+    [alert addAction:[UIAlertAction actionWithTitle:
+        [NSString stringWithFormat:@"%@ 口令红包不抢", skipCmd ? @"✅" : @"⬜️"]
+        style:UIAlertActionStyleDefault handler:^(UIAlertAction *_) {
+            [prefs() setBool:!skipCmd forKey:kRedSkipCmd];
+            [prefs() synchronize];
+            dispatch_async(dispatch_get_main_queue(), ^{ ShowPanel(w); });
+    }]];
+
+    [alert addAction:[UIAlertAction actionWithTitle:@"关闭" style:UIAlertActionStyleCancel handler:nil]];
+    if (alert.popoverPresentationController) {
+        alert.popoverPresentationController.sourceView = w;
+        alert.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(w.bounds), CGRectGetMidY(w.bounds), 1, 1);
+        alert.popoverPresentationController.permittedArrowDirections = 0;
+    }
+    [vc presentViewController:alert animated:YES completion:nil];
+}
 
 // ==================================================== 构造函数：注册全部 Hook
 __attribute__((constructor)) static void TIMCKInit(void) {
-    gOrigMap = [[NSMutableDictionary alloc] init];
+    @autoreleasepool {
+    if (![[NSBundle mainBundle].bundleIdentifier isEqualToString:kDomain]) return;
     registerDefaultsOnce();
 
     // --- 防撤回（TIM/QQ 共用消息内核）---
     InstallHook(@"OCMsgRecord",        @selector(setRecallTime:),       (IMP)AR_setRecallTime,  NO);
-    InstallHook(@"OCIKernelMsgService",@selector(recallMsg:msgIds:cb:), (IMP)AR_recallMsg,      NO);
-    InstallHook(@"OCIKernelMsgService",@selector(initWithCpp:),         (IMP)RP_initWithCpp,    NO);
-    InstallHook(@"OCIKernelMsgService",@selector(forwardMsg:srcContact:dstContacts:msgAttributeInfos:cb:),
-                                                                        (IMP)RP_forwardMsg,      NO);
-
     // --- 闪照/截屏 ---
     InstallHook(@"UIScreen", @selector(isCaptured), (IMP)FS_isCaptured, NO);
 
     // --- 设备伪装 ---
     InstallHook(@"UIDevice", @selector(model),           (IMP)SP_model,           NO);
     InstallHook(@"UIDevice", @selector(localizedModel),  (IMP)SP_localizedModel,  NO);
-    if (!gOrigSysctl)        MSHookFunction((void *)sysctl,        (void *)HK_sysctl,        (void **)&gOrigSysctl);
-    if (!gOrigSysctlbyname)  MSHookFunction((void *)sysctlbyname,  (void *)HK_sysctlbyname,  (void **)&gOrigSysctlbyname);
-
     // --- 红包过滤（TIM 4.1.0：NTRedPackRouterService）---
     InstallHook(@"NTRedPackRouterService", @selector(handleRedPackViewClickWithRootVC:msgRecord:gesture:completion:),
                                                                     (IMP)RPkt_handleClick,    YES);
@@ -409,8 +514,9 @@ __attribute__((constructor)) static void TIMCKInit(void) {
     InstallHook(@"NTRedPackRouterService", @selector(shouldShowRedPackBubbleWithRootVC:msgRecord:),
                                                                     (IMP)RPkt_shouldShowBubble,YES);
 
-    // --- 面板入口（已移除）---
-    // InstallHook(@"UIWindow", @selector(becomeKeyWindow), (IMP)SW_becomeKeyWindow, NO);
+    // Observe existing windows and future key-window notifications on the main queue.
+    dispatch_async(dispatch_get_main_queue(), ^{ ObserveWindows(); });
 
-    LOG(@"loaded");
+    LOG(@"loaded 1.0.2");
+    }
 }
