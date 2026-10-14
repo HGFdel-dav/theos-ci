@@ -83,12 +83,9 @@ jobs:
           git pull --rebase origin main || true
           git push origin main
 
-      - name: Clean debs source
+      - name: Verify source remains available
         run: |
-          find debs -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} +
-          find debs -mindepth 1 -maxdepth 1 -type f ! -name '.gitkeep' -delete
-          touch debs/.gitkeep
-          git add debs/
-          git commit -m "编译完成，清除源码" || true
-          git pull --rebase origin main || true
-          git push origin main
+          set -e
+          test -f debs/TIMCleanKit/Makefile
+          test -f debs/TIMCleanKit/control
+          test -f debs/TIMCleanKit/TIMCleanKit/Tweak.xm
