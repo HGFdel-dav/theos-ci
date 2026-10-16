@@ -1,3 +1,6 @@
+#import <mach-o/dyld.h>
+#import <mach-o/loader.h>
+#import <malloc/malloc.h>
 // Verified cell bind selector and strong reference fields from Swift field descriptors.
 static NSString *const TKCellClass=@"_TtC13NTAIOBaseCell17NTAIOBaseCellView";
 static BOOL TKIsUsableObjectPtr(id p) {
@@ -16,9 +19,6 @@ static BOOL TKIsUsableObjectPtr(id p) {
 static char kTKBoundModelKey,kTKRecallLabelKey;
 static NSHashTable *gTKVisibleCells;
 static unsigned long long gTKRecordReadFailures;
-#import <mach-o/dyld.h>
-#import <mach-o/loader.h>
-#import <malloc/malloc.h>
 static id TKSwiftRecordField(id vm) {
     if(!vm)return nil;
     Class expected=NSClassFromString(@"NTAIOBaseCell.NTAIOBaseCellViewModel");
