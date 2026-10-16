@@ -5,6 +5,7 @@
 #import "TWPrefs.h"
 #import "TWCraneBridge.h"
 #import <AudioToolbox/AudioServices.h>
+#import <objc/message.h>
 
 @implementation TWArcCoordinator {
     UIPanGestureRecognizer *_pan;
@@ -65,13 +66,13 @@
 }
 
 - (void)refreshEnabledState {
-    // reloads prefs when SpringBoard returns to foreground
-    [[TWPrefs shared] objectForKey:TWKeyEnabled];
+    [[TWPrefs shared] reload]; // SpringBoard returned to foreground
 }
 
 #pragma mark - gesture delegate
 
 - (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)recognizer {
+    [[TWPrefs shared] reload]; // pick up changes made in Settings while SB was backgrounded
     if (![[TWPrefs shared] boolForKey:TWKeyEnabled defaultValue:NO]) return NO;
     if (![[TWPrefs shared] boolForKey:TWKeyArcEnabled defaultValue:YES]) return NO;
     // lock screen / cover sheet: let the system handle touches
@@ -121,7 +122,7 @@
         case UIGestureRecognizerStateEnded: {
             if (_tracking) {
                 NSString *selected = [_menu finishSelectionAtPoint:p];
-                if (selected.length) [self launchBundleID:selected fromPoint:p];
+                if (selected.length) [self launchBundleID:selected];
             }
             _tracking = NO;
             _didPresent = NO;
@@ -155,7 +156,7 @@
     CGFloat radius = [[TWPrefs shared] floatForKey:TWKeyArcRadius defaultValue:140];
     NSInteger count = [[TWPrefs shared] integerForKey:TWKeyArcItemCount defaultValue:6];
     count = MAX(2, MIN(8, count));
-    if (bundleIDs.count > (NSUInteger)count) bundleIDs = [bundleIDs subarrayWithRange:NSMakeRange(0, count)];
+    if (bundleIDs.count > (NSUInteger)count) bundleIDs = [bundleIDs subarrayWithRange:NSMakeRange(0, (NSUInteger)count)];
     [_menu presentFromTriggerPoint:point bundleIDs:bundleIDs side:side radius:radius menuScale:1.0];
     if ([[TWPrefs shared] boolForKey:TWKeyArcSound defaultValue:YES]) {
         AudioServicesPlaySystemSound(1104);
@@ -164,7 +165,7 @@
 
 #pragma mark - app launching
 
-- (void)launchBundleID:(NSString *)bundleID fromPoint:(CGPoint)point {
+- (void)launchBundleID:(NSString *)bundleID {
     if ([[TWPrefs shared] boolForKey:TWKeyArcSound defaultValue:YES]) {
         AudioServicesPlaySystemSound(1519);
     }

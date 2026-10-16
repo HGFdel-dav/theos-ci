@@ -3,6 +3,7 @@
 #import "TWCraneAppsController.h"
 #import "TWPath.h"
 #import "TWPrefs.h"
+#import <objc/message.h>
 
 NSString *TWLocalizedNameForBundleID(NSString *bundleID) {
     Class proxyCls = NSClassFromString(@"LSApplicationProxy");

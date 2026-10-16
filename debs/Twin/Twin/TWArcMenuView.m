@@ -2,6 +2,7 @@
 #import "TWArcMenuView.h"
 #import "TWArcGeometry.h"
 #import <AudioToolbox/AudioServices.h>
+#import <objc/message.h>
 
 #pragma mark - icon fetching (SpringBoard process)
 
@@ -38,19 +39,6 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
         }
     }
     return icon;
-}
-
-NSString *TWDisplayNameForBundleID(NSString *bundleID) {
-    Class proxyCls = NSClassFromString(@"LSApplicationProxy");
-    if (proxyCls) {
-        id (*msg)(id, SEL, id) = (id (*)(id, SEL, id))objc_msgSend;
-        id proxy = msg(proxyCls, NSSelectorFromString(@"applicationProxyForIdentifier:"), bundleID);
-        if (proxy) {
-            id name = msg(proxy, NSSelectorFromString(@"localizedName"));
-            if ([name isKindOfClass:[NSString class]] && [name length]) return name;
-        }
-    }
-    return bundleID;
 }
 
 #pragma mark - item view

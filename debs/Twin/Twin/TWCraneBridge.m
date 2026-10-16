@@ -1,6 +1,7 @@
 // TWCraneBridge.m
 #import "TWCraneBridge.h"
 #import "TWPrefs.h"
+#import <objc/message.h>
 #import <dlfcn.h>
 
 @implementation TWCraneBridge
