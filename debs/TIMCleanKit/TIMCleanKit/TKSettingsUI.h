@@ -79,6 +79,7 @@ static NSString *TKUIRedKeywordText(void) {
     UILabel *_titleLabel,*_messageLabel,*_errorLabel;
     NSMutableArray<UITextField *> *_fields;
     UIButton *_cancelButton,*_saveButton;
+    UIView *_line,_*_divider;
     CGFloat _keyboardTop;
     void (^_onSave)(NSArray<NSString *> *);
     BOOL (^_onValidate)(NSArray<NSString *> *, NSString **);
@@ -126,6 +127,8 @@ static NSString *TKUIRedKeywordText(void) {
     _saveButton=[UIButton buttonWithType:UIButtonTypeSystem];[_saveButton setTitle:@"保存" forState:UIControlStateNormal];
     _saveButton.titleLabel.font=[UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
     [_saveButton addTarget:self action:@selector(saveTap) forControlEvents:UIControlEventTouchUpInside];[_card addSubview:_saveButton];
+    _line=[UIView new];_line.backgroundColor=UIColor.separatorColor;[_card addSubview:_line];
+    _divider=[UIView new];_divider.backgroundColor=UIColor.separatorColor;[_card addSubview:_divider];
     [[self firstField] becomeFirstResponder];
 }
 - (UITextField *)firstField {return _fields.firstObject;}
@@ -157,8 +160,8 @@ static NSString *TKUIRedKeywordText(void) {
     _errorLabel.frame=CGRectMake(18,cardH,cardW-36,0);[_errorLabel sizeToFit];CGRect ef=_errorLabel.frame;ef.size.width=contentW;_errorLabel.frame=ef;
     if(_errorLabel.text.length)cardH=CGRectGetMaxY(_errorLabel.frame)+8;
     cardH+=34;
-    UIView *line=[UIView new];line.backgroundColor=UIColor.separatorColor;line.frame=CGRectMake(0,cardH,cardW,0.5);[_card addSubview:line];
-    UIView *divider=[UIView new];divider.backgroundColor=UIColor.separatorColor;divider.frame=CGRectMake(cardW/2,cardH+1,0.5,48);[_card addSubview:divider];
+    _line.frame=CGRectMake(0,cardH,cardW,0.5);
+    _divider.frame=CGRectMake(cardW/2,cardH+1,0.5,48);
     _cancelButton.frame=CGRectMake(0,cardH+1,cardW/2,48);_saveButton.frame=CGRectMake(cardW/2,cardH+1,cardW/2,48);
     cardH+=50;
     CGFloat cardY=(self.bounds.size.height-cardH)/2;
