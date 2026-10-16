@@ -78,7 +78,7 @@
     // lock screen / cover sheet: let the system handle touches
     Class lsClass = NSClassFromString(@"SBLockScreenManager");
     if (lsClass) {
-        id (*msg)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
+        id (*msg)(id, SEL, ...) = (id (*)(id, SEL, ...))objc_msgSend;
         id shared = msg(lsClass, NSSelectorFromString(@"sharedInstance"));
         if (shared) {
             id locked = msg(shared, NSSelectorFromString(@"isLocked"));
@@ -188,7 +188,7 @@
     // SpringBoard switcher: most recently used apps first.
     Class switcherClass = NSClassFromString(@"SBMainSwitcherViewController");
     if (switcherClass) {
-        id (*msg)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
+        id (*msg)(id, SEL, ...) = (id (*)(id, SEL, ...))objc_msgSend;
         id shared = msg(switcherClass, NSSelectorFromString(@"sharedInstance"));
         id layouts = shared ? msg(shared, NSSelectorFromString(@"recentAppLayouts")) : nil;
         if ([layouts isKindOfClass:[NSArray class]]) {
@@ -208,7 +208,7 @@
     if (ids.count < 4) {
         Class workspaceClass = NSClassFromString(@"LSApplicationWorkspace");
         if (workspaceClass) {
-            id (*msg)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
+            id (*msg)(id, SEL, ...) = (id (*)(id, SEL, ...))objc_msgSend;
             id workspace = msg(workspaceClass, NSSelectorFromString(@"defaultWorkspace"));
             id apps = workspace ? msg(workspace, NSSelectorFromString(@"allApplications")) : nil;
             if ([apps isKindOfClass:[NSArray class]]) {

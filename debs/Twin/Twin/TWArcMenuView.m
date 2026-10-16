@@ -11,7 +11,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     // 1) LSApplicationProxy iconDataForVariant:
     Class proxyCls = NSClassFromString(@"LSApplicationProxy");
     if (proxyCls) {
-        id (*msg)(id, SEL, id) = (id (*)(id, SEL, id))objc_msgSend;
+        id (*msg)(id, SEL, ...) = (id (*)(id, SEL, ...))objc_msgSend;
         SEL selProxy = NSSelectorFromString(@"applicationProxyForIdentifier:");
         id proxy = selProxy ? msg(proxyCls, selProxy, bundleID) : nil;
         if (proxy) {
@@ -24,7 +24,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     if (!icon) {
         Class iconCtlCls = NSClassFromString(@"SBIconController");
         if (iconCtlCls) {
-            id (*msg)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
+            id (*msg)(id, SEL, ...) = (id (*)(id, SEL, ...))objc_msgSend;
             SEL selShared = NSSelectorFromString(@"sharedInstance");
             id controller = selShared ? msg(iconCtlCls, selShared) : nil;
             id model = controller ? msg(controller, NSSelectorFromString(@"model")) : nil;
@@ -47,7 +47,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 @property (nonatomic, copy) NSString *bundleID;
 @property (nonatomic, strong) UIImageView *imageView;
 @property (nonatomic, strong) UIView *glowView;
-@property (nonatomic, assign) BOOL highlighted;
+@property (nonatomic, assign, getter=isHighlighted) BOOL highlighted;
 @property (nonatomic, assign) CGPoint targetCenter;
 @end
 
@@ -215,11 +215,12 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
         CGRect hitRect = CGRectInset(item.frame, -16, -16);
         if (CGRectContainsPoint(hitRect, point)) { hit = item; break; }
     }
+    BOOL newlySelected = (hit != nil && !hit.isHighlighted);
     for (TWArcItemView *item in _items) {
         BOOL should = (item == hit);
         if (item.isHighlighted != should) item.highlighted = should;
     }
-    if (hit && !hit.isHighlighted) {
+    if (newlySelected) {
         UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
         [gen impactOccurred];
     }

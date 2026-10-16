@@ -8,7 +8,7 @@
 NSString *TWLocalizedNameForBundleID(NSString *bundleID) {
     Class proxyCls = NSClassFromString(@"LSApplicationProxy");
     if (proxyCls) {
-        id (*msg)(id, SEL, id) = (id (*)(id, SEL, id))objc_msgSend;
+        id (*msg)(id, SEL, ...) = (id (*)(id, SEL, ...))objc_msgSend;
         id proxy = msg(proxyCls, NSSelectorFromString(@"applicationProxyForIdentifier:"), bundleID);
         if (proxy) {
             id name = msg(proxy, NSSelectorFromString(@"localizedName"));
@@ -39,7 +39,7 @@ NSString *TWLocalizedNameForBundleID(NSString *bundleID) {
     NSMutableArray *apps = [NSMutableArray array];
     Class workspaceClass = NSClassFromString(@"LSApplicationWorkspace");
     if (workspaceClass) {
-        id (*msg)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
+        id (*msg)(id, SEL, ...) = (id (*)(id, SEL, ...))objc_msgSend;
         id workspace = msg(workspaceClass, NSSelectorFromString(@"defaultWorkspace"));
         id list = workspace ? msg(workspace, NSSelectorFromString(@"allApplications")) : nil;
         if ([list isKindOfClass:[NSArray class]]) {
