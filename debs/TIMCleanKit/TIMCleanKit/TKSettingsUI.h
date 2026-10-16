@@ -79,7 +79,7 @@ static NSString *TKUIRedKeywordText(void) {
     UILabel *_titleLabel,*_messageLabel,*_errorLabel;
     NSMutableArray<UITextField *> *_fields;
     UIButton *_cancelButton,*_saveButton;
-    UIView *_line,_*_divider;
+    UIView *_line, *_divider;
     CGFloat _keyboardTop;
     void (^_onSave)(NSArray<NSString *> *);
     BOOL (^_onValidate)(NSArray<NSString *> *, NSString **);
