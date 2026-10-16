@@ -1,5 +1,5 @@
 //  TIMCleanKit.dylib — TIM (com.tencent.tim) 净化/增强插件
-//  目标：TIM 4.1.0 (NT 架构)，1.0.7：标签贴气泡尾、弹窗固定尺寸、金额输入不透明面板
+//  目标：TIM 4.1.0 (NT 架构)，1.0.8：复读修复(setViewModel hook+手势放宽)、UI 简洁化
 //  功能：消息监听 / 前台自动红包领取 / 内存防撤回 / 双击复读 / 原生设置
 //  构建：Theos (Logos)，arm64 + arm64e
 //
@@ -438,6 +438,7 @@ static NSMutableArray *gTKRecentMessages;
 static NSMutableSet *gTKSeenRedPackets;
 static NSString *gTKCurrentClaimIdentity;
 static unsigned long long gTKReceived,gTKAutoAttempts,gTKAutoCompleted,gTKAutoErrors,gTKRepeats;
+static unsigned long long gTKGestureTaps,gTKGestureNoRecord;
 static NSString *gTKEngineStatus=@"等待登录会话";
 static BOOL gTKAutoBusy;
 static unsigned long long gTKAutoGeneration;
@@ -652,7 +653,7 @@ static NSDictionary *TKRuntimeSnapshot(void) {
         unsigned long long hits=__atomic_load_n(&r->hits,__ATOMIC_RELAXED);
         [rows addObject:@{@"name":[NSString stringWithFormat:@"%s\n%s",r->className,sel_getName(r->selector)],@"state":hits?@"已实际调用":states[MIN(state,4)],@"hits":@(hits),@"lastHit":@""}];
     }
-    return @{@"engine":@{@"status":gTKEngineStatus?:@"未知",@"listenerRegistered":@(gTKListenerRegistered),@"received":@(gTKReceived),@"claimRequests":@(gTKAutoAttempts),@"claimCallbacks":@(gTKAutoCompleted),@"claimFailures":@(gTKAutoErrors),@"repeatRequests":@(gTKRepeats),@"repeatFailures":@(gTKRepeatFailures),@"messageCellBinds":@(gTKMessageBinds),@"recordReadFailures":@(gTKRecordReadFailures),@"recallBlocked":@(__atomic_load_n(&gTKRecallBlocked,__ATOMIC_RELAXED)),@"hardwareReads":@(__atomic_load_n(&gTKHardwareReads,__ATOMIC_RELAXED)),@"recallEvents":@(__atomic_load_n(&gTKRecallEvents,__ATOMIC_RELAXED)),@"recallRestores":@(__atomic_load_n(&gTKRecallRestores,__ATOMIC_RELAXED))},@"version":@"1.0.7",@"process":[NSString stringWithFormat:@"TIM %@ · PID %d · 注册检查 %u 轮\nUIDevice.model = %@",[NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"],getpid(),gRegistrationRounds,UIDevice.currentDevice.model],@"hookRows":rows,@"warnings":@[@"调用次数只能证明该入口被调用，不能证明防撤回或过滤效果。",@"自动领取：只处理前台两分钟内新收到的红包，不保证后台唤醒；完成回调不等于到账，请核对结果。",@"防撤回：本次进程缓存最近500条收到/显示的消息；启动前丢失内容无法恢复。"]};
+    return @{@"engine":@{@"status":gTKEngineStatus?:@"未知",@"listenerRegistered":@(gTKListenerRegistered),@"received":@(gTKReceived),@"claimRequests":@(gTKAutoAttempts),@"claimCallbacks":@(gTKAutoCompleted),@"claimFailures":@(gTKAutoErrors),@"repeatRequests":@(gTKRepeats),@"repeatFailures":@(gTKRepeatFailures),@"messageCellBinds":@(gTKMessageBinds),@"gestureTaps":@(gTKGestureTaps),@"gestureNoRecord":@(gTKGestureNoRecord),@"recordReadFailures":@(gTKRecordReadFailures),@"recallBlocked":@(__atomic_load_n(&gTKRecallBlocked,__ATOMIC_RELAXED)),@"hardwareReads":@(__atomic_load_n(&gTKHardwareReads,__ATOMIC_RELAXED)),@"recallEvents":@(__atomic_load_n(&gTKRecallEvents,__ATOMIC_RELAXED)),@"recallRestores":@(__atomic_load_n(&gTKRecallRestores,__ATOMIC_RELAXED))},@"version":@"1.0.8",@"process":[NSString stringWithFormat:@"TIM %@ · PID %d · 注册检查 %u 轮\nUIDevice.model = %@",[NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"],getpid(),gRegistrationRounds,UIDevice.currentDevice.model],@"hookRows":rows,@"warnings":@[@"调用次数只能证明该入口被调用，不能证明防撤回或过滤效果。",@"自动领取：只处理前台两分钟内新收到的红包，不保证后台唤醒；完成回调不等于到账，请核对结果。",@"防撤回：本次进程缓存最近500条收到/显示的消息；启动前丢失内容无法恢复。"]};
 }
 
 
@@ -683,8 +684,9 @@ static char kGestureAddedKey;
 }
 - (void)onMessageDoubleTap:(UITapGestureRecognizer *)g {
     if(g.state!=UIGestureRecognizerStateRecognized || !prefBool(kEnabled,YES) || !prefBool(kRepeater,YES) || [self isSettingsWindow:(UIWindow *)g.view])return;
+    __atomic_fetch_add(&gTKGestureTaps,1,__ATOMIC_RELAXED);
     UIView *hit=[g.view hitTest:[g locationInView:g.view] withEvent:nil];UIView *cell=[self messageCellAtView:hit];
-    id record=TKRecordForCell(cell);if(!record)return;
+    id record=TKRecordForCell(cell);if(!record){__atomic_fetch_add(&gTKGestureNoRecord,1,__ATOMIC_RELAXED);return;}
     static NSTimeInterval previous;NSTimeInterval now=NSDate.date.timeIntervalSince1970;
     if(now-previous<.45)return;previous=now;
     if(!TKNativeRepeat(record)) {
@@ -696,12 +698,11 @@ static char kGestureAddedKey;
     if([self isSettingsWindow:(UIWindow *)g.view])return NO;
     if([g isKindOfClass:UILongPressGestureRecognizer.class])return YES; // All TIM regions, including chat content/controls.
     if(!prefBool(kEnabled,YES)||!prefBool(kRepeater,YES))return NO;
-    UIView *cell=[self messageCellAtView:touch.view];if(!cell||!TKRecordForCell(cell))return NO;
-    // Double-tap is confined to a real message cell and never to the avatar, input or button.
+    UIView *cell=[self messageCellAtView:touch.view];if(!cell)return NO;
+    // 1.0.8: 只挡明确的输入框/按钮控件与头像；气泡本身是 UIControl（可点菜单）时不再误拦。
     for(UIView *v=touch.view;v && v!=cell;v=v.superview) {
-        if([v isKindOfClass:UIControl.class]||[v isKindOfClass:UITextField.class])return NO;
-        NSString *name=NSStringFromClass(v.class).lowercaseString;
-        if([name containsString:@"avatar"]||[name containsString:@"titleview"]||[name containsString:@"input"])return NO;
+        if([v isKindOfClass:UITextField.class]||[v isKindOfClass:UITextView.class]||[v isKindOfClass:UIButton.class]||[v isKindOfClass:UISwitch.class])return NO;
+        if([NSStringFromClass(v.class).lowercaseString containsString:@"avatar"])return NO;
     }
     return YES;
 }
@@ -750,6 +751,7 @@ static void RegisterBusinessHooks(void) {
     InstallHook(TKListenerClass,@selector(onMsgInfoListUpdate:),(IMP)TKBridgeUpdate,NO);
     InstallHook(TKListenerClass,@selector(onMsgDelete:msgIds:),(IMP)TKBridgeDelete,NO);
     InstallHook(TKCellClass,@selector(bindViewModel:),(IMP)TKCellBind,NO);
+    InstallHook(TKCellClass,@selector(setViewModel:),(IMP)TKCellBindVM,NO);
     InstallHook(TKCellClass,@selector(unbindViewModel),(IMP)TKCellClear,NO);
     InstallHook(TKCellClass,@selector(prepareForReuse),(IMP)TKCellClear,NO);
     InstallHook(TKCellClass,@selector(layoutSubviews),(IMP)TKCellLayout,NO);

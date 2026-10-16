@@ -124,6 +124,17 @@ static BOOL TKCellBind(id self,SEL cmd,id vm) {
     }
     return accepted;
 }
+static void TKCellBindVM(id self,SEL cmd,id vm) {
+    // 1.0.8: TIM 4.1.0.81 实际用属性赋值 setViewModel: 绑定数据（bindViewModel: 从未被调用）。
+    IMP orig=OrigIMP(TKCellClass,cmd);
+    if(orig)((void(*)(id,SEL,id))orig)(self,cmd,vm);
+    if(vm&&[self isKindOfClass:UIView.class]) {
+        objc_setAssociatedObject(self,&kTKBoundModelKey,vm,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        gTKMessageBinds++;if(!gTKVisibleCells)gTKVisibleCells=[NSHashTable weakObjectsHashTable];[gTKVisibleCells addObject:self];
+        id record=TKRecordForCell(self);if(record)TKRememberMessage(record);else gTKRecordReadFailures++;
+        TKUpdateRecallLabel(self);
+    }
+}
 static void TKCellClear(id self,SEL cmd) {
     IMP orig=OrigIMP(TKCellClass,cmd);objc_setAssociatedObject(self,&kTKBoundModelKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     UILabel *label=objc_getAssociatedObject(self,&kTKRecallLabelKey);label.hidden=YES;

@@ -202,10 +202,10 @@ static NSString *TKUIRedKeywordText(void) {
     [super viewDidLoad];
     self.view.backgroundColor=UIColor.systemGroupedBackgroundColor;self.tableView.backgroundView=nil;
     self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(closePage)];
-    UIView *header=[[UIView alloc] initWithFrame:CGRectMake(0,0,320,118)];
-    UILabel *name=[UILabel new];name.text=@"TIM 增强";name.font=[UIFont systemFontOfSize:30 weight:UIFontWeightBold];name.textColor=UIColor.labelColor;
-    UILabel *subtitle=[UILabel new];subtitle.text=@"1.0.7 · 轻触开关 · 双指长按唤醒";subtitle.font=[UIFont systemFontOfSize:14];subtitle.adjustsFontForContentSizeCategory=YES;subtitle.textColor=UIColor.secondaryLabelColor;
-    UIStackView *stack=[[UIStackView alloc] initWithArrangedSubviews:@[name,subtitle]];stack.axis=UILayoutConstraintAxisVertical;stack.spacing=7;stack.translatesAutoresizingMaskIntoConstraints=NO;
+    UIView *header=[[UIView alloc] initWithFrame:CGRectMake(0,0,320,84)];
+    UILabel *name=[UILabel new];name.text=@"TIM 增强";name.font=[UIFont systemFontOfSize:24 weight:UIFontWeightBold];name.textColor=UIColor.labelColor;
+    UILabel *subtitle=[UILabel new];subtitle.text=@"1.0.8 · 双指长按唤醒";subtitle.font=[UIFont systemFontOfSize:12];subtitle.adjustsFontForContentSizeCategory=YES;subtitle.textColor=UIColor.secondaryLabelColor;
+    UIStackView *stack=[[UIStackView alloc] initWithArrangedSubviews:@[name,subtitle]];stack.axis=UILayoutConstraintAxisVertical;stack.spacing=4;stack.translatesAutoresizingMaskIntoConstraints=NO;
     [header addSubview:stack];[NSLayoutConstraint activateConstraints:@[[stack.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:24],[stack.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-24],[stack.centerYAnchor constraintEqualToAnchor:header.centerYAnchor]]];
     self.tableView.tableHeaderView=header;
     self.tableView.rowHeight=UITableViewAutomaticDimension;
@@ -216,12 +216,12 @@ static NSString *TKUIRedKeywordText(void) {
 - (NSInteger)tableView:(UITableView *)t numberOfRowsInSection:(NSInteger)section{return [self.sections[section] count];}
 - (NSString *)tableView:(UITableView *)t titleForHeaderInSection:(NSInteger)s{return @[@"总开关",@"消息与设备",@"红包过滤",@"诊断"][s];}
 - (NSString *)tableView:(UITableView *)t titleForFooterInSection:(NSInteger)s {
-    return @[@"TIM 全区域双指长按 0.8 秒唤醒设置，总开关关闭仍可唤醒。首次注入需完全退出TIM再打开；普通开关在下一次操作时生效。",@"消息效果与实际发送结果请逐项真机核对；注册或计数不能证明效果。机型伪装仅作用于 TIM 进程读取，不改变硬件或服务器记录。",@"自动红包已由用户实测 1.0.4 自动领取有效。1.0.7 修复标签定位、弹窗尺寸与不透明输入面板；金额范围、未知金额策略与关键词过滤等新修改仍待实测；不会自动补领历史红包。随机红包领取前通常无法知道实际到账金额，关闭未知金额放行后多数随机红包将不抢。",@"1.0.6 · 本次新修改仍待真机实测。诊断摘要不包含消息内容，完成回调不等于到账。"][s];
+    return @[@"双指长按 0.8 秒任意位置打开设置",@"拦截后在气泡旁显示“拦截撤回”",@"金额 0 为不设上下限",@"摘要不含聊天内容"][s];
 }
 - (UITableViewCell *)tableView:(UITableView *)t cellForRowAtIndexPath:(NSIndexPath *)ip {
     NSDictionary *row=self.sections[ip.section][ip.row];
     UITableViewCell *c=[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];
-    NSString *title=row[@"title"],*help=row[@"help"]?:@"";
+    NSString *title=row[@"title"]?:@"";
     if ([row[@"action"] isEqualToString:@"model"]) title=[title stringByAppendingFormat:@" · %@",prefStr(kSpoofModel,@"iPhone 15 Pro")];
     if ([row[@"action"] isEqualToString:@"amount"]) {
         NSInteger minimum=MAX((NSInteger)0,prefInt(kRedMinAmount,100)),maximum=MAX((NSInteger)0,prefInt(kRedMaxAmount,0));
@@ -230,8 +230,9 @@ static NSString *TKUIRedKeywordText(void) {
         title=[title stringByAppendingFormat:@" · %@ — %@",lower,upper];
     }
     UIListContentConfiguration *content=[UIListContentConfiguration subtitleCellConfiguration];
-    content.text=title;content.textProperties.font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody];content.textProperties.numberOfLines=0;
-    content.secondaryText=help;content.secondaryTextProperties.font=[UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];content.secondaryTextProperties.color=UIColor.secondaryLabelColor;content.secondaryTextProperties.numberOfLines=0;
+    content.text=title;content.textProperties.font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody];content.textProperties.numberOfLines=1;
+    // 1.0.8: 界面简洁化，不再显示大段说明副标题；仅金额/机型行保留状态后缀。
+    content.secondaryText=nil;
     content.image=[UIImage systemImageNamed:row[@"symbol"]];content.imageProperties.tintColor=UIColor.systemBlueColor;content.textToSecondaryTextVerticalPadding=5;c.contentConfiguration=content;
     NSString *key=row[@"key"];
     if (key) {
@@ -311,7 +312,7 @@ static NSString *TKUIRedKeywordText(void) {
         TKRedKeywordsController *editor=[TKRedKeywordsController new];__weak TKSettingsController *weakSelf=self;
         editor.didSave=^{[weakSelf.tableView reloadData];};[self.navigationController pushViewController:editor animated:YES];
     } else if ([action isEqualToString:@"diagnostics"] || [action isEqualToString:@"copy"]) {
-        NSDictionary *state=TKRuntimeSnapshot();NSMutableString *text=[NSMutableString stringWithFormat:@"TIMCleanKit %@\n%@\n",state[@"version"]?:@"1.0.7",state[@"process"]?:@"运行状态不可用"];
+        NSDictionary *state=TKRuntimeSnapshot();NSMutableString *text=[NSMutableString stringWithFormat:@"TIMCleanKit %@\n%@\n",state[@"version"]?:@"1.0.8",state[@"process"]?:@"运行状态不可用"];
         [text appendString:@"\n功能引擎：\n"];
         NSDictionary *engine=[state[@"engine"] isKindOfClass:NSDictionary.class]?state[@"engine"]:@{};
         NSArray *keys=[[engine allKeys] sortedArrayUsingSelector:@selector(compare:)];

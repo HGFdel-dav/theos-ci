@@ -41,8 +41,9 @@
     [super viewDidLayoutSubviews];self.shade.frame=self.view.bounds;
     CGRect safe=UIEdgeInsetsInsetRect(self.view.bounds,self.view.safeAreaInsets);
     // 1.0.7: 卡片尺寸固定（只受屏幕约束），键盘只负责上移卡片，不再缩放，避免“变小又变大”。
-    CGFloat w=MAX(0,MIN(430,safe.size.width-24));
-    CGFloat h=MAX(280,MIN(640,safe.size.height-130));
+    // 1.0.8: 进一步缩小，简洁紧凑。
+    CGFloat w=MAX(0,MIN(400,safe.size.width-24));
+    CGFloat h=MAX(260,MIN(480,safe.size.height-200));
     CGFloat cx=CGRectGetMidX(safe),cy=CGRectGetMidY(safe);
     CGRect card=CGRectMake(cx-w/2,cy-h/2,w,h);
     if(self.keyboardTop>CGRectGetMinY(card)+40) {
