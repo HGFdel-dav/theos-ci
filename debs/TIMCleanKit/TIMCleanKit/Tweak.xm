@@ -1,5 +1,5 @@
 //  TIMCleanKit.dylib — TIM (com.tencent.tim) 净化/增强插件
-//  目标：TIM 4.1.0 (NT 架构)，1.0.8：复读修复(setViewModel hook+手势放宽)、UI 简洁化
+//  目标：TIM 4.1.0 (NT 架构)，1.0.9：单击复读(ivar直取record)、红包金额简化(未知不抢)
 //  功能：消息监听 / 前台自动红包领取 / 内存防撤回 / 双击复读 / 原生设置
 //  构建：Theos (Logos)，arm64 + arm64e
 //
@@ -28,7 +28,6 @@ static NSString *const kSpoofModel  = @"TIMCK.spoofModel";      // 伪装机型
 static NSString *const kRedPacket   = @"TIMCK.redPacket";       // 红包过滤总开关
 static NSString *const kRedMinAmount= @"TIMCK.redMinAmount";    // 最低金额，分
 static NSString *const kRedMaxAmount= @"TIMCK.redMaxAmount";    // 最高金额，分；0不设上限
-static NSString *const kRedUnknownAllow= @"TIMCK.redUnknownAllow"; // 未知金额是否放行
 static NSString *const kRedSkipTest = @"TIMCK.redSkipTest";     // 沿用旧配置键：关键词过滤
 static NSString *const kRedKeywords = @"TIMCK.redKeywords";    // 可编辑的红包文案关键词
 static NSString *const kRedSkipCmd  = @"TIMCK.redSkipCommand";  // 口令红包不抢
@@ -73,7 +72,6 @@ static void registerDefaultsOnce(void) {
             kRedPacket:   @YES,
             kRedMinAmount:@(100),
             kRedMaxAmount:@0,
-            kRedUnknownAllow:@YES, // 保留1.0.4随机红包领取行为；UI明确可选严格跳过未知
             kRedSkipTest: @YES,
             kRedKeywords: @"测试\n外挂\n体验",
             kRedSkipCmd:  @NO,
@@ -224,7 +222,7 @@ static BOOL shouldSkipRedPacket(id record) {
     NSInteger min=MAX(0,prefInt(kRedMinAmount,100));
     NSInteger max=MAX(0,prefInt(kRedMaxAmount,0));
     long long amount=redPacketAmount(element);
-    if(amount<0) return !prefBool(kRedUnknownAllow,YES);
+    if(amount<0) return YES; // 1.0.9: 领取前金额未知（随机红包）一律不抢，简化逻辑
     if(amount<min || (max>0 && amount>max))return YES;
     return NO;
 }
@@ -653,7 +651,7 @@ static NSDictionary *TKRuntimeSnapshot(void) {
         unsigned long long hits=__atomic_load_n(&r->hits,__ATOMIC_RELAXED);
         [rows addObject:@{@"name":[NSString stringWithFormat:@"%s\n%s",r->className,sel_getName(r->selector)],@"state":hits?@"已实际调用":states[MIN(state,4)],@"hits":@(hits),@"lastHit":@""}];
     }
-    return @{@"engine":@{@"status":gTKEngineStatus?:@"未知",@"listenerRegistered":@(gTKListenerRegistered),@"received":@(gTKReceived),@"claimRequests":@(gTKAutoAttempts),@"claimCallbacks":@(gTKAutoCompleted),@"claimFailures":@(gTKAutoErrors),@"repeatRequests":@(gTKRepeats),@"repeatFailures":@(gTKRepeatFailures),@"messageCellBinds":@(gTKMessageBinds),@"gestureTaps":@(gTKGestureTaps),@"gestureNoRecord":@(gTKGestureNoRecord),@"recordReadFailures":@(gTKRecordReadFailures),@"recallBlocked":@(__atomic_load_n(&gTKRecallBlocked,__ATOMIC_RELAXED)),@"hardwareReads":@(__atomic_load_n(&gTKHardwareReads,__ATOMIC_RELAXED)),@"recallEvents":@(__atomic_load_n(&gTKRecallEvents,__ATOMIC_RELAXED)),@"recallRestores":@(__atomic_load_n(&gTKRecallRestores,__ATOMIC_RELAXED))},@"version":@"1.0.8",@"process":[NSString stringWithFormat:@"TIM %@ · PID %d · 注册检查 %u 轮\nUIDevice.model = %@",[NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"],getpid(),gRegistrationRounds,UIDevice.currentDevice.model],@"hookRows":rows,@"warnings":@[@"调用次数只能证明该入口被调用，不能证明防撤回或过滤效果。",@"自动领取：只处理前台两分钟内新收到的红包，不保证后台唤醒；完成回调不等于到账，请核对结果。",@"防撤回：本次进程缓存最近500条收到/显示的消息；启动前丢失内容无法恢复。"]};
+    return @{@"engine":@{@"status":gTKEngineStatus?:@"未知",@"listenerRegistered":@(gTKListenerRegistered),@"received":@(gTKReceived),@"claimRequests":@(gTKAutoAttempts),@"claimCallbacks":@(gTKAutoCompleted),@"claimFailures":@(gTKAutoErrors),@"repeatRequests":@(gTKRepeats),@"repeatFailures":@(gTKRepeatFailures),@"messageCellBinds":@(gTKMessageBinds),@"gestureTaps":@(gTKGestureTaps),@"gestureNoRecord":@(gTKGestureNoRecord),@"recordReadFailures":@(gTKRecordReadFailures),@"recallBlocked":@(__atomic_load_n(&gTKRecallBlocked,__ATOMIC_RELAXED)),@"hardwareReads":@(__atomic_load_n(&gTKHardwareReads,__ATOMIC_RELAXED)),@"recallEvents":@(__atomic_load_n(&gTKRecallEvents,__ATOMIC_RELAXED)),@"recallRestores":@(__atomic_load_n(&gTKRecallRestores,__ATOMIC_RELAXED))},@"version":@"1.0.9",@"process":[NSString stringWithFormat:@"TIM %@ · PID %d · 注册检查 %u 轮\nUIDevice.model = %@",[NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"],getpid(),gRegistrationRounds,UIDevice.currentDevice.model],@"hookRows":rows,@"warnings":@[@"调用次数只能证明该入口被调用，不能证明防撤回或过滤效果。",@"自动领取：只处理前台两分钟内新收到的红包，不保证后台唤醒；完成回调不等于到账，请核对结果。",@"防撤回：本次进程缓存最近500条收到/显示的消息；启动前丢失内容无法恢复。"]};
 }
 
 
@@ -715,7 +713,7 @@ static void InstallGesture(UIWindow *w) {
     press.numberOfTouchesRequired=2;press.minimumPressDuration=.8;press.cancelsTouchesInView=NO;press.allowableMovement=28;
     press.delaysTouchesBegan=NO;press.delaysTouchesEnded=NO;press.delegate=target;
     UITapGestureRecognizer *repeat=[[UITapGestureRecognizer alloc] initWithTarget:target action:@selector(onMessageDoubleTap:)];
-    repeat.numberOfTapsRequired=2;repeat.numberOfTouchesRequired=1;repeat.cancelsTouchesInView=NO;repeat.delaysTouchesBegan=NO;repeat.delaysTouchesEnded=NO;repeat.delegate=target;
+    repeat.numberOfTapsRequired=1;repeat.numberOfTouchesRequired=1;repeat.cancelsTouchesInView=NO;repeat.delaysTouchesBegan=NO;repeat.delaysTouchesEnded=NO;repeat.delegate=target;
     [w addGestureRecognizer:press];[w addGestureRecognizer:repeat];objc_setAssociatedObject(w,&kGestureAddedKey,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 static void TKWriteStatus(void) {

@@ -46,13 +46,45 @@ static id TKStrongKnownField(id object,const char *field) {
     // Only called for the two fields proved to be strong Objective-C references.
     return object_getIvar(object,ivar);
 }
+static id TKFirstIvarOfKind(id object,Class wanted) {
+    // 1.0.9: 兜底——遍历实例可枚举 ivar，直取目标类型（Swift 存储属性对 ObjC runtime 的可见性因类而异）。
+    if(!object||!wanted)return nil;
+    Class cls=object_getClass(object);
+    while(cls) {
+        unsigned count=0;Ivar *ivars=class_copyIvarList(cls,&count);
+        for(unsigned i=0;i<count;i++) {
+            id value=object_getIvar(object,ivars[i]);
+            if(value&&[value isKindOfClass:wanted]){free(ivars);return value;}
+        }
+        if(ivars)free(ivars);
+        cls=class_getSuperclass(cls);
+    }
+    return nil;
+}
 static id TKRecordForCell(UIView *cell) {
+    if(!cell)return nil;
     id vm=objc_getAssociatedObject(cell,&kTKBoundModelKey);
     if(!vm)vm=TKStrongKnownField(cell,"viewModel");
+    if(!vm)vm=TKStrongKnownField(cell,"_viewModel");
+    Class vmClass=NSClassFromString(@"NTAIOBaseCell.NTAIOBaseCellViewModel");
+    if(!vmClass)vmClass=NSClassFromString(@"_TtC13NTAIOBaseCell22NTAIOBaseCellViewModel");
+    if(!vm)vm=TKFirstIvarOfKind(cell,vmClass);
     id record=TKStrongKnownField(vm,"record");
+    if(!record)record=TKStrongKnownField(vm,"_record");
     if(!record)record=TKSwiftRecordField(vm);
+    if(!record)record=TKFirstIvarOfKind(vm,NSClassFromString(@"OCMsgRecord"));
     if([record isKindOfClass:NSClassFromString(@"OCMsgRecord")])return record;
     return nil;
+}
+static void TKEnsureCellBinding(UIView *cell) {
+    // 1.0.9: 布局时尝试建立 cell→viewModel 关联（TIM 的 bindViewModel:/setViewModel: 均不触发时兜底），供双击复读使用。
+    if(!cell||objc_getAssociatedObject(cell,&kTKBoundModelKey))return;
+    id vm=TKStrongKnownField(cell,"viewModel");
+    if(!vm)vm=TKStrongKnownField(cell,"_viewModel");
+    Class vmClass=NSClassFromString(@"NTAIOBaseCell.NTAIOBaseCellViewModel");
+    if(!vmClass)vmClass=NSClassFromString(@"_TtC13NTAIOBaseCell22NTAIOBaseCellViewModel");
+    if(!vm)vm=TKFirstIvarOfKind(cell,vmClass);
+    if(vm)objc_setAssociatedObject(cell,&kTKBoundModelKey,vm,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 static void TKUpdateRecallLabel(UIView *cell) {
     if(!cell || !NSThread.isMainThread)return;
@@ -142,7 +174,10 @@ static void TKCellClear(id self,SEL cmd) {
 }
 static void TKCellLayout(id self,SEL cmd) {
     IMP orig=OrigIMP(TKCellClass,cmd);if(orig)((void(*)(id,SEL))orig)(self,cmd);
-    if([self isKindOfClass:UIView.class])TKUpdateRecallLabel(self);
+    if([self isKindOfClass:UIView.class]) {
+        TKEnsureCellBinding(self);
+        TKUpdateRecallLabel(self);
+    }
 }
 static void TKRefreshRecallLabels(void) {
     if(!NSThread.isMainThread){dispatch_async(dispatch_get_main_queue(),^{TKRefreshRecallLabels();});return;}

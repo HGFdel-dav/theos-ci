@@ -190,8 +190,7 @@ static NSString *TKUIRedKeywordText(void) {
             @{@"title":@"跳过关键词红包",@"key":kRedSkipTest,@"symbol":@"text.magnifyingglass",@"default":@YES,@"help":@"红包标题、内容或名称命中任一过滤关键词时跳过，英文不区分大小写。默认含“测试”“外挂”“体验”，可在下方增删；与金额和口令条件同时生效，不检查账单凭据。"},
             @{@"title":@"过滤关键词",@"action":@"keywords",@"symbol":@"text.badge.plus",@"help":@"可自定义增加或删除关键词，用中文逗号、逗号、空格或换行分隔；空文本表示不匹配关键词。仅在“跳过关键词红包”开启时生效。"},
             @{@"title":@"跳过口令红包",@"key":kRedSkipCmd,@"symbol":@"text.bubble",@"default":@NO,@"help":@"TIM原生接口判为口令红包时跳过，不自动发送口令；关闭后仍受原生领取流程限制。"},
-            @{@"title":@"金额范围",@"action":@"amount",@"symbol":@"slider.horizontal.3",@"help":@"自行输入人民币元最低、最高金额，最多两位小数；包含两端。最低 0 不设下限，最高 0 不设上限。仅按领取前可知金额过滤，不保证等于实际到账。"},
-            @{@"title":@"未知金额放行",@"key":kRedUnknownAllow,@"symbol":@"questionmark.circle",@"default":@YES,@"help":@"默认开启：领取前金额未知时放行，仍受关键词与口令条件限制。随机红包领取前通常无法知道实际到账金额；关闭才严格跳过未知金额，但多数随机红包将不抢。"}],
+            @{@"title":@"金额范围",@"action":@"amount",@"symbol":@"slider.horizontal.3",@"help":@"自行输入人民币元最低、最高金额，最多两位小数；包含两端。最低 0 不设下限，最高 0 不设上限。仅按领取前可知金额过滤，不保证等于实际到账。"}],
           @[@{@"title":@"运行状态",@"action":@"diagnostics",@"symbol":@"waveform.path.ecg",@"help":@"动态查看功能引擎键值、监听注册、新消息、领取请求/回调/失败与 Hook 调用。完成回调不等于已到账，请核对红包结果。"},
             @{@"title":@"复制诊断摘要",@"action":@"copy",@"symbol":@"doc.on.doc",@"help":@"复制版本、功能引擎键值、方法注册状态与计数，便于排查；摘要不含聊天正文、账号、红包账单或凭据。"}]
         ];
@@ -204,7 +203,7 @@ static NSString *TKUIRedKeywordText(void) {
     self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(closePage)];
     UIView *header=[[UIView alloc] initWithFrame:CGRectMake(0,0,320,84)];
     UILabel *name=[UILabel new];name.text=@"TIM 增强";name.font=[UIFont systemFontOfSize:24 weight:UIFontWeightBold];name.textColor=UIColor.labelColor;
-    UILabel *subtitle=[UILabel new];subtitle.text=@"1.0.8 · 双指长按唤醒";subtitle.font=[UIFont systemFontOfSize:12];subtitle.adjustsFontForContentSizeCategory=YES;subtitle.textColor=UIColor.secondaryLabelColor;
+    UILabel *subtitle=[UILabel new];subtitle.text=@"1.0.9 · 双指长按唤醒";subtitle.font=[UIFont systemFontOfSize:12];subtitle.adjustsFontForContentSizeCategory=YES;subtitle.textColor=UIColor.secondaryLabelColor;
     UIStackView *stack=[[UIStackView alloc] initWithArrangedSubviews:@[name,subtitle]];stack.axis=UILayoutConstraintAxisVertical;stack.spacing=4;stack.translatesAutoresizingMaskIntoConstraints=NO;
     [header addSubview:stack];[NSLayoutConstraint activateConstraints:@[[stack.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:24],[stack.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-24],[stack.centerYAnchor constraintEqualToAnchor:header.centerYAnchor]]];
     self.tableView.tableHeaderView=header;
@@ -312,7 +311,7 @@ static NSString *TKUIRedKeywordText(void) {
         TKRedKeywordsController *editor=[TKRedKeywordsController new];__weak TKSettingsController *weakSelf=self;
         editor.didSave=^{[weakSelf.tableView reloadData];};[self.navigationController pushViewController:editor animated:YES];
     } else if ([action isEqualToString:@"diagnostics"] || [action isEqualToString:@"copy"]) {
-        NSDictionary *state=TKRuntimeSnapshot();NSMutableString *text=[NSMutableString stringWithFormat:@"TIMCleanKit %@\n%@\n",state[@"version"]?:@"1.0.8",state[@"process"]?:@"运行状态不可用"];
+        NSDictionary *state=TKRuntimeSnapshot();NSMutableString *text=[NSMutableString stringWithFormat:@"TIMCleanKit %@\n%@\n",state[@"version"]?:@"1.0.9",state[@"process"]?:@"运行状态不可用"];
         [text appendString:@"\n功能引擎：\n"];
         NSDictionary *engine=[state[@"engine"] isKindOfClass:NSDictionary.class]?state[@"engine"]:@{};
         NSArray *keys=[[engine allKeys] sortedArrayUsingSelector:@selector(compare:)];
