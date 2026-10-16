@@ -142,7 +142,7 @@
 - (void)presentMenuFromPoint:(CGPoint)point {
     if (_didPresent) return;
     _didPresent = YES;
-    UIWindow *window = _pan.view;
+    UIWindow *window = (UIWindow *)_pan.view; // the recognizer is attached to the SB window
     if (!_menu) {
         _menu = [[TWArcMenuView alloc] initWithFrame:window.bounds];
         _menu.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
@@ -173,11 +173,14 @@
     // up inside the split window. Otherwise fall back to a normal launch.
     Class pxEntry = NSClassFromString(@"PXPanelEntry");
     if (pxEntry && [pxEntry respondsToSelector:NSSelectorFromString(@"applicationActivated:")]) {
-        [pxEntry performSelector:NSSelectorFromString(@"applicationActivated:") withObject:bundleID];
+        void (*msg)(id, SEL, id) = (void (*)(id, SEL, id))objc_msgSend;
+        msg(pxEntry, NSSelectorFromString(@"applicationActivated:"), bundleID);
     } else {
         [TWCraneBridge applyContainerIfConfiguredForBundleID:bundleID];
-        [[UIApplication sharedApplication] performSelector:NSSelectorFromString(@"launchApplicationWithIdentifier:suspended:")
-                                                withObject:bundleID withObject:@(NO)];
+        id (*msg)(id, SEL, id, id) = (id (*)(id, SEL, id, id))objc_msgSend;
+        msg([UIApplication sharedApplication],
+            NSSelectorFromString(@"launchApplicationWithIdentifier:suspended:"),
+            bundleID, @(NO));
     }
 }
 
