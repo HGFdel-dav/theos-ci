@@ -3,40 +3,64 @@
 #import "TWArcGeometry.h"
 #import <AudioToolbox/AudioServices.h>
 #import <objc/message.h>
+#import <string.h>
+#import <math.h>
 
 #pragma mark - icon fetching (SpringBoard process)
 
+// Never call a private selector without checking its actual argument/return ABI.
+static const char *TWIconType(const char *type) {
+    while (type && *type && strchr("rnNoORV", *type)) type++;
+    return type ?: "";
+}
+
+static NSMethodSignature *TWIconSignature(id target, SEL selector, NSUInteger arguments) {
+    @try {
+        if (!target || ![target respondsToSelector:selector]) return nil;
+        NSMethodSignature *sig = [target methodSignatureForSelector:selector];
+        return sig.numberOfArguments == arguments ? sig : nil;
+    } @catch (__unused NSException *exception) { return nil; }
+}
+
+static id TWIconObject(id target, NSString *name, id argument, BOOL hasArgument) {
+    SEL selector = NSSelectorFromString(name);
+    NSMethodSignature *sig = TWIconSignature(target, selector, hasArgument ? 3 : 2);
+    if (!sig || TWIconType(sig.methodReturnType)[0] != '@') return nil;
+    if (hasArgument && TWIconType([sig getArgumentTypeAtIndex:2])[0] != '@') return nil;
+    @try {
+        if (hasArgument) return ((id (*)(id, SEL, id))objc_msgSend)(target, selector, argument);
+        return ((id (*)(id, SEL))objc_msgSend)(target, selector);
+    } @catch (__unused NSException *exception) { return nil; }
+}
+
+static id TWIconScalar(id target, NSString *name, NSInteger value) {
+    SEL selector = NSSelectorFromString(name);
+    NSMethodSignature *sig = TWIconSignature(target, selector, 3);
+    if (!sig || TWIconType(sig.methodReturnType)[0] != '@') return nil;
+    @try {
+        // Match the scalar type, not NSNumber or a variadic prototype.
+        const char *type = TWIconType([sig getArgumentTypeAtIndex:2]);
+        if (!strcmp(type, @encode(int))) return ((id (*)(id, SEL, int))objc_msgSend)(target, selector, (int)value);
+        if (!strcmp(type, @encode(unsigned int))) return ((id (*)(id, SEL, unsigned int))objc_msgSend)(target, selector, (unsigned int)value);
+        if (!strcmp(type, @encode(long))) return ((id (*)(id, SEL, long))objc_msgSend)(target, selector, (long)value);
+        if (!strcmp(type, @encode(unsigned long))) return ((id (*)(id, SEL, unsigned long))objc_msgSend)(target, selector, (unsigned long)value);
+        if (!strcmp(type, @encode(long long))) return ((id (*)(id, SEL, long long))objc_msgSend)(target, selector, (long long)value);
+        if (!strcmp(type, @encode(unsigned long long))) return ((id (*)(id, SEL, unsigned long long))objc_msgSend)(target, selector, (unsigned long long)value);
+    } @catch (__unused NSException *exception) {}
+    return nil; // Unknown signatures safely fall through to a placeholder.
+}
+
 static UIImage *TWIconImageForBundleID(NSString *bundleID) {
-    UIImage *icon = nil;
-    // 1) LSApplicationProxy iconDataForVariant:
-    Class proxyCls = NSClassFromString(@"LSApplicationProxy");
-    if (proxyCls) {
-        id (*msg)(id, SEL, ...) = (id (*)(id, SEL, ...))objc_msgSend;
-        SEL selProxy = NSSelectorFromString(@"applicationProxyForIdentifier:");
-        id proxy = selProxy ? msg(proxyCls, selProxy, bundleID) : nil;
-        if (proxy) {
-            SEL selIcon = NSSelectorFromString(@"iconDataForVariant:");
-            id data = selIcon ? msg(proxy, selIcon, @(4)) : nil;
-            if ([data isKindOfClass:[NSData class]]) icon = [UIImage imageWithData:data];
-        }
-    }
-    // 2) SBIconController model fallback (SpringBoard private, always present here)
+    id proxy = TWIconObject(NSClassFromString(@"LSApplicationProxy"), @"applicationProxyForIdentifier:", bundleID, YES);
+    id data = TWIconScalar(proxy, @"iconDataForVariant:", 4);
+    UIImage *icon = [data isKindOfClass:[NSData class]] ? [UIImage imageWithData:data] : nil;
     if (!icon) {
-        Class iconCtlCls = NSClassFromString(@"SBIconController");
-        if (iconCtlCls) {
-            id (*msg)(id, SEL, ...) = (id (*)(id, SEL, ...))objc_msgSend;
-            SEL selShared = NSSelectorFromString(@"sharedInstance");
-            id controller = selShared ? msg(iconCtlCls, selShared) : nil;
-            id model = controller ? msg(controller, NSSelectorFromString(@"model")) : nil;
-            if (model) {
-                id iconObj = msg(model, NSSelectorFromString(@"expectedIconForDisplayIdentifier:"), bundleID);
-                if (!iconObj) iconObj = msg(model, NSSelectorFromString(@"iconForDisplayIdentifier:"), bundleID);
-                if (iconObj) {
-                    id img = msg(iconObj, NSSelectorFromString(@"generateIconImage:"), @(1));
-                    if ([img isKindOfClass:[UIImage class]]) icon = img;
-                }
-            }
-        }
+        id controller = TWIconObject(NSClassFromString(@"SBIconController"), @"sharedInstance", nil, NO);
+        id model = TWIconObject(controller, @"model", nil, NO);
+        id iconObj = TWIconObject(model, @"expectedIconForDisplayIdentifier:", bundleID, YES);
+        if (!iconObj) iconObj = TWIconObject(model, @"iconForDisplayIdentifier:", bundleID, YES);
+        id image = TWIconScalar(iconObj, @"generateIconImage:", 1);
+        if ([image isKindOfClass:[UIImage class]]) icon = image;
     }
     return icon;
 }
@@ -49,11 +73,11 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 @property (nonatomic, strong) UIView *glowView;
 @property (nonatomic, assign, getter=isHighlighted) BOOL highlighted;
 @property (nonatomic, assign) CGPoint targetCenter;
+@property (nonatomic, assign) CGFloat baseScale;
 @end
 
 @implementation TWArcItemView
-- (instancetype)initWithBundleID:(NSString *)bundleID image:(UIImage *)image {
-    CGFloat size = 78;
+- (instancetype)initWithBundleID:(NSString *)bundleID image:(UIImage *)image size:(CGFloat)size {
     if ((self = [super initWithFrame:CGRectMake(0, 0, size, size)])) {
         _bundleID = [bundleID copy];
         self.layer.cornerRadius = 20;
@@ -78,7 +102,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 }
 - (void)setHighlighted:(BOOL)highlighted {
     _highlighted = highlighted;
-    CGFloat scale = highlighted ? 1.18 : 1.0;
+    CGFloat scale = (self.baseScale > 0 ? self.baseScale : 1) * (highlighted ? 1.18 : 1);
     CGFloat glowAlpha = highlighted ? 1.0 : 0.0;
     [UIView animateWithDuration:0.12 delay:0 options:UIViewAnimationOptionBeginFromCurrentState animations:^{
         self.transform = CGAffineTransformMakeScale(scale, scale);
@@ -117,9 +141,11 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     _bundleIDs = [bundleIDs copy];
     _triggerPoint = point;
     _side = side;
-    _radius = radius;
-    _menuScale = menuScale > 0.1 ? menuScale : 1.0;
-    _anchor = [TWArcGeometry anchorForTriggerPoint:point side:side bounds:self.bounds];
+    _menuScale = isfinite(menuScale) && menuScale > 0.1 ? MIN(menuScale, 2) : 1;
+    _radius = [TWArcGeometry radiusForItemCount:_bundleIDs.count preferredRadius:radius menuScale:_menuScale bounds:self.bounds];
+    CGFloat itemSize = [TWArcGeometry itemSizeForCount:_bundleIDs.count radius:_radius menuScale:_menuScale];
+    if (itemSize <= 0 || !_bundleIDs.count) return;
+    _anchor = [TWArcGeometry anchorForTriggerPoint:point side:side radius:_radius itemSize:itemSize menuScale:_menuScale bounds:self.bounds];
 
     // dim
     _dimView = [[UIView alloc] initWithFrame:self.bounds];
@@ -138,7 +164,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     _bandMask = [CAShapeLayer layer];
     _bandMask.strokeColor = UIColor.whiteColor.CGColor;
     _bandMask.fillColor = UIColor.clearColor.CGColor;
-    _bandMask.lineWidth = 110 * _menuScale;
+    _bandMask.lineWidth = (itemSize + 18) * _menuScale;
     _bandMask.lineCap = kCALineCapRound;
     _bandGradient.mask = _bandMask;
     [_backgroundBand.layer addSublayer:_bandGradient];
@@ -151,7 +177,8 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
         NSString *bundleID = _bundleIDs[i];
         UIImage *icon = TWIconImageForBundleID(bundleID);
         if (!icon) icon = [self placeholderImage];
-        TWArcItemView *item = [[TWArcItemView alloc] initWithBundleID:bundleID image:icon];
+        TWArcItemView *item = [[TWArcItemView alloc] initWithBundleID:bundleID image:icon size:itemSize];
+        item.baseScale = _menuScale;
         CGPoint center = [TWArcGeometry centerForItemAtIndex:i count:count radius:_radius anchor:_anchor side:_side bounds:self.bounds];
         item.targetCenter = center;
         item.center = _triggerPoint;
@@ -196,7 +223,8 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
         a1 = M_PI - (startAngle - step * (count - 1));
     }
     UIBezierPath *path = [UIBezierPath bezierPath];
-    [path addArcWithCenter:_anchor radius:_radius startAngle:a0 endAngle:a1 clockwise:NO];
+    // UIBezierPath uses downward-positive y, unlike the math placement above.
+    [path addArcWithCenter:_anchor radius:_radius startAngle:-a0 endAngle:-a1 clockwise:(_side == 0)];
     _bandMask.path = path.CGPath;
 }
 
@@ -209,12 +237,21 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     return img;
 }
 
-- (void)updateSelectionAtPoint:(CGPoint)point {
+- (TWArcItemView *)itemAtPoint:(CGPoint)point {
+    if (!_presented || !isfinite(point.x) || !isfinite(point.y)) return nil;
     TWArcItemView *hit = nil;
+    CGFloat nearest = CGFLOAT_MAX;
     for (TWArcItemView *item in _items) {
-        CGRect hitRect = CGRectInset(item.frame, -16, -16);
-        if (CGRectContainsPoint(hitRect, point)) { hit = item; break; }
+        CGFloat half = CGRectGetWidth(item.bounds) * _menuScale / 2 + 12;
+        CGRect hitRect = CGRectMake(item.targetCenter.x - half, item.targetCenter.y - half, half * 2, half * 2);
+        CGFloat distance = hypot(point.x - item.targetCenter.x, point.y - item.targetCenter.y);
+        if (CGRectContainsPoint(hitRect, point) && distance < nearest) { hit = item; nearest = distance; }
     }
+    return hit;
+}
+
+- (void)updateSelectionAtPoint:(CGPoint)point {
+    TWArcItemView *hit = [self itemAtPoint:point];
     BOOL newlySelected = (hit != nil && !hit.isHighlighted);
     for (TWArcItemView *item in _items) {
         BOOL should = (item == hit);
@@ -227,11 +264,9 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 }
 
 - (NSString *)finishSelectionAtPoint:(CGPoint)point {
-    NSString *selected = nil;
-    for (TWArcItemView *item in _items) {
-        CGRect hitRect = CGRectInset(item.frame, -16, -16);
-        if (CGRectContainsPoint(hitRect, point)) { selected = item.bundleID; item.highlighted = NO; break; }
-    }
+    TWArcItemView *item = [self itemAtPoint:point];
+    NSString *selected = item.bundleID;
+    item.highlighted = NO;
     [self dismissAnimated:selected != nil];
     return selected;
 }
@@ -239,15 +274,27 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 - (void)dismissAnimated:(BOOL)animated {
     _presented = NO;
     if (animated) {
-        [UIView animateWithDuration:0.18 delay:0 options:UIViewAnimationOptionCurveEaseIn animations:^{
-            for (TWArcItemView *item in self->_items) {
+        // Detach this generation's state before an asynchronous completion.
+        // A new presentation may replace the ivars while these views fade out.
+        NSArray<UIView *> *dismissedViews = [self.subviews copy];
+        NSArray<TWArcItemView *> *dismissedItems = [_items copy];
+        UIView *dismissedBand = _backgroundBand;
+        UIView *dismissedDim = _dimView;
+        [_items removeAllObjects];
+        _bundleIDs = nil;
+        _backgroundBand = nil;
+        _bandGradient = nil;
+        _bandMask = nil;
+        _dimView = nil;
+        [UIView animateWithDuration:0.18 delay:0 options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionCurveEaseIn animations:^{
+            for (TWArcItemView *item in dismissedItems) {
                 item.alpha = 0;
                 item.transform = CGAffineTransformMakeScale(0.4, 0.4);
             }
-            self->_backgroundBand.alpha = 0;
-            self->_dimView.alpha = 0;
+            dismissedBand.alpha = 0;
+            dismissedDim.alpha = 0;
         } completion:^(BOOL finished) {
-            [self cleanup];
+            for (UIView *view in dismissedViews) [view removeFromSuperview];
         }];
     } else {
         [self cleanup];

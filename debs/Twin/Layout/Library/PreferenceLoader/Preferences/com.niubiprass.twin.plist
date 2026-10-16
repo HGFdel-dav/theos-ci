@@ -8,8 +8,14 @@
 		<string>PSLinkCell</string>
 		<key>label</key>
 		<string>Twin</string>
-		<key>url</key>
-		<string>prefs:root=TwinSettings</string>
+		<key>bundle</key>
+		<string>TwinSettings</string>
+		<key>detail</key>
+		<string>TWRootListController</string>
+		<key>isController</key>
+		<true/>
+		<key>overridePrincipalClass</key>
+		<true/>
 	</dict>
 </dict>
 </plist>

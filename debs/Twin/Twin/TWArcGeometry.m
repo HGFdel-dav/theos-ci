@@ -1,5 +1,6 @@
 // TWArcGeometry.m
 #import "TWArcGeometry.h"
+#import <math.h>
 
 @implementation TWArcGeometry
 
@@ -10,8 +11,11 @@
 }
 
 + (BOOL)point:(CGPoint)point inTriggerRegionForSide:(NSInteger)side width:(CGFloat)width bounds:(CGRect)bounds {
-    if (width <= 0) width = 24;
-    CGFloat inset = width;
+    if ((side != 0 && side != 1) || !isfinite(point.x) || !isfinite(point.y) ||
+        !isfinite(CGRectGetWidth(bounds)) || !isfinite(CGRectGetHeight(bounds)) ||
+        CGRectGetWidth(bounds) <= 0 || CGRectGetHeight(bounds) <= 140) return NO;
+    if (!isfinite(width) || width <= 0) width = 24;
+    CGFloat inset = MIN(width, CGRectGetWidth(bounds) / 2);
     // Keep clear of the status bar / notification center zone and the home-bar zone.
     CGFloat top = CGRectGetMinY(bounds) + 70;
     CGFloat bottom = CGRectGetMaxY(bounds) - 70;
@@ -32,24 +36,45 @@
     return CGPointMake(CGRectGetMaxX(bounds) - inset, triggerPoint.y);
 }
 
++ (CGFloat)radiusForItemCount:(NSInteger)count preferredRadius:(CGFloat)radius menuScale:(CGFloat)scale bounds:(CGRect)bounds {
+    CGFloat sweep = 1.45 * M_PI_2;
+    scale = isfinite(scale) && scale > 0 ? scale : 1;
+    radius = isfinite(radius) && radius > 0 ? radius : 140;
+    // A square's diagonal envelope also protects adjacent highlighted icons.
+    CGFloat step = count > 1 ? sweep / (count - 1) : sweep;
+    CGFloat desired = (48 * scale * M_SQRT2 * 1.18 + 6) / (2 * sin(step / 2));
+    CGFloat footprint = 78 * scale * 1.18;
+    CGFloat availableWidth = MAX(0, CGRectGetWidth(bounds) - 16);
+    CGFloat availableHeight = MAX(0, CGRectGetHeight(bounds) - 16);
+    // Reserve space for a 78pt item's highlight; small screens shrink both.
+    footprint = MIN(footprint, MIN(availableWidth, availableHeight) * 0.4);
+    CGFloat cap = MIN(availableWidth - footprint,
+                      (availableHeight - footprint) / (1 - cos(sweep)));
+    return MAX(0, MIN(MAX(radius, desired), cap));
+}
+
++ (CGFloat)itemSizeForCount:(NSInteger)count radius:(CGFloat)radius menuScale:(CGFloat)scale {
+    scale = isfinite(scale) && scale > 0 ? scale : 1;
+    CGFloat step = 1.45 * M_PI_2 / MAX(count - 1, 1);
+    CGFloat chord = 2 * radius * sin(step / 2);
+    // sqrt(2) bounds square boxes for every angle; 1.18 covers highlighting.
+    return MAX(0, MIN(78, (chord - 6) / (M_SQRT2 * 1.18 * scale)));
+}
+
++ (CGPoint)anchorForTriggerPoint:(CGPoint)point side:(NSInteger)side radius:(CGFloat)radius itemSize:(CGFloat)size menuScale:(CGFloat)scale bounds:(CGRect)bounds {
+    CGFloat margin = size * scale * 1.18 / 2 + 8;
+    CGFloat minY = CGRectGetMinY(bounds) + margin + radius;
+    CGFloat maxY = CGRectGetMaxY(bounds) - margin + radius * cos(1.45 * M_PI_2);
+    CGFloat y = MAX(minY, MIN(maxY, point.y));
+    return CGPointMake(side == 0 ? CGRectGetMinX(bounds) + margin : CGRectGetMaxX(bounds) - margin, y);
+}
+
 + (CGPoint)centerForItemAtIndex:(NSInteger)index count:(NSInteger)count radius:(CGFloat)radius anchor:(CGPoint)anchor side:(NSInteger)side bounds:(CGRect)bounds {
-    if (count < 1) count = 1;
-    // Sweep the arc from straight up (M_PI/2) toward the screen edge, so the
-    // icons fan out from the anchor into the screen like ScreenCore's menu.
-    CGFloat startAngle = M_PI / 2.0;                 // pointing up
-    CGFloat sweep = 1.45f * (M_PI / 2.0);            // ~130 degrees
-    CGFloat step = (count > 1) ? sweep / (count - 1) : 0;
-    CGFloat angle;
-    if (side == 0) { // left edge: fan clockwise from up toward the right
-        angle = startAngle - index * step;
-    } else {         // right edge: fan counter-clockwise
-        angle = M_PI - (startAngle - index * step);
-    }
-    CGFloat x = anchor.x + radius * cos(angle);
-    CGFloat y = anchor.y - radius * sin(angle);
-    x = MAX(CGRectGetMinX(bounds) + 34, MIN(CGRectGetMaxX(bounds) - 34, x));
-    y = MAX(CGRectGetMinY(bounds) + 34, MIN(CGRectGetMaxY(bounds) - 34, y));
-    return CGPointMake(x, y);
+    CGFloat step = count > 1 ? 1.45 * M_PI_2 / (count - 1) : 0;
+    CGFloat angle = M_PI_2 - index * step;
+    if (side != 0) angle = M_PI - angle;
+    // Fit the anchor/radius as one layout: per-item clamping collapses spacing.
+    return CGPointMake(anchor.x + radius * cos(angle), anchor.y - radius * sin(angle));
 }
 
 @end

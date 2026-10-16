@@ -1,10 +1,68 @@
 // TWPrefs.m
 #import "TWPrefs.h"
-#import <UIKit/UIKit.h>   // UIApplicationDidBecomeActiveNotification
+#import <UIKit/UIKit.h>
+#import <notify.h>
+#import <sys/file.h>
+#import <fcntl.h>
+#import <unistd.h>
+
+static BOOL TWValidMigration(NSDictionary *dict) {
+    if (![dict isKindOfClass:NSDictionary.class] || !dict.count) return NO;
+    NSSet *numbers = [NSSet setWithArray:@[TWKeyEnabled,TWKeyArcEnabled,TWKeyArcSide,TWKeyArcTriggerWidth,TWKeyArcItemCount,TWKeyArcRadius,TWKeyArcSound,TWKeyCraneEnabled]];
+    for (id key in dict) {
+        id value = dict[key];
+        if ([numbers containsObject:key]) { if (![value isKindOfClass:NSNumber.class]) return NO; }
+        else if ([key isEqual:TWKeyCraneApps]) {
+            if (![value isKindOfClass:NSDictionary.class]) return NO;
+            for (id app in value) if (![app isKindOfClass:NSString.class] || ![app length] || ![value[app] isKindOfClass:NSString.class] || ![value[app] length]) return NO;
+        } else return NO;
+    }
+    return YES;
+}
+
+// Target must be safe both before and after creating its parent (symlink guard).
+static int TWLockPrefs(NSString *path) {
+    if (!TWPrefsPathIsSafe(path)) return -1;
+    NSFileManager *fm = NSFileManager.defaultManager;
+    if (![fm createDirectoryAtPath:path.stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:nil] || !TWPrefsPathIsSafe(path)) return -1;
+    int fd = open([[path stringByAppendingString:@".lock"] fileSystemRepresentation], O_CREAT|O_RDWR|O_NOFOLLOW, 0600);
+    if (fd >= 0 && flock(fd, LOCK_EX|LOCK_NB) != 0) { close(fd); return -1; }
+    return fd;
+}
+
+static void TWMigratePrefs(NSString *target) {
+    NSFileManager *fm = NSFileManager.defaultManager;
+    if (!target.length || [fm fileExistsAtPath:target]) return;
+    int fd = TWLockPrefs(target); if (fd < 0) return;
+    if (![fm fileExistsAtPath:target]) {
+        NSMutableArray *sources = [NSMutableArray array];
+        for (NSString *root in TWJBRootCandidates()) [sources addObject:[root stringByAppendingPathComponent:@"var/mobile/Library/Preferences/com.niubiprass.twin.plist"]];
+        [sources addObject:@"/var/mobile/Library/Preferences/com.niubiprass.twin.plist"];
+        [sources sortUsingComparator:^NSComparisonResult(NSString *a, NSString *b) {
+            NSDate *ad = [[fm attributesOfItemAtPath:a error:nil] fileModificationDate] ?: NSDate.distantPast;
+            NSDate *bd = [[fm attributesOfItemAtPath:b error:nil] fileModificationDate] ?: NSDate.distantPast;
+            return [bd compare:ad];
+        }];
+        for (NSString *source in sources) {
+            if ([source.stringByResolvingSymlinksInPath isEqual:target.stringByResolvingSymlinksInPath]) continue;
+            if (![[[fm attributesOfItemAtPath:source error:nil] fileType] isEqual:NSFileTypeRegular]) continue;
+            NSData *original = [NSData dataWithContentsOfFile:source];
+            NSDictionary *dict = original ? [NSPropertyListSerialization propertyListWithData:original options:NSPropertyListImmutable format:NULL error:nil] : nil;
+            if (!TWValidMigration(dict)) continue;
+            if (TWPrefsPathIsSafe(target) && [dict writeToFile:target atomically:YES] && [[NSDictionary dictionaryWithContentsOfFile:target] isEqual:dict]) {
+                // Remove ONLY this exact same-domain, unchanged validated source.
+                if ([[NSData dataWithContentsOfFile:source] isEqual:original]) [fm removeItemAtPath:source error:nil];
+            }
+            break;
+        }
+    }
+    flock(fd, LOCK_UN); close(fd);
+}
 
 @implementation TWPrefs {
     NSMutableDictionary *_cache;
-    BOOL _dirty;
+    NSMutableSet *_pendingKeys;
+    int _notifyToken;
 }
 
 + (instancetype)shared {
@@ -17,46 +75,61 @@
 - (instancetype)init {
     if ((self = [super init])) {
         _cache = [NSMutableDictionary dictionary];
+        _pendingKeys = [NSMutableSet set];
+        _notifyToken = -1;
+        __weak TWPrefs *weakSelf = self;
+        notify_register_dispatch(TWPrefsChangedNotification, &_notifyToken, dispatch_get_main_queue(), ^(int token) { [weakSelf reload]; });
         [self reload];
-        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(reload)
-                                                     name:UIApplicationDidBecomeActiveNotification object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(reload) name:UIApplicationDidBecomeActiveNotification object:nil];
     }
     return self;
 }
 
+- (void)dealloc {
+    if (_notifyToken >= 0) notify_cancel(_notifyToken);
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
 - (void)reload {
-    NSString *path = TWPrefsFilePath();
-    _cache = [NSMutableDictionary dictionary];
-    if (path.length) {
-        NSDictionary *disk = [NSDictionary dictionaryWithContentsOfFile:path];
-        if (disk) [_cache setDictionary:disk];
+    @synchronized (self) {
+        NSString *path = TWPrefsFilePath();
+        TWMigratePrefs(path);
+        NSMutableDictionary *disk = path ? [[NSDictionary dictionaryWithContentsOfFile:path] mutableCopy] : nil;
+        if (!disk) disk = [NSMutableDictionary dictionary];
+        for (NSString *key in _pendingKeys) {
+            if (_cache[key]) disk[key] = _cache[key]; else [disk removeObjectForKey:key];
+        }
+        _cache = disk;
     }
-    _dirty = NO;
 }
 
 - (id)objectForKey:(NSString *)key {
-    @synchronized (self) { return _cache[key]; }
+    if (!key.length) return nil;
+    [self reload]; // Also handles missed Darwin notifications and rotated jbroot.
+    @synchronized (self) { return [_cache[key] copy]; }
 }
 
 - (BOOL)boolForKey:(NSString *)key defaultValue:(BOOL)def {
     id v = [self objectForKey:key];
-    return v ? [v boolValue] : def;
+    return ([v isKindOfClass:NSNumber.class] || [v isKindOfClass:NSString.class]) ? [v boolValue] : def;
 }
 
 - (NSInteger)integerForKey:(NSString *)key defaultValue:(NSInteger)def {
     id v = [self objectForKey:key];
-    return v ? [v integerValue] : def;
+    return ([v isKindOfClass:NSNumber.class] || [v isKindOfClass:NSString.class]) ? [v integerValue] : def;
 }
 
 - (CGFloat)floatForKey:(NSString *)key defaultValue:(CGFloat)def {
     id v = [self objectForKey:key];
-    return v ? [v floatValue] : def;
+    return ([v isKindOfClass:NSNumber.class] || [v isKindOfClass:NSString.class]) ? [v floatValue] : def;
 }
 
 - (void)setObject:(id)obj forKey:(NSString *)key {
+    if (![key isKindOfClass:NSString.class] || !key.length) return;
+    if (obj && ![NSPropertyListSerialization propertyList:obj isValidForFormat:NSPropertyListBinaryFormat_v1_0]) return;
     @synchronized (self) {
-        if (obj) _cache[key] = obj; else [_cache removeObjectForKey:key];
-        _dirty = YES;
+        if (obj) _cache[key] = [obj copy]; else [_cache removeObjectForKey:key];
+        [_pendingKeys addObject:key];
     }
 }
 
@@ -65,15 +138,19 @@
 - (void)setFloat:(CGFloat)value forKey:(NSString *)key { [self setObject:@(value) forKey:key]; }
 
 - (void)synchronize {
-    NSString *path = TWPrefsFilePath();
-    if (!path.length) return;
-    NSDictionary *snapshot;
-    @synchronized (self) { snapshot = [_cache copy]; _dirty = NO; }
-    NSError *err = nil;
-    [[NSFileManager defaultManager] createDirectoryAtPath:[path stringByDeletingLastPathComponent]
-                              withIntermediateDirectories:YES attributes:nil error:nil];
-    if (![snapshot writeToFile:path atomically:YES]) {
-        NSLog(@"[Twin] failed to write prefs: %@", err.localizedDescription ?: @"unknown");
+    @synchronized (self) {
+        if (!_pendingKeys.count) return;
+        NSString *path = TWPrefsFilePath(); int fd = TWLockPrefs(path);
+        if (fd < 0) { NSLog(@"[Twin] Preferences not saved: unavailable, unsafe or busy root; pending edits retained."); return; }
+        NSMutableDictionary *merged = [[NSDictionary dictionaryWithContentsOfFile:path] mutableCopy] ?: [NSMutableDictionary dictionary];
+        for (NSString *key in _pendingKeys) {
+            if (_cache[key]) merged[key] = _cache[key]; else [merged removeObjectForKey:key];
+        }
+        BOOL ok = TWPrefsPathIsSafe(path) && [merged writeToFile:path atomically:YES] && [[NSDictionary dictionaryWithContentsOfFile:path] isEqual:merged];
+        if (ok) { _cache = merged; [_pendingKeys removeAllObjects]; }
+        flock(fd, LOCK_UN); close(fd);
+        if (ok) notify_post(TWPrefsChangedNotification);
+        else NSLog(@"[Twin] Preferences write failed; pending edits retained.");
     }
 }
 

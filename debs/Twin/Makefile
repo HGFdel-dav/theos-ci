@@ -14,6 +14,7 @@ Twin_PRIVATE_FRAMEWORKS =
 BUNDLE_NAME = TwinSettings
 TwinSettings_FILES = TwinSettings/TWRootListController.m TwinSettings/TWCraneAppsController.m Twin/TWPrefs.m
 TwinSettings_INSTALL_PATH = /Library/PreferenceBundles
+TwinSettings_RESOURCE_FILES = TwinSettings/Info.plist TwinSettings/Root.plist
 TwinSettings_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-unused-variable -ITwin
 TwinSettings_FRAMEWORKS = UIKit Foundation
 TwinSettings_PRIVATE_FRAMEWORKS = Preferences

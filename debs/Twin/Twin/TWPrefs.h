@@ -7,7 +7,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface TWPrefs : NSObject
 + (instancetype)shared;
-- (void)reload;   // re-read plist from disk (call before reads when SpringBoard was backgrounded)
+// Darwin notification + read-through refresh; retains locally pending keys.
+- (void)reload;
 - (id _Nullable)objectForKey:(NSString *)key;
 - (BOOL)boolForKey:(NSString *)key defaultValue:(BOOL)def;
 - (NSInteger)integerForKey:(NSString *)key defaultValue:(NSInteger)def;

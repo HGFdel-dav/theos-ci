@@ -11,10 +11,12 @@ NS_ASSUME_NONNULL_BEGIN
 + (BOOL)isCraneAvailable;
 // Container ID that is currently active for a given app ("" if none/unavailable).
 + (NSString *)activeContainerForBundleID:(NSString *)bundleID;
-// Ask Crane to switch the app to the given container, then (re)apply.
+// Completion is delivered exactly once on the main queue. YES means either
+// no enabled mapping exists, or Crane confirmed and read-back verified it.
+// NO must never fall through to launching the app. Failures show a UI notice.
++ (void)prepareLaunchForBundleID:(NSString *)bundleID completion:(void (^)(BOOL success))completion;
+// Legacy synchronous APIs fail closed: they never initiate an async switch.
 + (BOOL)setContainer:(NSString *)containerID forBundleID:(NSString *)bundleID;
-// Convenience: if the user configured a container for this bundleID under
-// the Crane apps list AND the crane switch is on, apply it. NO otherwise.
 + (BOOL)applyContainerIfConfiguredForBundleID:(NSString *)bundleID;
 @end
 
