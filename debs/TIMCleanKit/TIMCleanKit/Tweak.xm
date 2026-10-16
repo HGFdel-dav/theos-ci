@@ -106,7 +106,7 @@ static long long TKIntCall(id obj, NSString *prop) {
     if(![obj respondsToSelector:s])return LLONG_MIN;
     NSMethodSignature *sig=[obj methodSignatureForSelector:s];
     if(!sig||sig.numberOfArguments!=2)return LLONG_MIN;
-    const char *ret=sig.methodReturnType[0];
+    char ret=sig.methodReturnType[0];
     if(ret!='i'&&ret!='I'&&ret!='q'&&ret!='Q'&&ret!='l'&&ret!='L'&&ret!='s'&&ret!='S'&&ret!='c'&&ret!='C')return LLONG_MIN;
     NSInvocation *inv=[NSInvocation invocationWithMethodSignature:sig];
     [inv setSelector:s];[inv setTarget:obj];[inv invoke];
