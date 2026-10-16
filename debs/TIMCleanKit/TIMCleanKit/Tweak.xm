@@ -1,5 +1,5 @@
 //  TIMCleanKit.dylib — TIM (com.tencent.tim) 净化/增强插件
-//  目标：TIM 4.1.0 (NT 架构)，1.0.9：单击复读(ivar直取record)、红包金额简化(未知不抢)
+//  目标：TIM 4.1.0 (NT 架构)，1.0.10：红包只设起抢金额(拼手气照抢无上限)、单击复读
 //  功能：消息监听 / 前台自动红包领取 / 内存防撤回 / 双击复读 / 原生设置
 //  构建：Theos (Logos)，arm64 + arm64e
 //
@@ -26,8 +26,7 @@ static NSString *const kAntiRecall  = @"TIMCK.antiRecall";      // 防撤回
 static NSString *const kDeviceSpoof = @"TIMCK.deviceSpoof";     // 设备伪装
 static NSString *const kSpoofModel  = @"TIMCK.spoofModel";      // 伪装机型
 static NSString *const kRedPacket   = @"TIMCK.redPacket";       // 红包过滤总开关
-static NSString *const kRedMinAmount= @"TIMCK.redMinAmount";    // 最低金额，分
-static NSString *const kRedMaxAmount= @"TIMCK.redMaxAmount";    // 最高金额，分；0不设上限
+static NSString *const kRedMinAmount= @"TIMCK.redMinAmount";    // 起抢金额，分
 static NSString *const kRedSkipTest = @"TIMCK.redSkipTest";     // 沿用旧配置键：关键词过滤
 static NSString *const kRedKeywords = @"TIMCK.redKeywords";    // 可编辑的红包文案关键词
 static NSString *const kRedSkipCmd  = @"TIMCK.redSkipCommand";  // 口令红包不抢
@@ -71,7 +70,6 @@ static void registerDefaultsOnce(void) {
             kSpoofModel:  @"iPhone 15 Pro",
             kRedPacket:   @YES,
             kRedMinAmount:@(100),
-            kRedMaxAmount:@0,
             kRedSkipTest: @YES,
             kRedKeywords: @"测试\n外挂\n体验",
             kRedSkipCmd:  @NO,
@@ -220,10 +218,10 @@ static BOOL shouldSkipRedPacket(id record) {
         LOG(@"skip test red packet"); return YES;
     }
     NSInteger min=MAX(0,prefInt(kRedMinAmount,100));
-    NSInteger max=MAX(0,prefInt(kRedMaxAmount,0));
+    NSInteger min=MAX(0,prefInt(kRedMinAmount,100));
     long long amount=redPacketAmount(element);
-    if(amount<0) return YES; // 1.0.9: 领取前金额未知（随机红包）一律不抢，简化逻辑
-    if(amount<min || (max>0 && amount>max))return YES;
+    // 1.0.10: 只设起抢金额：已知金额低于起抢线不抢；拼手气（未知金额）红包照抢；无上限
+    if(amount>=0 && amount<min)return YES;
     return NO;
 }
 
@@ -651,7 +649,7 @@ static NSDictionary *TKRuntimeSnapshot(void) {
         unsigned long long hits=__atomic_load_n(&r->hits,__ATOMIC_RELAXED);
         [rows addObject:@{@"name":[NSString stringWithFormat:@"%s\n%s",r->className,sel_getName(r->selector)],@"state":hits?@"已实际调用":states[MIN(state,4)],@"hits":@(hits),@"lastHit":@""}];
     }
-    return @{@"engine":@{@"status":gTKEngineStatus?:@"未知",@"listenerRegistered":@(gTKListenerRegistered),@"received":@(gTKReceived),@"claimRequests":@(gTKAutoAttempts),@"claimCallbacks":@(gTKAutoCompleted),@"claimFailures":@(gTKAutoErrors),@"repeatRequests":@(gTKRepeats),@"repeatFailures":@(gTKRepeatFailures),@"messageCellBinds":@(gTKMessageBinds),@"gestureTaps":@(gTKGestureTaps),@"gestureNoRecord":@(gTKGestureNoRecord),@"recordReadFailures":@(gTKRecordReadFailures),@"recallBlocked":@(__atomic_load_n(&gTKRecallBlocked,__ATOMIC_RELAXED)),@"hardwareReads":@(__atomic_load_n(&gTKHardwareReads,__ATOMIC_RELAXED)),@"recallEvents":@(__atomic_load_n(&gTKRecallEvents,__ATOMIC_RELAXED)),@"recallRestores":@(__atomic_load_n(&gTKRecallRestores,__ATOMIC_RELAXED))},@"version":@"1.0.9",@"process":[NSString stringWithFormat:@"TIM %@ · PID %d · 注册检查 %u 轮\nUIDevice.model = %@",[NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"],getpid(),gRegistrationRounds,UIDevice.currentDevice.model],@"hookRows":rows,@"warnings":@[@"调用次数只能证明该入口被调用，不能证明防撤回或过滤效果。",@"自动领取：只处理前台两分钟内新收到的红包，不保证后台唤醒；完成回调不等于到账，请核对结果。",@"防撤回：本次进程缓存最近500条收到/显示的消息；启动前丢失内容无法恢复。"]};
+    return @{@"engine":@{@"status":gTKEngineStatus?:@"未知",@"listenerRegistered":@(gTKListenerRegistered),@"received":@(gTKReceived),@"claimRequests":@(gTKAutoAttempts),@"claimCallbacks":@(gTKAutoCompleted),@"claimFailures":@(gTKAutoErrors),@"repeatRequests":@(gTKRepeats),@"repeatFailures":@(gTKRepeatFailures),@"messageCellBinds":@(gTKMessageBinds),@"gestureTaps":@(gTKGestureTaps),@"gestureNoRecord":@(gTKGestureNoRecord),@"recordReadFailures":@(gTKRecordReadFailures),@"recallBlocked":@(__atomic_load_n(&gTKRecallBlocked,__ATOMIC_RELAXED)),@"hardwareReads":@(__atomic_load_n(&gTKHardwareReads,__ATOMIC_RELAXED)),@"recallEvents":@(__atomic_load_n(&gTKRecallEvents,__ATOMIC_RELAXED)),@"recallRestores":@(__atomic_load_n(&gTKRecallRestores,__ATOMIC_RELAXED))},@"version":@"1.0.10",@"process":[NSString stringWithFormat:@"TIM %@ · PID %d · 注册检查 %u 轮\nUIDevice.model = %@",[NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"],getpid(),gRegistrationRounds,UIDevice.currentDevice.model],@"hookRows":rows,@"warnings":@[@"调用次数只能证明该入口被调用，不能证明防撤回或过滤效果。",@"自动领取：只处理前台两分钟内新收到的红包，不保证后台唤醒；完成回调不等于到账，请核对结果。",@"防撤回：本次进程缓存最近500条收到/显示的消息；启动前丢失内容无法恢复。"]};
 }
 
 
