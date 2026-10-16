@@ -99,6 +99,12 @@ static id TK_performObject(id obj, NSString *prop) {
     return r;
 }
 
+static long long gTKLastRedType=LLONG_MIN;
+static long long gTKLastRedAmount=LLONG_MIN;
+static unsigned long long gTKSkipCommonType;
+static unsigned long long gTKSkipUnknownAmount;
+static NSString *gTKLastRedProbe;
+
 // 数值型 getter（redType/grabbedAmount 等返回 int/uint64；TK_performObject 只支持对象返回）
 static long long TKIntCall(id obj, NSString *prop) {
     if(!obj||!prop)return LLONG_MIN;
@@ -478,11 +484,6 @@ static NSMutableSet *gTKSeenRedPackets;
 static NSString *gTKCurrentClaimIdentity;
 static unsigned long long gTKReceived,gTKAutoAttempts,gTKAutoCompleted,gTKAutoErrors,gTKRepeats;
 static unsigned long long gTKGestureTaps,gTKGestureNoRecord;
-static long long gTKLastRedType=LLONG_MIN;
-static long long gTKLastRedAmount=LLONG_MIN;
-static unsigned long long gTKSkipCommonType;
-static unsigned long long gTKSkipUnknownAmount;
-static NSString *gTKLastRedProbe;
 static NSString *gTKEngineStatus=@"等待登录会话";
 static BOOL gTKAutoBusy;
 static unsigned long long gTKAutoGeneration;
