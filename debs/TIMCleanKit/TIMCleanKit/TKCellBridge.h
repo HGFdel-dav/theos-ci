@@ -1,5 +1,18 @@
 // Verified cell bind selector and strong reference fields from Swift field descriptors.
 static NSString *const TKCellClass=@"_TtC13NTAIOBaseCell17NTAIOBaseCellView";
+static BOOL TKIsUsableObjectPtr(id p) {
+    // 1.0.12: 布局回调读取任意外部对象前的指针合法性检查，防止对悬垂/非对象内存做 ARC retain（objc_retain 崩溃）。
+    if(!p)return NO;
+    uintptr_t v=(uintptr_t)p;
+    if(v % sizeof(void*))return NO;
+    size_t sz=malloc_size((__bridge const void*)p);
+    if(!sz)return NO;
+    Class isa=object_getClass(p);
+    if(!isa)return NO;
+    uintptr_t isav=(uintptr_t)isa;
+    if(isav % sizeof(void*) || isav<0x1000)return NO;
+    return YES;
+}
 static char kTKBoundModelKey,kTKRecallLabelKey;
 static NSHashTable *gTKVisibleCells;
 static unsigned long long gTKRecordReadFailures;
@@ -47,19 +60,6 @@ static id TKStrongKnownField(id object,const char *field) {
     // Only called for the two fields proved to be strong Objective-C references.
     id value=object_getIvar(object,ivar);
     return TKIsUsableObjectPtr(value)?value:nil;
-}
-static BOOL TKIsUsableObjectPtr(id p) {
-    // 1.0.12: 布局回调读取任意外部对象前的指针合法性检查，防止对悬垂/非对象内存做 ARC retain（objc_retain 崩溃）。
-    if(!p)return NO;
-    uintptr_t v=(uintptr_t)p;
-    if(v % sizeof(void*))return NO;
-    size_t sz=malloc_size((const void*)p);
-    if(!sz)return NO;
-    Class isa=object_getClass(p);
-    if(!isa)return NO;
-    uintptr_t isav=(uintptr_t)isa;
-    if(isav % sizeof(void*) || isav<0x1000)return NO;
-    return YES;
 }
 static id TKFirstIvarOfKind(id object,Class wanted) {
     // 1.0.9: 兜底——遍历实例可枚举 ivar，直取目标类型（Swift 存储属性对 ObjC runtime 的可见性因类而异）。
