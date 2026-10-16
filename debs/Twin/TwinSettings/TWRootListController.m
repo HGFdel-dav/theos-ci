@@ -2,6 +2,7 @@
 // Twin settings root panel, real PSListController subclass with cached
 // _specifiers and TWPrefs-backed values (jbroot plist, never real-var paths).
 #import "TWRootListController.h"
+#import <Preferences/PSSpecifier.h>
 #import "TWCraneAppsController.h"
 #import "TWPath.h"
 #import "TWPrefs.h"
@@ -47,18 +48,16 @@
         [arc setProperty:@"开启后，在屏幕边缘（避开顶部状态栏与底部 Home 条区域）按住并向屏幕内侧拖动，即可唤出弧形应用菜单；松手选中图标打开应用。关闭则完全沿用原来的唤醒方式。" forKey:@"footerText"];
         [specs addObject:arc];
 
-        PSSpecifier *side = [PSSpecifier preferenceSpecifierNamed:@"唤醒边"
+        PSSpecifier *side = [PSSpecifier preferenceSpecifierNamed:@"从右边缘唤醒"
                                                             target:self
                                                                set:NULL
                                                                get:NULL
                                                            detail:nil
-                                                              cell:PSMultiValueCell
+                                                              cell:PSSwitchCell
                                                               edit:nil];
         [side setProperty:TWKeyArcSide forKey:@"key"];
-        [side setProperty:@0 forKey:@"default"];
-        [side setProperty:@[@"左侧", @"右侧"] forKey:@"values"];
-        [side setProperty:@[@"0", @"1"] forKey:@"titles"];
-        [side setProperty:@"弧形手势从屏幕哪一侧触发；菜单图标会从该侧向屏幕内侧展开。" forKey:@"footerText"];
+        [side setProperty:@NO forKey:@"default"];
+        [side setProperty:@"关闭 = 从左侧边缘触发；开启 = 从右侧边缘触发。菜单图标会从该侧向屏幕内侧展开。" forKey:@"footerText"];
         [specs addObject:side];
 
         PSSpecifier *width = [PSSpecifier preferenceSpecifierNamed:@"触发区宽度"
