@@ -1,0 +1,9 @@
+Package: com.niubiprass.twin
+Name: Twin
+Version: 0.1.0
+Description: Arc gesture launcher with Crane container support for parallel multitasking.
+Author: Niubiprass
+Section: Tweaks
+Depends: mobilesubstrate
+Architecture: iphoneos-arm64
+Maintainer: Niubiprass <maintainer@localhost>
