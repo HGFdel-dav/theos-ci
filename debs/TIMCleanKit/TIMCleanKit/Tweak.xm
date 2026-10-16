@@ -1,5 +1,5 @@
 //  TIMCleanKit.dylib — TIM (com.tencent.tim) 净化/增强插件
-//  目标：TIM 4.1.0 (NT 架构)，1.0.10：红包只设起抢金额(拼手气照抢无上限)、单击复读
+//  目标：TIM 4.1.0 (NT 架构)，1.0.11：红包按总额判断起抢金额、单击复读
 //  功能：消息监听 / 前台自动红包领取 / 内存防撤回 / 双击复读 / 原生设置
 //  构建：Theos (Logos)，arm64 + arm64e
 //
@@ -121,24 +121,21 @@ static id msgRecordElement(NSArray *elements) {
 }
 
 // 从红包元素尽量取出金额(单位:分)。返回 -1 表示无法确定
-static long long redPacketAmount(id element) {
+static long long redPacketTotalAmount(id element) {
+    // 1.0.11: 按红包总额判断（分）。优先读模型总额字段，兜底解析公开金额文字。
     if (!element) return -1;
-    // grabbedAmount 是领取后的到账金额，不用于领取前判断。
-    // 仅可读取原生消息公开展示的金额文字；未知随机金额不可预测。
+    for (NSString *field in @[@"amount", @"totalAmount", @"totalMoney", @"money", @"amt", @"sumAmount"]) {
+        id v = TK_performObject(element, field);
+        if ([v isKindOfClass:[NSNumber class]] && [v longLongValue] > 0) return [v longLongValue];
+    }
     id aio = TK_performObject(element, @"sender");
     if (!aio) aio = TK_performObject(element, @"receiver");
     if (!aio) return -1;
     for (NSString *prop in @[@"title", @"content", @"notice", @"subTitle"]) {
-        SEL s = NSSelectorFromString(prop);
-        if ([aio respondsToSelector:s]) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-            id v = [aio performSelector:s];
-#pragma clang diagnostic pop
-            if ([v isKindOfClass:[NSString class]]) {
-                long long cents = amountFromString((NSString *)v);
-                if (cents >= 0) return cents;
-            }
+        id v = TK_performObject(aio, prop);
+        if ([v isKindOfClass:[NSString class]]) {
+            long long cents = amountFromString((NSString *)v);
+            if (cents >= 0) return cents;
         }
     }
     return -1;
@@ -219,8 +216,8 @@ static BOOL shouldSkipRedPacket(id record) {
     }
     NSInteger min=MAX(0,prefInt(kRedMinAmount,100));
     NSInteger min=MAX(0,prefInt(kRedMinAmount,100));
-    long long amount=redPacketAmount(element);
-    // 1.0.10: 只设起抢金额：已知金额低于起抢线不抢；拼手气（未知金额）红包照抢；无上限
+    long long amount=redPacketTotalAmount(element);
+    // 1.0.11: 只设起抢金额：红包总额低于起抢线不抢，达到即抢；无上限
     if(amount>=0 && amount<min)return YES;
     return NO;
 }
@@ -649,7 +646,7 @@ static NSDictionary *TKRuntimeSnapshot(void) {
         unsigned long long hits=__atomic_load_n(&r->hits,__ATOMIC_RELAXED);
         [rows addObject:@{@"name":[NSString stringWithFormat:@"%s\n%s",r->className,sel_getName(r->selector)],@"state":hits?@"已实际调用":states[MIN(state,4)],@"hits":@(hits),@"lastHit":@""}];
     }
-    return @{@"engine":@{@"status":gTKEngineStatus?:@"未知",@"listenerRegistered":@(gTKListenerRegistered),@"received":@(gTKReceived),@"claimRequests":@(gTKAutoAttempts),@"claimCallbacks":@(gTKAutoCompleted),@"claimFailures":@(gTKAutoErrors),@"repeatRequests":@(gTKRepeats),@"repeatFailures":@(gTKRepeatFailures),@"messageCellBinds":@(gTKMessageBinds),@"gestureTaps":@(gTKGestureTaps),@"gestureNoRecord":@(gTKGestureNoRecord),@"recordReadFailures":@(gTKRecordReadFailures),@"recallBlocked":@(__atomic_load_n(&gTKRecallBlocked,__ATOMIC_RELAXED)),@"hardwareReads":@(__atomic_load_n(&gTKHardwareReads,__ATOMIC_RELAXED)),@"recallEvents":@(__atomic_load_n(&gTKRecallEvents,__ATOMIC_RELAXED)),@"recallRestores":@(__atomic_load_n(&gTKRecallRestores,__ATOMIC_RELAXED))},@"version":@"1.0.10",@"process":[NSString stringWithFormat:@"TIM %@ · PID %d · 注册检查 %u 轮\nUIDevice.model = %@",[NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"],getpid(),gRegistrationRounds,UIDevice.currentDevice.model],@"hookRows":rows,@"warnings":@[@"调用次数只能证明该入口被调用，不能证明防撤回或过滤效果。",@"自动领取：只处理前台两分钟内新收到的红包，不保证后台唤醒；完成回调不等于到账，请核对结果。",@"防撤回：本次进程缓存最近500条收到/显示的消息；启动前丢失内容无法恢复。"]};
+    return @{@"engine":@{@"status":gTKEngineStatus?:@"未知",@"listenerRegistered":@(gTKListenerRegistered),@"received":@(gTKReceived),@"claimRequests":@(gTKAutoAttempts),@"claimCallbacks":@(gTKAutoCompleted),@"claimFailures":@(gTKAutoErrors),@"repeatRequests":@(gTKRepeats),@"repeatFailures":@(gTKRepeatFailures),@"messageCellBinds":@(gTKMessageBinds),@"gestureTaps":@(gTKGestureTaps),@"gestureNoRecord":@(gTKGestureNoRecord),@"recordReadFailures":@(gTKRecordReadFailures),@"recallBlocked":@(__atomic_load_n(&gTKRecallBlocked,__ATOMIC_RELAXED)),@"hardwareReads":@(__atomic_load_n(&gTKHardwareReads,__ATOMIC_RELAXED)),@"recallEvents":@(__atomic_load_n(&gTKRecallEvents,__ATOMIC_RELAXED)),@"recallRestores":@(__atomic_load_n(&gTKRecallRestores,__ATOMIC_RELAXED))},@"version":@"1.0.11",@"process":[NSString stringWithFormat:@"TIM %@ · PID %d · 注册检查 %u 轮\nUIDevice.model = %@",[NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"],getpid(),gRegistrationRounds,UIDevice.currentDevice.model],@"hookRows":rows,@"warnings":@[@"调用次数只能证明该入口被调用，不能证明防撤回或过滤效果。",@"自动领取：只处理前台两分钟内新收到的红包，不保证后台唤醒；完成回调不等于到账，请核对结果。",@"防撤回：本次进程缓存最近500条收到/显示的消息；启动前丢失内容无法恢复。"]};
 }
 
 
