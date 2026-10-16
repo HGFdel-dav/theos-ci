@@ -35,6 +35,7 @@ static id TKSwiftRecordField(id vm) {
     if(offset<sizeof(void *) || offset%sizeof(void *) || !allocation || offset+sizeof(id)>allocation)return nil;
     id __unsafe_unretained record=nil;
     memcpy(&record,(const uint8_t *)(__bridge const void *)vm+offset,sizeof(record));
+    if(!TKIsUsableObjectPtr(record))return nil;
     return [record isKindOfClass:NSClassFromString(@"OCMsgRecord")]?record:nil;
 }
 static id TKStrongKnownField(id object,const char *field) {
@@ -44,17 +45,35 @@ static id TKStrongKnownField(id object,const char *field) {
     ptrdiff_t offset=ivar_getOffset(ivar);
     if(offset<0 || (size_t)offset+sizeof(id)>class_getInstanceSize(object_getClass(object)))return nil;
     // Only called for the two fields proved to be strong Objective-C references.
-    return object_getIvar(object,ivar);
+    id value=object_getIvar(object,ivar);
+    return TKIsUsableObjectPtr(value)?value:nil;
+}
+static BOOL TKIsUsableObjectPtr(id p) {
+    // 1.0.12: 布局回调读取任意外部对象前的指针合法性检查，防止对悬垂/非对象内存做 ARC retain（objc_retain 崩溃）。
+    if(!p)return NO;
+    uintptr_t v=(uintptr_t)p;
+    if(v % sizeof(void*))return NO;
+    size_t sz=malloc_size((const void*)p);
+    if(!sz)return NO;
+    Class isa=object_getClass(p);
+    if(!isa)return NO;
+    uintptr_t isav=(uintptr_t)isa;
+    if(isav % sizeof(void*) || isav<0x1000)return NO;
+    return YES;
 }
 static id TKFirstIvarOfKind(id object,Class wanted) {
     // 1.0.9: 兜底——遍历实例可枚举 ivar，直取目标类型（Swift 存储属性对 ObjC runtime 的可见性因类而异）。
+    // 1.0.12: 只读类型编码以 '@' 开头的对象 ivar，并校验指针合法；跳过值类型/悬垂，修复布局中 objc_retain 崩溃。
     if(!object||!wanted)return nil;
     Class cls=object_getClass(object);
     while(cls) {
         unsigned count=0;Ivar *ivars=class_copyIvarList(cls,&count);
         for(unsigned i=0;i<count;i++) {
+            const char *enc=ivar_getTypeEncoding(ivars[i]);
+            if(!enc||enc[0]!='@')continue;               // 只读对象引用 ivar
             id value=object_getIvar(object,ivars[i]);
-            if(value&&[value isKindOfClass:wanted]){free(ivars);return value;}
+            if(!TKIsUsableObjectPtr(value))continue;     // 悬垂/垃圾指针直接跳过
+            if([value isKindOfClass:wanted]){free(ivars);return value;}
         }
         if(ivars)free(ivars);
         cls=class_getSuperclass(cls);
