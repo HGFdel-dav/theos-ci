@@ -1,5 +1,5 @@
 //  TIMCleanKit.dylib — TIM (com.tencent.tim) 净化/增强插件
-//  目标：TIM 4.1.0 (NT 架构)，1.0.14：redType==2 普通红包不抢（真机标定）、拼手气照抢
+//  目标：TIM 4.1.0 (NT 架构)，1.0.15：复读改气泡文本匹配缓存（Swift cell 绑定失败的替代路径）
 //  功能：消息监听 / 前台自动红包领取 / 内存防撤回 / 双击复读 / 原生设置
 //  构建：Theos (Logos)，arm64 + arm64e
 //
@@ -697,7 +697,7 @@ static NSDictionary *TKRuntimeSnapshot(void) {
         unsigned long long hits=__atomic_load_n(&r->hits,__ATOMIC_RELAXED);
         [rows addObject:@{@"name":[NSString stringWithFormat:@"%s\n%s",r->className,sel_getName(r->selector)],@"state":hits?@"已实际调用":states[MIN(state,4)],@"hits":@(hits),@"lastHit":@""}];
     }
-    return @{@"engine":@{@"status":gTKEngineStatus?:@"未知",@"listenerRegistered":@(gTKListenerRegistered),@"received":@(gTKReceived),@"claimRequests":@(gTKAutoAttempts),@"claimCallbacks":@(gTKAutoCompleted),@"claimFailures":@(gTKAutoErrors),@"repeatRequests":@(gTKRepeats),@"repeatFailures":@(gTKRepeatFailures),@"messageCellBinds":@(gTKMessageBinds),@"gestureTaps":@(gTKGestureTaps),@"gestureNoRecord":@(gTKGestureNoRecord),@"recordReadFailures":@(gTKRecordReadFailures),@"recallBlocked":@(__atomic_load_n(&gTKRecallBlocked,__ATOMIC_RELAXED)),@"hardwareReads":@(__atomic_load_n(&gTKHardwareReads,__ATOMIC_RELAXED)),@"recallEvents":@(__atomic_load_n(&gTKRecallEvents,__ATOMIC_RELAXED)),@"recallRestores":@(__atomic_load_n(&gTKRecallRestores,__ATOMIC_RELAXED)),@"lastRedType":@(gTKLastRedType),@"lastRedAmount":@(gTKLastRedAmount),@"skipCommonType":@(gTKSkipCommonType),@"skipUnknownAmount":@(gTKSkipUnknownAmount),@"redProbe":(gTKLastRedProbe?:@"")},@"version":@"1.0.14",@"process":[NSString stringWithFormat:@"TIM %@ · PID %d · 注册检查 %u 轮\nUIDevice.model = %@",[NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"],getpid(),gRegistrationRounds,UIDevice.currentDevice.model],@"hookRows":rows,@"warnings":@[@"调用次数只能证明该入口被调用，不能证明防撤回或过滤效果。",@"自动领取：只处理前台两分钟内新收到的红包，不保证后台唤醒；完成回调不等于到账，请核对结果。",@"防撤回：本次进程缓存最近500条收到/显示的消息；启动前丢失内容无法恢复。"]};
+    return @{@"engine":@{@"status":gTKEngineStatus?:@"未知",@"listenerRegistered":@(gTKListenerRegistered),@"received":@(gTKReceived),@"claimRequests":@(gTKAutoAttempts),@"claimCallbacks":@(gTKAutoCompleted),@"claimFailures":@(gTKAutoErrors),@"repeatRequests":@(gTKRepeats),@"repeatFailures":@(gTKRepeatFailures),@"messageCellBinds":@(gTKMessageBinds),@"gestureTaps":@(gTKGestureTaps),@"gestureNoRecord":@(gTKGestureNoRecord),@"recordReadFailures":@(gTKRecordReadFailures),@"recallBlocked":@(__atomic_load_n(&gTKRecallBlocked,__ATOMIC_RELAXED)),@"hardwareReads":@(__atomic_load_n(&gTKHardwareReads,__ATOMIC_RELAXED)),@"recallEvents":@(__atomic_load_n(&gTKRecallEvents,__ATOMIC_RELAXED)),@"recallRestores":@(__atomic_load_n(&gTKRecallRestores,__ATOMIC_RELAXED)),@"lastRedType":@(gTKLastRedType),@"lastRedAmount":@(gTKLastRedAmount),@"skipCommonType":@(gTKSkipCommonType),@"skipUnknownAmount":@(gTKSkipUnknownAmount),@"redProbe":(gTKLastRedProbe?:@"")},@"version":@"1.0.15",@"process":[NSString stringWithFormat:@"TIM %@ · PID %d · 注册检查 %u 轮\nUIDevice.model = %@",[NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"],getpid(),gRegistrationRounds,UIDevice.currentDevice.model],@"hookRows":rows,@"warnings":@[@"调用次数只能证明该入口被调用，不能证明防撤回或过滤效果。",@"自动领取：只处理前台两分钟内新收到的红包，不保证后台唤醒；完成回调不等于到账，请核对结果。",@"防撤回：本次进程缓存最近500条收到/显示的消息；启动前丢失内容无法恢复。"]};
 }
 
 
@@ -730,7 +730,9 @@ static char kGestureAddedKey;
     if(g.state!=UIGestureRecognizerStateRecognized || !prefBool(kEnabled,YES) || !prefBool(kRepeater,YES) || [self isSettingsWindow:(UIWindow *)g.view])return;
     __atomic_fetch_add(&gTKGestureTaps,1,__ATOMIC_RELAXED);
     UIView *hit=[g.view hitTest:[g locationInView:g.view] withEvent:nil];UIView *cell=[self messageCellAtView:hit];
-    id record=TKRecordForCell(cell);if(!record){__atomic_fetch_add(&gTKGestureNoRecord,1,__ATOMIC_RELAXED);return;}
+    id record=TKRecordForCell(cell);
+    if(!record)record=TKRecordMatchingTextInCache(cell);   // 1.0.15: Swift cell 绑定失败时按气泡文本匹配缓存消息
+    if(!record){__atomic_fetch_add(&gTKGestureNoRecord,1,__ATOMIC_RELAXED);return;}
     static NSTimeInterval previous;NSTimeInterval now=NSDate.date.timeIntervalSince1970;
     if(now-previous<.45)return;previous=now;
     if(!TKNativeRepeat(record)) {

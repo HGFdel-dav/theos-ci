@@ -202,3 +202,63 @@ static void TKRefreshRecallLabels(void) {
     if(!NSThread.isMainThread){dispatch_async(dispatch_get_main_queue(),^{TKRefreshRecallLabels();});return;}
     for(UIView *cell in gTKVisibleCells.allObjects)TKUpdateRecallLabel(cell);
 }
+
+// ============ 1.0.15: 双击复读 —— 气泡文本 ↔ 消息缓存匹配（Swift cell 拿不到 record 的替代路径） ============
+static NSString *TKCellBubbleText(UIView *cell) {
+    // 找类名含 "Bubble" 的最大可见容器，取其子树中最醒目的富文本/标签文字。
+    if(!cell)return nil;
+    NSMutableArray *queue=[NSMutableArray arrayWithArray:cell.subviews];
+    UIView *bubble=nil;double bestArea=0;
+    for(NSUInteger i=0;i<queue.count&&i<300;i++) {
+        UIView *view=queue[i];
+        if(!view.hidden&&view.alpha>.01&&[NSStringFromClass(view.class) containsString:@"Bubble"]&&view.bounds.size.width>=60&&view.bounds.size.height>=16) {
+            double area=view.bounds.size.width*view.bounds.size.height;
+            if(area>bestArea){bestArea=area;bubble=view;}
+        }
+        if(view.subviews.count)[queue addObjectsFromArray:view.subviews];
+    }
+    if(!bubble)return nil;
+    NSMutableArray *scan=[NSMutableArray arrayWithObject:bubble];
+    NSString *best=nil;NSUInteger bestLen=0;
+    for(NSUInteger i=0;i<scan.count&&i<300;i++) {
+        UIView *view=scan[i];
+        if([view isKindOfClass:UITextView.class]) {
+            NSString *t=((UITextView*)view).text;
+            if(t.length>=3&&t.length>bestLen){bestLen=t.length;best=t;}
+        } else if([view isKindOfClass:UILabel.class]) {
+            NSString *t=((UILabel*)view).text;
+            if(t.length>=3&&t.length>bestLen){bestLen=t.length;best=t;}
+        }
+        if(view.subviews.count)[scan addObjectsFromArray:view.subviews];
+    }
+    return best;
+}
+static NSString *TKRecordTextOfElements(NSArray *elements) {
+    // 与 TKNativeRepeat 一致：textElement.content 优先，text 兜底。
+    if(![elements isKindOfClass:NSArray.class])return nil;
+    NSMutableString *all=[NSMutableString new];
+    for(id e in elements) {
+        if(!e)continue;
+        id te=TK_performObject(e,@"textElement");
+        id value=te?TK_performObject(te,@"content"):nil;
+        if(![value isKindOfClass:NSString.class])value=te?TK_performObject(te,@"text"):nil;
+        if(![value isKindOfClass:NSString.class])value=TK_performObject(e,@"text");
+        if([value isKindOfClass:NSString.class])[all appendString:value];
+    }
+    return all.length?all:nil;
+}
+static id TKRecordMatchingTextInCache(UIView *cell) {
+    // 在最近 500 条缓存消息里找文本与气泡完全一致的最后一条（最近者优先）。
+    NSString *want=TKCellBubbleText(cell);
+    if(!want.length)return nil;
+    [gTKCacheLock lock];
+    id found=nil;
+    for(id identity in gTKRecentMessages.reverseObjectEnumerator) {
+        NSDictionary *saved=gTKMessageCache[identity];
+        id record=saved?[saved objectForKey:@"record"]:nil;
+        NSString *have=TKRecordTextOfElements(saved?[saved objectForKey:@"elements"]:nil);
+        if(have.length&&[have isEqualToString:want]){found=record;break;}
+    }
+    [gTKCacheLock unlock];
+    return found;
+}
