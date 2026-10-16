@@ -67,37 +67,51 @@ static void TKUpdateRecallLabel(UIView *cell) {
     }
     label.hidden=NO;
     CGFloat width=70,height=18;
-    CGRect bubble=CGRectZero;
-    // 1) 气泡识别：类名含 "Bubble" 且尺寸合理的可见视图（TIM NT 架构气泡类名不定，弃用单一后缀匹配）。
+    CGFloat cellW=cell.bounds.size.width,cellH=cell.bounds.size.height;
+    if(cellW<120||cellH<30)return;
+    // 1) 气泡识别：类名含 "Bubble" 的可见视图，取其中面积最大且非整行者（最外层气泡容器）。
+    CGRect bubble=CGRectZero;double bestArea=0;
     NSMutableArray *queue=[NSMutableArray arrayWithArray:cell.subviews];
     for(NSUInteger i=0;i<queue.count&&i<150;i++) {
-        UIView *view=queue[i];NSString *name=NSStringFromClass(view.class);
-        if(!view.hidden&&view.alpha>.01&&[name containsString:@"Bubble"]&&view.bounds.size.width>=40&&view.bounds.size.height>=12) {
-            bubble=[view convertRect:view.bounds toView:cell];break;
+        UIView *view=queue[i];
+        if(view!=label&&!view.hidden&&view.alpha>.01&&[NSStringFromClass(view.class) containsString:@"Bubble"]&&view.bounds.size.width>=60&&view.bounds.size.height>=20) {
+            CGRect r=[view convertRect:view.bounds toView:cell];
+            if(r.size.width<=cellW*.88&&r.size.height<=cellH*.95) {
+                double area=(double)r.size.width*r.size.height;
+                if(area>bestArea){bestArea=area;bubble=r;}
+            }
         }
         [queue addObjectsFromArray:view.subviews];
     }
-    // 2) 几何兜底：取 cell 内面积最大的可见内容视图作为气泡锚点。
+    // 2) 几何兜底：面积最大的可见内容视图（排除小控件与整行容器，避免把头像/整行当气泡）。
     if(CGRectIsEmpty(bubble)) {
-        CGFloat bestArea=0;NSMutableArray *q2=[NSMutableArray arrayWithArray:cell.subviews];
+        NSMutableArray *q2=[NSMutableArray arrayWithArray:cell.subviews];
         for(NSUInteger i=0;i<q2.count&&i<150;i++) {
             UIView *view=q2[i];
-            if(view!=label&&!view.hidden&&view.alpha>.01&&view.bounds.size.width>=cell.bounds.size.width*.35&&view.bounds.size.height>=20) {
-                CGRect r=[view convertRect:view.bounds toView:cell];CGFloat area=r.size.width*r.size.height;
+            if(view!=label&&!view.hidden&&view.alpha>.01&&view.bounds.size.width>=cellW*.3&&view.bounds.size.width<=cellW*.88&&view.bounds.size.height>=24&&view.bounds.size.height<=cellH*.92) {
+                CGRect r=[view convertRect:view.bounds toView:cell];double area=(double)r.size.width*r.size.height;
                 if(area>bestArea){bestArea=area;bubble=r;}
             }
             [q2 addObjectsFromArray:view.subviews];
         }
     }
-    CGFloat x=6,y=MAX(0,(cell.bounds.size.height-height)/2);
-    if(!CGRectIsEmpty(bubble)) {
-        // 3) 锚定气泡尾部：优先气泡右侧（对方消息），右侧放不下则放左侧（自己消息）；垂直居中对齐。
-        CGFloat rightSpace=MAX(0,cell.bounds.size.width-CGRectGetMaxX(bubble)-6);
-        if(rightSpace>=width+4) x=MIN(CGRectGetMaxX(bubble)+6,MAX(6,cell.bounds.size.width-width-6));
-        else x=MAX(6,CGRectGetMinX(bubble)-width-6);
+    if(CGRectIsEmpty(bubble)) {label.hidden=YES;return;} // 识别失败宁可不放，避免错位重叠。
+    // 3) 三档锚定：右侧尾部 → 左侧尾部（自己消息）→ 气泡正上方；垂直优先居中，始终钳制在 cell 内。
+    CGFloat x=6,y=MAX(0,(cellH-height)/2);
+    CGFloat rightSpace=MAX(0,cellW-CGRectGetMaxX(bubble)-6);
+    CGFloat leftSpace=MAX(0,CGRectGetMinX(bubble)-6);
+    if(rightSpace>=width+6) {
+        x=MIN(CGRectGetMaxX(bubble)+6,MAX(6,cellW-width-6));
         y=CGRectGetMinY(bubble)+(CGRectGetHeight(bubble)-height)/2;
-        y=MAX(0,MIN(y,MAX(0,cell.bounds.size.height-height)));
+    } else if(leftSpace>=width+6) {
+        x=MAX(6,CGRectGetMinX(bubble)-width-6);
+        y=CGRectGetMinY(bubble)+(CGRectGetHeight(bubble)-height)/2;
+    } else {
+        x=MAX(CGRectGetMinX(bubble),MIN(CGRectGetMaxX(bubble)-width,CGRectGetMidX(bubble)-width/2));
+        y=MAX(0,CGRectGetMinY(bubble)-height-3);
     }
+    x=MAX(0,MIN(x,MAX(0,cellW-width)));
+    y=MAX(0,MIN(y,MAX(0,cellH-height)));
     label.frame=CGRectMake(x,y,width,height);[cell bringSubviewToFront:label];
 }
 static BOOL TKCellBind(id self,SEL cmd,id vm) {

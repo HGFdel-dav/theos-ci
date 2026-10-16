@@ -40,10 +40,16 @@
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];self.shade.frame=self.view.bounds;
     CGRect safe=UIEdgeInsetsInsetRect(self.view.bounds,self.view.safeAreaInsets);
-    if(self.keyboardTop>CGRectGetMinY(safe))safe.size.height=MIN(safe.size.height,self.keyboardTop-CGRectGetMinY(safe));
-    CGFloat w=MAX(0,MIN(460,safe.size.width-28));
-    CGFloat h=MAX(0,MIN(760,safe.size.height*(self.keyboardTop>0?.96:.86)));
-    self.card.frame=CGRectMake(CGRectGetMidX(safe)-w/2,CGRectGetMidY(safe)-h/2,w,h);
+    // 1.0.7: 卡片尺寸固定（只受屏幕约束），键盘只负责上移卡片，不再缩放，避免“变小又变大”。
+    CGFloat w=MAX(0,MIN(430,safe.size.width-24));
+    CGFloat h=MAX(280,MIN(640,safe.size.height-130));
+    CGFloat cx=CGRectGetMidX(safe),cy=CGRectGetMidY(safe);
+    CGRect card=CGRectMake(cx-w/2,cy-h/2,w,h);
+    if(self.keyboardTop>CGRectGetMinY(card)+40) {
+        CGFloat top=MAX(CGRectGetMinY(safe),self.keyboardTop-h-10);
+        if(top<CGRectGetMinY(card))card=CGRectMake(cx-w/2,top,w,h);
+    }
+    self.card.frame=card;
     self.glass.frame=self.card.bounds;self.navigation.view.frame=self.glass.contentView.bounds;
     self.card.layer.shadowPath=[UIBezierPath bezierPathWithRoundedRect:self.card.bounds cornerRadius:28].CGPath;
 }

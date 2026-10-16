@@ -71,6 +71,103 @@ static NSString *TKUIRedKeywordText(void) {
     if(self.didSave)self.didSave();[self.navigationController popViewControllerAnimated:YES];
 }
 @end
+// ================= 不透明输入弹窗（1.0.7，替代系统半透明 UIAlertController，避免底层文字透叠） =================
+@interface TKInputPanel : UIView <UITextFieldDelegate>
+@end
+@implementation TKInputPanel {
+    UIView *_card;
+    UILabel *_titleLabel,*_messageLabel,*_errorLabel;
+    NSMutableArray<UITextField *> *_fields;
+    UIButton *_cancelButton,*_saveButton;
+    CGFloat _keyboardTop;
+    void (^_onSave)(NSArray<NSString *> *);
+    BOOL (^_onValidate)(NSArray<NSString *> *, NSString **);
+    void (^_onCancel)(void);
+}
++ (instancetype)showIn:(UIView *)parent title:(NSString *)title message:(NSString *)message
+              fieldLabels:(NSArray<NSString *> *)labels placeholders:(NSArray<NSString *> *)placeholders
+                 initial:(NSArray<NSString *> *)initial
+               onValidate:(BOOL (^)(NSArray<NSString *> *, NSString **))onValidate
+                  onSave:(void (^)(NSArray<NSString *> *))onSave onCancel:(void (^)(void))onCancel {
+    TKInputPanel *panel=[[self alloc] initWithFrame:parent.bounds];
+    panel->_onSave=onSave;panel->_onValidate=onValidate;panel->_onCancel=onCancel;
+    panel.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
+    [parent addSubview:panel];
+    [panel buildTitle:title message:message labels:labels placeholders:placeholders initial:initial];
+    [NSNotificationCenter.defaultCenter addObserver:panel selector:@selector(keyboardNote:) name:UIKeyboardWillChangeFrameNotification object:nil];
+    return panel;
+}
+- (void)dealloc {[NSNotificationCenter.defaultCenter removeObserver:self];}
+- (void)keyboardNote:(NSNotification *)n {
+    CGRect frame=[n.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];frame=[self convertRect:frame fromView:nil];
+    _keyboardTop=CGRectIntersectsRect(frame,self.bounds)?CGRectGetMinY(frame):0;
+    [UIView animateWithDuration:.24 animations:^{[self setNeedsLayout];[self layoutIfNeeded];}];
+}
+- (void)buildTitle:(NSString *)title message:(NSString *)message labels:(NSArray<NSString *> *)labels
+       placeholders:(NSArray<NSString *> *)placeholders initial:(NSArray<NSString *> *)initial {
+    self.backgroundColor=[UIColor.blackColor colorWithAlphaComponent:.4];
+    _card=[UIView new];_card.backgroundColor=UIColor.systemBackgroundColor;                   // 不透明底，杜绝透叠
+    _card.layer.cornerRadius=16;_card.layer.cornerCurve=kCACornerCurveContinuous;
+    _card.layer.shadowColor=UIColor.blackColor.CGColor;_card.layer.shadowOpacity=.25;_card.layer.shadowRadius=20;_card.layer.shadowOffset=CGSizeMake(0,10);
+    [self addSubview:_card];
+    _titleLabel=[UILabel new];_titleLabel.text=title;_titleLabel.font=[UIFont systemFontOfSize:17 weight:UIFontWeightSemibold];_titleLabel.textColor=UIColor.labelColor;_titleLabel.textAlignment=NSTextAlignmentCenter;[_card addSubview:_titleLabel];
+    _messageLabel=[UILabel new];_messageLabel.text=message;_messageLabel.font=[UIFont systemFontOfSize:13];_messageLabel.textColor=UIColor.secondaryLabelColor;_messageLabel.numberOfLines=0;_messageLabel.textAlignment=NSTextAlignmentCenter;[_card addSubview:_messageLabel];
+    _errorLabel=[UILabel new];_errorLabel.font=[UIFont systemFontOfSize:12];_errorLabel.textColor=UIColor.systemRedColor;_errorLabel.numberOfLines=0;_errorLabel.textAlignment=NSTextAlignmentCenter;[_card addSubview:_errorLabel];
+    _fields=[NSMutableArray new];
+    for(NSUInteger i=0;i<labels.count;i++){
+        UITextField *f=[UITextField new];f.placeholder=placeholders[i];f.text=initial.count>i?initial[i]:@"";
+        f.borderStyle=UITextBorderStyleRoundedRect;f.keyboardType=UIKeyboardTypeDecimalPad;f.clearButtonMode=UITextFieldViewModeWhileEditing;
+        f.font=[UIFont systemFontOfSize:16];f.delegate=self;f.accessibilityLabel=labels[i];
+        [_card addSubview:f];[_fields addObject:f];
+    }
+    _cancelButton=[UIButton buttonWithType:UIButtonTypeSystem];[_cancelButton setTitle:@"取消" forState:UIControlStateNormal];[_cancelButton setTitleColor:UIColor.secondaryLabelColor forState:UIControlStateNormal];
+    _cancelButton.titleLabel.font=[UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
+    [_cancelButton addTarget:self action:@selector(cancelTap) forControlEvents:UIControlEventTouchUpInside];[_card addSubview:_cancelButton];
+    _saveButton=[UIButton buttonWithType:UIButtonTypeSystem];[_saveButton setTitle:@"保存" forState:UIControlStateNormal];
+    _saveButton.titleLabel.font=[UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
+    [_saveButton addTarget:self action:@selector(saveTap) forControlEvents:UIControlEventTouchUpInside];[_card addSubview:_saveButton];
+    [[self firstField] becomeFirstResponder];
+}
+- (UITextField *)firstField {return _fields.firstObject;}
+- (void)saveTap {
+    NSString *error=nil;
+    NSMutableArray *values=[NSMutableArray new];
+    for(UITextField *f in _fields)[values addObject:f.text?:@""];
+    if(_onValidate&&!_onValidate(values,&error)) {_errorLabel.text=error;return;}
+    if(error.length){_errorLabel.text=error;return;}
+    if(_onSave)_onSave(values);
+    [self dismissPanel];
+}
+- (void)cancelTap {if(_onCancel)_onCancel();[self dismissPanel];}
+- (void)dismissPanel {[self endEditing:YES];[self removeFromSuperview];}
+- (BOOL)textField:(UITextField *)textField shouldChangeCharactersInRange:(NSRange)range replacementString:(NSString *)string {
+    _errorLabel.text=nil;return YES;
+}
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    CGFloat cardW=MIN(340,self.bounds.size.width-36);
+    CGFloat top=16,cardH=0;
+    CGFloat contentW=cardW-36;
+    _titleLabel.frame=CGRectMake(18,top,cardW-36,24);cardH=top+24+8;
+    _messageLabel.frame=CGRectMake(18,cardH,cardW-36,0);
+    [_messageLabel sizeToFit];CGRect mf=_messageLabel.frame;mf.origin.y=cardH;mf.size.width=contentW;_messageLabel.frame=mf;
+    cardH=CGRectGetMaxY(_messageLabel.frame)+14;
+    for(UITextField *f in _fields){f.frame=CGRectMake(18,cardH,cardW-36,38);cardH+=38+10;}
+    cardH+=4;
+    _errorLabel.frame=CGRectMake(18,cardH,cardW-36,0);[_errorLabel sizeToFit];CGRect ef=_errorLabel.frame;ef.size.width=contentW;_errorLabel.frame=ef;
+    if(_errorLabel.text.length)cardH=CGRectGetMaxY(_errorLabel.frame)+8;
+    cardH+=34;
+    UIView *line=[UIView new];line.backgroundColor=UIColor.separatorColor;line.frame=CGRectMake(0,cardH,cardW,0.5);[_card addSubview:line];
+    UIView *divider=[UIView new];divider.backgroundColor=UIColor.separatorColor;divider.frame=CGRectMake(cardW/2,cardH+1,0.5,48);[_card addSubview:divider];
+    _cancelButton.frame=CGRectMake(0,cardH+1,cardW/2,48);_saveButton.frame=CGRectMake(cardW/2,cardH+1,cardW/2,48);
+    cardH+=50;
+    CGFloat cardY=(self.bounds.size.height-cardH)/2;
+    if(_keyboardTop>0)cardY=MAX(40,_keyboardTop-cardH-12);
+    _card.frame=CGRectMake((self.bounds.size.width-cardW)/2,cardY,cardW,cardH);
+}
+@end
+// ================= 输入弹窗结束 =================
+
 @interface TKSettingsController : UITableViewController
 @property(nonatomic,strong) NSArray *sections;
 @property(nonatomic,weak) UIAlertController *amountAlert;
@@ -104,7 +201,7 @@ static NSString *TKUIRedKeywordText(void) {
     self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(closePage)];
     UIView *header=[[UIView alloc] initWithFrame:CGRectMake(0,0,320,118)];
     UILabel *name=[UILabel new];name.text=@"TIM 增强";name.font=[UIFont systemFontOfSize:30 weight:UIFontWeightBold];name.textColor=UIColor.labelColor;
-    UILabel *subtitle=[UILabel new];subtitle.text=@"1.0.6 · 轻触开关 · 双指长按唤醒";subtitle.font=[UIFont systemFontOfSize:14];subtitle.adjustsFontForContentSizeCategory=YES;subtitle.textColor=UIColor.secondaryLabelColor;
+    UILabel *subtitle=[UILabel new];subtitle.text=@"1.0.7 · 轻触开关 · 双指长按唤醒";subtitle.font=[UIFont systemFontOfSize:14];subtitle.adjustsFontForContentSizeCategory=YES;subtitle.textColor=UIColor.secondaryLabelColor;
     UIStackView *stack=[[UIStackView alloc] initWithArrangedSubviews:@[name,subtitle]];stack.axis=UILayoutConstraintAxisVertical;stack.spacing=7;stack.translatesAutoresizingMaskIntoConstraints=NO;
     [header addSubview:stack];[NSLayoutConstraint activateConstraints:@[[stack.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:24],[stack.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-24],[stack.centerYAnchor constraintEqualToAnchor:header.centerYAnchor]]];
     self.tableView.tableHeaderView=header;
@@ -116,7 +213,7 @@ static NSString *TKUIRedKeywordText(void) {
 - (NSInteger)tableView:(UITableView *)t numberOfRowsInSection:(NSInteger)section{return [self.sections[section] count];}
 - (NSString *)tableView:(UITableView *)t titleForHeaderInSection:(NSInteger)s{return @[@"总开关",@"消息与设备",@"红包过滤",@"诊断"][s];}
 - (NSString *)tableView:(UITableView *)t titleForFooterInSection:(NSInteger)s {
-    return @[@"TIM 全区域双指长按 0.8 秒唤醒设置，总开关关闭仍可唤醒。首次注入需完全退出TIM再打开；普通开关在下一次操作时生效。",@"消息效果与实际发送结果请逐项真机核对；注册或计数不能证明效果。机型伪装仅作用于 TIM 进程读取，不改变硬件或服务器记录。",@"自动红包已由用户实测 1.0.4 自动领取有效。1.0.6 修复设置面板背景透明度与拦截撤回标签定位；金额范围、未知金额策略与关键词过滤等新修改仍待实测；不会自动补领历史红包。随机红包领取前通常无法知道实际到账金额，关闭未知金额放行后多数随机红包将不抢。",@"1.0.6 · 本次新修改仍待真机实测。诊断摘要不包含消息内容，完成回调不等于到账。"][s];
+    return @[@"TIM 全区域双指长按 0.8 秒唤醒设置，总开关关闭仍可唤醒。首次注入需完全退出TIM再打开；普通开关在下一次操作时生效。",@"消息效果与实际发送结果请逐项真机核对；注册或计数不能证明效果。机型伪装仅作用于 TIM 进程读取，不改变硬件或服务器记录。",@"自动红包已由用户实测 1.0.4 自动领取有效。1.0.7 修复标签定位、弹窗尺寸与不透明输入面板；金额范围、未知金额策略与关键词过滤等新修改仍待实测；不会自动补领历史红包。随机红包领取前通常无法知道实际到账金额，关闭未知金额放行后多数随机红包将不抢。",@"1.0.6 · 本次新修改仍待真机实测。诊断摘要不包含消息内容，完成回调不等于到账。"][s];
 }
 - (UITableViewCell *)tableView:(UITableView *)t cellForRowAtIndexPath:(NSIndexPath *)ip {
     NSDictionary *row=self.sections[ip.section][ip.row];
@@ -170,41 +267,48 @@ static NSString *TKUIRedKeywordText(void) {
     [t deselectRowAtIndexPath:ip animated:YES];NSString *action=self.sections[ip.section][ip.row][@"action"];
     if (!action)return;
     if ([action isEqualToString:@"amount"]) {
-        UIAlertController *a=[UIAlertController alertControllerWithTitle:@"金额范围（人民币元）" message:nil preferredStyle:UIAlertControllerStyleAlert];
-        [a addTextFieldWithConfigurationHandler:^(UITextField *f){
-            f.text=TKUIAmountString(prefInt(kRedMinAmount,100));f.placeholder=@"最低金额（元），0 不设下限";f.accessibilityLabel=@"最低金额，人民币元";
-            UILabel *label=[[UILabel alloc] initWithFrame:CGRectMake(0,0,52,24)];label.text=@"最低";label.font=[UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];label.textColor=UIColor.secondaryLabelColor;
-            f.leftView=label;f.leftViewMode=UITextFieldViewModeAlways;
-            f.keyboardType=UIKeyboardTypeDecimalPad;f.clearButtonMode=UITextFieldViewModeWhileEditing;
-            [f addTarget:self action:@selector(amountInputChanged:) forControlEvents:UIControlEventEditingChanged];
-        }];
-        [a addTextFieldWithConfigurationHandler:^(UITextField *f){
-            f.text=TKUIAmountString(prefInt(kRedMaxAmount,0));f.placeholder=@"最高金额（元），0 不设上限";f.accessibilityLabel=@"最高金额，人民币元";
-            UILabel *label=[[UILabel alloc] initWithFrame:CGRectMake(0,0,52,24)];label.text=@"最高";label.font=[UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];label.textColor=UIColor.secondaryLabelColor;
-            f.leftView=label;f.leftViewMode=UITextFieldViewModeAlways;
-            f.keyboardType=UIKeyboardTypeDecimalPad;f.clearButtonMode=UITextFieldViewModeWhileEditing;
-            [f addTarget:self action:@selector(amountInputChanged:) forControlEvents:UIControlEventEditingChanged];
-        }];
-        self.amountAlert=a;__weak UIAlertController *weakAlert=a;
-        [a addAction:[UIAlertAction actionWithTitle:@"保存" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){
-            NSInteger minimum=0,maximum=0;NSString *error=nil;
-            if(![self validateAmountAlert:weakAlert minimum:&minimum maximum:&maximum error:&error]){[self showMessage:error];return;}
-            [prefs() setInteger:minimum forKey:kRedMinAmount];[prefs() setInteger:maximum forKey:kRedMaxAmount];
-            [prefs() synchronize];[self.tableView reloadData];
-        }]];
-        [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-        [self amountInputChanged:nil];[self presentViewController:a animated:YES completion:nil];
+        UIView *host=self.view.window?self.view.window:self.view;
+        __weak TKSettingsController *weakSelf=self;
+        [TKInputPanel showIn:host title:@"金额范围（人民币元）"
+            message:@"人民币元，包含两端，最多两位小数。最低 0 不设下限，最高 0 不设上限。仅按领取前可知金额过滤；随机红包通常未知，是否放行由下方开关决定。"
+            fieldLabels:@[@"最低金额，人民币元",@"最高金额，人民币元"]
+            placeholders:@[@"最低金额（元），0 不设下限",@"最高金额（元），0 不设上限"]
+            initial:@[TKUIAmountString(prefInt(kRedMinAmount,100)),TKUIAmountString(prefInt(kRedMaxAmount,0))]
+            onValidate:^BOOL(NSArray<NSString *> *values,NSString **err){
+                NSInteger lower=0,upper=0;NSString *detail=nil;
+                if(!TKUIParseCents(values[0],&lower,&detail)){if(err)*err=[@"最低金额：" stringByAppendingString:detail];return NO;}
+                if(!TKUIParseCents(values[1],&upper,&detail)){if(err)*err=[@"最高金额：" stringByAppendingString:detail];return NO;}
+                if(upper!=0&&upper<lower){if(err)*err=@"最高金额不能低于最低金额；不设上限请填 0。";return NO;}
+                return YES;
+            }
+            onSave:^(NSArray<NSString *> *values){
+                NSInteger minimum=0,maximum=0;NSString *detail=nil;
+                TKUIParseCents(values[0],&minimum,&detail);TKUIParseCents(values[1],&maximum,&detail);
+                [prefs() setInteger:minimum forKey:kRedMinAmount];[prefs() setInteger:maximum forKey:kRedMaxAmount];
+                [prefs() synchronize];[weakSelf.tableView reloadData];
+            } onCancel:nil];
     } else if ([action isEqualToString:@"model"]) {
-        UIAlertController *a=[UIAlertController alertControllerWithTitle:@"伪装机型名称" message:@"已内置 iPhone 12–16 系列名称与标识映射，例如 iPhone 15 Pro。自定义未知名称只改变显示文字；不修改硬件或服务器历史。" preferredStyle:UIAlertControllerStyleAlert];
-        [a addTextFieldWithConfigurationHandler:^(UITextField *f){f.text=prefStr(kSpoofModel,@"iPhone 15 Pro");f.clearButtonMode=UITextFieldViewModeWhileEditing;}];
-        __weak UIAlertController *weakAlert=a;
-        [a addAction:[UIAlertAction actionWithTitle:@"保存" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){NSString *v=[weakAlert.textFields.firstObject.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];if(v.length&&v.length<=80){[prefs() setObject:v forKey:kSpoofModel];[prefs() synchronize];TKRefreshSpoofProfile();[self.tableView reloadData];}}]];
-        [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];[self presentViewController:a animated:YES completion:nil];
+        UIView *host=self.view.window?self.view.window:self.view;
+        __weak TKSettingsController *weakSelf=self;
+        [TKInputPanel showIn:host title:@"伪装机型名称"
+            message:@"已内置 iPhone 12–16 系列名称与标识映射，例如 iPhone 15 Pro。自定义未知名称只改变显示文字；不修改硬件或服务器历史。"
+            fieldLabels:@[@"机型名称"] placeholders:@[@"如 iPhone 15 Pro"] initial:@[prefStr(kSpoofModel,@"iPhone 15 Pro")]
+            onValidate:^BOOL(NSArray<NSString *> *values,NSString **err){
+                NSString *v=[values[0] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+                if(!v.length){if(err)*err=@"名称不能为空。";return NO;}
+                if(v.length>80){if(err)*err=@"名称过长（最多 80 字）。";return NO;}
+                return YES;
+            }
+            onSave:^(NSArray<NSString *> *values){
+                NSString *v=[values[0] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+                [prefs() setObject:v forKey:kSpoofModel];[prefs() synchronize];TKRefreshSpoofProfile();
+                [weakSelf.tableView reloadData];
+            } onCancel:nil];
     } else if ([action isEqualToString:@"keywords"]) {
         TKRedKeywordsController *editor=[TKRedKeywordsController new];__weak TKSettingsController *weakSelf=self;
         editor.didSave=^{[weakSelf.tableView reloadData];};[self.navigationController pushViewController:editor animated:YES];
     } else if ([action isEqualToString:@"diagnostics"] || [action isEqualToString:@"copy"]) {
-        NSDictionary *state=TKRuntimeSnapshot();NSMutableString *text=[NSMutableString stringWithFormat:@"TIMCleanKit %@\n%@\n",state[@"version"]?:@"1.0.6",state[@"process"]?:@"运行状态不可用"];
+        NSDictionary *state=TKRuntimeSnapshot();NSMutableString *text=[NSMutableString stringWithFormat:@"TIMCleanKit %@\n%@\n",state[@"version"]?:@"1.0.7",state[@"process"]?:@"运行状态不可用"];
         [text appendString:@"\n功能引擎：\n"];
         NSDictionary *engine=[state[@"engine"] isKindOfClass:NSDictionary.class]?state[@"engine"]:@{};
         NSArray *keys=[[engine allKeys] sortedArrayUsingSelector:@selector(compare:)];
