@@ -66,16 +66,37 @@ static void TKUpdateRecallLabel(UIView *cell) {
         [cell addSubview:label];objc_setAssociatedObject(cell,&kTKRecallLabelKey,label,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     label.hidden=NO;
-    CGFloat width=70,height=18,x=MAX(6,cell.bounds.size.width-width-12),y=MAX(0,cell.bounds.size.height-height);
+    CGFloat width=70,height=18;
+    CGRect bubble=CGRectZero;
+    // 1) 气泡识别：类名含 "Bubble" 且尺寸合理的可见视图（TIM NT 架构气泡类名不定，弃用单一后缀匹配）。
     NSMutableArray *queue=[NSMutableArray arrayWithArray:cell.subviews];
     for(NSUInteger i=0;i<queue.count&&i<150;i++) {
         UIView *view=queue[i];NSString *name=NSStringFromClass(view.class);
-        if(!view.hidden&&view.alpha>.01&&[name hasSuffix:@"AIOBubbleView"]&&view.bounds.size.width>0) {
-            CGRect bubble=[view convertRect:view.bounds toView:cell];
-            x=MIN(MAX(6,CGRectGetMaxX(bubble)+5),MAX(6,cell.bounds.size.width-width-6));
-            y=MIN(MAX(0,CGRectGetMaxY(bubble)-height),MAX(0,cell.bounds.size.height-height));break;
+        if(!view.hidden&&view.alpha>.01&&[name containsString:@"Bubble"]&&view.bounds.size.width>=40&&view.bounds.size.height>=12) {
+            bubble=[view convertRect:view.bounds toView:cell];break;
         }
         [queue addObjectsFromArray:view.subviews];
+    }
+    // 2) 几何兜底：取 cell 内面积最大的可见内容视图作为气泡锚点。
+    if(CGRectIsEmpty(bubble)) {
+        CGFloat bestArea=0;NSMutableArray *q2=[NSMutableArray arrayWithArray:cell.subviews];
+        for(NSUInteger i=0;i<q2.count&&i<150;i++) {
+            UIView *view=q2[i];
+            if(view!=label&&!view.hidden&&view.alpha>.01&&view.bounds.size.width>=cell.bounds.size.width*.35&&view.bounds.size.height>=20) {
+                CGRect r=[view convertRect:view.bounds toView:cell];CGFloat area=r.size.width*r.size.height;
+                if(area>bestArea){bestArea=area;bubble=r;}
+            }
+            [q2 addObjectsFromArray:view.subviews];
+        }
+    }
+    CGFloat x=6,y=MAX(0,(cell.bounds.size.height-height)/2);
+    if(!CGRectIsEmpty(bubble)) {
+        // 3) 锚定气泡尾部：优先气泡右侧（对方消息），右侧放不下则放左侧（自己消息）；垂直居中对齐。
+        CGFloat rightSpace=MAX(0,cell.bounds.size.width-CGRectGetMaxX(bubble)-6);
+        if(rightSpace>=width+4) x=MIN(CGRectGetMaxX(bubble)+6,MAX(6,cell.bounds.size.width-width-6));
+        else x=MAX(6,CGRectGetMinX(bubble)-width-6);
+        y=CGRectGetMinY(bubble)+(CGRectGetHeight(bubble)-height)/2;
+        y=MAX(0,MIN(y,MAX(0,cell.bounds.size.height-height)));
     }
     label.frame=CGRectMake(x,y,width,height);[cell bringSubviewToFront:label];
 }

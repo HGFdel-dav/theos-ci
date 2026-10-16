@@ -12,7 +12,7 @@
 - (instancetype)init {if((self=[super init])){self.modalPresentationStyle=UIModalPresentationOverFullScreen;self.modalTransitionStyle=UIModalTransitionStyleCrossDissolve;}return self;}
 - (void)viewDidLoad {
     [super viewDidLoad];self.view.backgroundColor=UIColor.clearColor;self.view.accessibilityViewIsModal=YES;
-    self.shade=[UIControl new];self.shade.backgroundColor=[UIColor.blackColor colorWithAlphaComponent:.24];self.shade.accessibilityLabel=@"关闭设置弹窗";
+    self.shade=[UIControl new];self.shade.backgroundColor=[UIColor.blackColor colorWithAlphaComponent:.38];self.shade.accessibilityLabel=@"关闭设置弹窗";
     [self.shade addTarget:self action:@selector(closePopup) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:self.shade];
     self.card=[UIView new];self.card.backgroundColor=UIColor.clearColor;self.card.layer.cornerRadius=28;self.card.layer.cornerCurve=kCACornerCurveContinuous;
     self.card.layer.shadowColor=UIColor.blackColor.CGColor;self.card.layer.shadowOpacity=.23;self.card.layer.shadowRadius=26;self.card.layer.shadowOffset=CGSizeMake(0,12);[self.view addSubview:self.card];
@@ -32,7 +32,8 @@
 - (void)updateGlass {
     BOOL dark=self.traitCollection.userInterfaceStyle==UIUserInterfaceStyleDark;
     self.glass.layer.borderColor=[UIColor colorWithWhite:1 alpha:dark?.15:.55].CGColor;
-    self.glass.contentView.backgroundColor=UIAccessibilityIsReduceTransparencyEnabled()?UIColor.secondarySystemBackgroundColor:[UIColor colorWithWhite:dark?0:1 alpha:dark?.08:.07];
+    // 1.0.6: 卡片内容底色改为近不透明，避免底层 TIM 聊天内容透出与设置文字重叠。
+    self.glass.contentView.backgroundColor=UIAccessibilityIsReduceTransparencyEnabled()?UIColor.systemBackgroundColor:[UIColor colorWithWhite:dark?0.07:1 alpha:dark?.94:.96];
 }
 - (void)traitCollectionDidChange:(UITraitCollection *)previous {[super traitCollectionDidChange:previous];[self updateGlass];}
 - (void)updateAccessibility:(NSNotification *)notification {[self updateGlass];}

@@ -44,7 +44,7 @@ static NSString *TKUIRedKeywordText(void) {
 @implementation TKRedKeywordsController
 - (instancetype)init {return [super initWithStyle:UITableViewStyleInsetGrouped];}
 - (void)viewDidLoad {
-    [super viewDidLoad];self.title=@"过滤关键词";self.view.backgroundColor=UIColor.clearColor;self.tableView.backgroundView=nil;
+    [super viewDidLoad];self.title=@"过滤关键词";self.view.backgroundColor=UIColor.systemGroupedBackgroundColor;self.tableView.backgroundView=nil;
     self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemSave target:self action:@selector(saveKeywords)];
     self.tableView.keyboardDismissMode=UIScrollViewKeyboardDismissModeInteractive;
     self.editor=[UITextView new];self.editor.text=TKUIRedKeywordText();self.editor.font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody];
@@ -60,7 +60,7 @@ static NSString *TKUIRedKeywordText(void) {
     return @"用中文逗号、逗号、空格或换行分隔，支持增加与删除。默认：测试、外挂、体验。保存去除首尾空白，空文本表示不匹配关键词。开启“跳过关键词红包”后，标题、内容或名称命中任一关键词即跳过，英文不区分大小写；与金额、口令条件同时生效，不检查账单凭据。返回而不保存会丢弃本次编辑。";
 }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell=[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];cell.selectionStyle=UITableViewCellSelectionStyleNone;cell.backgroundColor=UIColor.clearColor;cell.backgroundConfiguration=[UIBackgroundConfiguration clearConfiguration];
+    UITableViewCell *cell=[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];cell.selectionStyle=UITableViewCellSelectionStyleNone;
     self.editor.translatesAutoresizingMaskIntoConstraints=NO;[cell.contentView addSubview:self.editor];
     [NSLayoutConstraint activateConstraints:@[[self.editor.leadingAnchor constraintEqualToAnchor:cell.contentView.leadingAnchor],[self.editor.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor],[self.editor.topAnchor constraintEqualToAnchor:cell.contentView.topAnchor],[self.editor.bottomAnchor constraintEqualToAnchor:cell.contentView.bottomAnchor]]];
     return cell;
@@ -100,11 +100,11 @@ static NSString *TKUIRedKeywordText(void) {
 }
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor=UIColor.clearColor;self.tableView.backgroundView=nil;
+    self.view.backgroundColor=UIColor.systemGroupedBackgroundColor;self.tableView.backgroundView=nil;
     self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(closePage)];
     UIView *header=[[UIView alloc] initWithFrame:CGRectMake(0,0,320,118)];
     UILabel *name=[UILabel new];name.text=@"TIM 增强";name.font=[UIFont systemFontOfSize:30 weight:UIFontWeightBold];name.textColor=UIColor.labelColor;
-    UILabel *subtitle=[UILabel new];subtitle.text=@"1.0.5 · 轻触开关 · 双指长按唤醒";subtitle.font=[UIFont systemFontOfSize:14];subtitle.adjustsFontForContentSizeCategory=YES;subtitle.textColor=UIColor.secondaryLabelColor;
+    UILabel *subtitle=[UILabel new];subtitle.text=@"1.0.6 · 轻触开关 · 双指长按唤醒";subtitle.font=[UIFont systemFontOfSize:14];subtitle.adjustsFontForContentSizeCategory=YES;subtitle.textColor=UIColor.secondaryLabelColor;
     UIStackView *stack=[[UIStackView alloc] initWithArrangedSubviews:@[name,subtitle]];stack.axis=UILayoutConstraintAxisVertical;stack.spacing=7;stack.translatesAutoresizingMaskIntoConstraints=NO;
     [header addSubview:stack];[NSLayoutConstraint activateConstraints:@[[stack.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:24],[stack.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-24],[stack.centerYAnchor constraintEqualToAnchor:header.centerYAnchor]]];
     self.tableView.tableHeaderView=header;
@@ -116,7 +116,7 @@ static NSString *TKUIRedKeywordText(void) {
 - (NSInteger)tableView:(UITableView *)t numberOfRowsInSection:(NSInteger)section{return [self.sections[section] count];}
 - (NSString *)tableView:(UITableView *)t titleForHeaderInSection:(NSInteger)s{return @[@"总开关",@"消息与设备",@"红包过滤",@"诊断"][s];}
 - (NSString *)tableView:(UITableView *)t titleForFooterInSection:(NSInteger)s {
-    return @[@"TIM 全区域双指长按 0.8 秒唤醒设置，总开关关闭仍可唤醒。首次注入需完全退出TIM再打开；普通开关在下一次操作时生效。",@"消息效果与实际发送结果请逐项真机核对；注册或计数不能证明效果。机型伪装仅作用于 TIM 进程读取，不改变硬件或服务器记录。",@"自动红包已由用户实测 1.0.4 自动领取有效。1.0.5 的金额范围、未知金额策略与关键词过滤等新修改仍待实测；不会自动补领历史红包。随机红包领取前通常无法知道实际到账金额，关闭未知金额放行后多数随机红包将不抢。",@"1.0.5 · 本次新修改仍待真机实测。诊断摘要不包含消息内容，完成回调不等于到账。"][s];
+    return @[@"TIM 全区域双指长按 0.8 秒唤醒设置，总开关关闭仍可唤醒。首次注入需完全退出TIM再打开；普通开关在下一次操作时生效。",@"消息效果与实际发送结果请逐项真机核对；注册或计数不能证明效果。机型伪装仅作用于 TIM 进程读取，不改变硬件或服务器记录。",@"自动红包已由用户实测 1.0.4 自动领取有效。1.0.6 修复设置面板背景透明度与拦截撤回标签定位；金额范围、未知金额策略与关键词过滤等新修改仍待实测；不会自动补领历史红包。随机红包领取前通常无法知道实际到账金额，关闭未知金额放行后多数随机红包将不抢。",@"1.0.6 · 本次新修改仍待真机实测。诊断摘要不包含消息内容，完成回调不等于到账。"][s];
 }
 - (UITableViewCell *)tableView:(UITableView *)t cellForRowAtIndexPath:(NSIndexPath *)ip {
     NSDictionary *row=self.sections[ip.section][ip.row];
@@ -132,7 +132,7 @@ static NSString *TKUIRedKeywordText(void) {
     UIListContentConfiguration *content=[UIListContentConfiguration subtitleCellConfiguration];
     content.text=title;content.textProperties.font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody];content.textProperties.numberOfLines=0;
     content.secondaryText=help;content.secondaryTextProperties.font=[UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];content.secondaryTextProperties.color=UIColor.secondaryLabelColor;content.secondaryTextProperties.numberOfLines=0;
-    content.image=[UIImage systemImageNamed:row[@"symbol"]];content.imageProperties.tintColor=UIColor.systemBlueColor;content.textToSecondaryTextVerticalPadding=5;c.contentConfiguration=content;c.backgroundConfiguration=[UIBackgroundConfiguration clearConfiguration];c.backgroundColor=[UIColor.secondarySystemBackgroundColor colorWithAlphaComponent:.22];
+    content.image=[UIImage systemImageNamed:row[@"symbol"]];content.imageProperties.tintColor=UIColor.systemBlueColor;content.textToSecondaryTextVerticalPadding=5;c.contentConfiguration=content;
     NSString *key=row[@"key"];
     if (key) {
         UISwitch *sw=[UISwitch new];sw.on=prefBool(key,[row[@"default"] boolValue]);sw.accessibilityIdentifier=key;
@@ -204,7 +204,7 @@ static NSString *TKUIRedKeywordText(void) {
         TKRedKeywordsController *editor=[TKRedKeywordsController new];__weak TKSettingsController *weakSelf=self;
         editor.didSave=^{[weakSelf.tableView reloadData];};[self.navigationController pushViewController:editor animated:YES];
     } else if ([action isEqualToString:@"diagnostics"] || [action isEqualToString:@"copy"]) {
-        NSDictionary *state=TKRuntimeSnapshot();NSMutableString *text=[NSMutableString stringWithFormat:@"TIMCleanKit %@\n%@\n",state[@"version"]?:@"1.0.5",state[@"process"]?:@"运行状态不可用"];
+        NSDictionary *state=TKRuntimeSnapshot();NSMutableString *text=[NSMutableString stringWithFormat:@"TIMCleanKit %@\n%@\n",state[@"version"]?:@"1.0.6",state[@"process"]?:@"运行状态不可用"];
         [text appendString:@"\n功能引擎：\n"];
         NSDictionary *engine=[state[@"engine"] isKindOfClass:NSDictionary.class]?state[@"engine"]:@{};
         NSArray *keys=[[engine allKeys] sortedArrayUsingSelector:@selector(compare:)];
