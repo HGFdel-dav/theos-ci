@@ -215,7 +215,6 @@ static BOOL shouldSkipRedPacket(id record) {
         LOG(@"skip test red packet"); return YES;
     }
     NSInteger min=MAX(0,prefInt(kRedMinAmount,100));
-    NSInteger min=MAX(0,prefInt(kRedMinAmount,100));
     long long amount=redPacketTotalAmount(element);
     // 1.0.11: 只设起抢金额：红包总额低于起抢线不抢，达到即抢；无上限
     if(amount>=0 && amount<min)return YES;
