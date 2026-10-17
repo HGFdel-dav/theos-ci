@@ -14,8 +14,8 @@ def main() -> int:
     path = sys.argv[1]
     with open(path, "rb") as f:
         d = plistlib.load(f)
-    d["CFBundleShortVersionString"] = "8.0.1"
-    d["CFBundleVersion"] = "2"
+    d["CFBundleShortVersionString"] = "8.0.2"
+    d["CFBundleVersion"] = "3"
     with open(path, "wb") as f:
         plistlib.dump(d, f)
     print("bumped:", path, "->", d["CFBundleShortVersionString"], d["CFBundleVersion"])

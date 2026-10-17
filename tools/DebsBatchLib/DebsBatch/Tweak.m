@@ -3,33 +3,69 @@
 //  点击弹出批量上传面板（DBUploadPanel）。
 //  零三方依赖：不依赖 MobileSubstrate / Logos，纯 Objective-C runtime + UIKit。
 #import <UIKit/UIKit.h>
+#import <unistd.h>
 #import "DBCommon.h"
 #import "DBUploadPanel.h"
 
 static UIButton *gBatchButton = NULL;
 static BOOL gBatchButtonVisible = NO;
 
+#pragma mark - 文件日志（真机诊断）
+
+static NSString *DBLogPath(void) {
+    return [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/debsbatch.log"];
+}
+
+static void DBFileLog(NSString *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    NSString *msg = [[NSString alloc] initWithFormat:fmt arguments:args];
+    va_end(args);
+    NSLog(@"[DebsBatch] %@", msg);
+    NSString *path = DBLogPath();
+    NSFileManager *fm = NSFileManager.defaultManager;
+    if (![fm fileExistsAtPath:path]) {
+        [fm createFileAtPath:path contents:nil attributes:nil];
+    }
+    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
+    if (fh) {
+        @try {
+            [fh seekToEndOfFile];
+            [fh writeData:[[NSString stringWithFormat:@"%.0f %@\n",
+                            [NSDate date].timeIntervalSince1970, msg]
+                           dataUsingEncoding:NSUTF8StringEncoding]];
+        } @catch (NSException *e) {
+        }
+        [fh closeFile];
+    }
+}
+
 #pragma mark - 页面识别（管理文件）
 
 static BOOL DBIsManageFilesPage(void) {
     UIViewController *top = DBTopViewController();
-    if (!top) return NO;
-    NSString *title = top.title;
-    if (!title.length) title = top.navigationItem.title;
-    if (title.length &&
-        ([title rangeOfString:@"管理文件"].location != NSNotFound ||
-         [title rangeOfString:@"Downloads"].location != NSNotFound)) {
-        return YES;
+    if (top) {
+        NSString *title = top.title;
+        if (!title.length) title = top.navigationItem.title;
+        if (title.length &&
+            ([title rangeOfString:@"管理文件"].location != NSNotFound ||
+             [title rangeOfString:@"Downloads"].location != NSNotFound)) {
+            return YES;
+        }
     }
-    // 兜底：SwiftUI 标题常藏在导航栏子视图中（BFS 查找 UILabel）
-    UINavigationBar *bar = top.navigationController.navigationBar;
-    if (bar) {
-        NSMutableArray<UIView *> *queue = [NSMutableArray arrayWithObject:bar];
-        for (NSInteger i = 0; i < (NSInteger)queue.count && i < 80; i++) {
+    // SwiftUI 页面：VC 无 title / navigationController；BFS 整个 keyWindow 视图树
+    // 找含关键词的 UILabel（SwiftUI 导航标题最终也是 UILabel 渲染）
+    UIWindow *win = DBKeyWindow();
+    if (win) {
+        NSMutableArray<UIView *> *queue = [NSMutableArray arrayWithObject:win];
+        for (NSInteger i = 0; i < (NSInteger)queue.count && i < 3000; i++) {
             UIView *v = queue[(NSUInteger)i];
             if ([v isKindOfClass:[UILabel class]]) {
                 NSString *t = ((UILabel *)v).text;
-                if (t.length && [t rangeOfString:@"管理文件"].location != NSNotFound) return YES;
+                if (t.length && ([t rangeOfString:@"管理文件"].location != NSNotFound ||
+                                 [t rangeOfString:@"Downloads"].location != NSNotFound)) {
+                    return YES;
+                }
             }
             [queue addObjectsFromArray:v.subviews];
         }
@@ -41,10 +77,18 @@ static BOOL DBIsManageFilesPage(void) {
 
 static void DBSyncBatchButton(void) {
     UIWindow *win = DBKeyWindow();
-    if (!win) return;
+    if (!win) {
+        DBFileLog(@"DBSyncBatchButton: keyWindow 为空");
+        return;
+    }
     BOOL shouldShow = DBIsManageFilesPage();
-    if (shouldShow == gBatchButtonVisible) return;
-    gBatchButtonVisible = shouldShow;
+    if (shouldShow != gBatchButtonVisible) {
+        UIViewController *top = DBTopViewController();
+        DBFileLog(@"页面判定: shouldShow=%d (旧=%d) topVC=%@ title=%@ nav=%@",
+                  shouldShow, gBatchButtonVisible,
+                  NSStringFromClass(top.class), top.title, top.navigationItem.title);
+        gBatchButtonVisible = shouldShow;
+    }
 
     if (!gBatchButton) {
         gBatchButton = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -59,7 +103,10 @@ static void DBSyncBatchButton(void) {
     }
 
     if (shouldShow) {
-        if (!gBatchButton.superview) [win addSubview:gBatchButton];
+        if (!gBatchButton.superview) {
+            [win addSubview:gBatchButton];
+            DBFileLog(@"悬浮按钮已加入 window");
+        }
         CGFloat w = CGRectGetWidth(win.bounds);
         CGFloat h = 46.0;
         CGFloat bottomInset = win.safeAreaInsets.bottom;
@@ -97,8 +144,10 @@ static void DBSyncBatchButton(void) {
 
 __attribute__((constructor))
 static void DebsBatchInit(void) {
+    DBFileLog(@"DebsBatch dylib 构造函数执行 pid=%d", (int)getpid());
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
+        DBFileLog(@"DebsBatch timer 启动");
         DBSyncBatchButton();
         NSTimer *timer = [NSTimer timerWithTimeInterval:0.8
                                                 repeats:YES
