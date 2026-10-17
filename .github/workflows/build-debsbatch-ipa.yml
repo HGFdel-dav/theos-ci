@@ -1,0 +1,74 @@
+name: Build DebsBatch IPA
+
+on:
+  push:
+    paths:
+      - 'tools/DebsBatchLib/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Theos
+        run: |
+          brew install ldid xz
+          git clone --recursive https://github.com/roothide/theos.git "$HOME/theos"
+          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/xybp888/iOS-SDKs.git "$HOME/iossdks"
+          ( cd "$HOME/iossdks" && git sparse-checkout set iPhoneOS15.5.sdk )
+          mkdir -p "$HOME/theos/sdks"
+          cp -R "$HOME/iossdks/iPhoneOS15.5.sdk" "$HOME/theos/sdks/"
+
+      - name: Build dylib
+        run: |
+          set -e
+          cd tools/DebsBatchLib
+          make clean || true
+          make FINALPACKAGE=1
+          DYLIB=$(find .theos -name '*.dylib' | head -1)
+          test -n "$DYLIB" && test -f "$DYLIB"
+          echo "built: $DYLIB"
+          echo "--- linked libraries (must be system-only) ---"
+          otool -L "$DYLIB" | sed -n '2,20p'
+          echo "DYLIB_PATH=$PWD/$DYLIB" >> "$GITHUB_ENV"
+
+      - name: Assemble patched IPA
+        run: |
+          set -e
+          cd tools/DebsBatchLib
+          rm -rf Payload
+          unzip -q ipa/Debs_v8.0.ipa
+          test -d Payload/Debs.app
+          mkdir -p Payload/Debs.app/Frameworks
+          cp "$DYLIB_PATH" Payload/Debs.app/Frameworks/libDebsBatch.dylib
+          git clone --depth 1 https://github.com/sbingner/insert_dylib.git /tmp/insert_dylib
+          ( cd /tmp/insert_dylib && clang -O2 -o /tmp/insert_dylib_bin main.c )
+          /tmp/insert_dylib_bin @executable_path/Frameworks/libDebsBatch.dylib \
+            Payload/Debs.app/Debs --all-yes --inplace
+          ldid -S Payload/Debs.app/Debs
+          ldid -S Payload/Debs.app/Frameworks/libDebsBatch.dylib
+          echo "--- verify load command ---"
+          otool -l Payload/Debs.app/Debs | grep -A3 'LC_LOAD_DYLIB' | head -12
+          zip -qry DebsBatch-0.1.0.ipa Payload/
+          ls -l DebsBatch-0.1.0.ipa
+          shasum -a 256 DebsBatch-0.1.0.ipa | tee DebsBatch-0.1.0.ipa.sha256
+          echo "IPA_PATH=$PWD/DebsBatch-0.1.0.ipa" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DebsBatch-0.1.0-ipa
+          path: |
+            tools/DebsBatchLib/DebsBatch-0.1.0.ipa
+            tools/DebsBatchLib/DebsBatch-0.1.0.ipa.sha256
+          if-no-files-found: error

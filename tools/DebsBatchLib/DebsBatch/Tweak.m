@@ -1,6 +1,7 @@
-//  DebsBatch — 注入入口
+//  DebsBatch — 动态库入口（嵌入 App 的 Frameworks，随 App 启动加载）
 //  在 Debs「管理文件」页显示贴底按钮「上传我的源」，
 //  点击弹出批量上传面板（DBUploadPanel）。
+//  零三方依赖：不依赖 MobileSubstrate / Logos，纯 Objective-C runtime + UIKit。
 #import <UIKit/UIKit.h>
 #import "DBCommon.h"
 #import "DBUploadPanel.h"
@@ -92,23 +93,10 @@ static void DBSyncBatchButton(void) {
 
 @end
 
-#pragma mark - 钩子：Tab 切换后立即同步
+#pragma mark - 启动：常驻定时器检测「管理文件」页
 
-%hook UITabBarController
-
-- (void)viewDidAppear:(BOOL)animated {
-    %orig;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        DBSyncBatchButton();
-    });
-}
-
-%end
-
-#pragma mark - 构造：常驻定时器兜底（页面 push/pop 也能感知）
-
-%ctor {
+__attribute__((constructor))
+static void DebsBatchInit(void) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         DBSyncBatchButton();

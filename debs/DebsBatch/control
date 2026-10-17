@@ -1,9 +1,0 @@
-Package: com.niubiprass.debsbatch
-Name: DebsBatch
-Version: 0.1.0
-Description: Batch upload local .deb files from the Debs app Downloads page to a bound GitHub repo. Git blob + readback SHA verify, per-file results, stoppable queue. Reuses the app's own bound repo config.
-Author: Niubiprass
-Section: Tweaks
-Depends: mobilesubstrate
-Architecture: iphoneos-arm64
-Maintainer: Niubiprass <maintainer@localhost>
