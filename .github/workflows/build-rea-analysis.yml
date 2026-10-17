@@ -40,14 +40,12 @@ jobs:
           cd /tmp
           unzip -o ghidra.zip 2>&1 | tail -4
           echo "unzip exit: ${PIPESTATUS[0]}"
-          # 不猜目录名，按特征文件 analyzeHeadless 定位
-          AH=$(find /tmp -name analyzeHeadless -type f 2>/dev/null | head -1)
-          echo "analyzeHeadless=[$AH]"
-          test -n "$AH"
-          GHIDRA_DIR=$(dirname "$AH" | sed 's|/support$||')
+          # macOS 的 BSD find 默认不跟随 /tmp 符号链接，直接用 shell glob 定位
+          GHIDRA_DIR=$(ls -d /tmp/ghidra_* 2>/dev/null | head -1)
           echo "GHIDRA_DIR=[$GHIDRA_DIR]"
-          test -n "$GHIDRA_DIR"
-          ls "$GHIDRA_DIR" | head -12
+          test -d "$GHIDRA_DIR"
+          test -d "$GHIDRA_DIR/support"
+          ls "$GHIDRA_DIR/support" | head -10
           echo "GHIDRA_INSTALL_DIR=$GHIDRA_DIR"
           echo "GHIDRA_INSTALL_DIR=$GHIDRA_DIR" >> "$GITHUB_ENV"
 

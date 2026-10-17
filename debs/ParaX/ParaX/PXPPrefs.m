@@ -8,13 +8,27 @@
 
 static BOOL PXPValidMigration(NSDictionary *dict) {
     if (![dict isKindOfClass:NSDictionary.class] || !dict.count) return NO;
-    NSSet *numbers = [NSSet setWithArray:@[PXPKeyEnabled,PXPKeyArcEnabled,PXPKeyArcSide,PXPKeyArcTriggerWidth,PXPKeyArcItemCount,PXPKeyArcRadius,PXPKeyArcSound,PXPKeyCraneEnabled]];
+    NSSet *numbers = [NSSet setWithArray:@[PXPKeyEnabled,PXPKeyArcEnabled,PXPKeyArcSide,PXPKeyArcTriggerWidth,PXPKeyArcItemCount,PXPKeyArcRadius,PXPKeyArcSound,PXPKeyCraneEnabled,PXPKeyRememberSize]];
     for (id key in dict) {
         id value = dict[key];
         if ([numbers containsObject:key]) { if (![value isKindOfClass:NSNumber.class]) return NO; }
         else if ([key isEqual:PXPKeyCraneApps]) {
             if (![value isKindOfClass:NSDictionary.class]) return NO;
             for (id app in value) if (![app isKindOfClass:NSString.class] || ![app length] || ![value[app] isKindOfClass:NSString.class] || ![value[app] length]) return NO;
+        } else if ([key isEqual:PXPKeyRememberFrames]) {
+            // { bundleID : {x,y,w,h} } — all values are NSNumbers, frame inside screen.
+            if (![value isKindOfClass:NSDictionary.class]) return NO;
+            for (id app in value) {
+                id frame = value[app];
+                if (![app isKindOfClass:NSString.class] || ![app length] || ![frame isKindOfClass:NSDictionary.class]) return NO;
+                NSArray *keys = @[@"x",@"y",@"w",@"h"];
+                for (NSString *k in keys) {
+                    id num = frame[k];
+                    if (![num isKindOfClass:NSNumber.class]) return NO;
+                    if ([k isEqual:@"w"] || [k isEqual:@"h"]) { if ([num doubleValue] <= 0 || [num doubleValue] > 5000) return NO; }
+                    else { double v = [num doubleValue]; if (v < -5000 || v > 5000) return NO; }
+                }
+            }
         } else return NO;
     }
     return YES;
@@ -172,6 +186,38 @@ static void PXPMigratePrefs(NSString *target) {
     NSMutableDictionary *apps = [self craneApps].mutableCopy;
     [apps removeObjectForKey:bundleID];
     [self setObject:apps forKey:PXPKeyCraneApps];
+    [self synchronize];
+}
+
+#pragma mark - Remembered frames
+
+- (CGRect)rememberedFrameForBundleID:(NSString *)bundleID {
+    if (!bundleID.length) return CGRectNull;
+    id v = [self objectForKey:PXPKeyRememberFrames];
+    if (![v isKindOfClass:[NSDictionary class]]) return CGRectNull;
+    NSDictionary *frameDict = v[bundleID];
+    if (![frameDict isKindOfClass:[NSDictionary class]]) return CGRectNull;
+    NSNumber *x = frameDict[@"x"], *y = frameDict[@"y"], *w = frameDict[@"w"], *h = frameDict[@"h"];
+    if (![x isKindOfClass:NSNumber.class] || ![y isKindOfClass:NSNumber.class] ||
+        ![w isKindOfClass:NSNumber.class] || ![h isKindOfClass:NSNumber.class]) return CGRectNull;
+    CGRect frame = CGRectMake(x.doubleValue, y.doubleValue, w.doubleValue, h.doubleValue);
+    if (frame.size.width <= 0 || frame.size.height <= 0 ||
+        frame.size.width > 5000 || frame.size.height > 5000) return CGRectNull;
+    return frame;
+}
+
+- (void)setRememberedFrame:(CGRect)frame forBundleID:(NSString *)bundleID {
+    if (!bundleID.length || CGRectIsNull(frame) || CGRectIsEmpty(frame)) return;
+    NSMutableDictionary *frames = [(id)[self objectForKey:PXPKeyRememberFrames] mutableCopy];
+    if (!frames) frames = [NSMutableDictionary dictionary];
+    frames[bundleID] = @{@"x": @(frame.origin.x), @"y": @(frame.origin.y),
+                         @"w": @(frame.size.width), @"h": @(frame.size.height)};
+    [self setObject:frames forKey:PXPKeyRememberFrames];
+    [self synchronize];
+}
+
+- (void)clearRememberedFrames {
+    [self setObject:nil forKey:PXPKeyRememberFrames];
     [self synchronize];
 }
 

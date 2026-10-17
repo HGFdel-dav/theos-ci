@@ -56,7 +56,11 @@ def main() -> int:
         if key in seen:
             continue
         seen.add(key)
-        b.add_dylib(dylib_load_path)
+        try:
+            b.add_dylib(dylib_load_path)
+        except AttributeError:
+            # 新版 LIEF (0.16+/nanobind) 改用 add_library
+            b.add_library(dylib_load_path)
 
     n = len(seen)
     print("patched slices:", n)

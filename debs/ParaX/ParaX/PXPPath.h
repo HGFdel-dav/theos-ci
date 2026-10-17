@@ -76,3 +76,5 @@ static inline NSString *PXPPrefsFilePath(void) {
 #define PXPKeyArcSound         @"PXPArcSoundEnabled"
 #define PXPKeyCraneEnabled     @"PXPCraneEnabled"
 #define PXPKeyCraneApps        @"PXPCraneApps"        // NSDictionary { bundleID : containerID }
+#define PXPKeyRememberSize     @"PXPRememberSize"     // BOOL, default YES
+#define PXPKeyRememberFrames   @"PXPRememberFrames"   // dict { bundleID : {x,y,w,h} }

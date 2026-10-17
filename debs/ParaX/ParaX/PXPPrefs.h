@@ -21,6 +21,10 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSDictionary<NSString *,NSString *> *)craneApps;      // cached copy
 - (void)setCraneApp:(NSString *)containerID forBundleID:(NSString *)bundleID;
 - (void)removeCraneAppForBundleID:(NSString *)bundleID;
+// Remembered window frames (ScreenCore-style per-app size/position memory).
+- (CGRect)rememberedFrameForBundleID:(NSString *)bundleID;
+- (void)setRememberedFrame:(CGRect)frame forBundleID:(NSString *)bundleID;
+- (void)clearRememberedFrames;
 @end
 
 NS_ASSUME_NONNULL_END
