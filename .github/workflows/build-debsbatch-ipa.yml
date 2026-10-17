@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'tools/DebsBatchLib/**'
+      - '.github/workflows/build-debsbatch-ipa.yml'
   workflow_dispatch:
 
 permissions:
@@ -51,8 +52,11 @@ jobs:
           test -d Payload/Debs.app
           mkdir -p Payload/Debs.app/Frameworks
           cp "$DYLIB_PATH" Payload/Debs.app/Frameworks/libDebsBatch.dylib
-          git clone --depth 1 https://github.com/sbingner/insert_dylib.git /tmp/insert_dylib
-          ( cd /tmp/insert_dylib && clang -O2 -o /tmp/insert_dylib_bin main.c )
+          # 用 tarball 下载 insert_dylib（runner 上 git clone 匿名 github.com 会失败）
+          curl -sL https://github.com/sbingner/insert_dylib/archive/refs/heads/master.tar.gz \
+            -o /tmp/insert_dylib.tar.gz
+          mkdir -p /tmp/insert_dylib && tar -xzf /tmp/insert_dylib.tar.gz -C /tmp/insert_dylib --strip-components=1
+          clang -O2 -o /tmp/insert_dylib_bin /tmp/insert_dylib/main.c
           /tmp/insert_dylib_bin @executable_path/Frameworks/libDebsBatch.dylib \
             Payload/Debs.app/Debs --all-yes --inplace
           ldid -S Payload/Debs.app/Debs
