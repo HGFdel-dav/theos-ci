@@ -33,11 +33,17 @@ jobs:
 
       - name: Install Ghidra
         run: |
-          brew install --cask ghidra
-          APP_DIR=$(find /Applications/Ghidra.app -maxdepth 4 -type d -name 'Ghidra*' | head -1)
-          echo "GHIDRA_INSTALL_DIR=$APP_DIR"
-          echo "GHIDRA_INSTALL_DIR=$APP_DIR" >> "$GITHUB_ENV"
-          test -n "$APP_DIR"
+          # Homebrew 无 ghidra cask，直接从官方 release 下载（动态取最新版本）
+          REL=$(curl -s https://api.github.com/repos/NationalSecurityAgency/ghidra/releases/latest)
+          ZIP_URL=$(echo "$REL" | python3 -c "import json,sys; d=json.load(sys.stdin); print(next(a['browser_download_url'] for a in d['assets'] if a['name'].endswith('.zip') and 'PUBLIC' in a['name']))")
+          echo "downloading: $ZIP_URL"
+          curl -sL "$ZIP_URL" -o /tmp/ghidra.zip
+          ls -lh /tmp/ghidra.zip
+          cd /tmp && unzip -q ghidra.zip
+          GHIDRA_DIR=$(find /tmp -maxdepth 1 -type d -name 'ghidra_*' | head -1)
+          echo "GHIDRA_INSTALL_DIR=$GHIDRA_DIR"
+          echo "GHIDRA_INSTALL_DIR=$GHIDRA_DIR" >> "$GITHUB_ENV"
+          test -n "$GHIDRA_DIR"
 
       - name: Extract Debs binary
         run: |
