@@ -103,7 +103,7 @@ static void replCloseTapped(id self, SEL _cmd) {
 
 #pragma mark - apply
 
-static void (*origInit)(id, SEL);
+static id (*origInit)(id, SEL);
 static id replInit(id self, SEL _cmd) {
     self = origInit(self, _cmd);
     if (self) {
