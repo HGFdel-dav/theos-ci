@@ -278,6 +278,7 @@ static void TKCellBindVM(id self,SEL cmd,id vm) {
 }
 static void TKCellClear(id self,SEL cmd) {
     IMP orig=OrigIMP(TKCellClass,cmd);objc_setAssociatedObject(self,&kTKBoundModelKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(self,kTKCellRecordKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);   // 1.0.21: 复用时清除文本关联
     UILabel *label=objc_getAssociatedObject(self,&kTKRecallLabelKey);label.hidden=YES;
     if(orig)((void(*)(id,SEL))orig)(self,cmd);
 }

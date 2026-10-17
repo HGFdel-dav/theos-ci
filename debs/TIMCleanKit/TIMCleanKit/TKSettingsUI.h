@@ -203,7 +203,7 @@ static NSString *TKUIRedKeywordText(void) {
     self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(closePage)];
     UIView *header=[[UIView alloc] initWithFrame:CGRectMake(0,0,320,84)];
     UILabel *name=[UILabel new];name.text=@"TIM 增强";name.font=[UIFont systemFontOfSize:24 weight:UIFontWeightBold];name.textColor=UIColor.labelColor;
-    UILabel *subtitle=[UILabel new];subtitle.text=@"1.0.20 · 双指长按唤醒";subtitle.font=[UIFont systemFontOfSize:12];subtitle.adjustsFontForContentSizeCategory=YES;subtitle.textColor=UIColor.secondaryLabelColor;
+    UILabel *subtitle=[UILabel new];subtitle.text=@"1.0.21 · 双指长按唤醒";subtitle.font=[UIFont systemFontOfSize:12];subtitle.adjustsFontForContentSizeCategory=YES;subtitle.textColor=UIColor.secondaryLabelColor;
     UIStackView *stack=[[UIStackView alloc] initWithArrangedSubviews:@[name,subtitle]];stack.axis=UILayoutConstraintAxisVertical;stack.spacing=4;stack.translatesAutoresizingMaskIntoConstraints=NO;
     [header addSubview:stack];[NSLayoutConstraint activateConstraints:@[[stack.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:24],[stack.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-24],[stack.centerYAnchor constraintEqualToAnchor:header.centerYAnchor]]];
     self.tableView.tableHeaderView=header;
@@ -308,7 +308,7 @@ static NSString *TKUIRedKeywordText(void) {
         TKRedKeywordsController *editor=[TKRedKeywordsController new];__weak TKSettingsController *weakSelf=self;
         editor.didSave=^{[weakSelf.tableView reloadData];};[self.navigationController pushViewController:editor animated:YES];
     } else if ([action isEqualToString:@"diagnostics"] || [action isEqualToString:@"copy"]) {
-        NSDictionary *state=TKRuntimeSnapshot();NSMutableString *text=[NSMutableString stringWithFormat:@"TIMCleanKit %@\n%@\n",state[@"version"]?:@"1.0.20",state[@"process"]?:@"运行状态不可用"];
+        NSDictionary *state=TKRuntimeSnapshot();NSMutableString *text=[NSMutableString stringWithFormat:@"TIMCleanKit %@\n%@\n",state[@"version"]?:@"1.0.21",state[@"process"]?:@"运行状态不可用"];
         [text appendString:@"\n功能引擎：\n"];
         NSDictionary *engine=[state[@"engine"] isKindOfClass:NSDictionary.class]?state[@"engine"]:@{};
         NSArray *keys=[[engine allKeys] sortedArrayUsingSelector:@selector(compare:)];
