@@ -192,6 +192,24 @@ static id TKRecordMatchingTextInCache(UIView *cell) {
 static const void *kTKCellRecordKey=&kTKCellRecordKey;
 static void TKCellSetRecord(UIView *cell,id record){if(cell)objc_setAssociatedObject(cell,kTKCellRecordKey,record,OBJC_ASSOCIATION_RETAIN_NONATOMIC);}
 static id TKCellRecord(UIView *cell){return cell?objc_getAssociatedObject(cell,kTKCellRecordKey):nil;}
+static BOOL TKCellHasRedPacketView(UIView *cell) {   // 1.0.23: 视图级红包检测——文本关联错位时也不给红包贴"拦截撤回"标签
+    __block BOOL found=NO;
+    __block void (^scan)(UIView*) = nil;
+    scan = ^(UIView *v){
+        for(UIView *s in v.subviews){
+            if(found)return;
+            NSString *cn=NSStringFromClass(object_getClass(s));
+            if([cn rangeOfString:@"RedPacket"].location!=NSNotFound ||
+               [cn rangeOfString:@"RedEnvelope"].location!=NSNotFound ||
+               [cn rangeOfString:@"Hongbao"].location!=NSNotFound ||
+               [cn rangeOfString:@"RedGift"].location!=NSNotFound ||
+               [cn rangeOfString:@"Envelope"].location!=NSNotFound) { found=YES; return; }
+            scan(s);
+        }
+    };
+    scan(cell);
+    return found;
+}
 static void TKUpdateRecallLabel(UIView *cell) {
     if(!cell || !NSThread.isMainThread)return;
     id record=TKRecordForCell(cell);
@@ -200,6 +218,7 @@ static void TKUpdateRecallLabel(UIView *cell) {
     UILabel *label=objc_getAssociatedObject(cell,&kTKRecallLabelKey);
     // 1.0.19: 红包消息不贴标签——QQ 红包无法撤回，此前"恭喜发财"短文本模糊匹配会误贴到红包上。
     if(record && redElementFromRecord(record)) {label.hidden=YES;return;}
+    if(TKCellHasRedPacketView(cell)){if(label)label.hidden=YES;return;}   // 1.0.23: 视图级兜底——关联错位时也不给红包贴标签
     if(!TKAntiRecallEnabled()||!record||!TKWasRecalled(record)||!TKHasCachedContent(record)) {
         if(label&&!label.hidden&&record)return;   // 1.0.22: 关联仍在时偶发判定失败不隐藏已显示的标签
         label.hidden=YES;return;
@@ -274,6 +293,8 @@ static void TKCellBindVM(id self,SEL cmd,id vm) {
     IMP orig=OrigIMP(TKCellClass,cmd);
     if(orig)((void(*)(id,SEL,id))orig)(self,cmd,vm);
     if(vm&&[self isKindOfClass:UIView.class]) {
+        objc_setAssociatedObject(self,kTKCellRecordKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);   // 1.0.23: 复用绑定新消息先清旧文本关联
+        UILabel *oldLbl=objc_getAssociatedObject(self,&kTKRecallLabelKey);oldLbl.hidden=YES;   // 1.0.23: 清除复用残留标签（TIM 复用不总走 prepareForReuse）
         objc_setAssociatedObject(self,&kTKBoundModelKey,vm,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         gTKMessageBinds++;if(!gTKVisibleCells)gTKVisibleCells=[NSHashTable weakObjectsHashTable];[gTKVisibleCells addObject:self];
         id record=TKRecordForCell(self);if(record)TKRememberMessage(record);else gTKRecordReadFailures++;

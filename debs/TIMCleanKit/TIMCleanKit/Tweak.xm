@@ -27,6 +27,7 @@ static NSString *const kDeviceSpoof = @"TIMCK.deviceSpoof";     // 设备伪装
 static NSString *const kSpoofModel  = @"TIMCK.spoofModel";      // 伪装机型
 static NSString *const kRedPacket   = @"TIMCK.redPacket";       // 红包过滤总开关
 static NSString *const kRedMinAmount= @"TIMCK.redMinAmount";    // 起抢金额，分
+static NSString *const kRedAllowUnknown=@"TIMCK.allowUnknownRed"; // 1.0.23: 未知金额红包放行（默认开）
 static NSString *const kRedSkipTest = @"TIMCK.redSkipTest";     // 沿用旧配置键：关键词过滤
 static NSString *const kRedKeywords = @"TIMCK.redKeywords";    // 可编辑的红包文案关键词
 static NSString *const kRedSkipCmd  = @"TIMCK.redSkipCommand";  // 口令红包不抢
@@ -70,6 +71,7 @@ static void registerDefaultsOnce(void) {
             kSpoofModel:  @"iPhone 15 Pro",
             kRedPacket:   @YES,
             kRedMinAmount:@(100),
+            kRedAllowUnknown:@YES,
             kRedSkipTest: @YES,
             kRedKeywords: @"测试\n外挂\n体验",
             kRedSkipCmd:  @NO,
@@ -281,7 +283,11 @@ static BOOL shouldSkipRedPacket(id record) {
     //   * 起抢金额=0 表示不限制。
     if(min>0 && redType>=0 && redType<16)gTKRedTypeHist[redType]++;   // 1.0.18: 直方图必须记在 return 之前
     if(min>0 && amount>=0 && amount<min){gTKSkipUnknownAmount++;return YES;}
-    if(min>0 && redType==2){gTKSkipCommonType++;return YES;}
+    if(min>0 && redType==2) {
+        // 1.0.23: TIM 不随消息下发红包总额，一刀切跳过普通红包=普通红包永远抢不到。
+        // 默认放行（面板开关「未知金额红包放行」），关闭则恢复旧规则。
+        if(!prefBool(kRedAllowUnknown,YES)){gTKSkipCommonType++;return YES;}
+    }
     return NO;
 }
 
@@ -595,7 +601,21 @@ static void AR_setMsgType(id self,SEL cmd,int value) {
 static void TKDrainRedQueue(void);
 static void TKQueueRedPacket(id record) {
     if(!prefBool(kEnabled,YES)||!prefBool(kRedPacket,YES)||!prefBool(kAutoRed,YES))return;
-    if(UIApplication.sharedApplication.applicationState!=UIApplicationStateActive){gTKEngineStatus=@"应用未在前台，未请求领取";return;}
+    if(UIApplication.sharedApplication.applicationState!=UIApplicationStateActive){
+        // 1.0.23: 红包到达瞬间可能刚切回前台、系统状态尚未刷新——0.4s 后重试一次再放弃
+        static char TKRedRetryKey;
+        if(!objc_getAssociatedObject(record,&TKRedRetryKey)) {
+            objc_setAssociatedObject(record,&TKRedRetryKey,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            id retained=[record retain];
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW,400*NSEC_PER_MSEC),dispatch_get_main_queue(),^{
+                objc_setAssociatedObject(record,&TKRedRetryKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                TKQueueRedPacket(record);
+                [retained release];
+            });
+            gTKEngineStatus=@"应用未在前台，已安排0.4s后重试";
+        } else gTKEngineStatus=@"应用未在前台，未请求领取";
+        return;
+    }
     id wallet=redElementFromRecord(record);if(!wallet||shouldSkipRedPacket(record))return;
     long long time=TKScalar(record,@"msgTime","q");NSTimeInterval now=NSDate.date.timeIntervalSince1970;
     if(time>100000000000LL)time/=1000;
@@ -710,8 +730,8 @@ static NSDictionary *TKRuntimeSnapshot(void) {
         unsigned long long hits=__atomic_load_n(&r->hits,__ATOMIC_RELAXED);
         [rows addObject:@{@"name":[NSString stringWithFormat:@"%s\n%s",r->className,sel_getName(r->selector)],@"state":hits?@"已实际调用":states[MIN(state,4)],@"hits":@(hits),@"lastHit":@""}];
     }
-    return @{@"engine":@{@"status":gTKEngineStatus?:@"未知",@"listenerRegistered":@(gTKListenerRegistered),@"received":@(gTKReceived),@"claimRequests":@(gTKAutoAttempts),@"claimCallbacks":@(gTKAutoCompleted),@"claimFailures":@(gTKAutoErrors),@"repeatRequests":@(gTKRepeats),@"repeatFailures":@(gTKRepeatFailures),@"messageCellBinds":@(gTKMessageBinds),@"gestureTaps":@(gTKGestureTaps),@"gestureNoRecord":@(gTKGestureNoRecord),@"recordReadFailures":@(gTKRecordReadFailures),@"recallBlocked":@(__atomic_load_n(&gTKRecallBlocked,__ATOMIC_RELAXED)),@"hardwareReads":@(__atomic_load_n(&gTKHardwareReads,__ATOMIC_RELAXED)),@"recallEvents":@(__atomic_load_n(&gTKRecallEvents,__ATOMIC_RELAXED)),@"recallRestores":@(__atomic_load_n(&gTKRecallRestores,__ATOMIC_RELAXED)),@"lastRedType":@(gTKLastRedType),@"lastRedAmount":@(gTKLastRedAmount),@"skipCommonType":@(gTKSkipCommonType),@"skipUnknownAmount":@(gTKSkipUnknownAmount),@"layoutAssociations":@(gTKLayoutAssociations),@"layoutMatchFails":@(gTKLayoutMatchFails),@"noRecordNoCell":@(gTKNoRecordNoCell),@"noRecordAssocFail":@(gTKNoRecordAssocFail),@"noRecordMatchFail":@(gTKNoRecordMatchFail),@"lastHitInfo":TKStrSafe(gTKLastHitInfo),@"textProbe":TKStrSafe(gTKTextProbe),@"redProbe":(gTKLastRedProbe?:@"")},@"redTypeHist":@[ @(gTKRedTypeHist[0]),@(gTKRedTypeHist[1]),@(gTKRedTypeHist[2]),@(gTKRedTypeHist[3]),@(gTKRedTypeHist[4]),@(gTKRedTypeHist[5]),@(gTKRedTypeHist[6]),@(gTKRedTypeHist[7]),@(gTKRedTypeHist[8]),@(gTKRedTypeHist[9]),@(gTKRedTypeHist[10]),@(gTKRedTypeHist[11]),@(gTKRedTypeHist[12]),@(gTKRedTypeHist[13]),@(gTKRedTypeHist[14]),@(gTKRedTypeHist[15]) ],@"version":@"1.0.22",@"process":[NSString stringWithFormat:@"TIM %@ · PID %d · 注册检查 %u 轮\nUIDevice.model = %@",([NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"]?:@"?"),getpid(),gRegistrationRounds,UIDevice.currentDevice.model],@"hookRows":rows,@"warnings":@[@"调用次数只能证明该入口被调用，不能证明防撤回或过滤效果。",@"自动领取：只处理前台两分钟内新收到的红包，不保证后台唤醒；完成回调不等于到账，请核对结果。",@"防撤回：本次进程缓存最近500条收到/显示的消息；启动前丢失内容无法恢复。"]};
-    } @catch(NSException *e) { return @{@"engine":@{@"status":@"诊断构造异常（已捕获，未影响聊天）",@"version":@"1.0.22"}}; }
+    return @{@"engine":@{@"status":gTKEngineStatus?:@"未知",@"listenerRegistered":@(gTKListenerRegistered),@"received":@(gTKReceived),@"claimRequests":@(gTKAutoAttempts),@"claimCallbacks":@(gTKAutoCompleted),@"claimFailures":@(gTKAutoErrors),@"repeatRequests":@(gTKRepeats),@"repeatFailures":@(gTKRepeatFailures),@"messageCellBinds":@(gTKMessageBinds),@"gestureTaps":@(gTKGestureTaps),@"gestureNoRecord":@(gTKGestureNoRecord),@"recordReadFailures":@(gTKRecordReadFailures),@"recallBlocked":@(__atomic_load_n(&gTKRecallBlocked,__ATOMIC_RELAXED)),@"hardwareReads":@(__atomic_load_n(&gTKHardwareReads,__ATOMIC_RELAXED)),@"recallEvents":@(__atomic_load_n(&gTKRecallEvents,__ATOMIC_RELAXED)),@"recallRestores":@(__atomic_load_n(&gTKRecallRestores,__ATOMIC_RELAXED)),@"lastRedType":@(gTKLastRedType),@"lastRedAmount":@(gTKLastRedAmount),@"skipCommonType":@(gTKSkipCommonType),@"skipUnknownAmount":@(gTKSkipUnknownAmount),@"layoutAssociations":@(gTKLayoutAssociations),@"layoutMatchFails":@(gTKLayoutMatchFails),@"noRecordNoCell":@(gTKNoRecordNoCell),@"noRecordAssocFail":@(gTKNoRecordAssocFail),@"noRecordMatchFail":@(gTKNoRecordMatchFail),@"lastHitInfo":TKStrSafe(gTKLastHitInfo),@"textProbe":TKStrSafe(gTKTextProbe),@"redProbe":(gTKLastRedProbe?:@"")},@"redTypeHist":@[ @(gTKRedTypeHist[0]),@(gTKRedTypeHist[1]),@(gTKRedTypeHist[2]),@(gTKRedTypeHist[3]),@(gTKRedTypeHist[4]),@(gTKRedTypeHist[5]),@(gTKRedTypeHist[6]),@(gTKRedTypeHist[7]),@(gTKRedTypeHist[8]),@(gTKRedTypeHist[9]),@(gTKRedTypeHist[10]),@(gTKRedTypeHist[11]),@(gTKRedTypeHist[12]),@(gTKRedTypeHist[13]),@(gTKRedTypeHist[14]),@(gTKRedTypeHist[15]) ],@"version":@"1.0.23",@"process":[NSString stringWithFormat:@"TIM %@ · PID %d · 注册检查 %u 轮\nUIDevice.model = %@",([NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"]?:@"?"),getpid(),gRegistrationRounds,UIDevice.currentDevice.model],@"hookRows":rows,@"warnings":@[@"调用次数只能证明该入口被调用，不能证明防撤回或过滤效果。",@"自动领取：只处理前台两分钟内新收到的红包，不保证后台唤醒；完成回调不等于到账，请核对结果。",@"防撤回：本次进程缓存最近500条收到/显示的消息；启动前丢失内容无法恢复。"]};
+    } @catch(NSException *e) { return @{@"engine":@{@"status":@"诊断构造异常（已捕获，未影响聊天）",@"version":@"1.0.23"}}; }
 }
 
 
