@@ -107,31 +107,26 @@ static void TKEnsureCellBinding(UIView *cell) {
 }
 // ============ 1.0.15: 双击复读 —— 气泡文本 ↔ 消息缓存匹配（Swift cell 拿不到 record 的替代路径） ============
 static NSString *TKCellBubbleText(UIView *cell) {
-    // 找类名含 "Bubble" 的最大可见容器，取其子树中最醒目的富文本/标签文字。
+    // 1.0.17: TIM 气泡文本是自定义渲染控件，无 UILabel/UITextView——
+    // 收集 cell 子树中最长的 UILabel/UITextView 文本与 accessibility 文本，取最长者。
     if(!cell)return nil;
-    NSMutableArray *queue=[NSMutableArray arrayWithArray:cell.subviews];
-    UIView *bubble=nil;double bestArea=0;
-    for(NSUInteger i=0;i<queue.count&&i<300;i++) {
-        UIView *view=queue[i];
-        if(!view.hidden&&view.alpha>.01&&[NSStringFromClass(view.class) containsString:@"Bubble"]&&view.bounds.size.width>=60&&view.bounds.size.height>=16) {
-            double area=view.bounds.size.width*view.bounds.size.height;
-            if(area>bestArea){bestArea=area;bubble=view;}
-        }
-        if(view.subviews.count)[queue addObjectsFromArray:view.subviews];
-    }
-    if(!bubble)return nil;
-    NSMutableArray *scan=[NSMutableArray arrayWithObject:bubble];
+    NSMutableArray *scan=[NSMutableArray arrayWithObject:cell];
     NSString *best=nil;NSUInteger bestLen=0;
-    for(NSUInteger i=0;i<scan.count&&i<300;i++) {
+    for(NSUInteger i=0;i<scan.count&&i<600;i++) {
         UIView *view=scan[i];
-        if([view isKindOfClass:UITextView.class]) {
-            NSString *t=((UITextView*)view).text;
-            if(t.length>=3&&t.length>bestLen){bestLen=t.length;best=t;}
-        } else if([view isKindOfClass:UILabel.class]) {
-            NSString *t=((UILabel*)view).text;
-            if(t.length>=3&&t.length>bestLen){bestLen=t.length;best=t;}
+        if(!view.hidden&&view.alpha>.01) {
+            if([view isKindOfClass:UITextView.class]) {
+                NSString *t=((UITextView*)view).text;
+                if(t.length>=3&&t.length>bestLen){bestLen=t.length;best=t;}
+            } else if([view isKindOfClass:UILabel.class]) {
+                NSString *t=((UILabel*)view).text;
+                if(t.length>=3&&t.length>bestLen){bestLen=t.length;best=t;}
+            } else {
+                NSString *ax=view.accessibilityLabel;
+                if([ax isKindOfClass:NSString.class]&&ax.length>bestLen){bestLen=ax.length;best=ax;}
+            }
         }
-        if(view.subviews.count)[scan addObjectsFromArray:view.subviews];
+        if(view.subviews.count&&scan.count<800)[scan addObjectsFromArray:view.subviews];
     }
     return best;
 }
@@ -159,16 +154,23 @@ static id TKRecordMatchingTextInCache(UIView *cell) {
         NSDictionary *saved=gTKMessageCache[identity];
         id record=saved?[saved objectForKey:@"record"]:nil;
         NSString *have=TKRecordTextOfElements(saved?[saved objectForKey:@"elements"]:nil);
-        if(have.length&&[have isEqualToString:want]){found=record;break;}
+        if(have.length) {
+            if([have isEqualToString:want]){found=record;break;}
+            if(want.length>=4&&have.length>=4&&([want containsString:have]||[have containsString:want])){found=record;break;}
+        }
     }
     [gTKCacheLock unlock];
     return found;
 }
 
+static const void *kTKCellRecordKey=&kTKCellRecordKey;
+static void TKCellSetRecord(UIView *cell,id record){if(cell)objc_setAssociatedObject(cell,kTKCellRecordKey,record,OBJC_ASSOCIATION_RETAIN_NONATOMIC);}
+static id TKCellRecord(UIView *cell){return cell?objc_getAssociatedObject(cell,kTKCellRecordKey):nil;}
 static void TKUpdateRecallLabel(UIView *cell) {
     if(!cell || !NSThread.isMainThread)return;
     id record=TKRecordForCell(cell);
-    if(!record)record=TKRecordMatchingTextInCache(cell);   // 1.0.15: Swift cell 绑定失败时按气泡文本匹配缓存消息
+    if(!record)record=TKCellRecord(cell);                  // 1.0.17: 布局时已文本匹配并关联
+    if(!record)record=TKRecordMatchingTextInCache(cell);
     UILabel *label=objc_getAssociatedObject(cell,&kTKRecallLabelKey);
     if(!TKAntiRecallEnabled()||!record||!TKWasRecalled(record)||!TKHasCachedContent(record)) {label.hidden=YES;return;}
     if(!label) {
@@ -256,8 +258,9 @@ static void TKCellLayout(id self,SEL cmd) {
     IMP orig=OrigIMP(TKCellClass,cmd);if(orig)((void(*)(id,SEL))orig)(self,cmd);
     if([self isKindOfClass:UIView.class]) {
         TKEnsureCellBinding(self);
+        TKCellSetRecord(self,TKRecordMatchingTextInCache(self));  // 1.0.17: 布局时文本匹配一次并关联，拦截/复读即时可用
         if(!gTKVisibleCells)gTKVisibleCells=[NSHashTable weakObjectsHashTable];
-        [gTKVisibleCells addObject:self];   // 1.0.15: 布局即登记可见 cell，召回拦截后立即可刷新标签
+        [gTKVisibleCells addObject:self];
         TKUpdateRecallLabel(self);
     }
 }
