@@ -51,7 +51,7 @@ static void DBSyncBatchButton(void) {
         gBatchButton.layer.cornerRadius = 12.0;
         [gBatchButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
         [gBatchButton.titleLabel setFont:[UIFont boldSystemFontOfSize:15.0]];
-        [gBatchButton setTitle:@"上传我の源 · 批量上传" forState:UIControlStateNormal];
+        [gBatchButton setTitle:@"上传我的源" forState:UIControlStateNormal];
         [gBatchButton addTarget:[DBUploadPanelViewController class]
                          action:@selector(presentBatch)
                forControlEvents:UIControlEventTouchUpInside];
