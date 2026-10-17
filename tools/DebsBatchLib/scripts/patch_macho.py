@@ -24,7 +24,12 @@ def main() -> int:
 
     n = 0
     if isinstance(parsed, lief.MachO.FatBinary):
-        for b in parsed.fat_binaries:
+        # 新版本 LIEF (>=0.16): it_binaries; 旧版本: fat_binaries
+        if hasattr(parsed, "it_binaries"):
+            bins = list(parsed.it_binaries)
+        else:
+            bins = list(parsed.fat_binaries)
+        for b in bins:
             b.add_dylib(dylib_load_path)
             n += 1
         parsed.write(binary_path)

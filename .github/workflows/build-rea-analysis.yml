@@ -34,12 +34,16 @@ jobs:
       - name: Install Ghidra
         run: |
           # Homebrew 无 ghidra cask；匿名 API 会被限流，版本写死（2026-09-21 发布）
-          curl -sL "https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.4_build/ghidra_12.1.4_PUBLIC_20260921.zip" \
+          curl -sL --fail "https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.4_build/ghidra_12.1.4_PUBLIC_20260921.zip" \
             -o /tmp/ghidra.zip
           ls -lh /tmp/ghidra.zip
-          cd /tmp && unzip -q ghidra.zip
+          cd /tmp
+          unzip -o ghidra.zip 2>&1 | tail -6
+          echo "unzip exit: ${PIPESTATUS[0]}"
           GHIDRA_DIR=$(find /tmp -maxdepth 1 -type d -name 'ghidra_*' | head -1)
+          echo "GHIDRA_DIR=[$GHIDRA_DIR]"
           test -n "$GHIDRA_DIR"
+          ls "$GHIDRA_DIR" | head -12
           test -x "$GHIDRA_DIR/support/analyzeHeadless" || test -x "$GHIDRA_DIR/ghidraRun"
           echo "GHIDRA_INSTALL_DIR=$GHIDRA_DIR"
           echo "GHIDRA_INSTALL_DIR=$GHIDRA_DIR" >> "$GITHUB_ENV"
