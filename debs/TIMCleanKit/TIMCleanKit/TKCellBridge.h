@@ -106,6 +106,11 @@ static void TKEnsureCellBinding(UIView *cell) {
     if(vm)objc_setAssociatedObject(cell,&kTKBoundModelKey,vm,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 // ============ 1.0.15: 双击复读 —— 气泡文本 ↔ 消息缓存匹配（Swift cell 拿不到 record 的替代路径） ============
+static unsigned long long gTKLayoutAssociations;
+static unsigned long long gTKLayoutMatchFails;
+static unsigned long long gTKNoRecordNoCell;
+static unsigned long long gTKNoRecordAssocFail;
+static unsigned long long gTKNoRecordMatchFail;
 static NSString *TKCellBubbleText(UIView *cell) {
     // 1.0.17: TIM 气泡文本是自定义渲染控件，无 UILabel/UITextView——
     // 收集 cell 子树中最长的 UILabel/UITextView 文本与 accessibility 文本，取最长者。
@@ -124,6 +129,13 @@ static NSString *TKCellBubbleText(UIView *cell) {
             } else {
                 NSString *ax=view.accessibilityLabel;
                 if([ax isKindOfClass:NSString.class]&&ax.length>bestLen){bestLen=ax.length;best=ax;}
+                NSArray *el=view.accessibilityElements;
+                if([el isKindOfClass:NSArray.class])for(id e in el) {
+                    if([e isKindOfClass:UIAccessibilityElement.class]) {
+                        NSString *t=[(UIAccessibilityElement*)e accessibilityLabel];
+                        if([t isKindOfClass:NSString.class]&&t.length>bestLen){bestLen=t.length;best=t;}
+                    }
+                }
             }
         }
         if(view.subviews.count&&scan.count<800)[scan addObjectsFromArray:view.subviews];
@@ -258,7 +270,9 @@ static void TKCellLayout(id self,SEL cmd) {
     IMP orig=OrigIMP(TKCellClass,cmd);if(orig)((void(*)(id,SEL))orig)(self,cmd);
     if([self isKindOfClass:UIView.class]) {
         TKEnsureCellBinding(self);
-        TKCellSetRecord(self,TKRecordMatchingTextInCache(self));  // 1.0.17: 布局时文本匹配一次并关联，拦截/复读即时可用
+        id assoc=TKRecordMatchingTextInCache(self);
+        TKCellSetRecord(self,assoc);
+        if(assoc)gTKLayoutAssociations++;else gTKLayoutMatchFails++;   // 1.0.18: 分步计数
         if(!gTKVisibleCells)gTKVisibleCells=[NSHashTable weakObjectsHashTable];
         [gTKVisibleCells addObject:self];
         TKUpdateRecallLabel(self);
