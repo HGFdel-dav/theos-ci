@@ -1,0 +1,11 @@
+Package: com.niubiprass.parax
+Name: ParaX
+Version: 0.1.0
+Description: 分屏增强：Arc 弧形唤醒、Crane 分身、记忆窗口尺寸（整合 ParallelX）。
+Author: Niubiprass
+Section: Tweaks
+Depends: mobilesubstrate
+Conflicts: com.moxuan.parallelx
+Replaces: com.moxuan.parallelx
+Architecture: iphoneos-arm64
+Maintainer: Niubiprass <maintainer@localhost>
