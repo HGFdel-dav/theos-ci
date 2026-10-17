@@ -1,5 +1,5 @@
 //  DebsBatch — 注入入口
-//  在 Debs「管理文件」页显示贴底按钮「上传我の源 · 批量上传」，
+//  在 Debs「管理文件」页显示贴底按钮「上传我的源」，
 //  点击弹出批量上传面板（DBUploadPanel）。
 #import <UIKit/UIKit.h>
 #import "DBCommon.h"
