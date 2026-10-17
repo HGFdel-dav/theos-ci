@@ -47,9 +47,13 @@ jobs:
         run: |
           set -e
           cd tools/DebsBatchLib
-          rm -rf Payload
+          rm -rf Payload PayloadB
           unzip -q ipa/Debs_v8.0.ipa
-          test -d Payload/Debs.app
+          # B: 原版仅升版本号（TrollStore 覆盖安装对照组）
+          cp -r Payload PayloadB
+          python3 scripts/bump_version.py PayloadB/Debs.app/Info.plist
+          # A: 注入 dylib 的版本
+          python3 scripts/bump_version.py Payload/Debs.app/Info.plist
           mkdir -p Payload/Debs.app/Frameworks
           cp "$DYLIB_PATH" Payload/Debs.app/Frameworks/libDebsBatch.dylib
           # 用 LIEF 给主二进制加 LC_LOAD_DYLIB（insert_dylib 原仓库已 404）
@@ -57,20 +61,21 @@ jobs:
           python3 -m venv /tmp/debs-venv
           /tmp/debs-venv/bin/pip install -q lief
           /tmp/debs-venv/bin/python scripts/patch_macho.py Payload/Debs.app/Debs "@executable_path/Frameworks/libDebsBatch.dylib"
-          ldid -S Payload/Debs.app/Debs
-          ldid -S Payload/Debs.app/Frameworks/libDebsBatch.dylib
           echo "--- verify load command ---"
-          otool -l Payload/Debs.app/Debs | grep -A3 'LC_LOAD_DYLIB' | head -12
+          otool -l Payload/Debs.app/Debs | grep -A3 'LC_LOAD_DYLIB' | tail -6
+          # 不手动签名：TrollStore 安装时会全权重签，避免伪签名干扰覆盖安装
           zip -qry DebsBatch-0.1.0.ipa Payload/
-          ls -l DebsBatch-0.1.0.ipa
-          shasum -a 256 DebsBatch-0.1.0.ipa | tee DebsBatch-0.1.0.ipa.sha256
-          echo "IPA_PATH=$PWD/DebsBatch-0.1.0.ipa" >> "$GITHUB_ENV"
+          zip -qry Debs-v8.0.1-original.ipa PayloadB/
+          ls -l *.ipa
+          shasum -a 256 DebsBatch-0.1.0.ipa Debs-v8.0.1-original.ipa | tee ipas.sha256
+          echo "IPA_PATH=$PWD" >> "$GITHUB_ENV"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: DebsBatch-0.1.0-ipa
+          name: DebsBatch-ipas
           path: |
             tools/DebsBatchLib/DebsBatch-0.1.0.ipa
-            tools/DebsBatchLib/DebsBatch-0.1.0.ipa.sha256
+            tools/DebsBatchLib/Debs-v8.0.1-original.ipa
+            tools/DebsBatchLib/ipas.sha256
           if-no-files-found: error

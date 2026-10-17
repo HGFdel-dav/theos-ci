@@ -10,5 +10,7 @@ DebsBatch_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-unused-variable 
 DebsBatch_FRAMEWORKS = UIKit Foundation CoreGraphics
 DebsBatch_LIBRARIES = z
 DebsBatch_INSTALL_PATH = /usr/lib
+# install name 修正：匹配主二进制 LC_LOAD_DYLIB 的 @executable_path/Frameworks 路径
+DebsBatch_LDFLAGS = -install_name @executable_path/Frameworks/libDebsBatch.dylib
 
 include $(THEOS_MAKE_PATH)/library.mk
