@@ -52,13 +52,31 @@ jobs:
           test -d Payload/Debs.app
           mkdir -p Payload/Debs.app/Frameworks
           cp "$DYLIB_PATH" Payload/Debs.app/Frameworks/libDebsBatch.dylib
-          # 用 tarball 下载 insert_dylib（runner 上 git clone 匿名 github.com 会失败）
-          curl -sL https://github.com/sbingner/insert_dylib/archive/refs/heads/master.tar.gz \
-            -o /tmp/insert_dylib.tar.gz
-          mkdir -p /tmp/insert_dylib && tar -xzf /tmp/insert_dylib.tar.gz -C /tmp/insert_dylib --strip-components=1
-          clang -O2 -o /tmp/insert_dylib_bin /tmp/insert_dylib/main.c
-          /tmp/insert_dylib_bin @executable_path/Frameworks/libDebsBatch.dylib \
-            Payload/Debs.app/Debs --all-yes --inplace
+          # 用 LIEF 给主二进制加 LC_LOAD_DYLIB（insert_dylib 原仓库已 404）
+          pip3 install -q --user lief
+          python3 - <<'PYEOF'
+import lief
+path = "Payload/Debs.app/Debs"
+parsed = lief.MachO.parse(path)
+if parsed is None:
+    raise SystemExit("MachO parse failed")
+n = 0
+if isinstance(parsed, lief.MachO.FatBinary):
+    for b in parsed.fat_binaries:
+        b.add_dylib("@executable_path/Frameworks/libDebsBatch.dylib")
+        n += 1
+    parsed.write(path)
+elif isinstance(parsed, list):
+    for b in parsed:
+        b.add_dylib("@executable_path/Frameworks/libDebsBatch.dylib")
+        b.write(path)
+        n += 1
+else:
+    parsed.add_dylib("@executable_path/Frameworks/libDebsBatch.dylib")
+    parsed.write(path)
+    n = 1
+print("patched slices:", n)
+PYEOF
           ldid -S Payload/Debs.app/Debs
           ldid -S Payload/Debs.app/Frameworks/libDebsBatch.dylib
           echo "--- verify load command ---"
