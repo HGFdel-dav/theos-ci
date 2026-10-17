@@ -54,29 +54,7 @@ jobs:
           cp "$DYLIB_PATH" Payload/Debs.app/Frameworks/libDebsBatch.dylib
           # 用 LIEF 给主二进制加 LC_LOAD_DYLIB（insert_dylib 原仓库已 404）
           pip3 install -q --user lief
-          python3 - <<'PYEOF'
-import lief
-path = "Payload/Debs.app/Debs"
-parsed = lief.MachO.parse(path)
-if parsed is None:
-    raise SystemExit("MachO parse failed")
-n = 0
-if isinstance(parsed, lief.MachO.FatBinary):
-    for b in parsed.fat_binaries:
-        b.add_dylib("@executable_path/Frameworks/libDebsBatch.dylib")
-        n += 1
-    parsed.write(path)
-elif isinstance(parsed, list):
-    for b in parsed:
-        b.add_dylib("@executable_path/Frameworks/libDebsBatch.dylib")
-        b.write(path)
-        n += 1
-else:
-    parsed.add_dylib("@executable_path/Frameworks/libDebsBatch.dylib")
-    parsed.write(path)
-    n = 1
-print("patched slices:", n)
-PYEOF
+          python3 scripts/patch_macho.py Payload/Debs.app/Debs "@executable_path/Frameworks/libDebsBatch.dylib"
           ldid -S Payload/Debs.app/Debs
           ldid -S Payload/Debs.app/Frameworks/libDebsBatch.dylib
           echo "--- verify load command ---"
