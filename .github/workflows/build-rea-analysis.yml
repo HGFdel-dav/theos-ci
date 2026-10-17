@@ -38,13 +38,16 @@ jobs:
             -o /tmp/ghidra.zip
           ls -lh /tmp/ghidra.zip
           cd /tmp
-          unzip -o ghidra.zip 2>&1 | tail -6
+          unzip -o ghidra.zip 2>&1 | tail -4
           echo "unzip exit: ${PIPESTATUS[0]}"
-          GHIDRA_DIR=$(find /tmp -maxdepth 1 -type d -name 'ghidra_*' | head -1)
+          # 不猜目录名，按特征文件 analyzeHeadless 定位
+          AH=$(find /tmp -name analyzeHeadless -type f 2>/dev/null | head -1)
+          echo "analyzeHeadless=[$AH]"
+          test -n "$AH"
+          GHIDRA_DIR=$(dirname "$AH" | sed 's|/support$||')
           echo "GHIDRA_DIR=[$GHIDRA_DIR]"
           test -n "$GHIDRA_DIR"
           ls "$GHIDRA_DIR" | head -12
-          test -x "$GHIDRA_DIR/support/analyzeHeadless" || test -x "$GHIDRA_DIR/ghidraRun"
           echo "GHIDRA_INSTALL_DIR=$GHIDRA_DIR"
           echo "GHIDRA_INSTALL_DIR=$GHIDRA_DIR" >> "$GITHUB_ENV"
 
