@@ -33,8 +33,8 @@ jobs:
 
       - name: Install Ghidra
         run: |
-          # Homebrew 无 ghidra cask；匿名 API 会被限流，版本写死（2026-09-21 发布）
-          curl -sL --fail "https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.1.4_build/ghidra_12.1.4_PUBLIC_20260921.zip" \
+          # 12.1.4 的 zip 缺少 darwin/arm64 原生反编译器，换 11.3.2（成熟稳定版）
+          curl -sL --fail "https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_11.3.2_build/ghidra_11.3.2_PUBLIC_20250416.zip" \
             -o /tmp/ghidra.zip
           ls -lh /tmp/ghidra.zip
           cd /tmp
@@ -45,7 +45,8 @@ jobs:
           echo "GHIDRA_DIR=[$GHIDRA_DIR]"
           test -d "$GHIDRA_DIR"
           test -d "$GHIDRA_DIR/support"
-          ls "$GHIDRA_DIR/support" | head -10
+          echo "--- decompiler os 目录 ---"
+          ls -R "$GHIDRA_DIR/Ghidra/Features/Decompiler/os" 2>/dev/null | head -30 || true
           echo "GHIDRA_INSTALL_DIR=$GHIDRA_DIR"
           echo "GHIDRA_INSTALL_DIR=$GHIDRA_DIR" >> "$GITHUB_ENV"
 
@@ -72,7 +73,7 @@ jobs:
       - name: REA instructions (assembly)
         run: |
           set +e
-          rea instructions "$PWD/tools/DebsBatchLib/Payload/Debs.app/Debs" --provider ghidra --json \
+          rea instructions "$PWD/tools/DebsBatchLib/Payload/Debs.app/Debs" --procedure main --provider ghidra --json \
             > rea-out/instructions.json 2>> rea-out/analyze.err
           echo "exit=$?"
           wc -c rea-out/instructions.json

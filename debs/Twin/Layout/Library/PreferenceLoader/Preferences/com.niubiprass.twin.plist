@@ -7,14 +7,18 @@
 		<key>cell</key>
 		<string>PSLinkCell</string>
 		<key>label</key>
-		<string>Twin</string>
+		<string>ParaX</string>
 		<key>bundle</key>
-		<string>TwinSettings</string>
+		<string>ParallelXPrefs</string>
 		<key>detail</key>
-		<string>TWRootListController</string>
+		<string>PXRootListController</string>
 		<key>isController</key>
 		<true/>
 		<key>overridePrincipalClass</key>
+		<true/>
+		<key>icon</key>
+		<string>icon.png</string>
+		<key>hasIcon</key>
 		<true/>
 	</dict>
 </dict>
