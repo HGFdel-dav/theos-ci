@@ -1,0 +1,86 @@
+name: REA Analysis Debs
+
+on:
+  push:
+    paths:
+      - 'tools/DebsBatchLib/**'
+      - '.github/workflows/build-rea-analysis.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rea:
+    runs-on: macos-14
+    env:
+      REA_GHIDRA_STARTUP_TIMEOUT_MS: '600000'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install REA
+        run: |
+          npm install --global rea-agents
+          rea --help >/dev/null 2>&1 && echo "rea OK" || echo "rea missing"
+
+      - name: Install Ghidra
+        run: |
+          brew install --cask ghidra
+          APP_DIR=$(find /Applications/Ghidra.app -maxdepth 4 -type d -name 'Ghidra*' | head -1)
+          echo "GHIDRA_INSTALL_DIR=$APP_DIR"
+          echo "GHIDRA_INSTALL_DIR=$APP_DIR" >> "$GITHUB_ENV"
+          test -n "$APP_DIR"
+
+      - name: Extract Debs binary
+        run: |
+          cd tools/DebsBatchLib
+          rm -rf Payload
+          unzip -q ipa/Debs_v8.0.ipa
+          test -f Payload/Debs.app/Debs
+          file Payload/Debs.app/Debs
+          ls -l Payload/Debs.app/Debs
+
+      - name: REA analyze (native overview)
+        run: |
+          mkdir -p rea-out
+          set +e
+          rea analyze "$PWD/tools/DebsBatchLib/Payload/Debs.app/Debs" --provider ghidra --json \
+            > rea-out/analyze.json 2> rea-out/analyze.err
+          echo "exit=$?"
+          wc -c rea-out/analyze.json rea-out/analyze.err
+          head -c 1000 rea-out/analyze.json
+          echo
+
+      - name: REA instructions (assembly)
+        run: |
+          set +e
+          rea instructions "$PWD/tools/DebsBatchLib/Payload/Debs.app/Debs" --provider ghidra --json \
+            > rea-out/instructions.json 2>> rea-out/analyze.err
+          echo "exit=$?"
+          wc -c rea-out/instructions.json
+
+      - name: REA search (upload flow related)
+        run: |
+          set +e
+          BIN="$PWD/tools/DebsBatchLib/Payload/Debs.app/Debs"
+          for q in "GitHub" "upload" "managed_github_repos" "blob"; do
+            safe=$(echo "$q" | tr -cd 'A-Za-z0-9_')
+            rea search "$BIN" "$q" --provider ghidra --json > "rea-out/search_${safe}.json" 2>> rea-out/analyze.err
+            echo "search $q exit=$?"
+          done
+          ls -l rea-out/
+
+      - name: Upload REA evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: rea-evidence
+          path: rea-out/
+          if-no-files-found: warn
