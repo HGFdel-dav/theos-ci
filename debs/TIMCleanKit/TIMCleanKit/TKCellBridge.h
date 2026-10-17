@@ -162,7 +162,8 @@ static NSString *TKRecordTextOfElements(NSArray *elements) {
                 const char *ecls=class_getName(object_getClass(e));
                 const char *elem0=elements.count?class_getName(object_getClass(elements[0])):"none";
                 NSString *probe=[NSString stringWithFormat:@"ecls=%s elem0=%s teCls=%s teCount=%lu",ecls,elem0,cls,(unsigned long)[elements count]];
-                __atomic_store_n(&gTKTextProbe,probe.UTF8String,__ATOMIC_RELAXED);
+                strlcpy(gTKTextProbeBuf,probe.UTF8String,sizeof(gTKTextProbeBuf));   // 1.0.22: 拷进静态缓冲（原写法保存临时串内部指针，释放后读取崩）
+                __atomic_store_n(&gTKTextProbe,gTKTextProbeBuf,__ATOMIC_RELAXED);
             }
         }
     }
@@ -199,7 +200,10 @@ static void TKUpdateRecallLabel(UIView *cell) {
     UILabel *label=objc_getAssociatedObject(cell,&kTKRecallLabelKey);
     // 1.0.19: 红包消息不贴标签——QQ 红包无法撤回，此前"恭喜发财"短文本模糊匹配会误贴到红包上。
     if(record && redElementFromRecord(record)) {label.hidden=YES;return;}
-    if(!TKAntiRecallEnabled()||!record||!TKWasRecalled(record)||!TKHasCachedContent(record)) {label.hidden=YES;return;}
+    if(!TKAntiRecallEnabled()||!record||!TKWasRecalled(record)||!TKHasCachedContent(record)) {
+        if(label&&!label.hidden&&record)return;   // 1.0.22: 关联仍在时偶发判定失败不隐藏已显示的标签
+        label.hidden=YES;return;
+    }
     if(!label) {
         label=[UILabel new];label.text=@"拦截撤回";label.font=[UIFont systemFontOfSize:10 weight:UIFontWeightSemibold];
         label.textColor=UIColor.systemOrangeColor;label.backgroundColor=[UIColor.secondarySystemBackgroundColor colorWithAlphaComponent:.92];
@@ -287,8 +291,8 @@ static void TKCellLayout(id self,SEL cmd) {
     if([self isKindOfClass:UIView.class]) {
         TKEnsureCellBinding(self);
         id assoc=TKRecordMatchingTextInCache(self);
-        TKCellSetRecord(self,assoc);
-        if(assoc)gTKLayoutAssociations++;else gTKLayoutMatchFails++;   // 1.0.18: 分步计数
+        if(assoc){TKCellSetRecord(self,assoc);gTKLayoutAssociations++;}else if(!TKCellRecord(self))gTKLayoutMatchFails++;   // 1.0.22: 匹配失败不再覆盖旧的有效关联（修复标签闪没）
+
         if(!gTKVisibleCells)gTKVisibleCells=[NSHashTable weakObjectsHashTable];
         [gTKVisibleCells addObject:self];
         TKUpdateRecallLabel(self);
