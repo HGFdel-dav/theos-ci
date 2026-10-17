@@ -106,6 +106,7 @@ static void TKEnsureCellBinding(UIView *cell) {
     if(vm)objc_setAssociatedObject(cell,&kTKBoundModelKey,vm,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 // ============ 1.0.15: 双击复读 —— 气泡文本 ↔ 消息缓存匹配（Swift cell 拿不到 record 的替代路径） ============
+static int gTKTextProbeWritten;
 static unsigned long long gTKLayoutAssociations;
 static unsigned long long gTKLayoutMatchFails;
 static unsigned long long gTKNoRecordNoCell;
@@ -153,6 +154,17 @@ static NSString *TKRecordTextOfElements(NSArray *elements) {
         if(![value isKindOfClass:NSString.class])value=te?TK_performObject(te,@"text"):nil;
         if(![value isKindOfClass:NSString.class])value=TK_performObject(e,@"text");
         if([value isKindOfClass:NSString.class])[all appendString:value];
+        else {
+            // 1.0.20 探针：记录读不出文本的元素结构
+            if(!__atomic_load_n(&gTKTextProbeWritten,__ATOMIC_RELAXED)) {
+                __atomic_store_n(&gTKTextProbeWritten,1,__ATOMIC_RELAXED);
+                const char *cls=te?class_getName(object_getClass(te)):"none";
+                const char *ecls=class_getName(object_getClass(e));
+                const char *elem0=elements.count?class_getName(object_getClass(elements[0])):"none";
+                NSString *probe=[NSString stringWithFormat:@"ecls=%s elem0=%s teCls=%s teCount=%lu",ecls,elem0,cls,(unsigned long)[elements count]];
+                __atomic_store_n(&gTKTextProbe,probe.UTF8String,__ATOMIC_RELAXED);
+            }
+        }
     }
     return all.length?all:nil;
 }

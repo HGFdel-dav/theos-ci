@@ -101,6 +101,8 @@ static id TK_performObject(id obj, NSString *prop) {
 
 static long long gTKLastRedType=LLONG_MIN;
 static long long gTKLastRedAmount=LLONG_MIN;
+static const char *gTKLastHitInfo="";
+static const char *gTKTextProbe="";
 static unsigned long long gTKSkipCommonType;
 static unsigned long long gTKRedTypeHist[16]; // 1.0.16: redType 分布直方图，用于标定拼手气/普通红包的真实类型值
 static unsigned long long gTKSkipUnknownAmount;
@@ -700,7 +702,7 @@ static NSDictionary *TKRuntimeSnapshot(void) {
         unsigned long long hits=__atomic_load_n(&r->hits,__ATOMIC_RELAXED);
         [rows addObject:@{@"name":[NSString stringWithFormat:@"%s\n%s",r->className,sel_getName(r->selector)],@"state":hits?@"已实际调用":states[MIN(state,4)],@"hits":@(hits),@"lastHit":@""}];
     }
-    return @{@"engine":@{@"status":gTKEngineStatus?:@"未知",@"listenerRegistered":@(gTKListenerRegistered),@"received":@(gTKReceived),@"claimRequests":@(gTKAutoAttempts),@"claimCallbacks":@(gTKAutoCompleted),@"claimFailures":@(gTKAutoErrors),@"repeatRequests":@(gTKRepeats),@"repeatFailures":@(gTKRepeatFailures),@"messageCellBinds":@(gTKMessageBinds),@"gestureTaps":@(gTKGestureTaps),@"gestureNoRecord":@(gTKGestureNoRecord),@"recordReadFailures":@(gTKRecordReadFailures),@"recallBlocked":@(__atomic_load_n(&gTKRecallBlocked,__ATOMIC_RELAXED)),@"hardwareReads":@(__atomic_load_n(&gTKHardwareReads,__ATOMIC_RELAXED)),@"recallEvents":@(__atomic_load_n(&gTKRecallEvents,__ATOMIC_RELAXED)),@"recallRestores":@(__atomic_load_n(&gTKRecallRestores,__ATOMIC_RELAXED)),@"lastRedType":@(gTKLastRedType),@"lastRedAmount":@(gTKLastRedAmount),@"skipCommonType":@(gTKSkipCommonType),@"skipUnknownAmount":@(gTKSkipUnknownAmount),@"layoutAssociations":@(gTKLayoutAssociations),@"layoutMatchFails":@(gTKLayoutMatchFails),@"noRecordNoCell":@(gTKNoRecordNoCell),@"noRecordAssocFail":@(gTKNoRecordAssocFail),@"noRecordMatchFail":@(gTKNoRecordMatchFail),@"redProbe":(gTKLastRedProbe?:@"")},@"redTypeHist":@[ @(gTKRedTypeHist[0]),@(gTKRedTypeHist[1]),@(gTKRedTypeHist[2]),@(gTKRedTypeHist[3]),@(gTKRedTypeHist[4]),@(gTKRedTypeHist[5]),@(gTKRedTypeHist[6]),@(gTKRedTypeHist[7]),@(gTKRedTypeHist[8]),@(gTKRedTypeHist[9]),@(gTKRedTypeHist[10]),@(gTKRedTypeHist[11]),@(gTKRedTypeHist[12]),@(gTKRedTypeHist[13]),@(gTKRedTypeHist[14]),@(gTKRedTypeHist[15]) ],@"version":@"1.0.19",@"process":[NSString stringWithFormat:@"TIM %@ · PID %d · 注册检查 %u 轮\nUIDevice.model = %@",[NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"],getpid(),gRegistrationRounds,UIDevice.currentDevice.model],@"hookRows":rows,@"warnings":@[@"调用次数只能证明该入口被调用，不能证明防撤回或过滤效果。",@"自动领取：只处理前台两分钟内新收到的红包，不保证后台唤醒；完成回调不等于到账，请核对结果。",@"防撤回：本次进程缓存最近500条收到/显示的消息；启动前丢失内容无法恢复。"]};
+    return @{@"engine":@{@"status":gTKEngineStatus?:@"未知",@"listenerRegistered":@(gTKListenerRegistered),@"received":@(gTKReceived),@"claimRequests":@(gTKAutoAttempts),@"claimCallbacks":@(gTKAutoCompleted),@"claimFailures":@(gTKAutoErrors),@"repeatRequests":@(gTKRepeats),@"repeatFailures":@(gTKRepeatFailures),@"messageCellBinds":@(gTKMessageBinds),@"gestureTaps":@(gTKGestureTaps),@"gestureNoRecord":@(gTKGestureNoRecord),@"recordReadFailures":@(gTKRecordReadFailures),@"recallBlocked":@(__atomic_load_n(&gTKRecallBlocked,__ATOMIC_RELAXED)),@"hardwareReads":@(__atomic_load_n(&gTKHardwareReads,__ATOMIC_RELAXED)),@"recallEvents":@(__atomic_load_n(&gTKRecallEvents,__ATOMIC_RELAXED)),@"recallRestores":@(__atomic_load_n(&gTKRecallRestores,__ATOMIC_RELAXED)),@"lastRedType":@(gTKLastRedType),@"lastRedAmount":@(gTKLastRedAmount),@"skipCommonType":@(gTKSkipCommonType),@"skipUnknownAmount":@(gTKSkipUnknownAmount),@"layoutAssociations":@(gTKLayoutAssociations),@"layoutMatchFails":@(gTKLayoutMatchFails),@"noRecordNoCell":@(gTKNoRecordNoCell),@"noRecordAssocFail":@(gTKNoRecordAssocFail),@"noRecordMatchFail":@(gTKNoRecordMatchFail),@"lastHitInfo":[NSString stringWithUTF8String:gTKLastHitInfo?:""],@"textProbe":(gTKTextProbe?:@""),@"redProbe":(gTKLastRedProbe?:@"")},@"redTypeHist":@[ @(gTKRedTypeHist[0]),@(gTKRedTypeHist[1]),@(gTKRedTypeHist[2]),@(gTKRedTypeHist[3]),@(gTKRedTypeHist[4]),@(gTKRedTypeHist[5]),@(gTKRedTypeHist[6]),@(gTKRedTypeHist[7]),@(gTKRedTypeHist[8]),@(gTKRedTypeHist[9]),@(gTKRedTypeHist[10]),@(gTKRedTypeHist[11]),@(gTKRedTypeHist[12]),@(gTKRedTypeHist[13]),@(gTKRedTypeHist[14]),@(gTKRedTypeHist[15]) ],@"version":@"1.0.20",@"process":[NSString stringWithFormat:@"TIM %@ · PID %d · 注册检查 %u 轮\nUIDevice.model = %@",[NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"],getpid(),gRegistrationRounds,UIDevice.currentDevice.model],@"hookRows":rows,@"warnings":@[@"调用次数只能证明该入口被调用，不能证明防撤回或过滤效果。",@"自动领取：只处理前台两分钟内新收到的红包，不保证后台唤醒；完成回调不等于到账，请核对结果。",@"防撤回：本次进程缓存最近500条收到/显示的消息；启动前丢失内容无法恢复。"]};
 }
 
 
@@ -709,6 +711,17 @@ static NSDictionary *TKRuntimeSnapshot(void) {
 static char kGestureAddedKey;
 @interface TIMCKGestureTarget : NSObject <UIGestureRecognizerDelegate>
 @end
+static UIView *TKFindCellAtPoint(UIView *root,CGPoint p) {
+    if(!root)return nil;
+    for(UIView *v in root.subviews) {
+        if(v.hidden||v.alpha<=.01)continue;
+        CGPoint rel=[v convertPoint:p fromView:root.superview];
+        if(!CGRectContainsPoint(v.bounds,rel))continue;
+        if([v isKindOfClass:NSClassFromString(TKCellClass)])return v;
+        UIView *r=TKFindCellAtPoint(v,p);if(r)return r;
+    }
+    return nil;
+}
 @implementation TIMCKGestureTarget
 + (instancetype)shared {static TIMCKGestureTarget *t;static dispatch_once_t once;dispatch_once(&once,^{t=[self new];});return t;}
 - (BOOL)isSettingsWindow:(UIWindow *)window {
@@ -732,7 +745,10 @@ static char kGestureAddedKey;
 - (void)onMessageDoubleTap:(UITapGestureRecognizer *)g {
     if(g.state!=UIGestureRecognizerStateRecognized || !prefBool(kEnabled,YES) || !prefBool(kRepeater,YES) || [self isSettingsWindow:(UIWindow *)g.view])return;
     __atomic_fetch_add(&gTKGestureTaps,1,__ATOMIC_RELAXED);
-    UIView *hit=[g.view hitTest:[g locationInView:g.view] withEvent:nil];UIView *cell=[self messageCellAtView:hit];
+    CGPoint lp=[g locationInView:g.view];
+    UIView *hit=[g.view hitTest:lp withEvent:nil];UIView *cell=[self messageCellAtView:hit];
+    if(!cell)cell=TKFindCellAtPoint(UIApplication.sharedApplication.keyWindow,[g locationInView:UIApplication.sharedApplication.keyWindow]);  // 1.0.20: hitTest 链兜底
+    __atomic_store_n(&gTKLastHitInfo,[NSString stringWithFormat:@"hit=%@ cell=%@",NSStringFromClass(hit?hit.class:Nil),NSStringFromClass(cell?cell.class:Nil)].UTF8String,__ATOMIC_RELAXED);
     id record=nil;
     if(cell) {
         record=TKRecordForCell(cell);
