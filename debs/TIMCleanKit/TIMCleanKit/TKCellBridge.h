@@ -168,7 +168,8 @@ static id TKRecordMatchingTextInCache(UIView *cell) {
         NSString *have=TKRecordTextOfElements(saved?[saved objectForKey:@"elements"]:nil);
         if(have.length) {
             if([have isEqualToString:want]){found=record;break;}
-            if(want.length>=4&&have.length>=4&&([want containsString:have]||[have containsString:want])){found=record;break;}
+            // 1.0.19: 模糊匹配只对长文本生效（>=8 字），短文本（如红包"恭喜发财"、问候语）必须完全一致，避免误匹配
+            if(want.length>=8&&have.length>=8&&([want containsString:have]||[have containsString:want])){found=record;break;}
         }
     }
     [gTKCacheLock unlock];
@@ -184,6 +185,8 @@ static void TKUpdateRecallLabel(UIView *cell) {
     if(!record)record=TKCellRecord(cell);                  // 1.0.17: 布局时已文本匹配并关联
     if(!record)record=TKRecordMatchingTextInCache(cell);
     UILabel *label=objc_getAssociatedObject(cell,&kTKRecallLabelKey);
+    // 1.0.19: 红包消息不贴标签——QQ 红包无法撤回，此前"恭喜发财"短文本模糊匹配会误贴到红包上。
+    if(record && redElementFromRecord(record)) {label.hidden=YES;return;}
     if(!TKAntiRecallEnabled()||!record||!TKWasRecalled(record)||!TKHasCachedContent(record)) {label.hidden=YES;return;}
     if(!label) {
         label=[UILabel new];label.text=@"拦截撤回";label.font=[UIFont systemFontOfSize:10 weight:UIFontWeightSemibold];
