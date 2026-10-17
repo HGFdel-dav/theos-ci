@@ -1,4 +1,4 @@
-// PXPCraneBridge.h
+// TWCraneBridge.h
 // Dynamic bridge into Crane (libcrane.dylib / CraneManager).
 // No compile-time dependency on Crane: everything is resolved at runtime,
 // exactly like ScreenCore does it. If Crane is absent, all calls no-op.
@@ -6,7 +6,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-@interface PXPCraneBridge : NSObject
+@interface TWCraneBridge : NSObject
 // YES if CraneManager class is reachable (loaded or dlopened).
 + (BOOL)isCraneAvailable;
 // Container ID that is currently active for a given app ("" if none/unavailable).

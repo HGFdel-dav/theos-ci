@@ -1,6 +1,6 @@
-// PXPCraneBridge.m
-#import "PXPCraneBridge.h"
-#import "PXPPrefs.h"
+// TWCraneBridge.m
+#import "TWCraneBridge.h"
+#import "TWPrefs.h"
 #import <objc/message.h>
 #import <dlfcn.h>
 #import <objc/runtime.h>
@@ -8,7 +8,7 @@
 
 // Verified against opa334/Crane-Resources master/libCrane/libCrane.h:
 // successHandler is void (^)(BOOL); only the biometric-respecting API is used.
-static BOOL PXPSignature(id target, SEL sel, const char *result, NSArray<NSString *> *args) {
+static BOOL TWSignature(id target, SEL sel, const char *result, NSArray<NSString *> *args) {
     if (!target || ![target respondsToSelector:sel]) return NO;
     Method method = class_getInstanceMethod(object_getClass(target), sel);
     const char *types = method ? method_getTypeEncoding(method) : NULL;
@@ -18,25 +18,25 @@ static BOOL PXPSignature(id target, SEL sel, const char *result, NSArray<NSStrin
     for (NSUInteger i=0;i<args.count;i++) if (strcmp([sig getArgumentTypeAtIndex:i+2],args[i].UTF8String)) return NO;
     return YES;
 }
-static void PXPCraneNotice(NSString *message) {
-    NSLog(@"[ParaX] %@", message);
+static void TWCraneNotice(NSString *message) {
+    NSLog(@"[Twin] %@", message);
     UIViewController *vc = nil;
     for (UIWindow *window in UIApplication.sharedApplication.windows.reverseObjectEnumerator)
         if (!window.hidden && window.rootViewController) { vc=window.rootViewController; break; }
     while (vc.presentedViewController) vc=vc.presentedViewController;
     if (!vc || [vc isKindOfClass:UIAlertController.class]) return;
-    UIAlertController *alert=[UIAlertController alertControllerWithTitle:@"ParaX — 启动已取消" message:message preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController *alert=[UIAlertController alertControllerWithTitle:@"Twin — 启动已取消" message:message preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleCancel handler:nil]];
     [vc presentViewController:alert animated:YES completion:nil];
 }
 
-@implementation PXPCraneBridge
+@implementation TWCraneBridge
 
 static Class CraneManagerClass(void) {
     Class cls = NSClassFromString(@"CraneManager");
     if (cls) return cls;
     NSMutableArray *paths=[NSMutableArray array];
-    NSString *root=PXPJBRootPath();
+    NSString *root=TWJBRootPath();
     if (root.length) [paths addObject:[root stringByAppendingPathComponent:@"usr/lib/libcrane.dylib"]];
     [paths addObjectsFromArray:@[@"/var/jb/usr/lib/libcrane.dylib",@"/usr/lib/libcrane.dylib"]];
     for (NSString *path in paths) {
@@ -52,13 +52,13 @@ static Class CraneManagerClass(void) {
 }
 
 // Runtime-safe objc_msgSend (ARC forbids direct casts, so use a function pointer).
-static id PXPMsgSend(id target, SEL sel) {
+static id TWMsgSend(id target, SEL sel) {
     if (!target || !sel) return nil;
     id (*fn)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
     return fn(target, sel);
 }
 
-static id PXPMsgSendStr(id target, SEL sel, id arg) {
+static id TWMsgSendStr(id target, SEL sel, id arg) {
     if (!target || !sel) return nil;
     id (*fn)(id, SEL, id) = (id (*)(id, SEL, id))objc_msgSend;
     return fn(target, sel, arg);
@@ -68,15 +68,15 @@ static id PXPMsgSendStr(id target, SEL sel, id arg) {
     Class cls = CraneManagerClass();
     if (!cls) return nil;
     SEL sel = NSSelectorFromString(@"sharedManager");
-    if (!PXPSignature(cls, sel, @encode(id), @[])) return nil;
-    return PXPMsgSend(cls, sel);
+    if (!TWSignature(cls, sel, @encode(id), @[])) return nil;
+    return TWMsgSend(cls, sel);
 }
 
 + (BOOL)isApplicationSupportedByCrane:(NSString *)bundleID {
     id manager = [self sharedManager];
     if (!manager || !bundleID.length) return NO;
     SEL sel = NSSelectorFromString(@"isApplicationSupportedByCrane:");
-    if (!PXPSignature(manager, sel, @encode(BOOL), @[@"@"])) return NO;
+    if (!TWSignature(manager, sel, @encode(BOOL), @[@"@"])) return NO;
     BOOL (*fn)(id, SEL, id) = (BOOL (*)(id, SEL, id))objc_msgSend;
     return fn(manager, sel, bundleID) != 0;
 }
@@ -85,8 +85,8 @@ static id PXPMsgSendStr(id target, SEL sel, id arg) {
     id manager = [self sharedManager];
     if (!manager || !bundleID.length) return @"";
     SEL sel = NSSelectorFromString(@"activeContainerIdentifierForApplicationWithIdentifier:");
-    if (!PXPSignature(manager, sel, @encode(id), @[@"@"])) return @"";
-    id result = PXPMsgSendStr(manager, sel, bundleID);
+    if (!TWSignature(manager, sel, @encode(id), @[@"@"])) return @"";
+    id result = TWMsgSendStr(manager, sel, bundleID);
     return [result isKindOfClass:[NSString class]] ? result : @"";
 }
 
@@ -94,21 +94,21 @@ static id PXPMsgSendStr(id target, SEL sel, id arg) {
     if (!completion) return;
     dispatch_async(dispatch_get_main_queue(), ^{
         static BOOL switching=NO; // main queue only
-        PXPPrefs *prefs=PXPPrefs.shared;
-        if (switching) { PXPCraneNotice(@"Crane 操作尚未结束；为避免容器竞态，暂不启动应用。请完成或取消认证后重试。"); completion(NO); return; }
-        if (![bundleID isKindOfClass:NSString.class] || !bundleID.length) { PXPCraneNotice(@"应用标识无效，未启动应用。"); completion(NO); return; }
-        if (![prefs boolForKey:PXPKeyEnabled defaultValue:NO] || ![prefs boolForKey:PXPKeyCraneEnabled defaultValue:NO]) { completion(YES); return; }
+        TWPrefs *prefs=TWPrefs.shared;
+        if (switching) { TWCraneNotice(@"Crane 操作尚未结束；为避免容器竞态，暂不启动应用。请完成或取消认证后重试。"); completion(NO); return; }
+        if (![bundleID isKindOfClass:NSString.class] || !bundleID.length) { TWCraneNotice(@"应用标识无效，未启动应用。"); completion(NO); return; }
+        if (![prefs boolForKey:TWKeyEnabled defaultValue:NO] || ![prefs boolForKey:TWKeyCraneEnabled defaultValue:NO]) { completion(YES); return; }
         id configured=[prefs craneApps][bundleID];
         if (!configured) { completion(YES); return; }
-        if (![configured isKindOfClass:NSString.class] || ![configured length]) { PXPCraneNotice(@"Crane 容器配置无效，请重新选择。"); completion(NO); return; }
+        if (![configured isKindOfClass:NSString.class] || ![configured length]) { TWCraneNotice(@"Crane 容器配置无效，请重新选择。"); completion(NO); return; }
         NSString *container=[configured copy];
-        if (switching) { PXPCraneNotice(@"Crane 正在确认容器，请完成或取消当前认证后再试。"); completion(NO); return; }
+        if (switching) { TWCraneNotice(@"Crane 正在确认容器，请完成或取消当前认证后再试。"); completion(NO); return; }
         @try {
             id manager=[self sharedManager];
             SEL sel=NSSelectorFromString(@"setActiveContainerIdentifier:forApplicationWithIdentifier:usingBiometricsIfNeededWithSuccessHandler:");
             SEL active=NSSelectorFromString(@"activeContainerIdentifierForApplicationWithIdentifier:");
-            if (!PXPSignature(manager,sel,@encode(void),@[@"@",@"@",@"@?"]) || !PXPSignature(manager,active,@encode(id),@[@"@"]) || ![self isApplicationSupportedByCrane:bundleID]) {
-                PXPCraneNotice(@"Crane 未安装、应用不受支持或 API 不兼容；为避免打开错误容器，已取消启动。"); completion(NO); return;
+            if (!TWSignature(manager,sel,@encode(void),@[@"@",@"@",@"@?"]) || !TWSignature(manager,active,@encode(id),@[@"@"]) || ![self isApplicationSupportedByCrane:bundleID]) {
+                TWCraneNotice(@"Crane 未安装、应用不受支持或 API 不兼容；为避免打开错误容器，已取消启动。"); completion(NO); return;
             }
             // Short-circuit: already on the target container -> nothing to switch,
             // no biometrics prompt (prevents double-gating when ParallelX's own
@@ -120,7 +120,7 @@ static id PXPMsgSendStr(id target, SEL sel, id arg) {
             switching=YES; __block BOOL finished=NO; __block BOOL callbackReceived=NO;
             void (^finish)(BOOL,NSString *)=^(BOOL success,NSString *reason) {
                 if (finished) return; finished=YES;
-                if (!success) PXPCraneNotice(reason);
+                if (!success) TWCraneNotice(reason);
                 completion(success);
             };
             // Bounded failure only: no force-switch, biometric bypass or timeout launch.
@@ -133,7 +133,7 @@ static id PXPMsgSendStr(id target, SEL sel, id arg) {
                     // Keep the gate locked through completion to reject reentrant switches.
                     if (!finished) {
                         @try {
-                            BOOL unchanged=[prefs boolForKey:PXPKeyEnabled defaultValue:NO] && [prefs boolForKey:PXPKeyCraneEnabled defaultValue:NO] && [[prefs craneApps][bundleID] isEqual:container];
+                            BOOL unchanged=[prefs boolForKey:TWKeyEnabled defaultValue:NO] && [prefs boolForKey:TWKeyCraneEnabled defaultValue:NO] && [[prefs craneApps][bundleID] isEqual:container];
                             BOOL verified=success && unchanged && [[self activeContainerForBundleID:bundleID] isEqualToString:container];
                             finish(verified,@"认证取消、切换失败、配置改变或容器核验不符；为避免误开，未启动应用。");
                         } @catch (__unused NSException *e) { finish(NO,@"Crane 容器核验异常，未启动应用。"); }
@@ -146,7 +146,7 @@ static id PXPMsgSendStr(id target, SEL sel, id arg) {
                 // No cancellation API: remain locked until callback or process restart.
                 finish(NO,@"Crane 切换发生异常，未启动应用；请重启 SpringBoard 后再试。");
             }
-        } @catch (__unused NSException *e) { PXPCraneNotice(@"Crane 初始化异常，未启动应用。"); completion(NO); }
+        } @catch (__unused NSException *e) { TWCraneNotice(@"Crane 初始化异常，未启动应用。"); completion(NO); }
     });
 }
 // Legacy BOOL calls cannot represent async success; never switch or claim success.

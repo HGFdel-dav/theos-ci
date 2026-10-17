@@ -1,11 +1,11 @@
-// PXPPrefs.h
+// TWPrefs.h
 #import <Foundation/Foundation.h>
 #import <CoreGraphics/CoreGraphics.h>  // CGFloat
-#import "PXPPath.h"
+#import "TWPath.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
-@interface PXPPrefs : NSObject
+@interface TWPrefs : NSObject
 + (instancetype)shared;
 // Darwin notification + read-through refresh; retains locally pending keys.
 - (void)reload;

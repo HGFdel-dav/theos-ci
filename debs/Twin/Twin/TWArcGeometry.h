@@ -1,4 +1,4 @@
-// PXPArcGeometry.h
+// TWArcGeometry.h
 // Ported geometry from ScreenCore's arc launcher:
 //   - trigger region: a vertical strip along the chosen screen edge
 //   - item placement: icons laid out along an arc anchored at the trigger point
@@ -6,7 +6,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-@interface PXPArcGeometry : NSObject
+@interface TWArcGeometry : NSObject
 // Returns YES if the point lies inside the trigger strip for the given side.
 + (BOOL)point:(CGPoint)point inTriggerRegionForSide:(NSInteger)side width:(CGFloat)width bounds:(CGRect)bounds;
 // Anchor (arc center) derived from the trigger point.

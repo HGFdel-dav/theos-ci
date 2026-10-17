@@ -1,15 +1,15 @@
-// PXPRememberAppsController.m — list remembered window frames per app, with
+// TWRememberAppsController.m — list remembered window frames per app, with
 // per-row deletion and a "clear all" toolbar action. Pure UIKit (no Preferences
 // link), safe to compile into the shared dylib.
-#import "PXPRememberAppsController.h"
-#import "PXPPath.h"
-#import "PXPPrefs.h"
+#import "TWRememberAppsController.h"
+#import "TWPath.h"
+#import "TWPrefs.h"
 
-@interface PXPRememberAppsController ()
+@interface TWRememberAppsController ()
 @property (nonatomic, strong) NSMutableArray<NSString *> *bundleIDs;
 @end
 
-@implementation PXPRememberAppsController
+@implementation TWRememberAppsController
 
 - (instancetype)init {
     if ((self = [super initWithStyle:UITableViewStyleInsetGrouped])) {
@@ -34,14 +34,14 @@
 }
 
 - (void)reloadFrames {
-    NSDictionary *frames = [[PXPPrefs shared] objectForKey:PXPKeyRememberFrames];
+    NSDictionary *frames = [[TWPrefs shared] objectForKey:TWKeyRememberFrames];
     NSArray *keys = [frames isKindOfClass:[NSDictionary class]] ? [frames allKeys] : @[];
     self.bundleIDs = [[keys sortedArrayUsingSelector:@selector(compare:)] mutableCopy];
     [self.tableView reloadData];
 }
 
 - (void)clearAllTapped {
-    [[PXPPrefs shared] clearRememberedFrames];
+    [[TWPrefs shared] clearRememberedFrames];
     [self reloadFrames];
 }
 
@@ -68,7 +68,7 @@
     NSString *bundleID = self.bundleIDs[indexPath.row];
     cell.textLabel.text = bundleID;
     cell.accessoryType = UITableViewCellAccessoryNone;
-    CGRect frame = [[PXPPrefs shared] rememberedFrameForBundleID:bundleID];
+    CGRect frame = [[TWPrefs shared] rememberedFrameForBundleID:bundleID];
     if (!CGRectIsNull(frame)) {
         cell.detailTextLabel.text = [NSString stringWithFormat:@"x%.0f y%.0f · %.0f×%.0f",
                                      frame.origin.x, frame.origin.y, frame.size.width, frame.size.height];
@@ -85,10 +85,10 @@
 - (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath {
     if (editingStyle != UITableViewCellEditingStyleDelete || indexPath.row >= self.bundleIDs.count) return;
     NSString *bundleID = self.bundleIDs[indexPath.row];
-    NSMutableDictionary *frames = [[[PXPPrefs shared] objectForKey:PXPKeyRememberFrames] mutableCopy] ?: [NSMutableDictionary dictionary];
+    NSMutableDictionary *frames = [[[TWPrefs shared] objectForKey:TWKeyRememberFrames] mutableCopy] ?: [NSMutableDictionary dictionary];
     [frames removeObjectForKey:bundleID];
-    [[PXPPrefs shared] setObject:frames forKey:PXPKeyRememberFrames];
-    [[PXPPrefs shared] synchronize];
+    [[TWPrefs shared] setObject:frames forKey:TWKeyRememberFrames];
+    [[TWPrefs shared] synchronize];
     [self reloadFrames];
 }
 

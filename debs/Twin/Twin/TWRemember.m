@@ -1,4 +1,4 @@
-// PXPRemember.m — remember per-app floating window size/position.
+// TWRemember.m — remember per-app floating window size/position.
 // Hooks verified from device-installed ParallelX.dylib ObjC metadata
 // (PXPanelEntry ivars/methods identical to the deb version):
 //   -[PXPanelEntry applyResizePreview]      v16@0:8   — resize commit
@@ -11,12 +11,12 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <dlfcn.h>
-#import "PXPRemember.h"
-#import "PXPPrefs.h"
+#import "TWRemember.h"
+#import "TWPrefs.h"
 
 #pragma mark - ivar helper (runtime, Swift ivars are visible to ObjC runtime)
 
-static id PXPObjIvar(id obj, const char *name) {
+static id TWObjIvar(id obj, const char *name) {
     if (!obj) return nil;
     Ivar ivar = class_getInstanceVariable([obj class], name);
     if (!ivar) {
@@ -35,37 +35,37 @@ static id PXPObjIvar(id obj, const char *name) {
     return [(NSObject *)value isKindOfClass:NSObject.class] ? value : nil;
 }
 
-static BOOL PXPCanRemember(NSObject *entry) {
+static BOOL TWCanRemember(NSObject *entry) {
     if (![entry isKindOfClass:NSObject.class]) return NO;
     // Do not capture while a resize is in progress or window is going fullscreen.
-    id resizePreview = PXPObjIvar(entry, "resizePreview");
+    id resizePreview = TWObjIvar(entry, "resizePreview");
     if (resizePreview) return NO;
-    id docked = PXPObjIvar(entry, "dockedHosts");
+    id docked = TWObjIvar(entry, "dockedHosts");
     if ([docked isKindOfClass:NSArray.class] && [(NSArray *)docked count] > 0) return NO;
-    id fullscreen = PXPObjIvar(entry, "fullscreenToWindowInProgress");
+    id fullscreen = TWObjIvar(entry, "fullscreenToWindowInProgress");
     if ([fullscreen respondsToSelector:@selector(boolValue)] && [fullscreen boolValue]) return NO;
     return YES;
 }
 
-static UIWindow *PXPPanelWindowOf(NSObject *entry) {
-    id w = PXPObjIvar(entry, "panelWindow");
+static UIWindow *TWPanelWindowOf(NSObject *entry) {
+    id w = TWObjIvar(entry, "panelWindow");
     return [w isKindOfClass:UIWindow.class] ? w : nil;
 }
 
 #pragma mark - capture
 
-static void PXPCaptureFrame(NSObject *entry) {
-    if (![PXPPrefs.shared boolForKey:PXPKeyRememberSize defaultValue:YES]) return;
-    if (!PXPCanRemember(entry)) return;
-    UIWindow *window = PXPPanelWindowOf(entry);
-    id bundleID = PXPObjIvar(entry, "hostedBundleID");
+static void TWCaptureFrame(NSObject *entry) {
+    if (![TWPrefs.shared boolForKey:TWKeyRememberSize defaultValue:YES]) return;
+    if (!TWCanRemember(entry)) return;
+    UIWindow *window = TWPanelWindowOf(entry);
+    id bundleID = TWObjIvar(entry, "hostedBundleID");
     if (!window || ![bundleID isKindOfClass:NSString.class] || ![bundleID length]) return;
     CGRect frame = window.frame;
     if (CGRectIsNull(frame) || CGRectIsEmpty(frame) || frame.size.width > 5000 || frame.size.height > 5000) return;
     // Require the window to intersect the main screen bounds (not stashed offscreen).
     CGRect screen = UIScreen.mainScreen.bounds;
     if (!CGRectIntersectsRect(CGRectInset(screen, -2, -2), frame)) return;
-    [[PXPPrefs shared] setRememberedFrame:frame forBundleID:bundleID];
+    [[TWPrefs shared] setRememberedFrame:frame forBundleID:bundleID];
 }
 
 // moveHost: fires continuously; debounce the save to capture the final position.
@@ -80,7 +80,7 @@ static void replMoveHost(id self, SEL _cmd, id gesture) {
         dispatch_source_set_event_handler(timer, ^{
             NSObject *entry = lastEntry;
             lastEntry = nil;
-            if (entry) PXPCaptureFrame(entry);
+            if (entry) TWCaptureFrame(entry);
             // one-shot: no reschedule here, next moveHost: re-arms via set_timer
         });
     });
@@ -92,12 +92,12 @@ static void replMoveHost(id self, SEL _cmd, id gesture) {
 static void (*origApplyResizePreview)(id, SEL);
 static void replApplyResizePreview(id self, SEL _cmd) {
     origApplyResizePreview(self, _cmd);
-    PXPCaptureFrame(self);
+    TWCaptureFrame(self);
 }
 
 static void (*origCloseTapped)(id, SEL);
 static void replCloseTapped(id self, SEL _cmd) {
-    PXPCaptureFrame(self);
+    TWCaptureFrame(self);
     origCloseTapped(self, _cmd);
 }
 
@@ -109,13 +109,13 @@ static id replInit(id self, SEL _cmd) {
     if (self) {
         // Apply remembered frame shortly after a fresh entry lays out.
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            id bundleID = PXPObjIvar(self, "hostedBundleID");
+            id bundleID = TWObjIvar(self, "hostedBundleID");
             if (![bundleID isKindOfClass:NSString.class] || ![bundleID length]) return;
-            if (![PXPPrefs.shared boolForKey:PXPKeyRememberSize defaultValue:YES]) return;
-            CGRect remembered = [[PXPPrefs shared] rememberedFrameForBundleID:bundleID];
+            if (![TWPrefs.shared boolForKey:TWKeyRememberSize defaultValue:YES]) return;
+            CGRect remembered = [[TWPrefs shared] rememberedFrameForBundleID:bundleID];
             if (CGRectIsNull(remembered)) return;
-            if (!PXPCanRemember(self)) return;
-            UIWindow *window = PXPPanelWindowOf(self);
+            if (!TWCanRemember(self)) return;
+            UIWindow *window = TWPanelWindowOf(self);
             if (!window) return;
             CGRect screen = UIScreen.mainScreen.bounds;
             CGRect target = remembered;
@@ -139,22 +139,22 @@ static id replInit(id self, SEL _cmd) {
 
 #pragma mark - installation (ABI-checked like the ParallelX hook)
 
-typedef void (*PXPMSHookFn)(Class, SEL, IMP, IMP *);
+typedef void (*TWMSHookFn)(Class, SEL, IMP, IMP *);
 
-static BOOL PXPInstallMethod(Class cls, BOOL isClassMethod, SEL sel,
+static BOOL TWInstallMethod(Class cls, BOOL isClassMethod, SEL sel,
                              IMP replacement, IMP *origSlot, const char *expectedTypes) {
     Class target = isClassMethod ? object_getClass(cls) : cls;
     Method method = class_getInstanceMethod(target, sel);
     if (!method) return NO;
     NSMethodSignature *sig = [NSMethodSignature signatureWithObjCTypes:method_getTypeEncoding(method)];
     if (!sig || strcmp(sig.methodReturnType, expectedTypes) != 0) return NO;
-    PXPMSHookFn hook = (PXPMSHookFn)dlsym(RTLD_DEFAULT, "MSHookMessageEx");
+    TWMSHookFn hook = (TWMSHookFn)dlsym(RTLD_DEFAULT, "MSHookMessageEx");
     if (!hook) return NO;
     hook(target, sel, replacement, origSlot);
     return *origSlot != NULL;
 }
 
-void PXPRememberStart(void) {
+void TWRememberStart(void) {
     static BOOL started = NO;
     if (started) return;
     Class cls = objc_getClass("PXPanelEntry");
@@ -162,12 +162,12 @@ void PXPRememberStart(void) {
     // Verify the class is the entry we expect (has the ivars we read).
     if (class_getInstanceVariable(cls, "hostedBundleID") == NULL) return;
     BOOL ok = YES;
-    ok &= PXPInstallMethod(cls, NO, sel_registerName("applyResizePreview"), (IMP)replApplyResizePreview, (IMP *)&origApplyResizePreview, "v");
-    ok &= PXPInstallMethod(cls, NO, sel_registerName("moveHost:"), (IMP)replMoveHost, (IMP *)&origMoveHost, "v");
-    ok &= PXPInstallMethod(cls, NO, sel_registerName("closeTapped"), (IMP)replCloseTapped, (IMP *)&origCloseTapped, "v");
-    ok &= PXPInstallMethod(cls, NO, sel_registerName("init"), (IMP)replInit, (IMP *)&origInit, "@");
+    ok &= TWInstallMethod(cls, NO, sel_registerName("applyResizePreview"), (IMP)replApplyResizePreview, (IMP *)&origApplyResizePreview, "v");
+    ok &= TWInstallMethod(cls, NO, sel_registerName("moveHost:"), (IMP)replMoveHost, (IMP *)&origMoveHost, "v");
+    ok &= TWInstallMethod(cls, NO, sel_registerName("closeTapped"), (IMP)replCloseTapped, (IMP *)&origCloseTapped, "v");
+    ok &= TWInstallMethod(cls, NO, sel_registerName("init"), (IMP)replInit, (IMP *)&origInit, "@");
     if (ok) {
         started = YES;
-        NSLog(@"[ParaX] Remember-window hooks installed.");
+        NSLog(@"[Twin] Remember-window hooks installed.");
     }
 }

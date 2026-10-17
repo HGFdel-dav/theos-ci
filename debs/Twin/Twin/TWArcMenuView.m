@@ -1,6 +1,6 @@
-// PXPArcMenuView.m
-#import "PXPArcMenuView.h"
-#import "PXPArcGeometry.h"
+// TWArcMenuView.m
+#import "TWArcMenuView.h"
+#import "TWArcGeometry.h"
 #import <AudioToolbox/AudioServices.h>
 #import <objc/message.h>
 #import <string.h>
@@ -9,12 +9,12 @@
 #pragma mark - icon fetching (SpringBoard process)
 
 // Never call a private selector without checking its actual argument/return ABI.
-static const char *PXPIconType(const char *type) {
+static const char *TWIconType(const char *type) {
     while (type && *type && strchr("rnNoORV", *type)) type++;
     return type ?: "";
 }
 
-static NSMethodSignature *PXPIconSignature(id target, SEL selector, NSUInteger arguments) {
+static NSMethodSignature *TWIconSignature(id target, SEL selector, NSUInteger arguments) {
     @try {
         if (!target || ![target respondsToSelector:selector]) return nil;
         NSMethodSignature *sig = [target methodSignatureForSelector:selector];
@@ -22,24 +22,24 @@ static NSMethodSignature *PXPIconSignature(id target, SEL selector, NSUInteger a
     } @catch (__unused NSException *exception) { return nil; }
 }
 
-static id PXPIconObject(id target, NSString *name, id argument, BOOL hasArgument) {
+static id TWIconObject(id target, NSString *name, id argument, BOOL hasArgument) {
     SEL selector = NSSelectorFromString(name);
-    NSMethodSignature *sig = PXPIconSignature(target, selector, hasArgument ? 3 : 2);
-    if (!sig || PXPIconType(sig.methodReturnType)[0] != '@') return nil;
-    if (hasArgument && PXPIconType([sig getArgumentTypeAtIndex:2])[0] != '@') return nil;
+    NSMethodSignature *sig = TWIconSignature(target, selector, hasArgument ? 3 : 2);
+    if (!sig || TWIconType(sig.methodReturnType)[0] != '@') return nil;
+    if (hasArgument && TWIconType([sig getArgumentTypeAtIndex:2])[0] != '@') return nil;
     @try {
         if (hasArgument) return ((id (*)(id, SEL, id))objc_msgSend)(target, selector, argument);
         return ((id (*)(id, SEL))objc_msgSend)(target, selector);
     } @catch (__unused NSException *exception) { return nil; }
 }
 
-static id PXPIconScalar(id target, NSString *name, NSInteger value) {
+static id TWIconScalar(id target, NSString *name, NSInteger value) {
     SEL selector = NSSelectorFromString(name);
-    NSMethodSignature *sig = PXPIconSignature(target, selector, 3);
-    if (!sig || PXPIconType(sig.methodReturnType)[0] != '@') return nil;
+    NSMethodSignature *sig = TWIconSignature(target, selector, 3);
+    if (!sig || TWIconType(sig.methodReturnType)[0] != '@') return nil;
     @try {
         // Match the scalar type, not NSNumber or a variadic prototype.
-        const char *type = PXPIconType([sig getArgumentTypeAtIndex:2]);
+        const char *type = TWIconType([sig getArgumentTypeAtIndex:2]);
         if (!strcmp(type, @encode(int))) return ((id (*)(id, SEL, int))objc_msgSend)(target, selector, (int)value);
         if (!strcmp(type, @encode(unsigned int))) return ((id (*)(id, SEL, unsigned int))objc_msgSend)(target, selector, (unsigned int)value);
         if (!strcmp(type, @encode(long))) return ((id (*)(id, SEL, long))objc_msgSend)(target, selector, (long)value);
@@ -50,16 +50,16 @@ static id PXPIconScalar(id target, NSString *name, NSInteger value) {
     return nil; // Unknown signatures safely fall through to a placeholder.
 }
 
-static UIImage *PXPIconImageForBundleID(NSString *bundleID) {
-    id proxy = PXPIconObject(NSClassFromString(@"LSApplicationProxy"), @"applicationProxyForIdentifier:", bundleID, YES);
-    id data = PXPIconScalar(proxy, @"iconDataForVariant:", 4);
+static UIImage *TWIconImageForBundleID(NSString *bundleID) {
+    id proxy = TWIconObject(NSClassFromString(@"LSApplicationProxy"), @"applicationProxyForIdentifier:", bundleID, YES);
+    id data = TWIconScalar(proxy, @"iconDataForVariant:", 4);
     UIImage *icon = [data isKindOfClass:[NSData class]] ? [UIImage imageWithData:data] : nil;
     if (!icon) {
-        id controller = PXPIconObject(NSClassFromString(@"SBIconController"), @"sharedInstance", nil, NO);
-        id model = PXPIconObject(controller, @"model", nil, NO);
-        id iconObj = PXPIconObject(model, @"expectedIconForDisplayIdentifier:", bundleID, YES);
-        if (!iconObj) iconObj = PXPIconObject(model, @"iconForDisplayIdentifier:", bundleID, YES);
-        id image = PXPIconScalar(iconObj, @"generateIconImage:", 1);
+        id controller = TWIconObject(NSClassFromString(@"SBIconController"), @"sharedInstance", nil, NO);
+        id model = TWIconObject(controller, @"model", nil, NO);
+        id iconObj = TWIconObject(model, @"expectedIconForDisplayIdentifier:", bundleID, YES);
+        if (!iconObj) iconObj = TWIconObject(model, @"iconForDisplayIdentifier:", bundleID, YES);
+        id image = TWIconScalar(iconObj, @"generateIconImage:", 1);
         if ([image isKindOfClass:[UIImage class]]) icon = image;
     }
     return icon;
@@ -67,7 +67,7 @@ static UIImage *PXPIconImageForBundleID(NSString *bundleID) {
 
 #pragma mark - item view
 
-@interface PXPArcItemView : UIView
+@interface TWArcItemView : UIView
 @property (nonatomic, copy) NSString *bundleID;
 @property (nonatomic, strong) UIImageView *imageView;
 @property (nonatomic, strong) UIView *glowView;
@@ -76,7 +76,7 @@ static UIImage *PXPIconImageForBundleID(NSString *bundleID) {
 @property (nonatomic, assign) CGFloat baseScale;
 @end
 
-@implementation PXPArcItemView
+@implementation TWArcItemView
 - (instancetype)initWithBundleID:(NSString *)bundleID image:(UIImage *)image size:(CGFloat)size {
     if ((self = [super initWithFrame:CGRectMake(0, 0, size, size)])) {
         _bundleID = [bundleID copy];
@@ -113,8 +113,8 @@ static UIImage *PXPIconImageForBundleID(NSString *bundleID) {
 
 #pragma mark - menu view
 
-@implementation PXPArcMenuView {
-    NSMutableArray<PXPArcItemView *> *_items;
+@implementation TWArcMenuView {
+    NSMutableArray<TWArcItemView *> *_items;
     NSArray<NSString *> *_bundleIDs;
     CGPoint _triggerPoint;
     CGPoint _anchor;
@@ -142,10 +142,10 @@ static UIImage *PXPIconImageForBundleID(NSString *bundleID) {
     _triggerPoint = point;
     _side = side;
     _menuScale = isfinite(menuScale) && menuScale > 0.1 ? MIN(menuScale, 2) : 1;
-    _radius = [PXPArcGeometry radiusForItemCount:_bundleIDs.count preferredRadius:radius menuScale:_menuScale bounds:self.bounds];
-    CGFloat itemSize = [PXPArcGeometry itemSizeForCount:_bundleIDs.count radius:_radius menuScale:_menuScale];
+    _radius = [TWArcGeometry radiusForItemCount:_bundleIDs.count preferredRadius:radius menuScale:_menuScale bounds:self.bounds];
+    CGFloat itemSize = [TWArcGeometry itemSizeForCount:_bundleIDs.count radius:_radius menuScale:_menuScale];
     if (itemSize <= 0 || !_bundleIDs.count) return;
-    _anchor = [PXPArcGeometry anchorForTriggerPoint:point side:side radius:_radius itemSize:itemSize menuScale:_menuScale bounds:self.bounds];
+    _anchor = [TWArcGeometry anchorForTriggerPoint:point side:side radius:_radius itemSize:itemSize menuScale:_menuScale bounds:self.bounds];
 
     // dim
     _dimView = [[UIView alloc] initWithFrame:self.bounds];
@@ -175,11 +175,11 @@ static UIImage *PXPIconImageForBundleID(NSString *bundleID) {
     NSInteger count = (NSInteger)_bundleIDs.count;
     for (NSInteger i = 0; i < count; i++) {
         NSString *bundleID = _bundleIDs[i];
-        UIImage *icon = PXPIconImageForBundleID(bundleID);
+        UIImage *icon = TWIconImageForBundleID(bundleID);
         if (!icon) icon = [self placeholderImage];
-        PXPArcItemView *item = [[PXPArcItemView alloc] initWithBundleID:bundleID image:icon size:itemSize];
+        TWArcItemView *item = [[TWArcItemView alloc] initWithBundleID:bundleID image:icon size:itemSize];
         item.baseScale = _menuScale;
-        CGPoint center = [PXPArcGeometry centerForItemAtIndex:i count:count radius:_radius anchor:_anchor side:_side bounds:self.bounds];
+        CGPoint center = [TWArcGeometry centerForItemAtIndex:i count:count radius:_radius anchor:_anchor side:_side bounds:self.bounds];
         item.targetCenter = center;
         item.center = _triggerPoint;
         item.alpha = 0;
@@ -194,7 +194,7 @@ static UIImage *PXPIconImageForBundleID(NSString *bundleID) {
     [UIView animateWithDuration:0.18 animations:^{ self->_dimView.alpha = 0.18; }];
 
     NSTimeInterval baseDelay = 0.02;
-    [_items enumerateObjectsUsingBlock:^(PXPArcItemView *item, NSUInteger idx, BOOL *stop) {
+    [_items enumerateObjectsUsingBlock:^(TWArcItemView *item, NSUInteger idx, BOOL *stop) {
         NSTimeInterval delay = baseDelay * (double)idx;
         [UIView animateWithDuration:0.34 delay:delay
              usingSpringWithDamping:0.72 initialSpringVelocity:0 options:UIViewAnimationOptionCurveEaseOut
@@ -237,11 +237,11 @@ static UIImage *PXPIconImageForBundleID(NSString *bundleID) {
     return img;
 }
 
-- (PXPArcItemView *)itemAtPoint:(CGPoint)point {
+- (TWArcItemView *)itemAtPoint:(CGPoint)point {
     if (!_presented || !isfinite(point.x) || !isfinite(point.y)) return nil;
-    PXPArcItemView *hit = nil;
+    TWArcItemView *hit = nil;
     CGFloat nearest = CGFLOAT_MAX;
-    for (PXPArcItemView *item in _items) {
+    for (TWArcItemView *item in _items) {
         CGFloat half = CGRectGetWidth(item.bounds) * _menuScale / 2 + 12;
         CGRect hitRect = CGRectMake(item.targetCenter.x - half, item.targetCenter.y - half, half * 2, half * 2);
         CGFloat distance = hypot(point.x - item.targetCenter.x, point.y - item.targetCenter.y);
@@ -251,9 +251,9 @@ static UIImage *PXPIconImageForBundleID(NSString *bundleID) {
 }
 
 - (void)updateSelectionAtPoint:(CGPoint)point {
-    PXPArcItemView *hit = [self itemAtPoint:point];
+    TWArcItemView *hit = [self itemAtPoint:point];
     BOOL newlySelected = (hit != nil && !hit.isHighlighted);
-    for (PXPArcItemView *item in _items) {
+    for (TWArcItemView *item in _items) {
         BOOL should = (item == hit);
         if (item.isHighlighted != should) item.highlighted = should;
     }
@@ -264,7 +264,7 @@ static UIImage *PXPIconImageForBundleID(NSString *bundleID) {
 }
 
 - (NSString *)finishSelectionAtPoint:(CGPoint)point {
-    PXPArcItemView *item = [self itemAtPoint:point];
+    TWArcItemView *item = [self itemAtPoint:point];
     NSString *selected = item.bundleID;
     item.highlighted = NO;
     [self dismissAnimated:selected != nil];
@@ -277,7 +277,7 @@ static UIImage *PXPIconImageForBundleID(NSString *bundleID) {
         // Detach this generation's state before an asynchronous completion.
         // A new presentation may replace the ivars while these views fade out.
         NSArray<UIView *> *dismissedViews = [self.subviews copy];
-        NSArray<PXPArcItemView *> *dismissedItems = [_items copy];
+        NSArray<TWArcItemView *> *dismissedItems = [_items copy];
         UIView *dismissedBand = _backgroundBand;
         UIView *dismissedDim = _dimView;
         [_items removeAllObjects];
@@ -287,7 +287,7 @@ static UIImage *PXPIconImageForBundleID(NSString *bundleID) {
         _bandMask = nil;
         _dimView = nil;
         [UIView animateWithDuration:0.18 delay:0 options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionCurveEaseIn animations:^{
-            for (PXPArcItemView *item in dismissedItems) {
+            for (TWArcItemView *item in dismissedItems) {
                 item.alpha = 0;
                 item.transform = CGAffineTransformMakeScale(0.4, 0.4);
             }

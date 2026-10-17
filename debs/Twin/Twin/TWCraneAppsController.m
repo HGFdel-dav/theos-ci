@@ -1,11 +1,11 @@
-// PXPCraneAppsController.m
-// Manage { bundleID : containerID } entries written into PXPPrefs.
-#import "PXPCraneAppsController.h"
-#import "PXPPath.h"
-#import "PXPPrefs.h"
+// TWCraneAppsController.m
+// Manage { bundleID : containerID } entries written into TWPrefs.
+#import "TWCraneAppsController.h"
+#import "TWPath.h"
+#import "TWPrefs.h"
 #import <objc/message.h>
 
-NSString *PXPLocalizedNameForBundleID(NSString *bundleID) {
+NSString *TWLocalizedNameForBundleID(NSString *bundleID) {
     Class proxyCls = NSClassFromString(@"LSApplicationProxy");
     if (proxyCls) {
         id (*msg)(id, SEL, ...) = (id (*)(id, SEL, ...))objc_msgSend;
@@ -20,7 +20,7 @@ NSString *PXPLocalizedNameForBundleID(NSString *bundleID) {
 
 #pragma mark - picker (choose an app to add)
 
-@implementation PXPAppPickerController {
+@implementation TWAppPickerController {
     NSArray<NSDictionary *> *_allApps;      // {id, name}
     NSArray<NSDictionary *> *_filteredApps;
     UISearchController *_search;
@@ -87,7 +87,7 @@ NSString *PXPLocalizedNameForBundleID(NSString *bundleID) {
     NSDictionary *entry = _filteredApps[(NSUInteger)indexPath.row];
     NSString *bundleID = entry[@"id"];
     NSString *appName = entry[@"name"];
-    NSString *current = [[PXPPrefs shared] craneApps][bundleID];
+    NSString *current = [[TWPrefs shared] craneApps][bundleID];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"%@ 的 Crane 容器", appName]
                                                                    message:@"输入该应用的 Crane 容器 ID（在 Crane 设置中查看）。留空并保存将移除此应用。"
                                                             preferredStyle:UIAlertControllerStyleAlert];
@@ -101,9 +101,9 @@ NSString *PXPLocalizedNameForBundleID(NSString *bundleID) {
         NSString *text = alert.textFields.firstObject.text ?: @"";
         text = [text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
         if (text.length) {
-            [[PXPPrefs shared] setCraneApp:text forBundleID:bundleID];
+            [[TWPrefs shared] setCraneApp:text forBundleID:bundleID];
         } else {
-            [[PXPPrefs shared] removeCraneAppForBundleID:bundleID];
+            [[TWPrefs shared] removeCraneAppForBundleID:bundleID];
         }
         [self.navigationController popViewControllerAnimated:YES];
     }]];
@@ -126,7 +126,7 @@ NSString *PXPLocalizedNameForBundleID(NSString *bundleID) {
 
 #pragma mark - editor (list of configured apps)
 
-@implementation PXPCraneAppsController {
+@implementation TWCraneAppsController {
     NSArray<NSString *> *_bundleIDs;
 }
 
@@ -150,7 +150,7 @@ NSString *PXPLocalizedNameForBundleID(NSString *bundleID) {
 }
 
 - (void)reloadData {
-    _bundleIDs = [[PXPPrefs shared] craneApps].allKeys;
+    _bundleIDs = [[TWPrefs shared] craneApps].allKeys;
     [self.tableView reloadData];
 }
 
@@ -166,8 +166,8 @@ NSString *PXPLocalizedNameForBundleID(NSString *bundleID) {
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"craneApp"];
     if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"craneApp"];
     NSString *bundleID = _bundleIDs[(NSUInteger)indexPath.row];
-    NSString *container = [[PXPPrefs shared] craneApps][bundleID];
-    cell.textLabel.text = PXPLocalizedNameForBundleID(bundleID);
+    NSString *container = [[TWPrefs shared] craneApps][bundleID];
+    cell.textLabel.text = TWLocalizedNameForBundleID(bundleID);
     cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ ｜ 容器: %@", bundleID, container.length ? container : @"(空)"];
     cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     return cell;
@@ -176,8 +176,8 @@ NSString *PXPLocalizedNameForBundleID(NSString *bundleID) {
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     NSString *bundleID = _bundleIDs[(NSUInteger)indexPath.row];
-    NSString *appName = PXPLocalizedNameForBundleID(bundleID);
-    NSString *current = [[PXPPrefs shared] craneApps][bundleID];
+    NSString *appName = TWLocalizedNameForBundleID(bundleID);
+    NSString *current = [[TWPrefs shared] craneApps][bundleID];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"%@ 的 Crane 容器", appName]
                                                                    message:@"输入该应用的 Crane 容器 ID。留空并保存将移除此应用。"
                                                             preferredStyle:UIAlertControllerStyleAlert];
@@ -191,9 +191,9 @@ NSString *PXPLocalizedNameForBundleID(NSString *bundleID) {
         NSString *text = alert.textFields.firstObject.text ?: @"";
         text = [text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
         if (text.length) {
-            [[PXPPrefs shared] setCraneApp:text forBundleID:bundleID];
+            [[TWPrefs shared] setCraneApp:text forBundleID:bundleID];
         } else {
-            [[PXPPrefs shared] removeCraneAppForBundleID:bundleID];
+            [[TWPrefs shared] removeCraneAppForBundleID:bundleID];
         }
         [self reloadData];
     }]];
@@ -208,13 +208,13 @@ NSString *PXPLocalizedNameForBundleID(NSString *bundleID) {
                                             forRowAtIndexPath:(NSIndexPath *)indexPath {
     if (editingStyle == UITableViewCellEditingStyleDelete) {
         NSString *bundleID = _bundleIDs[(NSUInteger)indexPath.row];
-        [[PXPPrefs shared] removeCraneAppForBundleID:bundleID];
+        [[TWPrefs shared] removeCraneAppForBundleID:bundleID];
         [self reloadData];
     }
 }
 
 - (void)addTapped {
-    PXPAppPickerController *picker = [[PXPAppPickerController alloc] init];
+    TWAppPickerController *picker = [[TWAppPickerController alloc] init];
     [self.navigationController pushViewController:picker animated:YES];
 }
 

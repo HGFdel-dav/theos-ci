@@ -1,11 +1,11 @@
-// PXPArcMenuView.h
+// TWArcMenuView.h
 // Arc menu: frosted circular icons laid out along an arc, with a gradient
 // arc background, spring presentation and highlight-on-swipe selection.
 #import <UIKit/UIKit.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
-@interface PXPArcMenuView : UIView
+@interface TWArcMenuView : UIView
 - (void)presentFromTriggerPoint:(CGPoint)point bundleIDs:(NSArray<NSString *> *)bundleIDs side:(NSInteger)side radius:(CGFloat)radius menuScale:(CGFloat)menuScale;
 - (void)updateSelectionAtPoint:(CGPoint)point;
 // Returns the selected bundleID (nil if none) and dismisses.

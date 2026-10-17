@@ -1,8 +1,8 @@
-// PXPArcGeometry.m
-#import "PXPArcGeometry.h"
+// TWArcGeometry.m
+#import "TWArcGeometry.h"
 #import <math.h>
 
-@implementation PXPArcGeometry
+@implementation TWArcGeometry
 
 + (CGFloat)clampAngle:(CGFloat)a {
     while (a > M_PI) a -= 2.0 * M_PI;

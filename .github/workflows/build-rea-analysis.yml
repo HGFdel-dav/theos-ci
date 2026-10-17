@@ -34,7 +34,7 @@ jobs:
       - name: Install Ghidra
         run: |
           # 12.1.4 的 zip 缺少 darwin/arm64 原生反编译器，换 11.3.2（成熟稳定版）
-          curl -sL --fail "https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_11.3.2_build/ghidra_11.3.2_PUBLIC_20250416.zip" \
+          curl -sL --fail "https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_11.3.2_build/ghidra_11.3.2_PUBLIC_20250415.zip" \
             -o /tmp/ghidra.zip
           ls -lh /tmp/ghidra.zip
           cd /tmp

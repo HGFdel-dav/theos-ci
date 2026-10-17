@@ -1,21 +1,21 @@
-// PXPPrefs.m
-#import "PXPPrefs.h"
+// TWPrefs.m
+#import "TWPrefs.h"
 #import <UIKit/UIKit.h>
 #import <notify.h>
 #import <sys/file.h>
 #import <fcntl.h>
 #import <unistd.h>
 
-static BOOL PXPValidMigration(NSDictionary *dict) {
+static BOOL TWValidMigration(NSDictionary *dict) {
     if (![dict isKindOfClass:NSDictionary.class] || !dict.count) return NO;
-    NSSet *numbers = [NSSet setWithArray:@[PXPKeyEnabled,PXPKeyArcEnabled,PXPKeyArcSide,PXPKeyArcTriggerWidth,PXPKeyArcItemCount,PXPKeyArcRadius,PXPKeyArcSound,PXPKeyCraneEnabled,PXPKeyRememberSize]];
+    NSSet *numbers = [NSSet setWithArray:@[TWKeyEnabled,TWKeyArcEnabled,TWKeyArcSide,TWKeyArcTriggerWidth,TWKeyArcItemCount,TWKeyArcRadius,TWKeyArcSound,TWKeyCraneEnabled,TWKeyRememberSize]];
     for (id key in dict) {
         id value = dict[key];
         if ([numbers containsObject:key]) { if (![value isKindOfClass:NSNumber.class]) return NO; }
-        else if ([key isEqual:PXPKeyCraneApps]) {
+        else if ([key isEqual:TWKeyCraneApps]) {
             if (![value isKindOfClass:NSDictionary.class]) return NO;
             for (id app in value) if (![app isKindOfClass:NSString.class] || ![app length] || ![value[app] isKindOfClass:NSString.class] || ![value[app] length]) return NO;
-        } else if ([key isEqual:PXPKeyRememberFrames]) {
+        } else if ([key isEqual:TWKeyRememberFrames]) {
             // { bundleID : {x,y,w,h} } — all values are NSNumbers, frame inside screen.
             if (![value isKindOfClass:NSDictionary.class]) return NO;
             for (id app in value) {
@@ -35,23 +35,23 @@ static BOOL PXPValidMigration(NSDictionary *dict) {
 }
 
 // Target must be safe both before and after creating its parent (symlink guard).
-static int PXPLockPrefs(NSString *path) {
-    if (!PXPPrefsPathIsSafe(path)) return -1;
+static int TWLockPrefs(NSString *path) {
+    if (!TWPrefsPathIsSafe(path)) return -1;
     NSFileManager *fm = NSFileManager.defaultManager;
-    if (![fm createDirectoryAtPath:path.stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:nil] || !PXPPrefsPathIsSafe(path)) return -1;
+    if (![fm createDirectoryAtPath:path.stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:nil] || !TWPrefsPathIsSafe(path)) return -1;
     int fd = open([[path stringByAppendingString:@".lock"] fileSystemRepresentation], O_CREAT|O_RDWR|O_NOFOLLOW, 0600);
     if (fd >= 0 && flock(fd, LOCK_EX|LOCK_NB) != 0) { close(fd); return -1; }
     return fd;
 }
 
-static void PXPMigratePrefs(NSString *target) {
+static void TWMigratePrefs(NSString *target) {
     NSFileManager *fm = NSFileManager.defaultManager;
     if (!target.length || [fm fileExistsAtPath:target]) return;
-    int fd = PXPLockPrefs(target); if (fd < 0) return;
+    int fd = TWLockPrefs(target); if (fd < 0) return;
     if (![fm fileExistsAtPath:target]) {
         NSMutableArray *sources = [NSMutableArray array];
-        for (NSString *root in PXPJBRootCandidates()) [sources addObject:[root stringByAppendingPathComponent:@"var/mobile/Library/Preferences/com.niubiprass.parax.plist"]];
-        [sources addObject:@"/var/mobile/Library/Preferences/com.niubiprass.parax.plist"];
+        for (NSString *root in TWJBRootCandidates()) [sources addObject:[root stringByAppendingPathComponent:@"var/mobile/Library/Preferences/com.niubiprass.twin.plist"]];
+        [sources addObject:@"/var/mobile/Library/Preferences/com.niubiprass.twin.plist"];
         [sources sortUsingComparator:^NSComparisonResult(NSString *a, NSString *b) {
             NSDate *ad = [[fm attributesOfItemAtPath:a error:nil] fileModificationDate] ?: NSDate.distantPast;
             NSDate *bd = [[fm attributesOfItemAtPath:b error:nil] fileModificationDate] ?: NSDate.distantPast;
@@ -62,8 +62,8 @@ static void PXPMigratePrefs(NSString *target) {
             if (![[[fm attributesOfItemAtPath:source error:nil] fileType] isEqual:NSFileTypeRegular]) continue;
             NSData *original = [NSData dataWithContentsOfFile:source];
             NSDictionary *dict = original ? [NSPropertyListSerialization propertyListWithData:original options:NSPropertyListImmutable format:NULL error:nil] : nil;
-            if (!PXPValidMigration(dict)) continue;
-            if (PXPPrefsPathIsSafe(target) && [dict writeToFile:target atomically:YES] && [[NSDictionary dictionaryWithContentsOfFile:target] isEqual:dict]) {
+            if (!TWValidMigration(dict)) continue;
+            if (TWPrefsPathIsSafe(target) && [dict writeToFile:target atomically:YES] && [[NSDictionary dictionaryWithContentsOfFile:target] isEqual:dict]) {
                 // Remove ONLY this exact same-domain, unchanged validated source.
                 if ([[NSData dataWithContentsOfFile:source] isEqual:original]) [fm removeItemAtPath:source error:nil];
             }
@@ -73,14 +73,14 @@ static void PXPMigratePrefs(NSString *target) {
     flock(fd, LOCK_UN); close(fd);
 }
 
-@implementation PXPPrefs {
+@implementation TWPrefs {
     NSMutableDictionary *_cache;
     NSMutableSet *_pendingKeys;
     int _notifyToken;
 }
 
 + (instancetype)shared {
-    static PXPPrefs *instance;
+    static TWPrefs *instance;
     static dispatch_once_t once;
     dispatch_once(&once, ^{ instance = [[self alloc] init]; });
     return instance;
@@ -91,8 +91,8 @@ static void PXPMigratePrefs(NSString *target) {
         _cache = [NSMutableDictionary dictionary];
         _pendingKeys = [NSMutableSet set];
         _notifyToken = -1;
-        __weak PXPPrefs *weakSelf = self;
-        notify_register_dispatch(PXPPrefsChangedNotification, &_notifyToken, dispatch_get_main_queue(), ^(int token) { [weakSelf reload]; });
+        __weak TWPrefs *weakSelf = self;
+        notify_register_dispatch(TWPrefsChangedNotification, &_notifyToken, dispatch_get_main_queue(), ^(int token) { [weakSelf reload]; });
         [self reload];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(reload) name:UIApplicationDidBecomeActiveNotification object:nil];
     }
@@ -106,8 +106,8 @@ static void PXPMigratePrefs(NSString *target) {
 
 - (void)reload {
     @synchronized (self) {
-        NSString *path = PXPPrefsFilePath();
-        PXPMigratePrefs(path);
+        NSString *path = TWPrefsFilePath();
+        TWMigratePrefs(path);
         NSMutableDictionary *disk = path ? [[NSDictionary dictionaryWithContentsOfFile:path] mutableCopy] : nil;
         if (!disk) disk = [NSMutableDictionary dictionary];
         for (NSString *key in _pendingKeys) {
@@ -154,22 +154,22 @@ static void PXPMigratePrefs(NSString *target) {
 - (void)synchronize {
     @synchronized (self) {
         if (!_pendingKeys.count) return;
-        NSString *path = PXPPrefsFilePath(); int fd = PXPLockPrefs(path);
-        if (fd < 0) { NSLog(@"[ParaX] Preferences not saved: unavailable, unsafe or busy root; pending edits retained."); return; }
+        NSString *path = TWPrefsFilePath(); int fd = TWLockPrefs(path);
+        if (fd < 0) { NSLog(@"[Twin] Preferences not saved: unavailable, unsafe or busy root; pending edits retained."); return; }
         NSMutableDictionary *merged = [[NSDictionary dictionaryWithContentsOfFile:path] mutableCopy] ?: [NSMutableDictionary dictionary];
         for (NSString *key in _pendingKeys) {
             if (_cache[key]) merged[key] = _cache[key]; else [merged removeObjectForKey:key];
         }
-        BOOL ok = PXPPrefsPathIsSafe(path) && [merged writeToFile:path atomically:YES] && [[NSDictionary dictionaryWithContentsOfFile:path] isEqual:merged];
+        BOOL ok = TWPrefsPathIsSafe(path) && [merged writeToFile:path atomically:YES] && [[NSDictionary dictionaryWithContentsOfFile:path] isEqual:merged];
         if (ok) { _cache = merged; [_pendingKeys removeAllObjects]; }
         flock(fd, LOCK_UN); close(fd);
-        if (ok) notify_post(PXPPrefsChangedNotification);
-        else NSLog(@"[ParaX] Preferences write failed; pending edits retained.");
+        if (ok) notify_post(TWPrefsChangedNotification);
+        else NSLog(@"[Twin] Preferences write failed; pending edits retained.");
     }
 }
 
 - (NSDictionary<NSString *,NSString *> *)craneApps {
-    id v = [self objectForKey:PXPKeyCraneApps];
+    id v = [self objectForKey:TWKeyCraneApps];
     if ([v isKindOfClass:[NSDictionary class]]) return v;
     return @{};
 }
@@ -178,14 +178,14 @@ static void PXPMigratePrefs(NSString *target) {
     NSMutableDictionary *apps = [self craneApps].mutableCopy;
     NSString *trimmed = [containerID stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     if (trimmed.length) apps[bundleID] = trimmed; else [apps removeObjectForKey:bundleID];
-    [self setObject:apps forKey:PXPKeyCraneApps];
+    [self setObject:apps forKey:TWKeyCraneApps];
     [self synchronize];
 }
 
 - (void)removeCraneAppForBundleID:(NSString *)bundleID {
     NSMutableDictionary *apps = [self craneApps].mutableCopy;
     [apps removeObjectForKey:bundleID];
-    [self setObject:apps forKey:PXPKeyCraneApps];
+    [self setObject:apps forKey:TWKeyCraneApps];
     [self synchronize];
 }
 
@@ -193,7 +193,7 @@ static void PXPMigratePrefs(NSString *target) {
 
 - (CGRect)rememberedFrameForBundleID:(NSString *)bundleID {
     if (!bundleID.length) return CGRectNull;
-    id v = [self objectForKey:PXPKeyRememberFrames];
+    id v = [self objectForKey:TWKeyRememberFrames];
     if (![v isKindOfClass:[NSDictionary class]]) return CGRectNull;
     NSDictionary *frameDict = v[bundleID];
     if (![frameDict isKindOfClass:[NSDictionary class]]) return CGRectNull;
@@ -208,16 +208,16 @@ static void PXPMigratePrefs(NSString *target) {
 
 - (void)setRememberedFrame:(CGRect)frame forBundleID:(NSString *)bundleID {
     if (!bundleID.length || CGRectIsNull(frame) || CGRectIsEmpty(frame)) return;
-    NSMutableDictionary *frames = [(id)[self objectForKey:PXPKeyRememberFrames] mutableCopy];
+    NSMutableDictionary *frames = [(id)[self objectForKey:TWKeyRememberFrames] mutableCopy];
     if (!frames) frames = [NSMutableDictionary dictionary];
     frames[bundleID] = @{@"x": @(frame.origin.x), @"y": @(frame.origin.y),
                          @"w": @(frame.size.width), @"h": @(frame.size.height)};
-    [self setObject:frames forKey:PXPKeyRememberFrames];
+    [self setObject:frames forKey:TWKeyRememberFrames];
     [self synchronize];
 }
 
 - (void)clearRememberedFrames {
-    [self setObject:nil forKey:PXPKeyRememberFrames];
+    [self setObject:nil forKey:TWKeyRememberFrames];
     [self synchronize];
 }
 
