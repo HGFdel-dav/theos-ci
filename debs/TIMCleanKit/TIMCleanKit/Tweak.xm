@@ -606,11 +606,9 @@ static void TKQueueRedPacket(id record) {
         static char TKRedRetryKey;
         if(!objc_getAssociatedObject(record,&TKRedRetryKey)) {
             objc_setAssociatedObject(record,&TKRedRetryKey,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            id retained=[record retain];
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW,400*NSEC_PER_MSEC),dispatch_get_main_queue(),^{
                 objc_setAssociatedObject(record,&TKRedRetryKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-                TKQueueRedPacket(record);
-                [retained release];
+                TKQueueRedPacket(record);   // ARC: block 已自动强引用 record
             });
             gTKEngineStatus=@"应用未在前台，已安排0.4s后重试";
         } else gTKEngineStatus=@"应用未在前台，未请求领取";

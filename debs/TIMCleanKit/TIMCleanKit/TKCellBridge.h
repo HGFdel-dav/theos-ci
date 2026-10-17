@@ -192,22 +192,22 @@ static id TKRecordMatchingTextInCache(UIView *cell) {
 static const void *kTKCellRecordKey=&kTKCellRecordKey;
 static void TKCellSetRecord(UIView *cell,id record){if(cell)objc_setAssociatedObject(cell,kTKCellRecordKey,record,OBJC_ASSOCIATION_RETAIN_NONATOMIC);}
 static id TKCellRecord(UIView *cell){return cell?objc_getAssociatedObject(cell,kTKCellRecordKey):nil;}
+static void TKScanViewsForRedPacket(UIView *v,BOOL *found) {   // 1.0.23: 递归扫描子视图找红包视图类
+    if(*found)return;
+    for(UIView *s in v.subviews){
+        if(*found)return;
+        NSString *cn=NSStringFromClass(object_getClass(s));
+        if([cn rangeOfString:@"RedPacket"].location!=NSNotFound ||
+           [cn rangeOfString:@"RedEnvelope"].location!=NSNotFound ||
+           [cn rangeOfString:@"Hongbao"].location!=NSNotFound ||
+           [cn rangeOfString:@"RedGift"].location!=NSNotFound ||
+           [cn rangeOfString:@"Envelope"].location!=NSNotFound) { *found=YES; return; }
+        TKScanViewsForRedPacket(s,found);
+    }
+}
 static BOOL TKCellHasRedPacketView(UIView *cell) {   // 1.0.23: 视图级红包检测——文本关联错位时也不给红包贴"拦截撤回"标签
-    __block BOOL found=NO;
-    __block void (^scan)(UIView*) = nil;
-    scan = ^(UIView *v){
-        for(UIView *s in v.subviews){
-            if(found)return;
-            NSString *cn=NSStringFromClass(object_getClass(s));
-            if([cn rangeOfString:@"RedPacket"].location!=NSNotFound ||
-               [cn rangeOfString:@"RedEnvelope"].location!=NSNotFound ||
-               [cn rangeOfString:@"Hongbao"].location!=NSNotFound ||
-               [cn rangeOfString:@"RedGift"].location!=NSNotFound ||
-               [cn rangeOfString:@"Envelope"].location!=NSNotFound) { found=YES; return; }
-            scan(s);
-        }
-    };
-    scan(cell);
+    BOOL found=NO;
+    TKScanViewsForRedPacket(cell,&found);
     return found;
 }
 static void TKUpdateRecallLabel(UIView *cell) {
