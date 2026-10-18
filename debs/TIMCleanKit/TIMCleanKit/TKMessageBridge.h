@@ -23,13 +23,16 @@ static void TKBridgeRecall(id self,SEL cmd,int chat,id peer,unsigned long long s
         TKRecallFactAdd(fact);
         TKRecallEvent([NSString stringWithFormat:@"onMsgRecall 记录:%@",fact]);
         [gTKCacheLock lock];NSArray *savedRecords=[gTKMessageCache.allValues copy];[gTKCacheLock unlock];
+        NSMutableArray *seqProbe=[NSMutableArray array]; /* 2.0.5: 未命中时记录缓存里同会话的 msgSeq 样本 */
         for(NSDictionary *saved in savedRecords) {
             id record=saved[@"record"];
+            if(seqProbe.count<3 && TKScalar(record,@"chatType","i")==chat) [seqProbe addObject:@((unsigned long long)TKScalar(record,@"msgSeq","q"))];
             /* 2.0.3: 放宽匹配——去掉 peerUid 硬条件（该字段在群/特殊会话不稳定），chatType+msgSeq 已唯一 */
             if(TKScalar(record,@"chatType","i")==chat && (unsigned long long)TKScalar(record,@"msgSeq","q")==seq && [saved[@"elements"] count]) {
                 TKMarkRecall(record);TKRestoreRecord(record);blocked=YES;archivedRecord=record;
             }
         }
+        if(!blocked)TKRecallEvent([NSString stringWithFormat:@"onMsgRecall 未命中seq=%llu 缓存样本=%@",seq,seqProbe]);
     }
     if(blocked){__atomic_fetch_add(&gTKRecallBlocked,1,__ATOMIC_RELAXED);if(archivedRecord)TKArchiveRecalledRecord(archivedRecord);TKRecallEvent([NSString stringWithFormat:@"onMsgRecall 标注:%@",archivedRecord?TKRecallTextOf(archivedRecord):@""]);}
     else if(TKAntiRecallEnabled()){TKRecallEvent(@"onMsgRecall 无缓存内容(事实已记,刷新后打标)");}

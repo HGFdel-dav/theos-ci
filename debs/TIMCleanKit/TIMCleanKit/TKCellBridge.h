@@ -383,7 +383,18 @@ static void TKCellLayout(id self,SEL cmd) {
         TKUpdateRecallLabel(self);
     }
 }
+static void TKCollectMessageCells(UIView *root,NSMutableArray *out) {
+    for(UIView *v in root.subviews) {
+        NSString *cls=NSStringFromClass(v.class);
+        if([cls containsString:@"Cell"]||[cls containsString:@"Bubble"])[out addObject:v];
+        if(v.subviews.count)TKCollectMessageCells(v,out);
+    }
+}
 static void TKRefreshRecallLabels(void) {
     if(!NSThread.isMainThread){dispatch_async(dispatch_get_main_queue(),^{TKRefreshRecallLabels();});return;}
+    /* 2.0.5: 全窗口扫描——原只刷 gTKVisibleCells（登记不全/翻旧消息的 cell 不在里面），导致"要退出重进才显示标签" */
+    NSMutableArray *cells=[NSMutableArray array];
+    for(UIWindow *window in UIApplication.sharedApplication.windows) if(window.subviews.count)TKCollectMessageCells(window,cells);
+    for(UIView *cell in cells)TKUpdateRecallLabel(cell);
     for(UIView *cell in gTKVisibleCells.allObjects)TKUpdateRecallLabel(cell);
 }
