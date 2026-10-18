@@ -8,7 +8,7 @@ include $(THEOS)/makefiles/common.mk
 TWEAK_NAME = TIMCleanKit
 TIMCleanKit_FILES = TIMCleanKit/Tweak.xm
 TIMCleanKit_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -fvisibility=hidden -DTIMCK_STRIP_LOGS=1
-TIMCleanKit_FRAMEWORKS = UIKit Foundation CoreGraphics
+TIMCleanKit_FRAMEWORKS = UIKit Foundation CoreGraphics AVFoundation
 TIMCleanKit_LDFLAGS = -Wl,-x -Wl,-dead_strip
 TIMCleanKit_PRIVATE_FRAMEWORKS =
 

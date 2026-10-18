@@ -4,6 +4,7 @@ static NSString *const TKListenerClass=@"_TtC13GuildNTKernel20SWIKernelMsgListen
 static void TKRefreshRecallLabels(void);
 static unsigned long long gTKRecallBlocked,gTKRepeatFailures,gTKMessageBinds;
 static void TKArchiveRecalledRecord(id record); /* 2.0: 定义于 TKCellBridge.h，撤回内容磁盘归档 */
+static void TKVoiceAutoReadRecord(id record); /* 2.2.0: 定义于 TKVoiceAI.h，新消息自动朗读 */
 static void TKRestoreRecord(id record) {
     NSDictionary *saved=TKCachedMessage(record);NSArray *elements=saved[@"elements"];if(!elements.count)return;
     IMP original=TKOriginalIMP(TKRecord(@"OCMsgRecord",@selector(setElements:)));
@@ -69,8 +70,9 @@ static void TKBridgeUpdate(id self,SEL cmd,id records) {
 static void TKBridgeReceive(id self,SEL cmd,id records) {
     IMP orig=OrigIMP(TKListenerClass,cmd);
     // Cache synchronously before the app's own callback consumes or replaces the records.
+    BOOL isRecv=(cmd==@selector(onRecvMsg:));
     if([records isKindOfClass:NSArray.class])for(id record in records)
-        if([record isKindOfClass:NSClassFromString(@"OCMsgRecord")])TKRememberMessage(record);
+        if([record isKindOfClass:NSClassFromString(@"OCMsgRecord")]){TKRememberMessage(record);if(isRecv)TKVoiceAutoReadRecord(record);}
     if(orig)((void(*)(id,SEL,id))orig)(self,cmd,records);
 }
 static void TKBridgeDelete(id self,SEL cmd,id contact,id ids) {

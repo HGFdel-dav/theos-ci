@@ -31,6 +31,24 @@ static NSString *const kRedAllowUnknown=@"TIMCK.allowUnknownRed"; // 1.0.23: 未
 static NSString *const kRedSkipTest = @"TIMCK.redSkipTest";     // 沿用旧配置键：关键词过滤
 static NSString *const kRedKeywords = @"TIMCK.redKeywords";    // 可编辑的红包文案关键词
 static NSString *const kRedSkipCmd  = @"TIMCK.redSkipCommand";  // 口令红包不抢
+// 2.2.0 语音与 AI
+static NSString *const kTKFloatBall=@"TIMCK.floatBall";
+static NSString *const kTKFloatPos=@"TIMCK.floatPos";
+static NSString *const kTKAutoRead=@"TIMCK.autoRead";
+static NSString *const kTKReadVoice=@"TIMCK.readVoice";
+static NSString *const kTKReadRate=@"TIMCK.readRate";
+static NSString *const kTKVoiceBackend=@"TIMCK.voiceBackend";
+static NSString *const kTKQwenKey=@"TIMCK.qwenKey";
+static NSString *const kTKQwenBase=@"TIMCK.qwenBase";
+static NSString *const kTKQwenModel=@"TIMCK.qwenModel";
+static NSString *const kTKQwenVoice=@"TIMCK.qwenVoice";
+static NSString *const kTKQwenInstr=@"TIMCK.qwenInstr";
+static NSString *const kTKAIBase=@"TIMCK.aiBase";
+static NSString *const kTKAIKey=@"TIMCK.aiKey";
+static NSString *const kTKAIModel=@"TIMCK.aiModel";
+static NSString *const kTKAIPersona=@"TIMCK.aiPersona";
+static NSString *const kTKAIMemory=@"TIMCK.aiMemory";
+static NSString *const kTKAITemp=@"TIMCK.aiTemp";
 
 #ifdef TIMCK_STRIP_LOGS
 #define NSLog(...) do {} while(0)
@@ -75,6 +93,9 @@ static void registerDefaultsOnce(void) {
             kRedSkipTest: @YES,
             kRedKeywords: @"测试\n外挂\n体验",
             kRedSkipCmd:  @NO,
+            kTKFloatBall:@YES,kTKAutoRead:@NO,kTKReadRate:@(1.0),kTKVoiceBackend:@"system",
+            kTKQwenBase:@"dashscope.aliyuncs.com",kTKQwenModel:@"qwen3-tts-instruct-flash-2026-01-26",kTKQwenVoice:@"Cherry",
+            kTKAIBase:@"https://api.openai.com/v1",kTKAIModel:@"gpt-4o-mini",kTKAIMemory:@(6),kTKAITemp:@(0.7),
         };
         [prefs() registerDefaults:d];
         [prefs() synchronize];
@@ -991,13 +1012,14 @@ static NSDictionary *TKRuntimeSnapshot(void) {
         unsigned long long hits=__atomic_load_n(&r->hits,__ATOMIC_RELAXED);
         [rows addObject:@{@"name":[NSString stringWithFormat:@"%s\n%s",r->className,sel_getName(r->selector)],@"state":hits?@"已实际调用":states[MIN(state,4)],@"hits":@(hits),@"lastHit":@""}];
     }
-    return @{@"engine":@{@"status":gTKEngineStatus?:@"未知",@"listenerRegistered":@(gTKListenerRegistered),@"received":@(gTKReceived),@"claimRequests":@(gTKAutoAttempts),@"claimCallbacks":@(gTKAutoCompleted),@"claimFailures":@(gTKAutoErrors),@"repeatRequests":@(gTKRepeats),@"repeatFailures":@(gTKRepeatFailures),@"messageCellBinds":@(gTKMessageBinds),@"gestureTaps":@(gTKGestureTaps),@"gestureNoRecord":@(gTKGestureNoRecord),@"recordReadFailures":@(gTKRecordReadFailures),@"recallBlocked":@(__atomic_load_n(&gTKRecallBlocked,__ATOMIC_RELAXED)),@"hardwareReads":@(__atomic_load_n(&gTKHardwareReads,__ATOMIC_RELAXED)),@"recallEvents":@(__atomic_load_n(&gTKRecallEvents,__ATOMIC_RELAXED)),@"recallRestores":@(__atomic_load_n(&gTKRecallRestores,__ATOMIC_RELAXED)),@"lastRedType":@(gTKLastRedType),@"lastRedAmount":@(gTKLastRedAmount),@"skipCommonType":@(gTKSkipCommonType),@"skipUnknownAmount":@(gTKSkipUnknownAmount),@"layoutAssociations":@(gTKLayoutAssociations),@"layoutMatchFails":@(gTKLayoutMatchFails),@"noRecordNoCell":@(gTKNoRecordNoCell),@"noRecordAssocFail":@(gTKNoRecordAssocFail),@"noRecordMatchFail":@(gTKNoRecordMatchFail),@"lastHitInfo":TKStrSafe(gTKLastHitInfo),@"textProbe":TKStrSafe(gTKTextProbe),@"redProbe":(gTKLastRedProbe?:@"")},@"redTypeHist":@[ @(gTKRedTypeHist[0]),@(gTKRedTypeHist[1]),@(gTKRedTypeHist[2]),@(gTKRedTypeHist[3]),@(gTKRedTypeHist[4]),@(gTKRedTypeHist[5]),@(gTKRedTypeHist[6]),@(gTKRedTypeHist[7]),@(gTKRedTypeHist[8]),@(gTKRedTypeHist[9]),@(gTKRedTypeHist[10]),@(gTKRedTypeHist[11]),@(gTKRedTypeHist[12]),@(gTKRedTypeHist[13]),@(gTKRedTypeHist[14]),@(gTKRedTypeHist[15]) ],@"version":@"2.1.1",@"process":[NSString stringWithFormat:@"TIM %@ · PID %d · 注册检查 %u 轮\nUIDevice.model = %@",([NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"]?:@"?"),getpid(),gRegistrationRounds,UIDevice.currentDevice.model],@"hookRows":rows,@"classProbe":gTKClassProbeCache,@"redEvents":(gTKRedEvents?[gTKRedEvents copy]:@[]),@"recallLog":(gTKRecallLog?[gTKRecallLog copy]:@[]),@"setRecallPositive":@(gTKSetRecallPos),@"labelLog":(gTKLabelLog?[gTKLabelLog copy]:@[]),@"labelShown":@(__atomic_load_n(&gTKLabelShown,__ATOMIC_RELAXED)),@"labelHidden":@(__atomic_load_n(&gTKLabelHidden,__ATOMIC_RELAXED)),@"warnings":@[@"调用次数只能证明该入口被调用，不能证明防撤回或过滤效果。",@"自动领取：只处理前台两分钟内新收到的红包，不保证后台唤醒；完成回调不等于到账，请核对结果。",@"防撤回：撤回检测为独立记录（退出重进/重启仍显示标记）；消息内容尽力恢复（进程缓存1500条 / 磁盘归档）。"]};
-    } @catch(NSException *e) { return @{@"engine":@{@"status":@"诊断构造异常（已捕获，未影响聊天）",@"version":@"2.1.1"}}; }
+    return @{@"engine":@{@"status":gTKEngineStatus?:@"未知",@"listenerRegistered":@(gTKListenerRegistered),@"received":@(gTKReceived),@"claimRequests":@(gTKAutoAttempts),@"claimCallbacks":@(gTKAutoCompleted),@"claimFailures":@(gTKAutoErrors),@"repeatRequests":@(gTKRepeats),@"repeatFailures":@(gTKRepeatFailures),@"messageCellBinds":@(gTKMessageBinds),@"gestureTaps":@(gTKGestureTaps),@"gestureNoRecord":@(gTKGestureNoRecord),@"recordReadFailures":@(gTKRecordReadFailures),@"recallBlocked":@(__atomic_load_n(&gTKRecallBlocked,__ATOMIC_RELAXED)),@"hardwareReads":@(__atomic_load_n(&gTKHardwareReads,__ATOMIC_RELAXED)),@"recallEvents":@(__atomic_load_n(&gTKRecallEvents,__ATOMIC_RELAXED)),@"recallRestores":@(__atomic_load_n(&gTKRecallRestores,__ATOMIC_RELAXED)),@"lastRedType":@(gTKLastRedType),@"lastRedAmount":@(gTKLastRedAmount),@"skipCommonType":@(gTKSkipCommonType),@"skipUnknownAmount":@(gTKSkipUnknownAmount),@"layoutAssociations":@(gTKLayoutAssociations),@"layoutMatchFails":@(gTKLayoutMatchFails),@"noRecordNoCell":@(gTKNoRecordNoCell),@"noRecordAssocFail":@(gTKNoRecordAssocFail),@"noRecordMatchFail":@(gTKNoRecordMatchFail),@"lastHitInfo":TKStrSafe(gTKLastHitInfo),@"textProbe":TKStrSafe(gTKTextProbe),@"redProbe":(gTKLastRedProbe?:@"")},@"redTypeHist":@[ @(gTKRedTypeHist[0]),@(gTKRedTypeHist[1]),@(gTKRedTypeHist[2]),@(gTKRedTypeHist[3]),@(gTKRedTypeHist[4]),@(gTKRedTypeHist[5]),@(gTKRedTypeHist[6]),@(gTKRedTypeHist[7]),@(gTKRedTypeHist[8]),@(gTKRedTypeHist[9]),@(gTKRedTypeHist[10]),@(gTKRedTypeHist[11]),@(gTKRedTypeHist[12]),@(gTKRedTypeHist[13]),@(gTKRedTypeHist[14]),@(gTKRedTypeHist[15]) ],@"version":@"2.2.0",@"process":[NSString stringWithFormat:@"TIM %@ · PID %d · 注册检查 %u 轮\nUIDevice.model = %@",([NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"]?:@"?"),getpid(),gRegistrationRounds,UIDevice.currentDevice.model],@"hookRows":rows,@"classProbe":gTKClassProbeCache,@"redEvents":(gTKRedEvents?[gTKRedEvents copy]:@[]),@"recallLog":(gTKRecallLog?[gTKRecallLog copy]:@[]),@"setRecallPositive":@(gTKSetRecallPos),@"labelLog":(gTKLabelLog?[gTKLabelLog copy]:@[]),@"labelShown":@(__atomic_load_n(&gTKLabelShown,__ATOMIC_RELAXED)),@"labelHidden":@(__atomic_load_n(&gTKLabelHidden,__ATOMIC_RELAXED)),@"warnings":@[@"调用次数只能证明该入口被调用，不能证明防撤回或过滤效果。",@"自动领取：只处理前台两分钟内新收到的红包，不保证后台唤醒；完成回调不等于到账，请核对结果。",@"防撤回：撤回检测为独立记录（退出重进/重启仍显示标记）；消息内容尽力恢复（进程缓存1500条 / 磁盘归档）。"]};
+    } @catch(NSException *e) { return @{@"engine":@{@"status":@"诊断构造异常（已捕获，未影响聊天）",@"version":@"2.2.0"}}; }
 }
 
 
 
 #include "TKSettingsUI.h"
+#include "TKVoiceAI.h"
 static char kGestureAddedKey;
 @interface TIMCKGestureTarget : NSObject <UIGestureRecognizerDelegate>
 @end
@@ -1124,7 +1146,7 @@ static void RegisterBusinessHooks(void) {
     InstallHook(TKCellClass,@selector(unbindViewModel),(IMP)TKCellClear,NO);
     InstallHook(TKCellClass,@selector(prepareForReuse),(IMP)TKCellClear,NO);
     InstallHook(TKCellClass,@selector(layoutSubviews),(IMP)TKCellLayout,NO);
-    TKAttachListener();TKDrainRedQueue();TKRefreshRecallLabels();
+    TKAttachListener();TKDrainRedQueue();TKRefreshRecallLabels();TKInstallVoiceAI();
     for(UIWindow *w in UIApplication.sharedApplication.windows)InstallGesture(w);
     TKWriteStatus();
 }

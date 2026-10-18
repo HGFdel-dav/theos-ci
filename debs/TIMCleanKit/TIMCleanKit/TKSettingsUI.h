@@ -1,3 +1,5 @@
+@class TKVoiceAISettingsController;
+static void TKUpdateVoiceBallVisibility(void);
 static void TKDismissSettings(UIViewController *controller);
 // Native UIKit settings, iOS 15+. Included after TKRuntimeSnapshot().
 // 1.0.5: amounts are stored as integer cents, never converted through floating point.
@@ -192,6 +194,9 @@ static NSString *TKUIRedKeywordText(void) {
             @{@"title":@"跳过口令红包",@"key":kRedSkipCmd,@"symbol":@"text.bubble",@"default":@NO,@"help":@"TIM原生接口判为口令红包时跳过，不自动发送口令；关闭后仍受原生领取流程限制。"},
             @{@"title":@"未知金额红包放行",@"key":kRedAllowUnknown,@"symbol":@"questionmark.circle",@"default":@YES,@"help":@"TIM 不随消息下发红包总额，绝大多数红包读不到金额。开启后：起抢金额只对能读出金额的红包生效，读不到金额的普通/拼手气红包照抢；关闭后恢复旧规则：设了起抢金额时普通红包一律不抢。"},
             @{@"title":@"起抢金额",@"action":@"amount",@"symbol":@"slider.horizontal.3",@"help":@"设置起抢金额：普通红包一律不抢；拼手气照抢；0 表示全部抢。"}],
+          @[@{@"title":@"语音与 AI",@"action":@"voiceai",@"symbol":@"waveform",@"help":@"朗读新消息、文字转语音与 AI 助手（悬浮球入口）。"},
+            @{@"title":@"显示悬浮球",@"key":kTKFloatBall,@"symbol":@"circle.circle",@"default":@YES,@"help":@"聊天页右侧悬浮球，点按打开语音/AI 菜单，可拖动位置。"},
+            @{@"title":@"自动朗读新消息",@"key":kTKAutoRead,@"symbol":@"speaker.wave.2",@"default":@NO,@"help":@"前台收到文本消息时用系统语音朗读，仅本机处理，不上传内容。"}],
           @[@{@"title":@"运行状态",@"action":@"diagnostics",@"symbol":@"waveform.path.ecg",@"help":@"动态查看功能引擎键值、监听注册、新消息、领取请求/回调/失败与 Hook 调用。完成回调不等于已到账，请核对红包结果。"},
             @{@"title":@"复制诊断摘要",@"action":@"copy",@"symbol":@"doc.on.doc",@"help":@"复制版本、功能引擎键值、方法注册状态与计数，便于排查；摘要不含聊天正文、账号、红包账单或凭据。"}]
         ];
@@ -204,7 +209,7 @@ static NSString *TKUIRedKeywordText(void) {
     self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(closePage)];
     UIView *header=[[UIView alloc] initWithFrame:CGRectMake(0,0,320,84)];
     UILabel *name=[UILabel new];name.text=@"TIM 增强";name.font=[UIFont systemFontOfSize:24 weight:UIFontWeightBold];name.textColor=UIColor.labelColor;
-    UILabel *subtitle=[UILabel new];subtitle.text=@"2.1.1 · 双指长按唤醒";subtitle.font=[UIFont systemFontOfSize:12];subtitle.adjustsFontForContentSizeCategory=YES;subtitle.textColor=UIColor.secondaryLabelColor;
+    UILabel *subtitle=[UILabel new];subtitle.text=@"2.2.0 · 双指长按唤醒";subtitle.font=[UIFont systemFontOfSize:12];subtitle.adjustsFontForContentSizeCategory=YES;subtitle.textColor=UIColor.secondaryLabelColor;
     UIStackView *stack=[[UIStackView alloc] initWithArrangedSubviews:@[name,subtitle]];stack.axis=UILayoutConstraintAxisVertical;stack.spacing=4;stack.translatesAutoresizingMaskIntoConstraints=NO;
     [header addSubview:stack];[NSLayoutConstraint activateConstraints:@[[stack.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:24],[stack.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-24],[stack.centerYAnchor constraintEqualToAnchor:header.centerYAnchor]]];
     self.tableView.tableHeaderView=header;
@@ -214,9 +219,9 @@ static NSString *TKUIRedKeywordText(void) {
 - (void)closePage {TKDismissSettings(self);}
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView{return self.sections.count;}
 - (NSInteger)tableView:(UITableView *)t numberOfRowsInSection:(NSInteger)section{return [self.sections[section] count];}
-- (NSString *)tableView:(UITableView *)t titleForHeaderInSection:(NSInteger)s{return @[@"总开关",@"消息与设备",@"红包过滤",@"诊断"][s];}
+- (NSString *)tableView:(UITableView *)t titleForHeaderInSection:(NSInteger)s{return @[@"总开关",@"消息与设备",@"红包过滤",@"语音与 AI",@"诊断"][s];}
 - (NSString *)tableView:(UITableView *)t titleForFooterInSection:(NSInteger)s {
-    return @[@"双指长按 0.8 秒任意位置打开设置",@"拦截后在气泡旁显示“拦截撤回”",@"红包总额达到起抢金额才抢，低于不抢",@"摘要不含聊天内容"][s];
+    return @[@"双指长按 0.8 秒任意位置打开设置",@"拦截后在气泡旁显示“拦截撤回”",@"红包总额达到起抢金额才抢，低于不抢",@"朗读与 AI 助手均在本机处理，接口 Key 仅存本机",@"摘要不含聊天内容"][s];
 }
 - (UITableViewCell *)tableView:(UITableView *)t cellForRowAtIndexPath:(NSIndexPath *)ip {
     NSDictionary *row=self.sections[ip.section][ip.row];
@@ -264,6 +269,7 @@ static NSString *TKUIRedKeywordText(void) {
 - (void)toggle:(UISwitch *)sender {
     [prefs() setBool:sender.on forKey:sender.accessibilityIdentifier];
     [prefs() synchronize];TKRefreshSpoofProfile();TKRefreshRecallLabels();
+    if([sender.accessibilityIdentifier isEqualToString:kTKFloatBall])TKUpdateVoiceBallVisibility();
     if([sender.accessibilityIdentifier isEqualToString:kAutoRed]){[gTKSeenRedPackets removeAllObjects];[gTKRedQueue removeAllObjects];}
 }
 - (void)tableView:(UITableView *)t didSelectRowAtIndexPath:(NSIndexPath *)ip {
@@ -305,11 +311,13 @@ static NSString *TKUIRedKeywordText(void) {
                 [prefs() setObject:v forKey:kSpoofModel];[prefs() synchronize];TKRefreshSpoofProfile();
                 [weakSelf.tableView reloadData];
             } onCancel:nil];
+    } else if ([action isEqualToString:@"voiceai"]) {
+        [self.navigationController pushViewController:[TKVoiceAISettingsController new] animated:YES];
     } else if ([action isEqualToString:@"keywords"]) {
         TKRedKeywordsController *editor=[TKRedKeywordsController new];__weak TKSettingsController *weakSelf=self;
         editor.didSave=^{[weakSelf.tableView reloadData];};[self.navigationController pushViewController:editor animated:YES];
     } else if ([action isEqualToString:@"diagnostics"] || [action isEqualToString:@"copy"]) {
-        NSDictionary *state=TKRuntimeSnapshot();NSMutableString *text=[NSMutableString stringWithFormat:@"TIMCleanKit %@\n%@\n",state[@"version"]?:@"2.1.1",state[@"process"]?:@"运行状态不可用"];
+        NSDictionary *state=TKRuntimeSnapshot();NSMutableString *text=[NSMutableString stringWithFormat:@"TIMCleanKit %@\n%@\n",state[@"version"]?:@"2.2.0",state[@"process"]?:@"运行状态不可用"];
         [text appendString:@"\n功能引擎：\n"];
         NSDictionary *engine=[state[@"engine"] isKindOfClass:NSDictionary.class]?state[@"engine"]:@{};
         NSArray *keys=[[engine allKeys] sortedArrayUsingSelector:@selector(compare:)];
