@@ -2,6 +2,7 @@
 #import "TWArcCoordinator.h"
 #import "TWArcMenuView.h"
 #import "TWArcGeometry.h"
+#import "TWArcWindow.h"
 #import "TWPrefs.h"
 #import "TWCraneBridge.h"
 #import <AudioToolbox/AudioServices.h>
@@ -172,6 +173,22 @@ static BOOL TWArcDeviceUnlocked(void) {
     _hasStartPoint = NO;
     _tracking = NO;
     _didPresent = NO;
+    [self releaseOverlayWindow];
+}
+
+// 菜单收起后收尾：先让收起动画画完，再把整个覆盖窗口隐藏并关掉交互。
+// 隐藏即彻底让出触摸，空闲时不会挡状态栏、系统手势或前台应用。
+- (void)releaseOverlayWindow {
+    if (_menu.isPresented) return;
+    __weak TWArcCoordinator *weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.55 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        TWArcCoordinator *strongSelf = weakSelf;
+        if (!strongSelf) return;
+        if (strongSelf->_menu.isPresented) return;
+        strongSelf->_menu.userInteractionEnabled = NO;
+        strongSelf->_menu.hidden = YES;
+        [[TWArcWindow sharedWindow] hideMenuContainer];
+    });
 }
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
@@ -211,6 +228,7 @@ static BOOL TWArcDeviceUnlocked(void) {
             _hasStartPoint = NO;
             _tracking = NO;
             _didPresent = NO;
+            [self releaseOverlayWindow];
             break;
         }
         case UIGestureRecognizerStateCancelled:
@@ -223,16 +241,31 @@ static BOOL TWArcDeviceUnlocked(void) {
 
 - (void)presentMenuFromPoint:(CGPoint)point {
     if (_didPresent || !TWArcDeviceUnlocked()) return;
-    UIWindow *window = (UIWindow *)_pan.view; // the recognizer is attached to the SB window
-    if (![window isKindOfClass:[UIWindow class]] || window.hidden) return;
+    UIWindow *reference = (UIWindow *)_pan.view; // the recognizer is attached to the SB window
+    if (![reference isKindOfClass:[UIWindow class]] || reference.hidden) return;
+
+    // 层级：自建高层级覆盖窗口（Arc-X 结构），不再塞进 SpringBoard 的普通窗口
+    // （UIWindowLevelNormal = 0，会被状态栏与系统界面压住）。取不到可用场景时
+    // 退回旧宿主，手势不会哑掉。
+    TWArcWindow *host = [TWArcWindow sharedWindow];
+    UIView *container = nil;
+    if (host && [host attachToSceneFromWindow:reference]) container = [host menuContainer];
+    if (!container) {
+        container = reference;
+    } else {
+        [host showMenuContainer];
+    }
+
     _didPresent = YES;
     if (!_menu) {
-        _menu = [[TWArcMenuView alloc] initWithFrame:window.bounds];
+        _menu = [[TWArcMenuView alloc] initWithFrame:container.bounds];
         _menu.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     } else {
-        _menu.frame = window.bounds;
+        _menu.frame = container.bounds;
     }
-    [window addSubview:_menu];
+    _menu.hidden = NO;
+    _menu.userInteractionEnabled = YES;
+    [container addSubview:_menu];
 
     NSArray *bundleIDs = [self recentBundleIDs];
     NSInteger side = [[TWPrefs shared] integerForKey:TWKeyArcSide defaultValue:0];

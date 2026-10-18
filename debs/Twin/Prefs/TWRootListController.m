@@ -14,25 +14,7 @@
 #import "TWCraneAppsController.h"
 #import "TWRememberAppsController.h"
 
-static NSString *const kTWVersion = @"0.3.0";
-
-static BOOL TWJBRootFileExists(NSString *relative) {
-    NSFileManager *fm = NSFileManager.defaultManager;
-    for (NSString *root in TWJBRootCandidates()) {
-        if ([fm fileExistsAtPath:[root stringByAppendingPathComponent:relative]]) return YES;
-    }
-    return NO;
-}
-
-static BOOL TWParallelXInstalled(void) {
-    return TWJBRootFileExists(@"Library/MobileSubstrate/DynamicLibraries/ParallelX.dylib");
-}
-
-static BOOL TWCraneInstalled(void) {
-    return TWJBRootFileExists(@"Library/MobileSubstrate/DynamicLibraries/Crane.dylib") ||
-           TWJBRootFileExists(@"usr/lib/libcrane.dylib") ||
-           TWJBRootFileExists(@"Library/PreferenceBundles/CranePrefs.bundle");
-}
+static NSString *const kTWVersion = @"0.3.1";
 
 @implementation TWRootListController {
     UIView *_hero;
@@ -86,9 +68,9 @@ static BOOL TWCraneInstalled(void) {
     if (!_specifiers) {
         NSMutableArray *specs = [NSMutableArray array];
 
-        BOOL parallelx = TWParallelXInstalled();
-        BOOL crane = TWCraneInstalled();
         NSInteger craneCount = (NSInteger)[TWPrefs shared].craneApps.count;
+        NSInteger arcPriority = [[TWPrefs shared] integerForKey:TWKeyArcWindowPriority
+                                                   defaultValue:TWArcPriorityDefault];
         NSDictionary *frames = [[TWPrefs shared] objectForKey:TWKeyRememberFrames];
         NSInteger frameCount = [frames isKindOfClass:NSDictionary.class] ? (NSInteger)frames.count : 0;
 
@@ -98,14 +80,6 @@ static BOOL TWCraneInstalled(void) {
         [specs addObject:[self twRow:@"启用 Twin" key:TWKeyEnabled default:@NO cellName:@"TWSwitchCell"
                             cellType:PSSwitchCell symbol:@"power" detail:nil link:nil
                               extras:@{@"height": @62}]];
-        [specs addObject:[self twRow:@"分屏引擎" key:nil default:nil cellName:@"TWStatusCell"
-                            cellType:PSStaticTextCell symbol:@"rectangle.split.2x1"
-                              detail:(parallelx ? @"ParallelX 已安装" : @"未安装 · 普通启动")
-                                link:nil extras:@{@"height": @52, @"twPositive": @(parallelx)}]];
-        [specs addObject:[self twRow:@"分身引擎" key:nil default:nil cellName:@"TWStatusCell"
-                            cellType:PSStaticTextCell symbol:@"square.on.square"
-                              detail:(crane ? @"Crane 已安装" : @"未安装 · 分身不可用")
-                                link:nil extras:@{@"height": @52, @"twPositive": @(crane)}]];
 
         // ---- Arc ----
         [specs addObject:[self twGroup:@"Arc 弧形唤醒"
@@ -128,6 +102,14 @@ static BOOL TWCraneInstalled(void) {
         [specs addObject:[self twRow:@"操作音效" key:TWKeyArcSoundEnabled default:@YES cellName:@"TWSwitchCell"
                             cellType:PSSwitchCell symbol:@"speaker.wave.2.fill" detail:nil link:nil
                               extras:@{@"height": @62}]];
+
+        // ---- Arc 窗口层级（对齐 Arc-X 的「视图优先级」概念）----
+        [specs addObject:[self twGroup:@"Arc 窗口层级"
+                                footer:[NSString stringWithFormat:@"生效层级 = 1998 + 视图优先级，当前 %ld。默认 %ld 已高于状态栏(1000)与系统弹窗(2000)；拉到 %ld 为「至高无上」。层级再高也盖不过 iOS 安全界面（密码／支付），也不解除锁屏保护。菜单收起后整窗隐藏，不劫持触摸。",
+                                                         (long)(1998 + arcPriority), (long)TWArcPriorityDefault, (long)TWArcPriorityMax]]];
+        [specs addObject:[self twRow:@"视图优先级" key:TWKeyArcWindowPriority default:@(TWArcPriorityDefault) cellName:@"TWSliderCell"
+                            cellType:PSSliderCell symbol:@"square.stack.3d.up" detail:nil link:nil
+                              extras:@{@"height": @78, @"twMin": @0, @"twMax": @(TWArcPriorityMax), @"twStep": @1, @"twUnit": @""}]];
 
         // ---- Crane ----
         [specs addObject:[self twGroup:@"Crane 分身"

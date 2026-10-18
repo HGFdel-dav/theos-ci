@@ -102,6 +102,11 @@ static inline NSString *TWPrefsFilePath(void) {
 #define TWKeyArcItemCount     @"TWArcItemCount"     // icons per menu
 #define TWKeyArcRadius        @"TWArcRadius"        // points
 #define TWKeyArcSound         @"TWArcSoundEnabled"
+// 弧形覆盖窗口的层级优先级（Arc-X 同名概念）：0～2200，默认 46。
+// 生效层级 = UIWindowLevelAlert - 2 + 该值（即 1998..4198）。
+#define TWKeyArcWindowPriority @"TWArcWindowPriority"
+#define TWArcPriorityDefault  46
+#define TWArcPriorityMax      2200
 #define TWKeyCraneEnabled     @"TWCraneEnabled"
 #define TWKeyCraneApps        @"TWCraneApps"        // NSDictionary { bundleID : containerID }
 #define TWKeyRememberSize     @"TWRememberSize"     // BOOL, default YES
