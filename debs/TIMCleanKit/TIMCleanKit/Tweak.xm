@@ -455,6 +455,8 @@ static NSString *TKRecallTextOf(id record) {
 }
 
 static BOOL TKAntiRecallEnabled(void) {return prefBool(kEnabled,YES)&&prefBool(kAntiRecall,YES);}
+static void TKRefreshRecallLabels(void); /* 2.0.5: 定义于 TKCellBridge.h（include 在后），此处前向声明 */
+
 static void AR_setRecallTime(id self,SEL cmd,long long value) {
     IMP orig=OrigIMP(@"OCMsgRecord",cmd);
     if(value>0 && TKAntiRecallEnabled()) {
