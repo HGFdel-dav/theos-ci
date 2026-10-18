@@ -1,8 +1,10 @@
 // TWContainerExport.m
 #import "TWContainerExport.h"
+#import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
 #import <dlfcn.h>
+#import <sys/stat.h>
 
 static NSString *TWEJBRoot(void) {
     static NSString *root;
