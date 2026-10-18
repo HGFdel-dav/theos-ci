@@ -7,6 +7,7 @@
 #import <AVFoundation/AVFoundation.h>
 
 static void TKStopSpeaking(void);
+static void TKOpenVoiceAISettingsFrom(UIViewController *host);
 static void TKUpdateVoiceBallVisibility(void);
 static void TKInstallVoiceAI(void);
 static void TKVoiceAutoReadRecord(id record);
@@ -100,7 +101,7 @@ static void TKVoiceAutoReadRecord(id record) {
         NSString *key=@(mid).stringValue;
         if([gTKReadSeen containsObject:key])return;
         [gTKReadSeen addObject:key];
-        if(gTKReadSeen.count>300){NSArray *all=gTKReadSeen.allObjects;[gTKReadSeen removeObjectsInArray:[all subarrayWithRange:NSMakeRange(0,100)]];}
+        if(gTKReadSeen.count>300){NSArray *all=gTKReadSeen.allObjects;for(NSString *old in [all subarrayWithRange:NSMakeRange(0,100)])[gTKReadSeen removeObject:old];}
     }
     NSString *text=TKVoiceTextOfRecord(record);
     if(text.length)TKSpeakText(text);
@@ -217,7 +218,7 @@ static void TKQwenSynthesize(NSString *text,void(^status)(NSString *),void(^fail
 @property(nonatomic,strong) UILabel *voiceLabel,*statusLabel,*rateCaption;
 @property(nonatomic,strong) UISlider *rateSlider;
 @property(nonatomic,strong) UITextField *instrField;
-@property(nonatomic,strong) UIButton *voicePickButton,*speakButton,*stopButton,*copyButton;
+@property(nonatomic,strong) UIButton *voicePickButton,*speakButton,*stopButton,*copyTextButton;
 @end
 @implementation TKVoicePanelController
 - (instancetype)init {
@@ -261,7 +262,7 @@ static void TKQwenSynthesize(NSString *text,void(^status)(NSString *),void(^fail
     UIButton *copy=[UIButton buttonWithType:UIButtonTypeSystem];
     [copy setTitle:@"复制文本" forState:UIControlStateNormal];
     [copy addTarget:self action:@selector(copyTap) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:copy];self.copyButton=copy;
+    [self.view addSubview:copy];self.copyTextButton=copy;
     self.statusLabel=[UILabel new];self.statusLabel.font=[UIFont systemFontOfSize:12];self.statusLabel.textColor=UIColor.secondaryLabelColor;
     self.statusLabel.textAlignment=NSTextAlignmentCenter;[self.view addSubview:self.statusLabel];
     [self refreshVoiceLabel];
@@ -280,7 +281,7 @@ static void TKQwenSynthesize(NSString *text,void(^status)(NSString *),void(^fail
     CGFloat btnH=46;
     self.speakButton.frame=CGRectMake(pad,y,(w-pad*2-12)/2,btnH);
     self.stopButton.frame=CGRectMake(CGRectGetMaxX(self.speakButton.frame)+12,y,(w-pad*2-12)/2,btnH);y+=btnH+10;
-    self.copyButton.frame=CGRectMake(pad,y,w-pad*2,36);y+=40;
+    self.copyTextButton.frame=CGRectMake(pad,y,w-pad*2,36);y+=40;
     self.statusLabel.frame=CGRectMake(pad,safe-30,w-pad*2,20);
 }
 - (void)refreshVoiceLabel {
@@ -331,7 +332,7 @@ static void TKQwenSynthesize(NSString *text,void(^status)(NSString *),void(^fail
     }
     return self;
 }
-- (void)openSettings {[self.navigationController pushViewController:[TKVoiceAISettingsController new] animated:YES];}
+- (void)openSettings {TKOpenVoiceAISettingsFrom(self);}
 - (void)clearChat {[self.messages removeAllObjects];[self.tableView reloadData];}
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -474,7 +475,7 @@ static void TKQwenSynthesize(NSString *text,void(^status)(NSString *),void(^fail
     if(s==2)return @"兼容 OpenAI / DeepSeek 的 /chat/completions 接口。";
     return nil;
 }
-- (NSInteger)tableView:(UITableView *)t numberOfRowsInSection:(NSInteger)s{return @[@3,@3,@6,@1][s];}
+- (NSInteger)tableView:(UITableView *)t numberOfRowsInSection:(NSInteger)s{return (NSInteger)[@[@3,@3,@6,@1][s] integerValue];}
 - (UITableViewCell *)tableView:(UITableView *)t cellForRowAtIndexPath:(NSIndexPath *)ip {
     UITableViewCell *c=[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:nil];
     c.accessoryType=UITableViewCellAccessoryDisclosureIndicator;
@@ -505,7 +506,6 @@ static void TKQwenSynthesize(NSString *text,void(^status)(NSString *),void(^fail
 }
 - (void)tableView:(UITableView *)t didSelectRowAtIndexPath:(NSIndexPath *)ip {
     [t deselectRowAtIndexPath:ip animated:YES];
-    __weak typeof(self) weakSelf=self;
     if(ip.section==0){
         if(ip.row==1)[self.navigationController pushViewController:[TKVoiceListController new] animated:YES];
         else if(ip.row==2)TKEditString(self,@"朗读语速",@"0.5 – 2.0，默认 1.0",kTKReadRate,@"1.0",UIKeyboardTypeDecimalPad,NO,^(NSString *v){[t reloadData];});
@@ -540,7 +540,7 @@ static void TKShowVoiceMenu(void) {
     }]];
     [a addAction:[UIAlertAction actionWithTitle:@"文字转语音" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){TKPresentVC([TKVoicePanelController new]);}]];
     [a addAction:[UIAlertAction actionWithTitle:@"AI 助手" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){TKPresentVC([TKAIChatController new]);}]];
-    [a addAction:[UIAlertAction actionWithTitle:@"设置" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){TKPresentSettings();}]];
+    [a addAction:[UIAlertAction actionWithTitle:@"设置" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){TKPresentSettings(nil);}]];
     [a addAction:[UIAlertAction actionWithTitle:@"隐藏悬浮球" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *x){
         [prefs() setObject:@NO forKey:kTKFloatBall];[prefs() synchronize];TKUpdateVoiceBallVisibility();
     }]];
@@ -597,6 +597,11 @@ static void TKUpdateVoiceBallVisibility(void) {
 - (void)onBallPan:(UIPanGestureRecognizer *)g {TKBallMoved(g);}
 @end
 
+static void TKOpenVoiceAISettingsFrom(UIViewController *host) {
+    TKVoiceAISettingsController *c=[TKVoiceAISettingsController new];
+    if(host.navigationController)[host.navigationController pushViewController:c animated:YES];
+    else TKPresentVC(c);
+}
 static void TKInstallVoiceAI(void) {
     static BOOL observed=NO;
     if(!observed){observed=YES;

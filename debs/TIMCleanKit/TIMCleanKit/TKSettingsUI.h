@@ -1,4 +1,4 @@
-@class TKVoiceAISettingsController;
+static void TKOpenVoiceAISettingsFrom(UIViewController *host);
 static void TKUpdateVoiceBallVisibility(void);
 static void TKDismissSettings(UIViewController *controller);
 // Native UIKit settings, iOS 15+. Included after TKRuntimeSnapshot().
@@ -312,7 +312,7 @@ static NSString *TKUIRedKeywordText(void) {
                 [weakSelf.tableView reloadData];
             } onCancel:nil];
     } else if ([action isEqualToString:@"voiceai"]) {
-        [self.navigationController pushViewController:[TKVoiceAISettingsController new] animated:YES];
+        TKOpenVoiceAISettingsFrom(self);
     } else if ([action isEqualToString:@"keywords"]) {
         TKRedKeywordsController *editor=[TKRedKeywordsController new];__weak TKSettingsController *weakSelf=self;
         editor.didSave=^{[weakSelf.tableView reloadData];};[self.navigationController pushViewController:editor animated:YES];
