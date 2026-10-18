@@ -161,7 +161,14 @@ id TWControllerForSpecifier(PSListController *host, PSSpecifier *specifier) {
         Class cls = NSClassFromString(className);
         if (cls) {
             id controller = [[cls alloc] init];
-            if ([controller isKindOfClass:UIViewController.class]) return controller;
+            if ([controller isKindOfClass:UIViewController.class]) {
+                // 0.7.0：ParallelX 透传子页共用一个控制器，用 twPXPage 区分页面类型。
+                id page = [specifier propertyForKey:@"twPXPage"];
+                if ([page isKindOfClass:NSNumber.class] && [controller respondsToSelector:@selector(setPageType:)]) {
+                    ((void (*)(id, SEL, long))objc_msgSend)(controller, @selector(setPageType:), (long)[page integerValue]);
+                }
+                return controller;
+            }
         }
     }
     return nil;
@@ -460,8 +467,8 @@ static void TWDiagInstallUncaughtHandler(void) {
 - (NSArray *)specifiers {
     if (!_specifiers) {
         _specifiers = [@[
-            TWGroupSpecifier(@"开发中",
-                @"这个入口来自设计稿，页面结构已就位；功能实现后原地生效，不会再换位置。"),
+            TWGroupSpecifier(@"由 ParallelX 原版面板管理",
+                @"这一项是 ParallelX 的功能，直接在 ParallelX 自己的设置面板里操作最完整；Twin 面板会逐步接入。窗口、键盘、通知跳转与系统四页已在这里直接生效。"),
         ] mutableCopy];
     }
     return _specifiers;
