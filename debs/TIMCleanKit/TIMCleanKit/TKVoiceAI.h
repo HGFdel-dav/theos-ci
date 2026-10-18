@@ -218,7 +218,7 @@ static void TKQwenSynthesize(NSString *text,void(^status)(NSString *),void(^fail
 @property(nonatomic,strong) UILabel *voiceLabel,*statusLabel,*rateCaption;
 @property(nonatomic,strong) UISlider *rateSlider;
 @property(nonatomic,strong) UITextField *instrField;
-@property(nonatomic,strong) UIButton *voicePickButton,*speakButton,*stopButton,*copyTextButton;
+@property(nonatomic,strong) UIButton *voicePickButton,*speakButton,*stopButton,*btnCopyText;
 @end
 @implementation TKVoicePanelController
 - (instancetype)init {
@@ -262,7 +262,7 @@ static void TKQwenSynthesize(NSString *text,void(^status)(NSString *),void(^fail
     UIButton *copy=[UIButton buttonWithType:UIButtonTypeSystem];
     [copy setTitle:@"复制文本" forState:UIControlStateNormal];
     [copy addTarget:self action:@selector(copyTap) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:copy];self.copyTextButton=copy;
+    [self.view addSubview:copy];self.btnCopyText=copy;
     self.statusLabel=[UILabel new];self.statusLabel.font=[UIFont systemFontOfSize:12];self.statusLabel.textColor=UIColor.secondaryLabelColor;
     self.statusLabel.textAlignment=NSTextAlignmentCenter;[self.view addSubview:self.statusLabel];
     [self refreshVoiceLabel];
@@ -281,7 +281,7 @@ static void TKQwenSynthesize(NSString *text,void(^status)(NSString *),void(^fail
     CGFloat btnH=46;
     self.speakButton.frame=CGRectMake(pad,y,(w-pad*2-12)/2,btnH);
     self.stopButton.frame=CGRectMake(CGRectGetMaxX(self.speakButton.frame)+12,y,(w-pad*2-12)/2,btnH);y+=btnH+10;
-    self.copyTextButton.frame=CGRectMake(pad,y,w-pad*2,36);y+=40;
+    self.btnCopyText.frame=CGRectMake(pad,y,w-pad*2,36);y+=40;
     self.statusLabel.frame=CGRectMake(pad,safe-30,w-pad*2,20);
 }
 - (void)refreshVoiceLabel {
