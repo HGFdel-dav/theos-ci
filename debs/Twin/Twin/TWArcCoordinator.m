@@ -127,6 +127,7 @@ static BOOL TWArcDeviceUnlocked(void) {
     if (_started) return;
     _started = YES;
     [self applyWakeMode];
+    [self scheduleContainerPrefetch];
     // attach may have been too early (no window yet); retry briefly.
     if (!_pan) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -178,6 +179,9 @@ static BOOL TWArcDeviceUnlocked(void) {
     if (!TWArcDeviceUnlocked() ||
         ![[TWPrefs shared] boolForKey:TWKeyEnabled defaultValue:NO] ||
         ![[TWPrefs shared] boolForKey:TWKeyArcEnabled defaultValue:YES]) [self cancelCurrentGesture];
+    // 面板改了设置：容器/应用清单可能变了，缓存在非手势时刻重建。
+    TWArcInvalidateContainerCache(NO);
+    [self scheduleContainerPrefetch];
     // 用户在面板里切换"Arc 角落 / 边缘手柄"要立刻生效。
     [self applyWakeMode];
 }
@@ -316,6 +320,84 @@ static BOOL TWArcDeviceUnlocked(void) {
     }
 }
 
+#pragma mark - 容器 / 应用清单缓存（手势期间绝不调用 Crane）
+
+// 安全模式教训（2026-10-18 02:19:41 SpringBoard EXC_BREAKPOINT + libdispatch abort）：
+// 手势回调里做重活（同步 XPC、反复 dispatch_resume）会卡死或直接 abort SpringBoard 主线程。
+// 因此 Crane 只在"非手势时刻"（启动、面板改设置、启动完应用后）分次预热进缓存，
+// 菜单渲染时只读缓存，绝不现场查询。
+static NSMutableDictionary<NSString *, NSArray<NSDictionary *> *> *gTWContainerCache;
+static NSMutableDictionary<NSString *, NSString *> *gTWActiveCache;
+static NSArray<NSString *> *gTWAppsCache;
+static NSTimeInterval gTWAppsCacheAt;
+static NSMutableArray<NSString *> *gTWPendingApps;
+static BOOL gTWPumping;
+
+static NSArray<NSDictionary *> *TWArcCachedContainers(NSString *bundleID) {
+    if (![bundleID isKindOfClass:[NSString class]] || !bundleID.length) return @[];
+    id hit = gTWContainerCache[bundleID];
+    return [hit isKindOfClass:[NSArray class]] ? hit : @[];
+}
+
+static NSString *TWArcCachedActiveContainer(NSString *bundleID) {
+    if (![bundleID isKindOfClass:[NSString class]] || !bundleID.length) return @"";
+    id hit = gTWActiveCache[bundleID];
+    return [hit isKindOfClass:[NSString class]] ? hit : @"";
+}
+
+static void TWArcInvalidateContainerCache(BOOL keepApps) {
+    if (!gTWContainerCache) gTWContainerCache = [NSMutableDictionary dictionary];
+    if (!gTWActiveCache) gTWActiveCache = [NSMutableDictionary dictionary];
+    [gTWContainerCache removeAllObjects];
+    [gTWActiveCache removeAllObjects];
+    if (!keepApps) { gTWAppsCache = nil; gTWAppsCacheAt = 0; }
+}
+
+static NSArray<NSString *> *TWArcCachedApps(void) {
+    if ([gTWAppsCache isKindOfClass:[NSArray class]] && gTWAppsCache.count &&
+        [NSDate date].timeIntervalSince1970 - gTWAppsCacheAt < 120) return gTWAppsCache;
+    return nil;
+}
+
+static void TWArcStoreApps(NSArray<NSString *> *apps) {
+    if (![apps isKindOfClass:[NSArray class]] || !apps.count) return;
+    gTWAppsCache = [apps copy];
+    gTWAppsCacheAt = [NSDate date].timeIntervalSince1970;
+}
+
+static void TWArcPumpNextApp(void) {
+    if (!gTWPendingApps.count) { gTWPumping = NO; return; }
+    NSString *bundleID = gTWPendingApps.firstObject;
+    [gTWPendingApps removeObjectAtIndex:0];
+    @try {
+        if (bundleID.length) {
+            if (!gTWContainerCache) gTWContainerCache = [NSMutableDictionary dictionary];
+            if (!gTWActiveCache) gTWActiveCache = [NSMutableDictionary dictionary];
+            NSArray *containers = [TWCraneBridge containersForBundleID:bundleID];
+            if ([containers isKindOfClass:[NSArray class]] && containers.count) gTWContainerCache[bundleID] = containers;
+            NSString *active = [TWCraneBridge activeContainerForBundleID:bundleID];
+            if ([active isKindOfClass:[NSString class]] && active.length) gTWActiveCache[bundleID] = active;
+        }
+    } @catch (__unused NSException *e) {}
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        TWArcPumpNextApp();
+    });
+}
+
+static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
+    if (!gTWPendingApps) gTWPendingApps = [NSMutableArray array];
+    for (id app in apps) {
+        if ([app isKindOfClass:[NSString class]] && [app length] && ![gTWPendingApps containsObject:app]) {
+            [gTWPendingApps addObject:app];
+        }
+    }
+    if (gTWPumping || !gTWPendingApps.count) return;
+    gTWPumping = YES;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        TWArcPumpNextApp();
+    });
+}
+
 #pragma mark - 菜单条目（一个容器 = 一个图标）
 
 // 优先用面板里配置过的容器清单；没配置就现场问 Crane 要容器；再不行退回"最近使用应用"。
@@ -349,13 +431,14 @@ static BOOL TWArcDeviceUnlocked(void) {
             if ([app isKindOfClass:[NSString class]] && [app length] && ![apps containsObject:app]) [apps addObject:app];
         }
     }
-    if (!apps.count) [apps addObjectsFromArray:[self recentBundleIDs]];
+    if (!apps.count) [apps addObjectsFromArray:[self cachedRecentBundleIDs]];
 
     BOOL craneOn = [prefs boolForKey:TWKeyCraneEnabled defaultValue:NO];
     for (NSString *bundleID in apps) {
         if ((NSInteger)entries.count >= limit) break;
         NSString *name = TWArcDisplayName(bundleID);
-        NSArray<NSDictionary *> *containers = craneOn ? [TWCraneBridge containersForBundleID:bundleID] : @[];
+        // 只读缓存：手势期间绝不调用 Crane（同步 XPC 会卡住 SpringBoard 主线程）。
+        NSArray<NSDictionary *> *containers = craneOn ? TWArcCachedContainers(bundleID) : @[];
         if (containers.count > 1) {
             // 一个应用几个容器，就几个图标：默认容器角标"默"，其余用容器名（没名字就"分"）。
             for (NSDictionary *container in containers) {
@@ -371,7 +454,7 @@ static BOOL TWArcDeviceUnlocked(void) {
             }
             continue;
         }
-        NSString *active = craneOn ? [TWCraneBridge activeContainerForBundleID:bundleID] : @"";
+        NSString *active = craneOn ? TWArcCachedActiveContainer(bundleID) : @"";
         [entries addObject:@{@"bundleID": bundleID,
                              @"containerID": [active isKindOfClass:[NSString class]] ? active : @"",
                              @"title": name,
@@ -397,6 +480,7 @@ static BOOL TWArcDeviceUnlocked(void) {
     __weak TWArcCoordinator *weakSelf = self;
     [TWCraneBridge prepareLaunchForBundleID:bundleID containerID:containerID completion:^(BOOL success) {
         if (!success || !TWArcDeviceUnlocked()) return;
+        [weakSelf scheduleContainerPrefetch];
         [weakSelf performVerifiedLaunch:bundleID];
     }];
 }
@@ -505,6 +589,60 @@ static BOOL TWArcDeviceUnlocked(void) {
         }
     }
     return ids;
+}
+
+// 菜单渲染用的应用清单：只读缓存；缓存没就绪就用"最近使用"的轻量版本
+// （不扫全部已装应用，避免手势期间做重活）。
+- (NSArray<NSString *> *)cachedRecentBundleIDs {
+    NSArray *cached = TWArcCachedApps();
+    if (cached.count) return cached;
+    return [self fastRecentBundleIDs];
+}
+
+- (NSArray<NSString *> *)fastRecentBundleIDs {
+    NSMutableArray *ids = [NSMutableArray array];
+    Class switcherClass = NSClassFromString(@"SBMainSwitcherViewController");
+    if (switcherClass) {
+        id shared = TWArcObject(switcherClass, @"sharedInstance");
+        id layouts = TWArcObject(shared, @"recentAppLayouts");
+        if ([layouts isKindOfClass:[NSArray class]]) {
+            for (id layout in layouts) {
+                id items = TWArcValue(layout, @"allItems");
+                if (![items isKindOfClass:[NSArray class]]) continue;
+                for (id item in items) {
+                    NSString *bundleID = TWArcValue(item, @"bundleIdentifier");
+                    if ([bundleID isKindOfClass:[NSString class]] && bundleID.length && ![ids containsObject:bundleID]) {
+                        [ids addObject:bundleID];
+                    }
+                }
+            }
+        }
+    }
+    return ids;
+}
+
+// 预热容器清单：主线程分次完成（每个应用间隔 0.25s），只在不影响手势的时刻调用。
+- (void)scheduleContainerPrefetch {
+    if (![[TWPrefs shared] boolForKey:TWKeyCraneEnabled defaultValue:NO]) return;
+    static NSTimeInterval lastScanAt;
+    NSTimeInterval now = [NSDate date].timeIntervalSince1970;
+    BOOL scanApps = (now - lastScanAt >= 8.0) || ![gTWAppsCache isKindOfClass:[NSArray class]];
+    NSMutableArray<NSString *> *apps = [NSMutableArray array];
+    NSArray *configured = [[TWPrefs shared] objectForKey:TWKeyCraneAppList];
+    if ([configured isKindOfClass:[NSArray class]]) {
+        for (id app in configured) {
+            if ([app isKindOfClass:[NSString class]] && [app length] && ![apps containsObject:app]) [apps addObject:app];
+        }
+    }
+    if (scanApps) {
+        lastScanAt = now;
+        NSArray *recent = [self recentBundleIDs];
+        TWArcStoreApps(recent);
+        for (NSString *app in recent) if (![apps containsObject:app]) [apps addObject:app];
+    }
+    NSArray *cached = TWArcCachedApps();
+    if (!apps.count && cached.count) [apps addObjectsFromArray:cached];
+    TWArcSchedulePrefetch(apps);
 }
 
 @end

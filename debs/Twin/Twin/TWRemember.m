@@ -627,41 +627,50 @@ static void TWApplyRememberedFrameWithRetry(NSObject *entry, NSUInteger attempt)
 static void (*origMoveHost)(id, SEL, id);
 static void replMoveHost(id self, SEL _cmd, id gesture) {
     origMoveHost(self, _cmd, gesture);
-    if (!TWRememberEnabled()) return;
-    static __weak NSObject *pendingEntry;
-    static NSUInteger generation;
-    pendingEntry = self;                 // main-queue only (gesture handler)
-    NSUInteger token = ++generation;     // main-queue only
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.45 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        if (token != generation) return; // superseded by a newer move
-        NSObject *entry = pendingEntry;
-        pendingEntry = nil;
-        if (entry) TWCaptureEntry(entry);
-    });
+    @try {
+        if (!TWRememberEnabled()) return;
+        static __weak NSObject *pendingEntry;
+        static NSUInteger generation;
+        pendingEntry = self;                 // main-queue only (gesture handler)
+        NSUInteger token = ++generation;     // main-queue only
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.45 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            if (token != generation) return; // superseded by a newer move
+            NSObject *entry = pendingEntry;
+            pendingEntry = nil;
+            if (entry) {
+                @try { TWCaptureEntry(entry); } @catch (__unused NSException *e) {}
+            }
+        });
+    } @catch (__unused NSException *e) {}
 }
 
 static void (*origApplyResizePreview)(id, SEL);
 static void replApplyResizePreview(id self, SEL _cmd) {
     origApplyResizePreview(self, _cmd);
-    TWCaptureEntry(self);
+    @try { TWCaptureEntry(self); } @catch (__unused NSException *e) {}
 }
 
 static void (*origCloseTapped)(id, SEL);
 static void replCloseTapped(id self, SEL _cmd) {
-    TWCaptureEntry(self);
+    // 先记录再交给原实现：任何意外都不能拖垮 SpringBoard（安全模式红线）。
+    @try { TWCaptureEntry(self); } @catch (__unused NSException *e) {}
     origCloseTapped(self, _cmd);
 }
 
 static id (*origInit)(id, SEL);
 static id replInit(id self, SEL _cmd) {
-    self = origInit(self, _cmd);
+    self = origInit(self, _cmd);   // 原实现先跑，返回值原样透传（绝不能吞掉）
     if (self) {
         // Apply the remembered shape shortly after a fresh entry lays out.
-        __weak NSObject *weakEntry = self;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            NSObject *entry = weakEntry;
-            if (entry) TWApplyRememberedFrameWithRetry(entry, 0);
-        });
+        @try {
+            __weak NSObject *weakEntry = self;
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                NSObject *entry = weakEntry;
+                if (entry) {
+                    @try { TWApplyRememberedFrameWithRetry(entry, 0); } @catch (__unused NSException *e) {}
+                }
+            });
+        } @catch (__unused NSException *e) {}
     }
     return self;
 }
