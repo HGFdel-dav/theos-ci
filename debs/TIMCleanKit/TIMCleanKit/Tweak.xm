@@ -138,6 +138,14 @@ static long long TKIntCall(id obj, NSString *prop) {
 }
 
 // 探针：记录收到红包时 record 上可读的候选字段与元素类名（1.0.13 诊断用）
+// 2.0.1: 红包处理全链路事件记录（环形最近12条，写入诊断 json 的 redEvents 字段）
+static NSMutableArray *gTKRedEvents=nil;
+static void TKRedEvent(NSString *s) {
+    if(!s)return;
+    if(!gTKRedEvents)gTKRedEvents=[NSMutableArray new];
+    [gTKRedEvents addObject:[NSString stringWithFormat:@"%lldms %@",(long long)([[NSDate date] timeIntervalSince1970]*1000),s]];
+    while(gTKRedEvents.count>12)[gTKRedEvents removeObjectAtIndex:0];
+}
 static void TKProbeRedPacket(id record) {
     if(!record)return;
     NSMutableString *s=[NSMutableString stringWithFormat:@"recordCls=%@",NSStringFromClass(object_getClass(record))];
@@ -261,32 +269,33 @@ static BOOL shouldSkipRedPacket(id record) {
 #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
                 BOOL isCmd = ((BOOL (*)(id, SEL, id))objc_msgSend)(router, s, record);
 #pragma clang diagnostic pop
-                if (isCmd) { LOG(@"skip command red packet"); return YES; }
+                if (isCmd) { LOG(@"skip command red packet"); TKRedEvent(@"跳过:口令红包"); return YES; }
             }
         }
     }
     if (!element) return NO;
+    TKProbeRedPacket(record);   // 2.0.1: 探针提前——任何红包（含将被跳过的）都留档字段
 
     // 测试红包
     if (prefBool(kRedSkipTest, YES) && isTestRedPacket(element)) {
-        LOG(@"skip test red packet"); return YES;
+        LOG(@"skip test red packet"); TKRedEvent(@"跳过:命中测试红包关键词"); return YES;
     }
     NSInteger min=MAX(0,prefInt(kRedMinAmount,100));
     long long amount=redPacketTotalAmount(element);
     long long redType=TKIntCall(element,@"redType");
     gTKLastRedAmount=amount; gTKLastRedType=redType;
-    TKProbeRedPacket(record);
     // 1.0.14 规则（真机实测标定）：redType==2 为普通(固定金额)红包——一律不抢（小额都在这类）；
     //   * 金额能读到的 → 低于起抢线不抢；
     //   * redType==2（实测普通/固定金额红包）→ 设置金额后一律不抢（1.0.17 恢复；1.0.16 全放行导致 0.1 也被抢）；
     //   * 其余类型（拼手气，待直方图标定）→ 照抢；
     //   * 起抢金额=0 表示不限制。
     if(min>0 && redType>=0 && redType<16)gTKRedTypeHist[redType]++;   // 1.0.18: 直方图必须记在 return 之前
-    if(min>0 && amount>=0 && amount<min){gTKSkipUnknownAmount++;return YES;}
+    if(min>0 && amount>=0 && amount<min){gTKSkipUnknownAmount++;TKRedEvent([NSString stringWithFormat:@"跳过:金额%lld分低于起抢线%lld分",amount,min]);return YES;}
     if(min>0 && redType==2) {
         // 1.0.23: TIM 不随消息下发红包总额，一刀切跳过普通红包=普通红包永远抢不到。
         // 默认放行（面板开关「未知金额红包放行」），关闭则恢复旧规则。
-        if(!prefBool(kRedAllowUnknown,YES)){gTKSkipCommonType++;return YES;}
+        if(!prefBool(kRedAllowUnknown,YES)){gTKSkipCommonType++;TKRedEvent(@"跳过:普通红包-金额未知且放行开关关闭");return YES;}
+        else TKRedEvent(@"放行:普通红包-金额未知,按放行开关设置继续领取");
     }
     return NO;
 }
@@ -600,7 +609,12 @@ static void AR_setMsgType(id self,SEL cmd,int value) {
 }
 static void TKDrainRedQueue(void);
 static void TKQueueRedPacket(id record) {
-    if(!prefBool(kEnabled,YES)||!prefBool(kRedPacket,YES)||!prefBool(kAutoRed,YES))return;
+    id wallet0=redElementFromRecord(record);
+    if(!wallet0)return; // 非红包消息：静默
+    long long redType0=TKIntCall(wallet0,@"redType");
+    long long amount0=redPacketTotalAmount(wallet0);
+    TKRedEvent([NSString stringWithFormat:@"红包到达 redType=%lld amount=%lld分",redType0,amount0]);
+    if(!prefBool(kEnabled,YES)||!prefBool(kRedPacket,YES)||!prefBool(kAutoRed,YES)){TKRedEvent(@"跳过:功能或自动领取开关未开启");return;}
     if(UIApplication.sharedApplication.applicationState!=UIApplicationStateActive){
         // 1.0.23: 红包到达瞬间可能刚切回前台、系统状态尚未刷新——0.4s 后重试一次再放弃
         static char TKRedRetryKey;
@@ -611,21 +625,22 @@ static void TKQueueRedPacket(id record) {
                 TKQueueRedPacket(record);   // ARC: block 已自动强引用 record
             });
             gTKEngineStatus=@"应用未在前台，已安排0.4s后重试";
-        } else gTKEngineStatus=@"应用未在前台，未请求领取";
+        } else {gTKEngineStatus=@"应用未在前台，未请求领取";TKRedEvent(@"跳过:应用非前台(重试后仍未激活)");}
         return;
     }
-    id wallet=redElementFromRecord(record);if(!wallet||shouldSkipRedPacket(record))return;
+    id wallet=wallet0;if(!wallet||shouldSkipRedPacket(record)){TKRedEvent(@"跳过:命中过滤规则(见上一条)");return;}
     long long time=TKScalar(record,@"msgTime","q");NSTimeInterval now=NSDate.date.timeIntervalSince1970;
     if(time>100000000000LL)time/=1000;
-    if(time<=0||now-time>120||time>now+30)return; // Never claim old synchronized history.
+    if(time<=0||now-time>120||time>now+30){TKRedEvent([NSString stringWithFormat:@"跳过:消息时间窗外(%lld)",time]);return;} // Never claim old synchronized history.
     NSString *identity=TKMessageIdentity(record);if(!identity)return;
     NSString *bill=TKObjectCall(wallet,@"billNo");NSString *key=[bill isKindOfClass:NSString.class]&&bill.length?bill:identity;
     if(!gTKSeenRedPackets)gTKSeenRedPackets=[NSMutableSet new];
-    if([gTKSeenRedPackets containsObject:key])return;
+    if([gTKSeenRedPackets containsObject:key]){TKRedEvent(@"跳过:重复红包(已处理过)");return;}
     if(gTKSeenRedPackets.count>=500){gTKEngineStatus=@"本次会话已达去重上限，请关闭再开启自动领取";return;}
     [gTKSeenRedPackets addObject:key];
     if(!gTKRedQueue)gTKRedQueue=[NSMutableArray new];
     if(gTKRedQueue.count<20)[gTKRedQueue addObject:record];
+    TKRedEvent(@"已入队,等待领取");
     TKDrainRedQueue();
 }
 static void TKDrainRedQueue(void) {
@@ -652,6 +667,7 @@ static void TKDrainRedQueue(void) {
     gTKCurrentClaimIdentity=[bill isKindOfClass:NSString.class]?[bill copy]:nil;
     gTKAutoBusy=YES;unsigned long long generation=++gTKAutoGeneration;gTKAutoAttempts++;
     gTKEngineStatus=hasRouter?@"已调用TIM原生红包路由（模拟点击），等待完成回调":@"已调用兼容领取，等待完成回调";
+    TKRedEvent(hasRouter?@"领取:调用TIM原生红包路由(模拟点击)":@"领取:调用兼容服务");
     void (^completion)(id,id)=^(id result,id error){dispatch_async(dispatch_get_main_queue(),^{
         if(!gTKAutoBusy || generation!=gTKAutoGeneration)return;gTKAutoBusy=NO;
         if(error){gTKAutoErrors++;gTKEngineStatus=hasRouter?@"TIM原生红包路由返回失败，未自动重试":@"兼容领取返回失败，未自动重试";}
@@ -766,8 +782,8 @@ static NSDictionary *TKRuntimeSnapshot(void) {
         unsigned long long hits=__atomic_load_n(&r->hits,__ATOMIC_RELAXED);
         [rows addObject:@{@"name":[NSString stringWithFormat:@"%s\n%s",r->className,sel_getName(r->selector)],@"state":hits?@"已实际调用":states[MIN(state,4)],@"hits":@(hits),@"lastHit":@""}];
     }
-    return @{@"engine":@{@"status":gTKEngineStatus?:@"未知",@"listenerRegistered":@(gTKListenerRegistered),@"received":@(gTKReceived),@"claimRequests":@(gTKAutoAttempts),@"claimCallbacks":@(gTKAutoCompleted),@"claimFailures":@(gTKAutoErrors),@"repeatRequests":@(gTKRepeats),@"repeatFailures":@(gTKRepeatFailures),@"messageCellBinds":@(gTKMessageBinds),@"gestureTaps":@(gTKGestureTaps),@"gestureNoRecord":@(gTKGestureNoRecord),@"recordReadFailures":@(gTKRecordReadFailures),@"recallBlocked":@(__atomic_load_n(&gTKRecallBlocked,__ATOMIC_RELAXED)),@"hardwareReads":@(__atomic_load_n(&gTKHardwareReads,__ATOMIC_RELAXED)),@"recallEvents":@(__atomic_load_n(&gTKRecallEvents,__ATOMIC_RELAXED)),@"recallRestores":@(__atomic_load_n(&gTKRecallRestores,__ATOMIC_RELAXED)),@"lastRedType":@(gTKLastRedType),@"lastRedAmount":@(gTKLastRedAmount),@"skipCommonType":@(gTKSkipCommonType),@"skipUnknownAmount":@(gTKSkipUnknownAmount),@"layoutAssociations":@(gTKLayoutAssociations),@"layoutMatchFails":@(gTKLayoutMatchFails),@"noRecordNoCell":@(gTKNoRecordNoCell),@"noRecordAssocFail":@(gTKNoRecordAssocFail),@"noRecordMatchFail":@(gTKNoRecordMatchFail),@"lastHitInfo":TKStrSafe(gTKLastHitInfo),@"textProbe":TKStrSafe(gTKTextProbe),@"redProbe":(gTKLastRedProbe?:@"")},@"redTypeHist":@[ @(gTKRedTypeHist[0]),@(gTKRedTypeHist[1]),@(gTKRedTypeHist[2]),@(gTKRedTypeHist[3]),@(gTKRedTypeHist[4]),@(gTKRedTypeHist[5]),@(gTKRedTypeHist[6]),@(gTKRedTypeHist[7]),@(gTKRedTypeHist[8]),@(gTKRedTypeHist[9]),@(gTKRedTypeHist[10]),@(gTKRedTypeHist[11]),@(gTKRedTypeHist[12]),@(gTKRedTypeHist[13]),@(gTKRedTypeHist[14]),@(gTKRedTypeHist[15]) ],@"version":@"2.0.0",@"process":[NSString stringWithFormat:@"TIM %@ · PID %d · 注册检查 %u 轮\nUIDevice.model = %@",([NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"]?:@"?"),getpid(),gRegistrationRounds,UIDevice.currentDevice.model],@"hookRows":rows,@"classProbe":gTKClassProbeCache,@"warnings":@[@"调用次数只能证明该入口被调用，不能证明防撤回或过滤效果。",@"自动领取：只处理前台两分钟内新收到的红包，不保证后台唤醒；完成回调不等于到账，请核对结果。",@"防撤回：本次进程缓存最近500条收到/显示的消息；启动前丢失内容无法恢复。"]};
-    } @catch(NSException *e) { return @{@"engine":@{@"status":@"诊断构造异常（已捕获，未影响聊天）",@"version":@"2.0.0"}}; }
+    return @{@"engine":@{@"status":gTKEngineStatus?:@"未知",@"listenerRegistered":@(gTKListenerRegistered),@"received":@(gTKReceived),@"claimRequests":@(gTKAutoAttempts),@"claimCallbacks":@(gTKAutoCompleted),@"claimFailures":@(gTKAutoErrors),@"repeatRequests":@(gTKRepeats),@"repeatFailures":@(gTKRepeatFailures),@"messageCellBinds":@(gTKMessageBinds),@"gestureTaps":@(gTKGestureTaps),@"gestureNoRecord":@(gTKGestureNoRecord),@"recordReadFailures":@(gTKRecordReadFailures),@"recallBlocked":@(__atomic_load_n(&gTKRecallBlocked,__ATOMIC_RELAXED)),@"hardwareReads":@(__atomic_load_n(&gTKHardwareReads,__ATOMIC_RELAXED)),@"recallEvents":@(__atomic_load_n(&gTKRecallEvents,__ATOMIC_RELAXED)),@"recallRestores":@(__atomic_load_n(&gTKRecallRestores,__ATOMIC_RELAXED)),@"lastRedType":@(gTKLastRedType),@"lastRedAmount":@(gTKLastRedAmount),@"skipCommonType":@(gTKSkipCommonType),@"skipUnknownAmount":@(gTKSkipUnknownAmount),@"layoutAssociations":@(gTKLayoutAssociations),@"layoutMatchFails":@(gTKLayoutMatchFails),@"noRecordNoCell":@(gTKNoRecordNoCell),@"noRecordAssocFail":@(gTKNoRecordAssocFail),@"noRecordMatchFail":@(gTKNoRecordMatchFail),@"lastHitInfo":TKStrSafe(gTKLastHitInfo),@"textProbe":TKStrSafe(gTKTextProbe),@"redProbe":(gTKLastRedProbe?:@"")},@"redTypeHist":@[ @(gTKRedTypeHist[0]),@(gTKRedTypeHist[1]),@(gTKRedTypeHist[2]),@(gTKRedTypeHist[3]),@(gTKRedTypeHist[4]),@(gTKRedTypeHist[5]),@(gTKRedTypeHist[6]),@(gTKRedTypeHist[7]),@(gTKRedTypeHist[8]),@(gTKRedTypeHist[9]),@(gTKRedTypeHist[10]),@(gTKRedTypeHist[11]),@(gTKRedTypeHist[12]),@(gTKRedTypeHist[13]),@(gTKRedTypeHist[14]),@(gTKRedTypeHist[15]) ],@"version":@"2.0.1",@"process":[NSString stringWithFormat:@"TIM %@ · PID %d · 注册检查 %u 轮\nUIDevice.model = %@",([NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"]?:@"?"),getpid(),gRegistrationRounds,UIDevice.currentDevice.model],@"hookRows":rows,@"classProbe":gTKClassProbeCache,@"redEvents":(gTKRedEvents?[gTKRedEvents copy]:@[]),@"warnings":@[@"调用次数只能证明该入口被调用，不能证明防撤回或过滤效果。",@"自动领取：只处理前台两分钟内新收到的红包，不保证后台唤醒；完成回调不等于到账，请核对结果。",@"防撤回：本次进程缓存最近500条收到/显示的消息；启动前丢失内容无法恢复。"]};
+    } @catch(NSException *e) { return @{@"engine":@{@"status":@"诊断构造异常（已捕获，未影响聊天）",@"version":@"2.0.1"}}; }
 }
 
 

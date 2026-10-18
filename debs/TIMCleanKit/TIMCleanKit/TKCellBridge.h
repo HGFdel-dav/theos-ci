@@ -305,6 +305,26 @@ static void TKUpdateRecallLabel(UIView *cell) {
     y=MAX(0,MIN(y,MAX(0,cellH-height)));
     label.frame=CGRectMake(x,y,width,height);[cell bringSubviewToFront:label];
 }
+// 2.0.1: 保证双击复读手势能被收到——窗口级手势会被聊天列表/气泡控件吃掉（真机 gestureTaps=0），
+// 改为直接挂到每个消息 cell 上（cancelsTouchesInView=NO 不影响原有点击）。
+static void TKEnsureCellGesture(UIView *cell) {
+    if(!cell)return;
+    static char kTKGestureCell;
+    if(objc_getAssociatedObject(cell,&kTKGestureCell))return;
+    Class targetClass=NSClassFromString(@"TIMCKGestureTarget");
+    if(!targetClass)return;
+    id target=nil;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+    target=[targetClass performSelector:NSSelectorFromString(@"shared")];
+#pragma clang diagnostic pop
+    if(!target)return;
+    UITapGestureRecognizer *g=[[UITapGestureRecognizer alloc] initWithTarget:target action:NSSelectorFromString(@"onMessageDoubleTap:")];
+    g.numberOfTapsRequired=2;g.numberOfTouchesRequired=1;g.cancelsTouchesInView=NO;g.delaysTouchesBegan=NO;g.delaysTouchesEnded=NO;
+    g.delegate=target;
+    [cell addGestureRecognizer:g];
+    objc_setAssociatedObject(cell,&kTKGestureCell,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
 static BOOL TKCellBind(id self,SEL cmd,id vm) {
     IMP orig=OrigIMP(TKCellClass,cmd);BOOL accepted=orig?((BOOL(*)(id,SEL,id))orig)(self,cmd,vm):NO;
     objc_setAssociatedObject(self,&kTKBoundModelKey,accepted?vm:nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -312,6 +332,7 @@ static BOOL TKCellBind(id self,SEL cmd,id vm) {
         gTKMessageBinds++;if(!gTKVisibleCells)gTKVisibleCells=[NSHashTable weakObjectsHashTable];[gTKVisibleCells addObject:self];
         id record=TKRecordForCell(self);if(record)TKRememberMessage(record);else gTKRecordReadFailures++;
         TKUpdateRecallLabel(self);
+        TKEnsureCellGesture((UIView*)self);
     }
     return accepted;
 }
@@ -326,6 +347,7 @@ static void TKCellBindVM(id self,SEL cmd,id vm) {
         gTKMessageBinds++;if(!gTKVisibleCells)gTKVisibleCells=[NSHashTable weakObjectsHashTable];[gTKVisibleCells addObject:self];
         id record=TKRecordForCell(self);if(record)TKRememberMessage(record);else gTKRecordReadFailures++;
         TKUpdateRecallLabel(self);
+        TKEnsureCellGesture((UIView*)self);
     }
 }
 static void TKCellClear(id self,SEL cmd) {
