@@ -48,7 +48,12 @@
 
 // 与 Layout/Library/PreferenceLoader/Preferences/com.niubiprass.twin.plist 的
 // entry.bundle 完全一致：libprefs 用它把 detail 里的类归到本 bundle。
-extern NSString *const TWPrefsBundleName;   // @"TwinPrefs"
+extern NSString *_Nonnull const TWPrefsBundleName;   // @"TwinPrefs"
+
+// PSListController 的 detail 分发是私有方法（SDK 头文件里没有声明）。直接写
+// [super controllerForSpecifier:] 编不过，写死调用又可能 doesNotRecognizeSelector，
+// 所以这里做"确实实现了才转发"的守卫。
+id _Nullable TWSuperControllerForSpecifier(id host, id specifier);
 
 NS_ASSUME_NONNULL_BEGIN
 

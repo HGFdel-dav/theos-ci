@@ -6,6 +6,17 @@
 
 NSString *const TWPrefsBundleName = @"TwinPrefs";
 
+// 转发给 PSListController 自己的 detail 分发（私有方法，需 objc_msgSendSuper 绕过头文件）
+id TWSuperControllerForSpecifier(id host, id specifier) {
+    if (!host || !specifier) return nil;
+    Class cls = NSClassFromString(@"PSListController");
+    SEL sel = NSSelectorFromString(@"controllerForSpecifier:");
+    if (!cls || ![cls instancesRespondToSelector:sel]) return nil;
+    struct objc_super sup = { host, cls };
+    id (*fn)(struct objc_super *, SEL, id) = (id (*)(struct objc_super *, SEL, id))objc_msgSendSuper;
+    return fn(&sup, sel, specifier);
+}
+
 #pragma mark - specifier 构造
 
 PSSpecifier *TWGroupSpecifier(NSString *name, NSString *footer) {

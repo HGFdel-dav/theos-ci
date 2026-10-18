@@ -96,7 +96,7 @@ static NSString *TWCornerNamesText(NSInteger mask) {
 - (id)controllerForSpecifier:(PSSpecifier *)specifier {
     id controller = TWControllerForSpecifier(self, specifier);
     if (controller) return controller;
-    return [super controllerForSpecifier:specifier];
+    return TWSuperControllerForSpecifier(self, specifier);
 }
 
 #pragma mark - lifecycle

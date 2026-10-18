@@ -198,7 +198,7 @@ typedef NS_ENUM(NSInteger, TWWakeModeValue) {
 - (id)controllerForSpecifier:(PSSpecifier *)specifier {
     id controller = TWControllerForSpecifier(self, specifier);
     if (controller) return controller;
-    return [super controllerForSpecifier:specifier];
+    return TWSuperControllerForSpecifier(self, specifier);
 }
 
 #pragma mark - hero header
