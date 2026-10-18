@@ -26,3 +26,15 @@ TwinPrefs_PRIVATE_FRAMEWORKS = Preferences
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 include $(THEOS_MAKE_PATH)/bundle.mk
+
+# ---------------------------------------------- 原版 ParallelX 引擎（随包分发）
+# 一个包 = 原版分屏引擎 + Twin 功能层 + Twin 面板，装完即完整替换原版。
+# 原版 dylib 只有 arm64e，所以只在 roothide 包里带上。
+ifneq ($(THEOS_PACKAGE_SCHEME),rootless)
+before-package::
+	install -d "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries"
+	install -m 755 vendor/ParallelX.dylib "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/ParallelX.dylib"
+	install -m 644 vendor/ParallelX.plist "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/ParallelX.plist"
+	install -m 755 vendor/ParallelXCameraSupport.dylib "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/ParallelXCameraSupport.dylib"
+	install -m 644 vendor/ParallelXCameraSupport.plist "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/ParallelXCameraSupport.plist"
+endif
