@@ -27,19 +27,18 @@ static void TKBridgeRecall(id self,SEL cmd,int chat,id peer,unsigned long long s
             }
         }
     }
-    if(blocked){__atomic_fetch_add(&gTKRecallBlocked,1,__ATOMIC_RELAXED);if(archivedRecord)TKArchiveRecalledRecord(archivedRecord);TKRefreshRecallLabels();return;}
+    if(blocked){__atomic_fetch_add(&gTKRecallBlocked,1,__ATOMIC_RELAXED);if(archivedRecord)TKArchiveRecalledRecord(archivedRecord);TKRecallEvent([NSString stringWithFormat:@"onMsgRecall 标注:%@",archivedRecord?TKRecallTextOf(archivedRecord):@""]);TKRefreshRecallLabels();return;}
     if(orig)((void(*)(id,SEL,int,id,unsigned long long))orig)(self,cmd,chat,peer,seq);
 }
 static NSArray *TKPreserveUpdateRecords(id records) {
     if(![records isKindOfClass:NSArray.class])return records;
     Class recordClass=NSClassFromString(@"OCMsgRecord");
     NSMutableArray *result=[NSMutableArray arrayWithCapacity:[records count]];
-    IMP originalRecall=TKOriginalIMP(TKRecord(@"OCMsgRecord",@selector(recallTime)));
     for(id record in records) {
         if(![record isKindOfClass:recordClass]){[result addObject:record];continue;}
-        long long recall=originalRecall?((long long(*)(id,SEL))originalRecall)(record,@selector(recallTime)):0;
-        if(TKAntiRecallEnabled()&&(recall>0||TKWasRecalled(record))&&TKHasCachedContent(record)) {
-            TKMarkRecall(record);TKRestoreRecord(record);
+        // 2.0.2: 只有"已由撤回通知标记过"的消息才恢复；原 recallTime>0 条件在 TIM 上误报严重（正常消息也会被写正数）
+        if(TKAntiRecallEnabled()&&TKWasRecalled(record)&&TKHasCachedContent(record)) {
+            TKRestoreRecord(record);
             id old=TKCachedMessage(record)[@"record"];
             if(old){TKMarkRecall(old);TKRestoreRecord(old);[result addObject:old];}else [result addObject:record];
         } else {TKRememberMessage(record);[result addObject:record];}
