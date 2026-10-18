@@ -121,6 +121,16 @@ static const CGFloat kTitleGap = 14.0;
     if ([target respondsToSelector:@selector(reloadSpecifiers)]) [(PSListController *)target reloadSpecifiers];
 }
 
+#pragma mark - system control-cell compatibility (0.4.1 崩溃修复)
+
+// PSListController 建 cell 时会按行的 cellType 给 cell 发取值/赋值消息（setValue: 等）。
+// 自绘 cell 不走这条值链（自行读写 TWPrefs），但必须"听得懂"这些选择子——
+// 0.4.0 全部裸继承 PSTableCell、不响应 → 消息转发失败 → 设置页必崩（SIGABRT）。
+// 现在实现为空操作；真正的值链由系统 cell 承担（见 TWSpecifiers.m 的 set:/get:/validValues）。
+- (id)value { return nil; }
+- (void)setValue:(__unused id)value {}
+- (void)setValues:(__unused id)values titles:(__unused id)titles {}
+
 @end
 
 #pragma mark - switch

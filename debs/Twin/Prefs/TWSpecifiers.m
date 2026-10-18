@@ -34,19 +34,35 @@ PSSpecifier *TWRowSpecifier(id target,
                             NSString *symbol,
                             NSString *controllerClass,
                             NSDictionary *extras) {
+    // ★ 0.4.1 崩溃修复：控制类行（开关/分段/滑杆）必须用系统 cell + 接通 set:/get: 值链。
+    //   之前挂自定义 cellClass（自绘 TWSwitchCell 等，裸 PSTableCell 子类）——系统
+    //   PSSwitchCell/PSSegmentCell/PSSliderCell 的值链方法它们一概没有，PSListController
+    //   建 cell 时发 setValue: 等消息 → 转发失败 → SIGABRT → 设置页一打开就崩。
+    //   例外：带 twBit 的开关行（位掩码）取值逻辑特殊，保留自绘 cell。
+    BOOL stockControl = (cellType == PSSwitchCell || cellType == PSSegmentCell || cellType == PSSliderCell);
+    BOOL bitRow = stockControl && [extras[@"twBit"] respondsToSelector:@selector(integerValue)];
+
+    SEL setSel = NULL, getSel = NULL;
+    if (stockControl && !bitRow) {
+        setSel = @selector(setPreferenceValue:specifier:);   // 与各控制器里实现的签名一致
+        getSel = @selector(readPreferenceValue:);
+    }
+
     // detail 一律先给 nil，链接行在下面统一按"类名字符串"补上，
     // 保证 name(labels)/key/cellClass/detail/bundle/isController 相互一致。
     PSSpecifier *spec = [PSSpecifier preferenceSpecifierNamed:title
                                                       target:target
-                                                         set:NULL
-                                                         get:NULL
+                                                         set:setSel
+                                                         get:getSel
                                                       detail:nil
                                                         cell:cellType
                                                         edit:NULL];
     if (!spec) return nil;
     if (key.length) [spec setProperty:key forKey:@"key"];
     if (defaultValue) [spec setProperty:defaultValue forKey:@"default"];
-    if (cellName.length) [spec setProperty:cellName forKey:@"cellClass"];
+    if (!(stockControl && !bitRow) && cellName.length) {
+        [spec setProperty:cellName forKey:@"cellClass"];
+    }
     if (symbol.length) [spec setProperty:symbol forKey:@"twSymbol"];
     if (controllerClass.length) {
         [spec setProperty:controllerClass forKey:@"twController"];  // 我们自己 new
@@ -54,7 +70,23 @@ PSSpecifier *TWRowSpecifier(id target,
         [spec setProperty:TWPrefsBundleName forKey:@"bundle"];      // 与入口 plist 一致
         [spec setProperty:@YES forKey:@"isController"];
     }
-    for (NSString *extraKey in extras) [spec setProperty:extras[extraKey] forKey:extraKey];
+    for (NSString *extraKey in extras) {
+        id v = extras[extraKey];
+        // 系统分段/滑杆读的是 specifier 上的标准键，把自绘键映射过去：
+        if ([extraKey isEqualToString:@"twTitles"] && [v isKindOfClass:NSArray.class]) {
+            NSMutableArray *idx = [NSMutableArray arrayWithCapacity:[v count]];
+            for (NSUInteger i = 0; i < [v count]; i++) [idx addObject:@(i)];
+            [spec setProperty:v forKey:@"validTitles"];
+            [spec setProperty:idx forKey:@"validValues"];
+        } else if ([extraKey isEqualToString:@"twMin"]) {
+            [spec setProperty:v forKey:@"min"];
+            [spec setProperty:v forKey:@"minimum"];
+        } else if ([extraKey isEqualToString:@"twMax"]) {
+            [spec setProperty:v forKey:@"max"];
+            [spec setProperty:v forKey:@"maximum"];
+        }
+        [spec setProperty:v forKey:extraKey];
+    }
     return spec;
 }
 
