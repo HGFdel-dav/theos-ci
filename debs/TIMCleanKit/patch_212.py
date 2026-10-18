@@ -38,7 +38,8 @@ static BOOL TKIsProvisional(id record);
 static void TKMarkProvisional(id record);
 static BOOL TKShouldProtect(id record);
 static void TKSnapshotNow(id record);
-static void TKPromoteProvisional(id record);''')
+static void TKPromoteProvisional(id record);
+static long long TKScalar(id obj,NSString *method,const char *encoding); /* 2.2.1: 前向声明（定义在下方） */''')
 
 # ---------------------------------------------------------------- 2. AR_setRecallTime：临时保护 + 就地快照
 old='''            /* 2.1.1: 只拦截、不打标——TIM 会给多条消息批量写同一时间戳，
@@ -121,7 +122,7 @@ static void TKSnapshotNow(id record) {
     if(!record)return;
     NSString *identity=TKMessageIdentity(record);if(!identity)return;
     id elements=TKObjectCall(record,@"elements");
-    if(![elements isKindOfClass:NSArray.class]||!elements.count)return;
+    if(![elements isKindOfClass:NSArray.class]||[(NSArray *)elements count]==0)return;
     NSMutableArray *snapshot=[NSMutableArray new];
     for(id element in elements){
         id copy=[element conformsToProtocol:@protocol(NSCopying)]?[element copy]:element;

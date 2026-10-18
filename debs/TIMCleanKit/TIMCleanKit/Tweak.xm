@@ -442,6 +442,7 @@ static void TKMarkProvisional(id record);
 static BOOL TKShouldProtect(id record);
 static void TKSnapshotNow(id record);
 static void TKPromoteProvisional(id record);
+static long long TKScalar(id obj,NSString *method,const char *encoding); /* 2.2.1: 前向声明（定义在下方） */
 
 // 2.0.2: 撤回事件日志（环形12条，写入诊断 recallLog）——记录每次标记的来源和消息原文前12字，误报可逐条定位
 static NSMutableArray *gTKRecallLog=nil;
@@ -796,7 +797,7 @@ static void TKSnapshotNow(id record) {
     if(!record)return;
     NSString *identity=TKMessageIdentity(record);if(!identity)return;
     id elements=TKObjectCall(record,@"elements");
-    if(![elements isKindOfClass:NSArray.class]||!elements.count)return;
+    if(![elements isKindOfClass:NSArray.class]||[(NSArray *)elements count]==0)return;
     NSMutableArray *snapshot=[NSMutableArray new];
     for(id element in elements){
         id copy=[element conformsToProtocol:@protocol(NSCopying)]?[element copy]:element;
