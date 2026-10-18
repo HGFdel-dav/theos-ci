@@ -29,7 +29,7 @@
 #import <sys/utsname.h>
 #import <objc/message.h>
 
-static NSString *const kTWVersion = @"0.4.1";
+static NSString *const kTWVersion = @"0.4.2";
 
 // 唤醒方式：0 = Arc 角落唤醒（默认），1 = ParallelX 边缘手柄。
 typedef NS_ENUM(NSInteger, TWWakeModeValue) {
@@ -101,6 +101,26 @@ typedef NS_ENUM(NSInteger, TWWakeModeValue) {
 }
 
 #pragma mark - specifiers
+
+// ★ 0.4.2 观测版：建 cell 时兜住异常，把"未识别选择子"原文 + 该行 specifier
+//   明细落盘（/var/mobile/Documents/TwinPrefs-diagnose.log），并返回空白 cell，
+//   面板不再闪退——日志是判案依据。
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    @try {
+        return [super tableView:tableView cellForRowAtIndexPath:indexPath];
+    } @catch (NSException *e) {
+        PSSpecifier *sp = [self specifierAtIndexPath:indexPath];
+        TWDiagDumpException(e, [NSString stringWithFormat:@"cellForRow sec=%ld row=%ld",
+                                (long)indexPath.section, (long)indexPath.row]);
+        TWDiagLog(@"specifier: name=%@ key=%@ cellType=%ld cellClass=%@ detail=%@ bundle=%@",
+                  sp.name, [sp propertyForKey:@"key"], (long)[sp cellType],
+                  [sp propertyForKey:@"cellClass"], [sp propertyForKey:@"detail"],
+                  [sp propertyForKey:@"bundle"]);
+        TWDiagLog(@"specifier description: %@", sp);
+        return [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault
+                                      reuseIdentifier:@"TWBlankCell"];
+    }
+}
 
 - (NSArray *)specifiers {
     if (!_specifiers) {

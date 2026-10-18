@@ -112,4 +112,11 @@ void TWSetArcOrderList(NSArray<NSString *> *list);
 // 本机应用显示名（取不到时原样返回 bundleID）。
 NSString *TWPrefsAppName(NSString *bundleID);
 
+#pragma mark - 诊断（0.4.2 观测版）
+
+// 写 /var/mobile/Documents/TwinPrefs-diagnose.log：异常原文 + 失败行 specifier 明细。
+extern NSString * _Nonnull const TWDiagLogPath;
+void TWDiagLog(NSString * _Nonnull fmt, ...) NS_FORMAT_FUNCTION(1, 2);
+void TWDiagDumpException(NSException * _Nonnull e, NSString * _Nullable context);
+
 NS_ASSUME_NONNULL_END

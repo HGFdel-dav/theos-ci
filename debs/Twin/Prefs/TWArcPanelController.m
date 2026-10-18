@@ -14,6 +14,24 @@
     CGFloat _heroWidth;
 }
 
+// ★ 0.4.2 观测版：同 TWRootListController，异常落盘 + 空白 cell 兜底。
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    @try {
+        return [super tableView:tableView cellForRowAtIndexPath:indexPath];
+    } @catch (NSException *e) {
+        PSSpecifier *sp = [self specifierAtIndexPath:indexPath];
+        TWDiagDumpException(e, [NSString stringWithFormat:@"cellForRow sec=%ld row=%ld",
+                                (long)indexPath.section, (long)indexPath.row]);
+        TWDiagLog(@"specifier: name=%@ key=%@ cellType=%ld cellClass=%@ detail=%@ bundle=%@",
+                  sp.name, [sp propertyForKey:@"key"], (long)[sp cellType],
+                  [sp propertyForKey:@"cellClass"], [sp propertyForKey:@"detail"],
+                  [sp propertyForKey:@"bundle"]);
+        TWDiagLog(@"specifier description: %@", sp);
+        return [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault
+                                      reuseIdentifier:@"TWBlankCell"];
+    }
+}
+
 - (instancetype)init {
     if ((self = [super init])) {
         self.title = @"Arc 面板与手势";

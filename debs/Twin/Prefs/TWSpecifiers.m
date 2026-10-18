@@ -345,3 +345,46 @@ NSString *TWPrefsAppName(NSString *bundleID) {
     }
     return bundleID;
 }
+
+#pragma mark - 诊断（0.4.2 观测版）：异常原文落盘
+
+NSString *const TWDiagLogPath = @"/var/mobile/Documents/TwinPrefs-diagnose.log";
+
+void TWDiagLog(NSString *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    NSString *msg = [[NSString alloc] initWithFormat:fmt arguments:ap];
+    va_end(ap);
+    @try {
+        if (![[NSFileManager defaultManager] fileExistsAtPath:TWDiagLogPath]) {
+            [[NSFileManager defaultManager] createFileAtPath:TWDiagLogPath contents:nil attributes:nil];
+        }
+        NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:TWDiagLogPath];
+        if (!fh) return;
+        [fh seekToEndOfFile];
+        NSString *line = [NSString stringWithFormat:@"%@ [TwinPrefs] %@\n",
+                          [[NSDate date] descriptionWithLocale:[NSLocale currentLocale]], msg];
+        [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
+        [fh closeFile];
+    } @catch (NSException *ignore) {}
+}
+
+void TWDiagDumpException(NSException *e, NSString *context) {
+    TWDiagLog(@"==== EXCEPTION context=%@ ====", context ?: @"?");
+    TWDiagLog(@"name:   %@", e.name);
+    TWDiagLog(@"reason: %@", e.reason);
+    TWDiagLog(@"userInfo: %@", e.userInfo);
+    TWDiagLog(@"stack:\n%@", [e.callStackSymbols componentsJoinedByString:@"\n"]);
+}
+
+static void TWUncaughtHandler(NSException *e) {
+    TWDiagDumpException(e, @"UNCAUGHT");
+}
+
+__attribute__((constructor))
+static void TWDiagInstallUncaughtHandler(void) {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSSetUncaughtExceptionHandler(TWUncaughtHandler);
+    });
+}
