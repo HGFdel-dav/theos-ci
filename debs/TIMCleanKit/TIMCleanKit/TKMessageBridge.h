@@ -48,7 +48,8 @@ static NSArray *TKPreserveUpdateRecords(id records) {
     for(id record in records) {
         if(![record isKindOfClass:recordClass]){[result addObject:record];continue;}
         // 2.0.3: 只要确认被撤回（事实记录/缓存标记）就处理——有快照恢复内容，无快照用归档重建；都没有也保留标记
-        if(TKAntiRecallEnabled()&&TKWasRecalled(record)) {
+        // 2.2.1: 临时保护（setRecallTime≈now）也走这条，否则列表更新会把内容换成撤回提示
+        if(TKAntiRecallEnabled()&&TKShouldProtect(record)) {
             TKMarkRecall(record);
             if(TKHasCachedContent(record)) {
                 TKRestoreRecord(record);
@@ -83,7 +84,7 @@ static void TKBridgeDelete(id self,SEL cmd,id contact,id ids) {
         for(id mid in ids) {
             if(![mid isKindOfClass:NSNumber.class]||![peer isKindOfClass:NSString.class]){[keep addObject:mid];continue;}
             NSString *identity=[NSString stringWithFormat:@"%d:%@:%lld",chat,peer,[mid longLongValue]];
-            [gTKCacheLock lock];BOOL recalled=[gTKRecalledIDs containsObject:identity];[gTKCacheLock unlock];
+            [gTKCacheLock lock];BOOL recalled=[gTKRecalledIDs containsObject:identity]||[gTKProvisionalIDs containsObject:identity];[gTKCacheLock unlock];
             if(!recalled)[keep addObject:mid];
         }
         if(!keep.count)return;filtered=[keep copy];

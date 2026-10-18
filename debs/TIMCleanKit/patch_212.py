@@ -278,7 +278,19 @@ static NSString *gTKPreOpenProbe=nil;       /* 2.2.1: 预领页视图类名探�
 write(p,s)
 print('7. Tweak.xm 红包侧 OK')
 
-# ---------------------------------------------------------------- 8. 版本
+# ---------------------------------------------------------------- 8. TKMessageBridge.h 保护面扩大
+p4=BASE+'/TKMessageBridge.h'; m=read(p4)
+old='''        if(TKAntiRecallEnabled()&&TKWasRecalled(record)) {'''
+assert m.count(old)==1,'bridge=%d'%m.count(old)
+m=m.replace(old,'''        // 2.2.1: 临时保护（setRecallTime≈now）也走这条，否则列表更新会把内容换成撤回提示
+        if(TKAntiRecallEnabled()&&TKShouldProtect(record)) {''')
+old='''BOOL recalled=[gTKRecalledIDs containsObject:identity];'''
+assert m.count(old)==1,'delete=%d'%m.count(old)
+m=m.replace(old,'''BOOL recalled=[gTKRecalledIDs containsObject:identity]||[gTKProvisionalIDs containsObject:identity];''')
+write(p4,m)
+print('8. TKMessageBridge.h OK')
+
+# ---------------------------------------------------------------- 9. 版本
 s=read(p)
 assert s.count('@"version":@"2.2.0"')==2,'ver=%d'%s.count('@"version":@"2.2.0"')
 s=s.replace('@"version":@"2.2.0"','@"version":@"2.2.1"')
