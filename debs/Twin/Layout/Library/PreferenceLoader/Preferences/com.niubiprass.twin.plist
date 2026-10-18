@@ -4,22 +4,18 @@
 <dict>
 	<key>entry</key>
 	<dict>
+		<key>bundle</key>
+		<string>TwinPrefs</string>
 		<key>cell</key>
 		<string>PSLinkCell</string>
-		<key>label</key>
-		<string>Twin</string>
-		<key>bundle</key>
-		<string>ParallelXPrefs</string>
 		<key>detail</key>
-		<string>PXRootListController</string>
-		<key>isController</key>
-		<true/>
-		<key>overridePrincipalClass</key>
-		<true/>
+		<string>TWRootListController</string>
 		<key>icon</key>
 		<string>icon.png</string>
-		<key>hasIcon</key>
+		<key>isController</key>
 		<true/>
+		<key>label</key>
+		<string>Twin</string>
 	</dict>
 </dict>
 </plist>

@@ -1,24 +1,45 @@
 // TWPath.h — shared jbroot path resolution (RootHide / rootless compatible)
-// Used by both the SpringBoard tweak and the Settings bundle.
+// Used by both the SpringBoard tweak and the standalone Settings bundle.
+//
+// Verified on the target device (iOS 15.5 / RootHide):
+//   /Library  -> /var/containers/Bundle/Application/.jbroot-703BE1466AE884EA/Library
+//   the same jbroot is also reachable as
+//   /var/mobile/Containers/Shared/AppGroup/.jbroot-703BE1466AE884EA/
+// so BOTH bases must be scanned.
 #import <Foundation/Foundation.h>
 #import <dlfcn.h>
 
 // Deliberately not dispatch_once: RootHide roots can rotate during this process.
 static inline NSArray<NSString *> *TWJBRootCandidates(void) {
     NSFileManager *fm = NSFileManager.defaultManager;
-    NSString *group = @"/var/mobile/Containers/Shared/AppGroup";
     NSMutableArray *roots = [NSMutableArray array];
-    for (NSString *name in [fm contentsOfDirectoryAtPath:group error:nil]) {
-        if (![name hasPrefix:@".jbroot-"]) continue;
-        NSString *path = [group stringByAppendingPathComponent:name];
-        BOOL directory = NO;
-        if ([fm fileExistsAtPath:path isDirectory:&directory] && directory) [roots addObject:path];
+    NSMutableSet *seen = [NSMutableSet set];
+    NSArray *bases = @[
+        @"/var/containers/Bundle/Application",
+        @"/var/mobile/Containers/Shared/AppGroup",
+        @"/var/mobile/Containers/Bundle/Application",
+    ];
+    for (NSString *base in bases) {
+        for (NSString *name in [fm contentsOfDirectoryAtPath:base error:nil]) {
+            if (![name hasPrefix:@".jbroot-"]) continue;
+            NSString *path = [base stringByAppendingPathComponent:name];
+            NSString *key = path.stringByResolvingSymlinksInPath ?: path;
+            if ([seen containsObject:key]) continue;
+            BOOL directory = NO;
+            if ([fm fileExistsAtPath:path isDirectory:&directory] && directory) {
+                [seen addObject:key];
+                [roots addObject:path];
+            }
+        }
     }
     BOOL directory = NO;
     if ([fm fileExistsAtPath:@"/var/jb" isDirectory:&directory] && directory) [roots addObject:@"/var/jb"];
     return roots;
 }
 
+// Pick the root that actually contains this package's files. The dylib wins;
+// in the Preferences process (no dylib injected) the bundle path wins instead,
+// so both processes resolve to the same directory.
 static inline NSString *TWJBRootPath(void) {
     NSFileManager *fm = NSFileManager.defaultManager;
     Dl_info image = {0};
@@ -30,13 +51,19 @@ static inline NSString *TWJBRootPath(void) {
         if (!resolved.length || [resolved isEqualToString:@"/"]) continue;
         NSString *ms = [root stringByAppendingPathComponent:@"Library/MobileSubstrate/DynamicLibraries/Twin.dylib"];
         NSString *usr = [root stringByAppendingPathComponent:@"usr/lib/Twin.dylib"];
+        NSString *bundle = [root stringByAppendingPathComponent:@"Library/PreferenceBundles/TwinPrefs.bundle"];
         BOOL hasMS = [fm fileExistsAtPath:ms], hasUsr = [fm fileExistsAtPath:usr];
+        BOOL hasBundle = [fm fileExistsAtPath:bundle];
         NSInteger score = hasMS ? 2000 : (hasUsr ? 1000 : 0);
-        if ([own hasPrefix:[resolved stringByAppendingString:@"/"]]) score += 10000;
+        if (hasBundle) score += 500;
+        if (own.length) {
+            NSString *prefix = [resolved stringByAppendingString:@"/"];
+            if ([own hasPrefix:prefix]) score += 10000;
+        }
         if ([fm fileExistsAtPath:[root stringByAppendingPathComponent:@"Library/MobileSubstrate"]]) score += 20;
         else if ([fm fileExistsAtPath:[root stringByAppendingPathComponent:@"usr/lib"]]) score += 10;
         if (!score) continue;
-        NSString *stampPath = hasMS ? ms : (hasUsr ? usr : root);
+        NSString *stampPath = hasMS ? ms : (hasUsr ? usr : (hasBundle ? bundle : root));
         NSTimeInterval stamp = [[[fm attributesOfItemAtPath:stampPath error:nil] fileModificationDate] timeIntervalSince1970];
         if (score > bestScore || (score == bestScore && (stamp > bestTime || (stamp == bestTime && [root compare:best] == NSOrderedAscending)))) {
             best = root; bestScore = score; bestTime = stamp;
@@ -45,6 +72,7 @@ static inline NSString *TWJBRootPath(void) {
     return best ?: @"";
 }
 
+// The real /var/mobile/Library/Preferences must never hold Twin preferences.
 static inline BOOL TWPrefsPathIsSafe(NSString *path) {
     if (![path.lastPathComponent isEqualToString:@"com.niubiprass.twin.plist"]) return NO;
     NSString *resolved = path.stringByResolvingSymlinksInPath;
