@@ -432,6 +432,16 @@ static unsigned long long gTKRecallEvents,gTKRecallRestores;
 static BOOL TKHasCachedContent(id record);
 static void TKMarkRecall(id record);
 static BOOL TKWasRecalled(id record);
+/* 2.2.1: 撤回瞬间的临时保护标记（只管内容恢复，不产生标签） */
+static char kTKRecallProvisional;
+static NSMutableSet *gTKProvisionalIDs;
+static NSMutableDictionary *gTKProvisionalInfo;
+static unsigned long long gTKProvisionalMarks,gTKProvisionalHits;
+static BOOL TKIsProvisional(id record);
+static void TKMarkProvisional(id record);
+static BOOL TKShouldProtect(id record);
+static void TKSnapshotNow(id record);
+static void TKPromoteProvisional(id record);
 
 // 2.0.2: 撤回事件日志（环形12条，写入诊断 recallLog）——记录每次标记的来源和消息原文前12字，误报可逐条定位
 static NSMutableArray *gTKRecallLog=nil;
@@ -488,10 +498,13 @@ static void AR_setRecallTime(id self,SEL cmd,long long value) {
            真机实锤 onMsgRecall 的 seq 与消息 msgSeq 有偏移（撤回"哈哈好的"却匹配到"好好说说"），故不再用 seq 判定。 */
         long long now=(long long)[[NSDate date] timeIntervalSince1970];
         if(value>now-120) {
-            /* 2.1.1: 只拦截、不打标——TIM 会给多条消息批量写同一时间戳，
-               按字段打标会误标未撤回的邻居（真机："第三句"未撤回却带标签）。
-               标签统一由 onMsgRecall（撤回通知）的 seq 匹配产生。 */
-            TKRecallEvent([NSString stringWithFormat:@"setRecallTime≈now 拦截(不标记):%@",TKRecallTextOf(self)]);
+            /* 2.2.1: 这里才是「撤回真正发生」的瞬间——TIM 先写 recallTime，再清 elements / 改 msgType，
+               撤回通知(onMsgRecall)通常最后才到（真机日志：6×≈now → 3×onMsgRecall → 3×≈now）。
+               2.1.1 只拦截不打标，导致通知到达前的清空全部放行、界面照样变撤回提示。
+               现在：就地快照原文 + 打临时保护标记（内容恢复用），标签仍只由 onMsgRecall 确认后产生。 */
+            TKSnapshotNow(self);
+            TKMarkProvisional(self);
+            TKRecallEvent([NSString stringWithFormat:@"setRecallTime≈now 保护(seq=%lld msgId=%lld):%@",TKScalar(self,@"msgSeq","q"),TKScalar(self,@"msgId","q"),TKRecallTextOf(self)]);
             value=0; /* 确认撤回就拦截——无条件回写0，内容不删 */
             TKRefreshRecallLabels();
         } else if(TKWasRecalled(self)) {
@@ -508,7 +521,7 @@ static void AR_setRecallTime(id self,SEL cmd,long long value) {
 static long long AR_recallTime(id self,SEL cmd) {
     IMP orig=OrigIMP(@"OCMsgRecord",cmd);
     long long value=orig?((long long(*)(id,SEL))orig)(self,cmd):0;
-    return TKAntiRecallEnabled() && TKWasRecalled(self) && TKHasCachedContent(self)?0:value;
+    return TKShouldProtect(self) && TKHasCachedContent(self)?0:value;
 }
 static BOOL AR_includeDelete(id self,SEL cmd) {
     IMP orig=OrigIMP(@"OCMsgsReq",cmd);
@@ -594,6 +607,8 @@ static NSMutableSet *gTKSeenRedPackets;
 static NSString *gTKCurrentClaimIdentity;
 static unsigned long long gTKReceived,gTKAutoAttempts,gTKAutoCompleted,gTKAutoErrors,gTKRepeats;
 static unsigned long long gTKGestureTaps,gTKGestureNoRecord;
+static unsigned long long gTKPreOpenTaps=0; /* 2.2.1: 预领页点击次数（诊断/超时判定） */
+static NSString *gTKPreOpenProbe=nil;       /* 2.2.1: 预领页视图类名探针 */
 static NSString *gTKEngineStatus=@"等待登录会话";
 static BOOL gTKAutoBusy;
 static unsigned long long gTKAutoGeneration;
@@ -741,14 +756,84 @@ static BOOL TKWasRecalled(id record) {
 }
 static void TKMarkRecall(id record) {
     objc_setAssociatedObject(record,&kTKRecallFlag,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    NSArray *keys=TKMessageIdentityKeys(record);if(!keys.count)return;
+    NSArray *keys=TKMessageIdentityKeys(record);if(!keys.count){TKPromoteProvisional(record);return;}
     [gTKCacheLock lock];
     if(!gTKRecalledIDs)gTKRecalledIDs=[NSMutableSet new];
     if(![gTKRecalledIDs containsObject:keys.firstObject]){__atomic_fetch_add(&gTKRecallEvents,1,__ATOMIC_RELAXED);}
     for(NSString *k in keys)[gTKRecalledIDs addObject:k]; /* 2.0.9: 双键都记，UI 用哪个都能命中 */
     if(gTKRecalledIDs.count>10000)[gTKRecalledIDs removeAllObjects];
     [gTKCacheLock unlock];
+    TKPromoteProvisional(record); /* 2.2.1: 同一身份/同文本的临时保护提升为正式标记（此后才贴标签） */
 }
+/* ---------- 2.2.1: 临时保护标记（撤回瞬间就打，只用于内容恢复） ---------- */
+static void TKMarkProvisional(id record) {
+    if(!record)return;
+    objc_setAssociatedObject(record,&kTKRecallProvisional,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    __atomic_fetch_add(&gTKProvisionalMarks,1,__ATOMIC_RELAXED);
+    NSArray *keys=TKMessageIdentityKeys(record);if(!keys.count)return;
+    NSString *peer=TKObjectCall(record,@"peerUid"),*text=TKRecallTextOf(record);
+    [gTKCacheLock lock];
+    if(!gTKProvisionalIDs)gTKProvisionalIDs=[NSMutableSet new];
+    if(!gTKProvisionalInfo)gTKProvisionalInfo=[NSMutableDictionary new];
+    for(NSString *k in keys){
+        [gTKProvisionalIDs addObject:k];
+        gTKProvisionalInfo[k]=@{@"peer":peer?:@"",@"text":text?:@""};
+    }
+    if(gTKProvisionalIDs.count>4000){[gTKProvisionalIDs removeAllObjects];[gTKProvisionalInfo removeAllObjects];}
+    [gTKCacheLock unlock];
+}
+static BOOL TKIsProvisional(id record) {
+    if(!record)return NO;
+    if([objc_getAssociatedObject(record,&kTKRecallProvisional) boolValue])return YES;
+    NSArray *keys=TKMessageIdentityKeys(record);if(!keys.count)return NO;
+    [gTKCacheLock lock];BOOL hit=NO;for(NSString *k in keys){if([gTKProvisionalIDs containsObject:k]){hit=YES;break;}}[gTKCacheLock unlock];
+    if(hit)__atomic_fetch_add(&gTKProvisionalHits,1,__ATOMIC_RELAXED);
+    return hit;
+}
+static BOOL TKShouldProtect(id record){return TKAntiRecallEnabled()&&(TKWasRecalled(record)||TKIsProvisional(record));}
+/* 撤回瞬间 elements 还在（真机日志实锤），就地快照，不依赖收消息时的缓存 */
+static void TKSnapshotNow(id record) {
+    if(!record)return;
+    NSString *identity=TKMessageIdentity(record);if(!identity)return;
+    id elements=TKObjectCall(record,@"elements");
+    if(![elements isKindOfClass:NSArray.class]||!elements.count)return;
+    NSMutableArray *snapshot=[NSMutableArray new];
+    for(id element in elements){
+        id copy=[element conformsToProtocol:@protocol(NSCopying)]?[element copy]:element;
+        if(copy)[snapshot addObject:copy];
+    }
+    if(!snapshot.count)return;
+    int type=(int)TKScalar(record,@"msgType","i");
+    [gTKCacheLock lock];
+    if(!gTKMessageCache)gTKMessageCache=[NSMutableDictionary new];
+    if(!gTKRecentMessages)gTKRecentMessages=[NSMutableArray new];
+    BOOL added=NO;
+    if(!gTKMessageCache[identity]){gTKMessageCache[identity]=@{@"record":record,@"elements":[snapshot copy],@"msgType":@(type)};[gTKRecentMessages addObject:identity];added=YES;}
+    [gTKCacheLock unlock];
+    TKArchiveRecalledRecord(record); /* 2.2.1: 撤回瞬间归档原文，重启后仍可恢复 */
+    if(added)TKRecallEvent([NSString stringWithFormat:@"撤回前快照:%@",TKRecallTextOf(record)]);
+}
+/* onMsgRecall 确认后，把同一身份（或同会话同文本）的临时标记提升为正式标记 —— 标签此刻才出现 */
+static void TKPromoteProvisional(id record) {
+    NSArray *keys=TKMessageIdentityKeys(record);
+    NSString *peer=TKObjectCall(record,@"peerUid"),*text=TKRecallTextOf(record);
+    [gTKCacheLock lock];
+    if(!gTKProvisionalInfo.count){[gTKCacheLock unlock];return;}
+    NSMutableArray *promote=[NSMutableArray array];
+    for(NSString *k in keys)if(gTKProvisionalInfo[k])[promote addObject:k];
+    for(NSString *k in gTKProvisionalInfo){
+        if([promote containsObject:k])continue;
+        NSDictionary *info=gTKProvisionalInfo[k];
+        if(text.length&&[info[@"text"] isEqual:text]&&(!peer.length||[info[@"peer"] isEqual:peer]))[promote addObject:k];
+    }
+    if(promote.count){
+        if(!gTKRecalledIDs)gTKRecalledIDs=[NSMutableSet new];
+        for(NSString *k in promote){[gTKRecalledIDs addObject:k];[gTKProvisionalIDs removeObject:k];}
+    }
+    [gTKCacheLock unlock];
+    if(promote.count)TKRecallEvent([NSString stringWithFormat:@"临时保护提升为确认标记 %lu 条",(unsigned long)promote.count]);
+}
+
 /* 2.0.3: 无缓存快照但磁盘归档有文本——重建文本元素恢复内容（跨重启） */
 static BOOL TKRestoreFromArchive(id record) {
     @try {
@@ -808,28 +893,28 @@ static void TKRememberMessage(id record) {
 }
 static void AR_setElements(id self,SEL cmd,id elements) {
     IMP orig=OrigIMP(@"OCMsgRecord",cmd);
-    if(TKAntiRecallEnabled()&&TKWasRecalled(self)) {
+    if(TKShouldProtect(self)) {
         NSArray *saved=TKCachedMessage(self)[@"elements"];if(saved.count){elements=saved;__atomic_fetch_add(&gTKRecallRestores,1,__ATOMIC_RELAXED);}
     }
     if(orig)((void(*)(id,SEL,id))orig)(self,cmd,elements);
 }
 static id AR_elements(id self,SEL cmd) {
     IMP orig=OrigIMP(@"OCMsgRecord",cmd);id actual=orig?((id(*)(id,SEL))orig)(self,cmd):nil;
-    if(TKAntiRecallEnabled()&&TKWasRecalled(self)) {
+    if(TKShouldProtect(self)) {
         NSArray *saved=TKCachedMessage(self)[@"elements"];if(saved.count)return saved;
     }
     return actual;
 }
 static int AR_msgType(id self,SEL cmd) {
     IMP orig=OrigIMP(@"OCMsgRecord",cmd);int value=orig?((int(*)(id,SEL))orig)(self,cmd):0;
-    if(TKAntiRecallEnabled()&&TKWasRecalled(self)) {
+    if(TKShouldProtect(self)) {
         NSNumber *saved=TKCachedMessage(self)[@"msgType"];if(saved)return saved.intValue;
     }
     return value;
 }
 static void AR_setMsgType(id self,SEL cmd,int value) {
     IMP orig=OrigIMP(@"OCMsgRecord",cmd);
-    if(TKAntiRecallEnabled()&&TKWasRecalled(self)) {
+    if(TKShouldProtect(self)) {
         NSNumber *saved=TKCachedMessage(self)[@"msgType"];if(saved)value=saved.intValue;
     }
     if(orig)((void(*)(id,SEL,int))orig)(self,cmd,value);
@@ -896,6 +981,7 @@ static void TKDrainRedQueue(void) {
     id bill=TKObjectCall(selectedWallet,@"billNo");
     gTKCurrentClaimIdentity=[bill isKindOfClass:NSString.class]?[bill copy]:nil;
     gTKAutoBusy=YES;unsigned long long generation=++gTKAutoGeneration;gTKAutoAttempts++;
+    unsigned long long tapsAtStart=__atomic_load_n(&gTKPreOpenTaps,__ATOMIC_RELAXED);
     gTKEngineStatus=hasRouter?@"已调用TIM原生红包路由（模拟点击），等待完成回调":@"已调用兼容领取，等待完成回调";
     TKRedEvent(hasRouter?@"领取:调用TIM原生红包路由(模拟点击)":@"领取:调用兼容服务");
     void (^completion)(id,id)=^(id result,id error){dispatch_async(dispatch_get_main_queue(),^{
@@ -912,7 +998,9 @@ static void TKDrainRedQueue(void) {
         ((void(*)(id,SEL,id,id,id))objc_msgSend)(service,claim,record,root,completion);
     }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,20*NSEC_PER_SEC),dispatch_get_main_queue(),^{
-        if(gTKAutoBusy && generation==gTKAutoGeneration){gTKAutoBusy=NO;gTKAutoErrors++;gTKEngineStatus=@"领取超时：未收到完成回调";TKDrainRedQueue();}
+        if(gTKAutoBusy && generation==gTKAutoGeneration){gTKAutoBusy=NO;gTKAutoErrors++;
+            gTKEngineStatus=gTKPreOpenTaps>tapsAtStart?@"已点击开红包，未收到完成回调（以界面为准）":@"领取超时：未收到完成回调";
+            TKDrainRedQueue();}
     });
 }
 static void TKReceiveMessages(id payload) {
@@ -957,26 +1045,71 @@ static BOOL TKRepeatRecord(id record) {
 #include "TKMessageBridge.h"
 #include "TKCellBridge.h"
 
+static NSString *TKControlTitleText(UIView *v) {
+    @try {
+        if([v isKindOfClass:UIButton.class]) {
+            UIButton *b=(UIButton *)v;
+            NSString *t=[b titleForState:UIControlStateNormal];
+            if(!t.length)t=b.titleLabel.text;
+            return t;
+        }
+        if([v isKindOfClass:UILabel.class])return ((UILabel *)v).text;
+    } @catch(NSException *ignored) {}
+    return nil;
+}
+static BOOL TKTitleLooksLikeOpen(NSString *t) {
+    if(!t.length||t.length>6)return NO;
+    if([t containsString:@"关闭"]||[t containsString:@"取消"])return NO;
+    return [t containsString:@"开"]||[t containsString:@"拆"]||[t containsString:@"领"];
+}
+/* 2.2.1: 不再依赖 QQWalletPreOpenHBView（TIM 4.1.0 没这个类，classProbe 已证实）——
+   按「类名含 open/grap」或「标题含 开/拆/领」找可点控件，并把视图类名回写诊断。 */
+static BOOL TKTryOpenPreGrapView(UIView *root,NSMutableString *probe) {
+    if(!root)return NO;
+    NSMutableArray *queue=[NSMutableArray arrayWithObject:root];
+    NSUInteger scanned=0;
+    while(queue.count&&scanned<800){
+        UIView *v=queue.firstObject;[queue removeObjectAtIndex:0];scanned++;
+        NSString *cls=NSStringFromClass(v.class);
+        if(probe&&cls.length&&probe.length<380&&![probe containsString:cls])[probe appendFormat:@"%@ ",cls];
+        SEL open=NSSelectorFromString(@"openButtonClick");
+        if([v respondsToSelector:open]) {
+            id data=TKObjectCall(v,@"grapHBData");
+            id aio=TKObjectCall(data,@"aioData");id list=TKObjectCall(aio,@"listId");
+            BOOL identityOK=!gTKCurrentClaimIdentity||!list||[list isEqual:gTKCurrentClaimIdentity];
+            if(identityOK){((void(*)(id,SEL))objc_msgSend)(v,open);return YES;}
+        }
+        if([v isKindOfClass:UIControl.class]) {
+            UIControl *c=(UIControl *)v;
+            if(!c.hidden&&c.alpha>0.01&&c.userInteractionEnabled) {
+                NSString *title=TKControlTitleText(v);
+                NSString *lower=cls.lowercaseString;
+                BOOL nameHit=[lower containsString:@"open"]||[lower containsString:@"grap"]||[lower containsString:@"hongbao"];
+                if(TKTitleLooksLikeOpen(title)||(nameHit&&!title.length)) {
+                    [c sendActionsForControlEvents:UIControlEventTouchUpInside];
+                    return YES;
+                }
+            }
+        }
+        if(v.subviews.count)[queue addObjectsFromArray:v.subviews];
+    }
+    return NO;
+}
 static void TKAutoOpenPreView(id self,SEL cmd) {
     IMP orig=OrigIMP(@"QQWalletPreGrapHBResultViewController",cmd);
     if(orig)((void(*)(id,SEL))orig)(self,cmd);
     if(!gTKAutoBusy)return;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,350*NSEC_PER_MSEC),dispatch_get_main_queue(),^{
-        if(!gTKAutoBusy||!prefBool(kAutoRed,YES))return;
-        UIView *root=(UIView *)TKObjectCall(self,@"view");
-        NSMutableArray *views=[NSMutableArray array];if(root)[views addObject:root];
-        for(NSUInteger i=0;i<views.count&&i<1000;i++){
-            UIView *view=views[i];
-            if([view isKindOfClass:NSClassFromString(@"QQWalletPreOpenHBView")]) {
-                id data=TKObjectCall(view,@"grapHBData");
-                id aio=TKObjectCall(data,@"aioData");id list=TKObjectCall(aio,@"listId");
-                BOOL identityOK=!gTKCurrentClaimIdentity||!list||[list isEqual:gTKCurrentClaimIdentity];
-                if(identityOK){SEL open=NSSelectorFromString(@"openButtonClick");if([view respondsToSelector:open])((void(*)(id,SEL))objc_msgSend)(view,open);}
-                return;
-            }
-            if([view isKindOfClass:UIView.class])[views addObjectsFromArray:view.subviews];
-        }
-    });
+    for(int attempt=0;attempt<3;attempt++) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(350+attempt*700)*NSEC_PER_MSEC),dispatch_get_main_queue(),^{
+            if(!gTKAutoBusy||!prefBool(kAutoRed,YES))return;
+            UIView *root=(UIView *)TKObjectCall(self,@"view");
+            NSMutableString *probe=[NSMutableString string];
+            BOOL tapped=TKTryOpenPreGrapView(root,probe);
+            if(probe.length)gTKPreOpenProbe=[probe copy];
+            if(tapped){__atomic_fetch_add(&gTKPreOpenTaps,1,__ATOMIC_RELAXED);TKRedEvent([NSString stringWithFormat:@"预领页已点击开红包按钮(第%d次尝试)",attempt+1]);}
+            else if(attempt==2)TKRedEvent([NSString stringWithFormat:@"预领页未找到开红包按钮:%@",probe.length?probe:@"空视图"]);
+        });
+    }
 }
 
 static NSDictionary *TKRuntimeSnapshot(void) {
@@ -1012,8 +1145,8 @@ static NSDictionary *TKRuntimeSnapshot(void) {
         unsigned long long hits=__atomic_load_n(&r->hits,__ATOMIC_RELAXED);
         [rows addObject:@{@"name":[NSString stringWithFormat:@"%s\n%s",r->className,sel_getName(r->selector)],@"state":hits?@"已实际调用":states[MIN(state,4)],@"hits":@(hits),@"lastHit":@""}];
     }
-    return @{@"engine":@{@"status":gTKEngineStatus?:@"未知",@"listenerRegistered":@(gTKListenerRegistered),@"received":@(gTKReceived),@"claimRequests":@(gTKAutoAttempts),@"claimCallbacks":@(gTKAutoCompleted),@"claimFailures":@(gTKAutoErrors),@"repeatRequests":@(gTKRepeats),@"repeatFailures":@(gTKRepeatFailures),@"messageCellBinds":@(gTKMessageBinds),@"gestureTaps":@(gTKGestureTaps),@"gestureNoRecord":@(gTKGestureNoRecord),@"recordReadFailures":@(gTKRecordReadFailures),@"recallBlocked":@(__atomic_load_n(&gTKRecallBlocked,__ATOMIC_RELAXED)),@"hardwareReads":@(__atomic_load_n(&gTKHardwareReads,__ATOMIC_RELAXED)),@"recallEvents":@(__atomic_load_n(&gTKRecallEvents,__ATOMIC_RELAXED)),@"recallRestores":@(__atomic_load_n(&gTKRecallRestores,__ATOMIC_RELAXED)),@"lastRedType":@(gTKLastRedType),@"lastRedAmount":@(gTKLastRedAmount),@"skipCommonType":@(gTKSkipCommonType),@"skipUnknownAmount":@(gTKSkipUnknownAmount),@"layoutAssociations":@(gTKLayoutAssociations),@"layoutMatchFails":@(gTKLayoutMatchFails),@"noRecordNoCell":@(gTKNoRecordNoCell),@"noRecordAssocFail":@(gTKNoRecordAssocFail),@"noRecordMatchFail":@(gTKNoRecordMatchFail),@"lastHitInfo":TKStrSafe(gTKLastHitInfo),@"textProbe":TKStrSafe(gTKTextProbe),@"redProbe":(gTKLastRedProbe?:@"")},@"redTypeHist":@[ @(gTKRedTypeHist[0]),@(gTKRedTypeHist[1]),@(gTKRedTypeHist[2]),@(gTKRedTypeHist[3]),@(gTKRedTypeHist[4]),@(gTKRedTypeHist[5]),@(gTKRedTypeHist[6]),@(gTKRedTypeHist[7]),@(gTKRedTypeHist[8]),@(gTKRedTypeHist[9]),@(gTKRedTypeHist[10]),@(gTKRedTypeHist[11]),@(gTKRedTypeHist[12]),@(gTKRedTypeHist[13]),@(gTKRedTypeHist[14]),@(gTKRedTypeHist[15]) ],@"version":@"2.2.0",@"process":[NSString stringWithFormat:@"TIM %@ · PID %d · 注册检查 %u 轮\nUIDevice.model = %@",([NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"]?:@"?"),getpid(),gRegistrationRounds,UIDevice.currentDevice.model],@"hookRows":rows,@"classProbe":gTKClassProbeCache,@"redEvents":(gTKRedEvents?[gTKRedEvents copy]:@[]),@"recallLog":(gTKRecallLog?[gTKRecallLog copy]:@[]),@"setRecallPositive":@(gTKSetRecallPos),@"labelLog":(gTKLabelLog?[gTKLabelLog copy]:@[]),@"labelShown":@(__atomic_load_n(&gTKLabelShown,__ATOMIC_RELAXED)),@"labelHidden":@(__atomic_load_n(&gTKLabelHidden,__ATOMIC_RELAXED)),@"warnings":@[@"调用次数只能证明该入口被调用，不能证明防撤回或过滤效果。",@"自动领取：只处理前台两分钟内新收到的红包，不保证后台唤醒；完成回调不等于到账，请核对结果。",@"防撤回：撤回检测为独立记录（退出重进/重启仍显示标记）；消息内容尽力恢复（进程缓存1500条 / 磁盘归档）。"]};
-    } @catch(NSException *e) { return @{@"engine":@{@"status":@"诊断构造异常（已捕获，未影响聊天）",@"version":@"2.2.0"}}; }
+    return @{@"engine":@{@"status":gTKEngineStatus?:@"未知",@"listenerRegistered":@(gTKListenerRegistered),@"received":@(gTKReceived),@"claimRequests":@(gTKAutoAttempts),@"claimCallbacks":@(gTKAutoCompleted),@"claimFailures":@(gTKAutoErrors),@"repeatRequests":@(gTKRepeats),@"repeatFailures":@(gTKRepeatFailures),@"messageCellBinds":@(gTKMessageBinds),@"gestureTaps":@(gTKGestureTaps),@"gestureNoRecord":@(gTKGestureNoRecord),@"recordReadFailures":@(gTKRecordReadFailures),@"recallBlocked":@(__atomic_load_n(&gTKRecallBlocked,__ATOMIC_RELAXED)),@"hardwareReads":@(__atomic_load_n(&gTKHardwareReads,__ATOMIC_RELAXED)),@"recallEvents":@(__atomic_load_n(&gTKRecallEvents,__ATOMIC_RELAXED)),@"provisionalMarks":@(__atomic_load_n(&gTKProvisionalMarks,__ATOMIC_RELAXED)),@"provisionalHits":@(__atomic_load_n(&gTKProvisionalHits,__ATOMIC_RELAXED)),@"preOpenTaps":@(__atomic_load_n(&gTKPreOpenTaps,__ATOMIC_RELAXED)),@"preOpenProbe":(gTKPreOpenProbe?:@""),@"recallRestores":@(__atomic_load_n(&gTKRecallRestores,__ATOMIC_RELAXED)),@"lastRedType":@(gTKLastRedType),@"lastRedAmount":@(gTKLastRedAmount),@"skipCommonType":@(gTKSkipCommonType),@"skipUnknownAmount":@(gTKSkipUnknownAmount),@"layoutAssociations":@(gTKLayoutAssociations),@"layoutMatchFails":@(gTKLayoutMatchFails),@"noRecordNoCell":@(gTKNoRecordNoCell),@"noRecordAssocFail":@(gTKNoRecordAssocFail),@"noRecordMatchFail":@(gTKNoRecordMatchFail),@"lastHitInfo":TKStrSafe(gTKLastHitInfo),@"textProbe":TKStrSafe(gTKTextProbe),@"redProbe":(gTKLastRedProbe?:@"")},@"redTypeHist":@[ @(gTKRedTypeHist[0]),@(gTKRedTypeHist[1]),@(gTKRedTypeHist[2]),@(gTKRedTypeHist[3]),@(gTKRedTypeHist[4]),@(gTKRedTypeHist[5]),@(gTKRedTypeHist[6]),@(gTKRedTypeHist[7]),@(gTKRedTypeHist[8]),@(gTKRedTypeHist[9]),@(gTKRedTypeHist[10]),@(gTKRedTypeHist[11]),@(gTKRedTypeHist[12]),@(gTKRedTypeHist[13]),@(gTKRedTypeHist[14]),@(gTKRedTypeHist[15]) ],@"version":@"2.2.1",@"process":[NSString stringWithFormat:@"TIM %@ · PID %d · 注册检查 %u 轮\nUIDevice.model = %@",([NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"]?:@"?"),getpid(),gRegistrationRounds,UIDevice.currentDevice.model],@"hookRows":rows,@"classProbe":gTKClassProbeCache,@"redEvents":(gTKRedEvents?[gTKRedEvents copy]:@[]),@"recallLog":(gTKRecallLog?[gTKRecallLog copy]:@[]),@"setRecallPositive":@(gTKSetRecallPos),@"labelLog":(gTKLabelLog?[gTKLabelLog copy]:@[]),@"labelShown":@(__atomic_load_n(&gTKLabelShown,__ATOMIC_RELAXED)),@"labelHidden":@(__atomic_load_n(&gTKLabelHidden,__ATOMIC_RELAXED)),@"warnings":@[@"调用次数只能证明该入口被调用，不能证明防撤回或过滤效果。",@"自动领取：只处理前台两分钟内新收到的红包，不保证后台唤醒；完成回调不等于到账，请核对结果。",@"防撤回：撤回检测为独立记录（退出重进/重启仍显示标记）；消息内容尽力恢复（进程缓存1500条 / 磁盘归档）。"]};
+    } @catch(NSException *e) { return @{@"engine":@{@"status":@"诊断构造异常（已捕获，未影响聊天）",@"version":@"2.2.1"}}; }
 }
 
 
