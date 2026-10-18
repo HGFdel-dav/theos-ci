@@ -90,8 +90,9 @@ jobs:
           git config user.email "github-actions@github.com"
           git add packages/
           git commit -m "自动构建 deb 包" || true
-          git pull --rebase origin main || true
-          git push origin main
+          # 2.0.5: 并行 run 的产物提交可能冲突——以本次构建产物为准（rebase 时 -X theirs 指本次提交）
+          git pull --rebase -X theirs origin main || { git rebase --abort 2>/dev/null || true; git pull --no-rebase -X theirs origin main --no-edit || true; git add -A; git commit -m "自动构建 deb 包(冲突取本次)" || true; }
+          git push origin main || { git pull --rebase -X theirs origin main || true; git push origin main; }
 
       - name: Verify source remains available
         run: |

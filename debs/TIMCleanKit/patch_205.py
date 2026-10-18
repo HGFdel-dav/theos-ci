@@ -98,4 +98,4 @@ write(p,s)
 p='/var/minis/shared/theos-ci/debs/TIMCleanKit/control'
 s=read(p); s=s.replace('Version: 2.0.4','Version: 2.0.5'); write(p,s)
 print('6. UI/control 版本 OK')
-print('ALL PATCHES APPLIED (2.0.5)')
+print('ALL PATCHES APPLIED (2.0.5)')# 2.0.5 rebuild trigger (workflow packages-commit conflict fix)
