@@ -41,39 +41,32 @@
 
 #pragma mark - helpers
 
-static NSString *TWCornerNamesText(NSInteger mask) {
-    // 位掩码：1=右下 2=左下 4=左上 8=右上（与 TWArcGeometry 的 TWCorner 一致）
-    NSArray<NSString *> *names = @[@"右下", @"左下", @"左上", @"右上"];
-    NSMutableArray<NSString *> *picked = [NSMutableArray array];
-    for (NSInteger i = 0; i < (NSInteger)names.count; i++) {
-        if (mask & ((NSInteger)1 << i)) [picked addObject:names[(NSUInteger)i]];
-    }
-    return picked.count ? [picked componentsJoinedByString:@"、"] : @"无（角落唤醒不会触发）";
-}
-
 #pragma mark - specifiers
 
 - (NSArray *)specifiers {
     if (!_specifiers) {
         NSMutableArray *specs = [NSMutableArray array];
 
-        NSInteger corners = [[TWPrefs shared] integerForKey:TWKeyArcCorners defaultValue:3];
         NSInteger priority = [[TWPrefs shared] integerForKey:TWKeyArcWindowPriority defaultValue:TWArcPriorityDefault];
 
         // ---- 触发角落 ----
         [specs addObject:TWGroupSpecifier(@"触发角落",
-            @"从选中的角落向屏幕内侧拖动即唤出弧形菜单；默认启用右下与左下，全部关闭后角落唤醒不触发。")];
-        // 0.4.3：位掩码开关无法用标准 PSSwitchCell 直读直写，改"总开关 + 当前状态只读行"，
-        // 用标准机制里的自定义 get/set 选择子读写掩码（开=默认双角，关=0）。
-        [specs addObject:TWRowSpecifier(self, @"启用角落唤醒", TWKeyArcCorners, @3, nil, PSSwitchCell,
-                                        @"hand.draw.fill", nil,
-                                        @{@"height": @58,
-                                          @"twGet": @"twArcCornersEnabled:",
-                                          @"twSet": @"twArcCornersSetEnabled:specifier:"})];
-        [specs addObject:TWRowSpecifier(self,
-                                        [NSString stringWithFormat:@"当前角落：%@", TWCornerNamesText(corners)],
-                                        nil, nil, nil, PSStaticTextCell, @"location.fill", nil,
-                                        @{@"height": @44})];
+            @"从选中的角落向屏幕内侧拖动即唤出弧形菜单；可同时启用多个角，全部关闭后角落唤醒不触发。")];
+        // 0.4.4：恢复四角独立开关——标准 PSSwitchCell + 标准 get/set 选择子（twBit 位掩码，
+        // 自定义选择子签名 get:带specifier / set:双参value+specifier，全是标准机制）。
+        NSArray<NSArray *> *cornerRows = @[
+            @[@"右下", @"arrow.down.right",  @0],
+            @[@"左下", @"arrow.down.left",   @1],
+            @[@"左上", @"arrow.up.left",     @2],
+            @[@"右上", @"arrow.up.right",    @3],
+        ];
+        for (NSArray *row in cornerRows) {
+            [specs addObject:TWRowSpecifier(self, row[0], TWKeyArcCorners, @3, nil, PSSwitchCell,
+                                            row[1], nil,
+                                            @{@"height": @58, @"twBit": row[2],
+                                              @"twGet": @"twCornerEnabled:",
+                                              @"twSet": @"twCornerSetEnabled:specifier:"})];
+        }
 
         // ---- 面板 ----
         [specs addObject:TWGroupSpecifier(@"面板",
@@ -151,15 +144,21 @@ static NSString *TWCornerNamesText(NSInteger mask) {
     [super setPreferenceValue:value specifier:specifier];
 }
 
-#pragma mark - 触发角落总开关（标准 get/set 选择子，0.4.3）
+#pragma mark - 触发角落位掩码开关（标准 get/set 选择子，0.4.4）
 
-- (id)twArcCornersEnabled:(PSSpecifier *)specifier {
-    return @([[TWPrefs shared] integerForKey:TWKeyArcCorners defaultValue:3] != 0);
+- (id)twCornerEnabled:(PSSpecifier *)specifier {
+    NSInteger bit = [[specifier propertyForKey:@"twBit"] integerValue];
+    NSInteger mask = [[TWPrefs shared] integerForKey:TWKeyArcCorners defaultValue:3];
+    return @((mask & ((NSInteger)1 << bit)) != 0);
 }
 
-- (void)twArcCornersSetEnabled:(id)value specifier:(PSSpecifier *)specifier {
+- (void)twCornerSetEnabled:(id)value specifier:(PSSpecifier *)specifier {
     // 标准的双参 set：PSListController 以 (value, specifier) 调用。
-    [[TWPrefs shared] setInteger:[value boolValue] ? 3 : 0 forKey:TWKeyArcCorners];
+    NSInteger bit = [[specifier propertyForKey:@"twBit"] integerValue];
+    NSInteger mask = [[TWPrefs shared] integerForKey:TWKeyArcCorners defaultValue:3];
+    if ([value boolValue]) { mask |= ((NSInteger)1 << bit); }
+    else { mask &= ~((NSInteger)1 << bit); }
+    [[TWPrefs shared] setInteger:mask forKey:TWKeyArcCorners];
     [[TWPrefs shared] synchronize];
 }
 

@@ -1,5 +1,7 @@
 // TWSpecifiers.m
 #import "TWSpecifiers.h"
+#import "TWPath.h"
+#import <UIKit/UIKit.h>
 #import <dlfcn.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
@@ -64,7 +66,17 @@ PSSpecifier *TWRowSpecifier(id target,
     if (key.length) [spec setProperty:key forKey:@"key"];
     if (defaultValue) [spec setProperty:defaultValue forKey:@"default"];
     // 0.4.3：cellClass 永不上报（自绘 cell 全家桶下线，全部用系统类渲染）。
-    if (symbol.length) [spec setProperty:symbol forKey:@"twSymbol"];
+    if (symbol.length) {
+        [spec setProperty:symbol forKey:@"twSymbol"];
+        // 0.4.4：标准图标——系统行用 PSTableCell 的 icon 属性显示 SF Symbol
+        if (@available(iOS 13.0, *)) {
+            UIImage *img = [UIImage systemImageNamed:symbol];
+            if (img) {
+                [spec setProperty:img forKey:@"icon"];
+                [spec setProperty:img forKey:@"cellImage"];
+            }
+        }
+    }
     if (controllerClass.length) {
         [spec setProperty:controllerClass forKey:@"twController"];  // 我们自己 new
         [spec setProperty:controllerClass forKey:@"detail"];        // stock 兜底
@@ -353,15 +365,28 @@ NSString *TWPrefsAppName(NSString *bundleID) {
 
 #pragma mark - 诊断（0.4.3 观测版）：异常原文 + 构建轨迹落盘（沙盒内）
 
-// ★ 必须写应用沙盒 Documents：Preferences 进程有沙盒，真实 /var/mobile/Documents
-//   写不进去（0.4.2 的路径就是被沙盒挡了，日志根本没落盘）。
-//   设备端用 root 从 /var/mobile/Containers/Data/Application/<UUID>/Documents/ 取。
+// ★ 必须保证可写：0.4.2 写真实 /var/mobile/Documents（沙盒挡）、0.4.3 写容器 Documents
+//   （设备上也未见落盘）→ 0.4.4 改为主写 jbroot AppGroup 内 Preferences 目录
+//   （面板的 TWPrefs 本来就读写这里，已证明可写），root 端从
+//   /var/mobile/Containers/Shared/AppGroup/.jbroot-*/var/mobile/Library/Preferences/ 取。
 NSString *TWDiagLogPathResolve(void) {
+    NSFileManager *fm = [NSFileManager defaultManager];
+    for (NSString *root in TWJBRootCandidates()) {
+        NSString *prefsDir = [root stringByAppendingPathComponent:@"var/mobile/Library/Preferences"];
+        if (![fm fileExistsAtPath:prefsDir]) continue;
+        NSString *probe = [prefsDir stringByAppendingPathComponent:@".diag-probe"];
+        if ([fm createFileAtPath:probe contents:[NSData dataWithBytes:"x" length:1] attributes:nil]) {
+            [fm removeItemAtPath:probe error:nil];
+            return [prefsDir stringByAppendingPathComponent:@"TwinPrefs-diagnose.log"];
+        }
+    }
+    // 兜底：应用沙盒 Documents
     NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-    return paths.count ? [paths[0] stringByAppendingPathComponent:@"TwinPrefs-diagnose.log"] : nil;
+    if (paths.count) return [paths[0] stringByAppendingPathComponent:@"TwinPrefs-diagnose.log"];
+    return nil;
 }
 
-NSString *const TWDiagLogPath = @"/var/mobile/Containers/Data/Application/TwinPrefs-DIAG.log"; // 仅占位防编译告警，实际用 Resolve
+NSString *const TWDiagLogPath = @"TwinPrefs-diagnose.log"; // 实际路径由 Resolve 决定
 
 void TWDiagLog(NSString *fmt, ...) {
     va_list ap;
