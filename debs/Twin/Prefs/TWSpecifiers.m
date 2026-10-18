@@ -459,10 +459,10 @@ static void TWDiagInstallUncaughtHandler(void) {
 
 - (NSArray *)specifiers {
     if (!_specifiers) {
-        _specifiers = @[
+        _specifiers = [@[
             TWGroupSpecifier(@"开发中",
                 @"这个入口来自设计稿，页面结构已就位；功能实现后原地生效，不会再换位置。"),
-        ];
+        ] mutableCopy];
     }
     return _specifiers;
 }
