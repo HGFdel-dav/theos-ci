@@ -29,7 +29,7 @@
 #import <sys/utsname.h>
 #import <objc/message.h>
 
-static NSString *const kTWVersion = @"0.4.4";
+static NSString *const kTWVersion = @"0.4.5";
 
 // 唤醒方式：0 = Arc 角落唤醒（默认），1 = ParallelX 边缘手柄。
 typedef NS_ENUM(NSInteger, TWWakeModeValue) {
@@ -125,7 +125,20 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
     TWDiagLog(@">> cellFor sec=%ld row=%ld | %@", (long)indexPath.section, (long)indexPath.row, TWDiagSpecSummary(sp));
     @try {
         UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];
-        TWDiagLog(@"<< cellFor sec=%ld row=%ld ok cell=%@", (long)indexPath.section, (long)indexPath.row, NSStringFromClass([cell class]));
+        NSString *cls = NSStringFromClass([cell class]);
+        TWDiagLog(@"<< cellFor sec=%ld row=%ld ok cell=%@", (long)indexPath.section, (long)indexPath.row, cls);
+        // 0.4.5：分段控件内部观测——控件在不在/几段/选中哪段，一举定案分段行显示之谜
+        if (cls && [cls containsString:@"Segment"]) {
+            UISegmentedControl *seg = nil;
+            for (UIView *v in cell.subviews) {
+                if ([v isKindOfClass:UISegmentedControl.class]) { seg = (UISegmentedControl *)v; break; }
+            }
+            TWDiagLog(@"  segment内部: control=%@ segCount=%ld selected=%ld subviews=%lu",
+                      seg ? @"FOUND" : @"MISSING",
+                      seg ? (long)seg.numberOfSegments : -1,
+                      seg ? (long)seg.selectedSegmentIndex : -1,
+                      (unsigned long)cell.subviews.count);
+        }
         return cell;
     } @catch (NSException *e) {
         TWDiagDumpException(e, [NSString stringWithFormat:@"cellForRow sec=%ld row=%ld",

@@ -27,6 +27,19 @@ PSSpecifier *TWGroupSpecifier(NSString *name, NSString *footer) {
     return group;
 }
 
+static UIColor *TWIconTintColor(NSInteger idx) {
+    if (@available(iOS 13.0, *)) {
+        NSArray<UIColor *> *palette = @[
+            UIColor.systemBlueColor, UIColor.systemRedColor, UIColor.systemGreenColor,
+            UIColor.systemOrangeColor, UIColor.systemPurpleColor, UIColor.systemPinkColor,
+            UIColor.systemTealColor, UIColor.systemIndigoColor, UIColor.systemBrownColor,
+            UIColor.systemGrayColor
+        ];
+        if (idx >= 0 && idx < (NSInteger)palette.count) return palette[(NSUInteger)idx];
+    }
+    return nil;
+}
+
 PSSpecifier *TWRowSpecifier(id target,
                             NSString *title,
                             NSString *key,
@@ -68,10 +81,13 @@ PSSpecifier *TWRowSpecifier(id target,
     // 0.4.3：cellClass 永不上报（自绘 cell 全家桶下线，全部用系统类渲染）。
     if (symbol.length) {
         [spec setProperty:symbol forKey:@"twSymbol"];
-        // 0.4.4：标准图标——系统行用 PSTableCell 的 icon 属性显示 SF Symbol
+        // 0.4.4/0.4.5：标准图标——PSTableCell 的 icon/cellImage 属性，SF Symbol 着色
+        //（twColor 色板，效果贴近原版 ParallelX 面板的彩色图标）
         if (@available(iOS 13.0, *)) {
             UIImage *img = [UIImage systemImageNamed:symbol];
             if (img) {
+                UIColor *tint = TWIconTintColor([extras[@"twColor"] integerValue]);
+                if (tint) img = [img imageWithTintColor:tint renderingMode:UIImageRenderingModeAlwaysOriginal];
                 [spec setProperty:img forKey:@"icon"];
                 [spec setProperty:img forKey:@"cellImage"];
             }

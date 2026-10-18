@@ -297,6 +297,9 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
     [super viewDidLoad];
     self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
     self.navigationItem.rightBarButtonItem = self.editButtonItem;
+    // 0.4.5：leftBarButtonItem 会顶掉系统返回键 —— 必须补 leftItemsSupplementBackButton，
+    // 否则子页没有返回键，只能杀后台退出（用户实测反馈）。
+    self.navigationItem.leftItemsSupplementBackButton = YES;
     self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"加入"
                                                                              style:UIBarButtonItemStylePlain
                                                                             target:self
