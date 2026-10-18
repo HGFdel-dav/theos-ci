@@ -602,7 +602,7 @@ static NSMutableSet *gTKRecallFacts=nil;
 static NSString *TKRecallFactKey(int chat,NSString *peer,unsigned long long seq) {
     return (seq&&[peer isKindOfClass:NSString.class])?[NSString stringWithFormat:@"%d:%@:%llu",chat,peer,seq]:nil;
 }
-static NSString *TKRecallFactKeyOfRecord(id record) {
+__attribute__((unused)) static NSString *TKRecallFactKeyOfRecord(id record) {
     NSString *peer=TKObjectCall(record,@"peerUid");unsigned long long seq=(unsigned long long)TKScalar(record,@"msgSeq","q");
     int chat=(int)TKScalar(record,@"chatType","i");
     return TKRecallFactKey(chat,peer,seq);
@@ -638,7 +638,7 @@ static void TKRecallFactsSaveAsync(void) {
         } @catch(NSException *ignored) {}
     });
 }
-static BOOL TKRecallFactsContains(NSString *fact) {
+__attribute__((unused)) static BOOL TKRecallFactsContains(NSString *fact) {
     if(!fact)return NO;
     [gTKCacheLock lock];BOOL r=[gTKRecallFacts containsObject:fact];[gTKCacheLock unlock];
     return r;
