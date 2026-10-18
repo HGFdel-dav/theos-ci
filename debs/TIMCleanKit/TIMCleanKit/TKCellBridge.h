@@ -176,7 +176,7 @@ static void TKArchiveRecalledRecord(id record) {
     NSString *identity=TKMessageIdentity(record);if(!identity)return;
     id elements=TKObjectCall(record,@"elements");
     NSString *text=TKRecordTextOfElements([elements isKindOfClass:NSArray.class]?elements:@[]);
-    NSDictionary *context=@{@"text":text?:@"",@"time":@([[NSDate date] timeIntervalSince1970])};
+    NSDictionary *context=@{@"text":text?:@"",@"time":@([[NSDate date] timeIntervalSince1970]),@"v":@2}; /* 2.0.7: v>=2 的归档才参与重启后标签恢复 */
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND,0),^{
         @try {
             NSString *base=[NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory,NSUserDomainMask,YES) firstObject];
