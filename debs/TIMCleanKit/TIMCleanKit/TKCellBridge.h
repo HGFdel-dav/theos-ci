@@ -16,7 +16,7 @@ static BOOL TKIsUsableObjectPtr(id p) {
     if(isav % sizeof(void*) || isav<0x1000)return NO;
     return YES;
 }
-static char kTKBoundModelKey,kTKRecallLabelKey;
+static char kTKBoundModelKey,kTKRecallLabelKey,kTKLabelRecordKey;
 static NSHashTable *gTKVisibleCells;
 static unsigned long long gTKRecordReadFailures;
 static id TKSwiftRecordField(id vm) {
@@ -237,9 +237,16 @@ static BOOL TKCellHasRedPacketView(UIView *cell) {   // 1.0.23: 视图级红包�
     TKScanViewsForRedPacket(cell,&found);
     return found;
 }
+static NSString *TKLabelBriefText(id record) {
+    id els=TKObjectCall(record,@"elements");
+    NSString *t=TKRecordTextOfElements([els isKindOfClass:NSArray.class]?els:@[]);
+    if(!t.length)return @"?";
+    return t.length>8?[t substringToIndex:8]:t;
+}
 static void TKUpdateRecallLabel(UIView *cell) {
     if(!cell || !NSThread.isMainThread)return;
     id record=TKRecordForCell(cell);
+    BOOL highConfidence=(record!=nil);                     // 2.0.4: 从 cell→viewModel 直读=高可信
     if(!record)record=TKCellRecord(cell);                  // 1.0.17: 布局时已文本匹配并关联
     if(!record)record=TKRecordMatchingTextInCache(cell);
     UILabel *label=objc_getAssociatedObject(cell,&kTKRecallLabelKey);
@@ -247,8 +254,12 @@ static void TKUpdateRecallLabel(UIView *cell) {
     if(record && redElementFromRecord(record)) {label.hidden=YES;return;}
     if(TKCellHasRedPacketView(cell)){if(label)label.hidden=YES;return;}   // 1.0.23: 视图级兜底——关联错位时也不给红包贴标签
     if(!TKAntiRecallEnabled()||!record||!TKWasRecalled(record)) { /* 2.0.3: 确认撤回就一定显示——不再要求有缓存内容 */
-        if(label&&!label.hidden&&record)return;   // 1.0.22: 关联仍在时偶发判定失败不隐藏已显示的标签
-        label.hidden=YES;return;
+        /* 2.0.4: 修误贴——标签若属于"另一条消息"（当前匹配 record 不同于标签记录的那条），必须隐藏；
+           仅当仍是同一条消息（偶发判定波动）才保留不动。 */
+        id labelRecord=label?objc_getAssociatedObject(label,&kTKLabelRecordKey):nil;
+        if(label&&!label.hidden&&record&&labelRecord==record)return;
+        if(label&&!label.hidden){__atomic_fetch_add(&gTKLabelHidden,1,__ATOMIC_RELAXED);TKLabelDiag([NSString stringWithFormat:@"隐:%@%@",record?TKLabelBriefText(record):@"无记录",highConfidence?@"(高可信)":@"(文本匹配)"]);}
+        label.hidden=YES;if(label)label.frame=CGRectZero;return;
     }
     if(!label) {
         label=[UILabel new];label.text=@"拦截撤回";label.font=[UIFont systemFontOfSize:10 weight:UIFontWeightSemibold];
@@ -256,7 +267,7 @@ static void TKUpdateRecallLabel(UIView *cell) {
         label.textAlignment=NSTextAlignmentCenter;label.layer.cornerRadius=6;label.clipsToBounds=YES;label.userInteractionEnabled=NO;
         [cell addSubview:label];objc_setAssociatedObject(cell,&kTKRecallLabelKey,label,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-    label.hidden=NO;
+    label.hidden=YES;label.frame=CGRectZero;   /* 2.0.4: 先隐藏并归零，锚定成功后才显示——杜绝 cell 复用残留帧错位 */
     CGFloat width=70,height=18;
     CGFloat cellW=cell.bounds.size.width,cellH=cell.bounds.size.height;
     if(cellW<120||cellH<30)return;
@@ -304,6 +315,10 @@ static void TKUpdateRecallLabel(UIView *cell) {
     x=MAX(0,MIN(x,MAX(0,cellW-width)));
     y=MAX(0,MIN(y,MAX(0,cellH-height)));
     label.frame=CGRectMake(x,y,width,height);[cell bringSubviewToFront:label];
+    label.hidden=NO;   /* 2.0.4: 锚定成功才显示 */
+    objc_setAssociatedObject(label,&kTKLabelRecordKey,record,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    __atomic_fetch_add(&gTKLabelShown,1,__ATOMIC_RELAXED);
+    TKLabelDiag([NSString stringWithFormat:@"贴:%@%@",TKLabelBriefText(record),highConfidence?@"(高可信)":@"(文本匹配)"]);
 }
 // 2.0.1: 保证双击复读手势能被收到——窗口级手势会被聊天列表/气泡控件吃掉（真机 gestureTaps=0），
 // 改为直接挂到每个消息 cell 上（cancelsTouchesInView=NO 不影响原有点击）。
