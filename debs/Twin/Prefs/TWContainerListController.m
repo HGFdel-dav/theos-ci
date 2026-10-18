@@ -97,14 +97,30 @@ static Class TWCraneManagerClass(void) {
     return cls;
 }
 
+static id TWCraneManagerInstance(void) {
+    static id mgr;
+    static BOOL looked;
+    if (!looked) {
+        looked = YES;
+        Class cls = TWCraneManagerClass();
+        if (cls) {
+            SEL sel = NSSelectorFromString(@"sharedManager");
+            if ([cls respondsToSelector:sel]) {
+                mgr = ((id (*)(id, SEL))objc_msgSend)(cls, sel);
+            }
+        }
+    }
+    return mgr;
+}
+
 static id TWCraneCall(NSString *selectorName, NSArray *arguments) {
-    Class cls = TWCraneManagerClass();
-    if (!cls) return nil;
+    id target = TWCraneManagerInstance();
+    if (!target) return nil;
     SEL sel = NSSelectorFromString(selectorName);
-    if (![cls respondsToSelector:sel]) return nil;
-    if (arguments.count == 0) return ((id (*)(id, SEL))objc_msgSend)(cls, sel);
-    if (arguments.count == 1) return ((id (*)(id, SEL, id))objc_msgSend)(cls, sel, arguments[0]);
-    return ((id (*)(id, SEL, id, id, BOOL))objc_msgSend)(cls, sel, arguments[0], arguments[1], NO);
+    if (![target respondsToSelector:sel]) return nil;
+    if (arguments.count == 0) return ((id (*)(id, SEL))objc_msgSend)(target, sel);
+    if (arguments.count == 1) return ((id (*)(id, SEL, id))objc_msgSend)(target, sel, arguments[0]);
+    return ((id (*)(id, SEL, id, id, BOOL))objc_msgSend)(target, sel, arguments[0], arguments[1], NO);
 }
 
 // Crane 的容器显示名（方法名按已解包的 com.wkk.crane 1.3.17 原样使用）。

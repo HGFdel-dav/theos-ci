@@ -377,7 +377,11 @@ static NSString *TWAppDisplayName(NSString *bundleID) {
 static NSString *TWContainerDisplayName(NSString *containerID, NSString *bundleID) {
     if (![containerID isKindOfClass:NSString.class] || !containerID.length) return nil;
     if (![bundleID isKindOfClass:NSString.class] || !bundleID.length) return nil;
-    Class manager = NSClassFromString(@"CraneManager");
+    Class managerClass = NSClassFromString(@"CraneManager");
+    if (!managerClass) return nil;
+    SEL sharedSel = NSSelectorFromString(@"sharedManager");
+    if (![managerClass respondsToSelector:sharedSel]) return nil;
+    id manager = ((id (*)(id, SEL))objc_msgSend)(managerClass, sharedSel);
     if (!manager) return nil;
     SEL selector = NSSelectorFromString(@"displayNameForContainerWithIdentifier:ofApplicationWithIdentifier:shouldUseShortVersion:");
     @try {

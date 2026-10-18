@@ -42,15 +42,31 @@ static Class TWE_CraneManager(void) {
     return cls;
 }
 
+static id TWE_SharedManager(void) {
+    static id mgr;
+    static BOOL looked;
+    if (!looked) {
+        looked = YES;
+        Class cls = TWE_CraneManager();
+        if (cls) {
+            SEL sel = NSSelectorFromString(@"sharedManager");
+            if ([cls respondsToSelector:sel]) {
+                mgr = ((id (*)(id, SEL))objc_msgSend)(cls, sel);
+            }
+        }
+    }
+    return mgr;
+}
+
 static id TWE_Call(NSString *selectorName, NSArray *args) {
-    Class cls = TWE_CraneManager();
-    if (!cls) return nil;
+    id target = TWE_SharedManager();
+    if (!target) return nil;
     SEL sel = NSSelectorFromString(selectorName);
-    if (![cls respondsToSelector:sel]) return nil;
+    if (![target respondsToSelector:sel]) return nil;
     @try {
-        if (args.count == 0) return ((id (*)(id, SEL))objc_msgSend)(cls, sel);
-        if (args.count == 1) return ((id (*)(id, SEL, id))objc_msgSend)(cls, sel, args[0]);
-        return ((id (*)(id, SEL, id, id, BOOL))objc_msgSend)(cls, sel, args[0], args[1], NO);
+        if (args.count == 0) return ((id (*)(id, SEL))objc_msgSend)(target, sel);
+        if (args.count == 1) return ((id (*)(id, SEL, id))objc_msgSend)(target, sel, args[0]);
+        return ((id (*)(id, SEL, id, id, BOOL))objc_msgSend)(target, sel, args[0], args[1], NO);
     } @catch (NSException *e) { return nil; }
 }
 
@@ -102,6 +118,15 @@ BOOL TWContainerExportNow(void) {
     if (!cls) {
         TWELog(@"CraneManager 不存在（Crane 未加载或类名不匹配）");
         return NO;   // Crane 还没加载：保留上次导出的缓存，不清空。
+    }
+    id mgr = TWE_SharedManager();
+    if (!mgr) {
+        TWELog(@"CraneManager 存在，但 +sharedManager 返回 nil");
+        return NO;
+    }
+    if (![mgr respondsToSelector:NSSelectorFromString(@"identfiersOfApplicationsThatHaveNonDefaultContainers")]) {
+        TWELog(@"sharedManager 不响应 identfiersOfApplicationsThatHaveNonDefaultContainers");
+        return NO;
     }
 
     id apps = TWE_Call(@"identfiersOfApplicationsThatHaveNonDefaultContainers", @[]);
