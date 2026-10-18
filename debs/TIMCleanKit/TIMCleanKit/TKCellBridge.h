@@ -169,6 +169,33 @@ static NSString *TKRecordTextOfElements(NSArray *elements) {
     }
     return all.length?all:nil;
 }
+
+// 2.0: 撤回消息磁盘归档——拦截到对方撤回时把消息文本快照写入沙盒;
+// 独立于进程内存缓存，供后续版本做冷启动/历史撤回恢复。最多保留最近 300 条，后台队列写盘，失败静默。
+static void TKArchiveRecalledRecord(id record) {
+    NSString *identity=TKMessageIdentity(record);if(!identity)return;
+    id elements=TKObjectCall(record,@"elements");
+    NSString *text=TKRecordTextOfElements([elements isKindOfClass:NSArray.class]?elements:@[]);
+    NSDictionary *context=@{@"text":text?:@"",@"time":@([[NSDate date] timeIntervalSince1970])};
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND,0),^{
+        @try {
+            NSString *base=[NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory,NSUserDomainMask,YES) firstObject];
+            if(!base)return;
+            NSString *dir=[base stringByAppendingPathComponent:@"TIMCleanKit"];
+            [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:NULL];
+            NSString *path=[dir stringByAppendingPathComponent:@"recall-archive.json"];
+            NSMutableDictionary *archive=[[NSDictionary dictionaryWithContentsOfFile:path] mutableCopy];
+            if(!archive)archive=[NSMutableDictionary dictionary];
+            archive[identity]=context;
+            if(archive.count>300) {
+                NSArray *sorted=[archive keysSortedByValueUsingComparator:^NSComparisonResult(NSDictionary *a,NSDictionary *b){ return [a[@"time"] compare:b[@"time"]]; }];
+                for(NSUInteger i=0;i+300<sorted.count;i++)[archive removeObjectForKey:sorted[i]];
+            }
+            NSData *data=[NSJSONSerialization dataWithJSONObject:archive options:0 error:NULL];
+            [data writeToFile:path atomically:YES];
+        } @catch(NSException *ignored) {}
+    });
+}
 static id TKRecordMatchingTextInCache(UIView *cell) {
     // 在最近 500 条缓存消息里找文本与气泡完全一致的最后一条（最近者优先）。
     NSString *want=TKCellBubbleText(cell);

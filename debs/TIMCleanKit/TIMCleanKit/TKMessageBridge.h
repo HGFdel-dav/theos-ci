@@ -1,8 +1,9 @@
 // TIM 4.1.0.81 Objective-C bridge methods verified in kernel-targets.json.
-// Included after message cache helpers. No chat text is logged or written to disk.
+// Included after message cache helpers. 2.0: 被拦截的对方撤回会归档消息文本到沙盒 Application Support/TIMCleanKit/recall-archive.json（上限300条），其余场景不落盘。
 static NSString *const TKListenerClass=@"_TtC13GuildNTKernel20SWIKernelMsgListener";
 static void TKRefreshRecallLabels(void);
 static unsigned long long gTKRecallBlocked,gTKRepeatFailures,gTKMessageBinds;
+static void TKArchiveRecalledRecord(id record); /* 2.0: 定义于 TKCellBridge.h，撤回内容磁盘归档 */
 static void TKRestoreRecord(id record) {
     NSDictionary *saved=TKCachedMessage(record);NSArray *elements=saved[@"elements"];if(!elements.count)return;
     IMP original=TKOriginalIMP(TKRecord(@"OCMsgRecord",@selector(setElements:)));
@@ -26,7 +27,7 @@ static void TKBridgeRecall(id self,SEL cmd,int chat,id peer,unsigned long long s
             }
         }
     }
-    if(blocked){__atomic_fetch_add(&gTKRecallBlocked,1,__ATOMIC_RELAXED);TKRefreshRecallLabels();return;}
+    if(blocked){__atomic_fetch_add(&gTKRecallBlocked,1,__ATOMIC_RELAXED);TKArchiveRecalledRecord(record);TKRefreshRecallLabels();return;}
     if(orig)((void(*)(id,SEL,int,id,unsigned long long))orig)(self,cmd,chat,peer,seq);
 }
 static NSArray *TKPreserveUpdateRecords(id records) {
