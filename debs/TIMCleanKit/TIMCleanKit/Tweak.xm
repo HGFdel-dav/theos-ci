@@ -290,7 +290,7 @@ static BOOL shouldSkipRedPacket(id record) {
     //   * 其余类型（拼手气，待直方图标定）→ 照抢；
     //   * 起抢金额=0 表示不限制。
     if(min>0 && redType>=0 && redType<16)gTKRedTypeHist[redType]++;   // 1.0.18: 直方图必须记在 return 之前
-    if(min>0 && amount>=0 && amount<min){gTKSkipUnknownAmount++;TKRedEvent([NSString stringWithFormat:@"跳过:金额%lld分低于起抢线%lld分",amount,min]);return YES;}
+    if(min>0 && amount>=0 && amount<min){gTKSkipUnknownAmount++;TKRedEvent([NSString stringWithFormat:@"跳过:金额%lld分低于起抢线%lld分",amount,(long long)min]);return YES;}
     if(min>0 && redType==2) {
         // 1.0.23: TIM 不随消息下发红包总额，一刀切跳过普通红包=普通红包永远抢不到。
         // 默认放行（面板开关「未知金额红包放行」），关闭则恢复旧规则。
