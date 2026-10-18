@@ -22,19 +22,16 @@ static void TKBridgeRecall(id self,SEL cmd,int chat,id peer,unsigned long long s
         TKRecallFactAdd(fact);
         /* 2.0.9: 恢复 seq 匹配做补充标记，但必须先用 record 自己的 recallTime 校验——
            撤回通知的 seq 与消息 msgSeq 存在偏移，盲匹配会贴到相邻消息上。 */
-        long long now=(long long)[[NSDate date] timeIntervalSince1970];
         [gTKCacheLock lock];NSArray *savedRecords=[gTKMessageCache.allValues copy];[gTKCacheLock unlock];
         BOOL marked=NO;
         for(NSDictionary *saved in savedRecords) {
             id record=saved[@"record"];
             if(record && TKScalar(record,@"chatType","i")==chat && (unsigned long long)TKScalar(record,@"msgSeq","q")==seq && [saved[@"elements"] count]) {
                 long long rt=TKRecordRecallTimeRaw(record); /* 2.1.0: Raw 读，防递归 */
-                if(rt>0 && rt>now-3600) {
-                    TKMarkRecall(record);TKArchiveRecalledRecord(record);marked=YES;
-                    TKRecallEvent([NSString stringWithFormat:@"onMsgRecall 校验标记(recallTime=%lld):%@",rt,TKRecallTextOf(record)]);
-                } else {
-                    TKRecallEvent([NSString stringWithFormat:@"onMsgRecall seq=%llu 匹配到但recallTime=%lld,不标(防偏移)",seq,rt]);
-                }
+                /* 2.1.1: 撤回通知的 seq 即被撤回消息的序号（真机 177→第二句、182→第三句 均准确），
+                   recallTime 仅记录不拦截判断——TIM 会给多条消息批量写同值，不能作为过滤条件。 */
+                TKMarkRecall(record);TKArchiveRecalledRecord(record);marked=YES;
+                TKRecallEvent([NSString stringWithFormat:@"onMsgRecall 标记(recallTime=%lld):%@",rt,TKRecallTextOf(record)]);
             }
         }
         if(!marked)TKRecallEvent([NSString stringWithFormat:@"onMsgRecall %@(无校验通过的record)",fact]);
