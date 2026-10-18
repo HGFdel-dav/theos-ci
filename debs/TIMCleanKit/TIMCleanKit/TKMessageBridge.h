@@ -15,7 +15,7 @@ static void TKRestoreRecord(id record) {
     __atomic_fetch_add(&gTKRecallRestores,1,__ATOMIC_RELAXED);
 }
 static void TKBridgeRecall(id self,SEL cmd,int chat,id peer,unsigned long long seq) {
-    IMP orig=OrigIMP(TKListenerClass,cmd);BOOL blocked=NO;
+    IMP orig=OrigIMP(TKListenerClass,cmd);BOOL blocked=NO;id archivedRecord=nil; /* 2.0: 供磁盘归档使用 */
     if(TKAntiRecallEnabled()&&[peer isKindOfClass:NSString.class]&&seq) {
         [gTKCacheLock lock];NSArray *savedRecords=[gTKMessageCache.allValues copy];[gTKCacheLock unlock];
         for(NSDictionary *saved in savedRecords) {
@@ -23,11 +23,11 @@ static void TKBridgeRecall(id self,SEL cmd,int chat,id peer,unsigned long long s
             if(TKScalar(record,@"chatType","i")==chat &&
                [TKObjectCall(record,@"peerUid") isEqual:peer] &&
                (unsigned long long)TKScalar(record,@"msgSeq","q")==seq && [saved[@"elements"] count]) {
-                TKMarkRecall(record);TKRestoreRecord(record);blocked=YES;
+                TKMarkRecall(record);TKRestoreRecord(record);blocked=YES;archivedRecord=record;
             }
         }
     }
-    if(blocked){__atomic_fetch_add(&gTKRecallBlocked,1,__ATOMIC_RELAXED);TKArchiveRecalledRecord(record);TKRefreshRecallLabels();return;}
+    if(blocked){__atomic_fetch_add(&gTKRecallBlocked,1,__ATOMIC_RELAXED);if(archivedRecord)TKArchiveRecalledRecord(archivedRecord);TKRefreshRecallLabels();return;}
     if(orig)((void(*)(id,SEL,int,id,unsigned long long))orig)(self,cmd,chat,peer,seq);
 }
 static NSArray *TKPreserveUpdateRecords(id records) {
