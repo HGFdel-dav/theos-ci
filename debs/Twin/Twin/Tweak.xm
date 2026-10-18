@@ -15,6 +15,8 @@
 #import "TWArcMenuView.h"
 #import "TWRemember.h"
 #import "TWProbe.h"
+#import "TWContainerExport.h"
+#import "TWSceneHost.h"
 
 #import <objc/runtime.h>
 #import <mach-o/dyld.h>
@@ -95,6 +97,7 @@ __attribute__((constructor)) static void TWInitialize(void) {
         TWInstallParallelXHook();
         [[TWArcCoordinator sharedInstance] start];
         TWRememberStart();
+        TWContainerExportStart();   // Crane 容器清单导出给面板（跨进程）
         TWProbeStart();   // 只在真机 dump ParallelX 的可用接口，写文件供分析
     });
 }

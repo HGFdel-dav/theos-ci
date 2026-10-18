@@ -110,8 +110,31 @@ static NSString *TWCraneContainerName(NSString *containerID, NSString *bundleID)
     return containerID;
 }
 
+// 面板侧读 SpringBoard 导出的容器缓存。
+// 面板跑在 Settings 进程，CraneManager 只存在于 SpringBoard；直接调用永远是空的。
+static NSDictionary *TWCraneContainerCache(void) {
+    static NSDictionary *cache;
+    static NSTimeInterval stamp;
+    NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+    if (cache && now - stamp < 1.0) return cache;
+    cache = [NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/Library/Twin/crane-containers.plist"];
+    stamp = now;
+    return cache;
+}
+
 // Crane 里"有非默认容器"的应用。
 static NSArray<NSString *> *TWCraneAppsWithContainers(void) {
+    NSDictionary *cache = TWCraneContainerCache();
+    if ([cache[@"apps"] isKindOfClass:NSArray.class]) {
+        NSMutableArray<NSString *> *apps = [NSMutableArray array];
+        for (NSDictionary *app in (NSArray *)cache[@"apps"]) {
+            if (![app isKindOfClass:NSDictionary.class]) continue;
+            NSString *bundleID = app[@"bundleID"];
+            if ([bundleID isKindOfClass:NSString.class] && [bundleID length]) [apps addObject:bundleID];
+        }
+        return apps;
+    }
+    // 缓存还没生成（SpringBoard 没跑过 Twin）：回退直接调用，兼容同进程场景。
     id list = TWCraneCall(@"identfiersOfApplicationsThatHaveNonDefaultContainers", @[]);
     NSMutableArray<NSString *> *apps = [NSMutableArray array];
     if ([list isKindOfClass:NSArray.class]) {
@@ -121,6 +144,20 @@ static NSArray<NSString *> *TWCraneAppsWithContainers(void) {
 }
 
 static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
+    NSDictionary *cache = TWCraneContainerCache();
+    if ([cache[@"apps"] isKindOfClass:NSArray.class]) {
+        for (NSDictionary *app in (NSArray *)cache[@"apps"]) {
+            if (![app isKindOfClass:NSDictionary.class]) continue;
+            if (![app[@"bundleID"] isEqual:bundleID]) continue;
+            NSMutableArray<NSString *> *ids = [NSMutableArray array];
+            for (NSDictionary *c in (NSArray *)app[@"containers"]) {
+                NSString *cid = c[@"id"];
+                if ([cid isKindOfClass:NSString.class] && [cid length]) [ids addObject:cid];
+            }
+            return ids;
+        }
+        return @[];
+    }
     id list = TWCraneCall(@"containerIdentifiersOfApplicationWithIdentifier:", @[bundleID ?: @""]);
     NSMutableArray<NSString *> *ids = [NSMutableArray array];
     if ([list isKindOfClass:NSArray.class]) {
