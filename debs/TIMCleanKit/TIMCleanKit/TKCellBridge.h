@@ -265,12 +265,15 @@ static void TKUpdateRecallLabel(UIView *cell) {
     // 1.0.19: 红包消息不贴标签——QQ 红包无法撤回，此前"恭喜发财"短文本模糊匹配会误贴到红包上。
     if(record && redElementFromRecord(record)) {label.hidden=YES;return;}
     if(TKCellHasRedPacketView(cell)){if(label)label.hidden=YES;return;}   // 1.0.23: 视图级兜底——关联错位时也不给红包贴标签
-    if(!TKAntiRecallEnabled()||!record||!TKWasRecalled(record)) { /* 2.0.3: 确认撤回就一定显示——不再要求有缓存内容 */
+    BOOL recalled=record?TKWasRecalled(record):NO; /* 2.0.9: 判定一次，下面日志复用 */
+    if(!TKAntiRecallEnabled()||!record||!recalled) { /* 2.0.3: 确认撤回就一定显示——不再要求有缓存内容 */
         /* 2.0.4: 修误贴——标签若属于"另一条消息"（当前匹配 record 不同于标签记录的那条），必须隐藏；
            仅当仍是同一条消息（偶发判定波动）才保留不动。 */
         id labelRecord=label?objc_getAssociatedObject(label,&kTKLabelRecordKey):nil;
         if(label&&!label.hidden&&record&&labelRecord==record)return;
         if(label&&!label.hidden){__atomic_fetch_add(&gTKLabelHidden,1,__ATOMIC_RELAXED);TKLabelDiag([NSString stringWithFormat:@"隐:%@%@",record?TKLabelBriefText(record):@"无记录",highConfidence?@"(高可信)":@"(文本匹配)"]);}
+        else if(!record&&TKAntiRecallEnabled()) TKLabelDiag(@"未贴:record为空(绑定失败)");
+        else if(record&&!recalled) TKLabelDiag([NSString stringWithFormat:@"未贴:未标记 %@%@",TKLabelBriefText(record),highConfidence?@"(高可信)":@"(文本匹配)"]);
         label.hidden=YES;if(label)label.frame=CGRectZero;return;
     }
     if(!label) {

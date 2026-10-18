@@ -20,11 +20,26 @@ static void TKBridgeRecall(id self,SEL cmd,int chat,id peer,unsigned long long s
         TKRecallFactsLoad();
         NSString *fact=TKRecallFactKey(chat,peer,seq);
         TKRecallFactAdd(fact);
-        TKRecallEvent([NSString stringWithFormat:@"onMsgRecall 记录:%@(仅诊断,标记由setRecallTime≈now驱动)",fact]);
+        /* 2.0.9: 恢复 seq 匹配做补充标记，但必须先用 record 自己的 recallTime 校验——
+           撤回通知的 seq 与消息 msgSeq 存在偏移，盲匹配会贴到相邻消息上。 */
+        long long now=(long long)[[NSDate date] timeIntervalSince1970];
+        [gTKCacheLock lock];NSArray *savedRecords=[gTKMessageCache.allValues copy];[gTKCacheLock unlock];
+        BOOL marked=NO;
+        for(NSDictionary *saved in savedRecords) {
+            id record=saved[@"record"];
+            if(record && TKScalar(record,@"chatType","i")==chat && (unsigned long long)TKScalar(record,@"msgSeq","q")==seq && [saved[@"elements"] count]) {
+                long long rt=TKScalar(record,@"recallTime","q");
+                if(rt>0 && rt>now-3600) {
+                    TKMarkRecall(record);TKArchiveRecalledRecord(record);marked=YES;
+                    TKRecallEvent([NSString stringWithFormat:@"onMsgRecall 校验标记(recallTime=%lld):%@",rt,TKRecallTextOf(record)]);
+                } else {
+                    TKRecallEvent([NSString stringWithFormat:@"onMsgRecall seq=%llu 匹配到但recallTime=%lld,不标(防偏移)",seq,rt]);
+                }
+            }
+        }
+        if(!marked)TKRecallEvent([NSString stringWithFormat:@"onMsgRecall %@(无校验通过的record)",fact]);
     }
-    /* 2.0.7: 不再用 seq 在缓存里匹配并标记——真机实锤 seq 与 msgSeq 有偏移，
-       "哈哈好的"被撤回却标到"好好说说"。标记统一由 setRecallTime(value≈now) 驱动。
-       这里只刷新，让刚被标记的 cell 立刻出标签。 */
+    /* 2.0.7: 标记统一由"撤回时间"驱动；这里刷新让刚标记的 cell 立刻出标签。 */
     if(TKAntiRecallEnabled())TKRefreshRecallLabels();
     if(orig)((void(*)(id,SEL,int,id,unsigned long long))orig)(self,cmd,chat,peer,seq);
 }
