@@ -113,15 +113,6 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
             [sp propertyForKey:@"height"]];
 }
 
-- (NSInteger)numberOfRowsInSection:(NSInteger)section {
-    NSInteger n = 0;
-    if ([super respondsToSelector:@selector(numberOfRowsInSection:)]) {
-        n = [super numberOfRowsInSection:section];
-    }
-    TWDiagLog(@"numberOfRowsInSection sec=%ld -> %ld", (long)section, (long)n);
-    return n;
-}
-
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
     CGFloat h = [super tableView:tableView heightForRowAtIndexPath:indexPath];
     PSSpecifier *sp = [self specifierAtIndexPath:indexPath];
