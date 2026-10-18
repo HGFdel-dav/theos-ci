@@ -13,6 +13,7 @@
 //     com.moxuan.parallelx.capture-updated
 // 让 ParallelX 运行时实例热刷新（CFNotificationCenter Darwin 通知）。
 #import <Foundation/Foundation.h>
+#import <CoreGraphics/CoreGraphics.h>  // CGFloat
 
 NS_ASSUME_NONNULL_BEGIN
 
