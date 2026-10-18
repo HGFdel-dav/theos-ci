@@ -246,7 +246,7 @@ static void TKUpdateRecallLabel(UIView *cell) {
     // 1.0.19: 红包消息不贴标签——QQ 红包无法撤回，此前"恭喜发财"短文本模糊匹配会误贴到红包上。
     if(record && redElementFromRecord(record)) {label.hidden=YES;return;}
     if(TKCellHasRedPacketView(cell)){if(label)label.hidden=YES;return;}   // 1.0.23: 视图级兜底——关联错位时也不给红包贴标签
-    if(!TKAntiRecallEnabled()||!record||!TKWasRecalled(record)||!TKHasCachedContent(record)) {
+    if(!TKAntiRecallEnabled()||!record||!TKWasRecalled(record)) { /* 2.0.3: 确认撤回就一定显示——不再要求有缓存内容 */
         if(label&&!label.hidden&&record)return;   // 1.0.22: 关联仍在时偶发判定失败不隐藏已显示的标签
         label.hidden=YES;return;
     }

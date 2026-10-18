@@ -17,17 +17,24 @@ static void TKRestoreRecord(id record) {
 static void TKBridgeRecall(id self,SEL cmd,int chat,id peer,unsigned long long seq) {
     IMP orig=OrigIMP(TKListenerClass,cmd);BOOL blocked=NO;id archivedRecord=nil; /* 2.0: 供磁盘归档使用 */
     if(TKAntiRecallEnabled()&&[peer isKindOfClass:NSString.class]&&seq) {
+        /* 2.0.3: 撤回事实独立记录——不依赖缓存是否命中（这正是"三条撤回只标出一条"的原因：通知到了但缓存找不到就不记） */
+        TKRecallFactsLoad();
+        NSString *fact=TKRecallFactKey(chat,peer,seq);
+        TKRecallFactAdd(fact);
+        TKRecallEvent([NSString stringWithFormat:@"onMsgRecall 记录:%@",fact]);
         [gTKCacheLock lock];NSArray *savedRecords=[gTKMessageCache.allValues copy];[gTKCacheLock unlock];
         for(NSDictionary *saved in savedRecords) {
             id record=saved[@"record"];
-            if(TKScalar(record,@"chatType","i")==chat &&
-               [TKObjectCall(record,@"peerUid") isEqual:peer] &&
-               (unsigned long long)TKScalar(record,@"msgSeq","q")==seq && [saved[@"elements"] count]) {
+            /* 2.0.3: 放宽匹配——去掉 peerUid 硬条件（该字段在群/特殊会话不稳定），chatType+msgSeq 已唯一 */
+            if(TKScalar(record,@"chatType","i")==chat && (unsigned long long)TKScalar(record,@"msgSeq","q")==seq && [saved[@"elements"] count]) {
                 TKMarkRecall(record);TKRestoreRecord(record);blocked=YES;archivedRecord=record;
             }
         }
     }
-    if(blocked){__atomic_fetch_add(&gTKRecallBlocked,1,__ATOMIC_RELAXED);if(archivedRecord)TKArchiveRecalledRecord(archivedRecord);TKRecallEvent([NSString stringWithFormat:@"onMsgRecall 标注:%@",archivedRecord?TKRecallTextOf(archivedRecord):@""]);TKRefreshRecallLabels();return;}
+    if(blocked){__atomic_fetch_add(&gTKRecallBlocked,1,__ATOMIC_RELAXED);if(archivedRecord)TKArchiveRecalledRecord(archivedRecord);TKRecallEvent([NSString stringWithFormat:@"onMsgRecall 标注:%@",archivedRecord?TKRecallTextOf(archivedRecord):@""]);}
+    else if(TKAntiRecallEnabled()){TKRecallEvent(@"onMsgRecall 无缓存内容(事实已记,刷新后打标)");}
+    if(TKAntiRecallEnabled())TKRefreshRecallLabels(); /* 2.0.3: 无条件刷新——没缓存内容的消息也凭撤回事实立刻打标 */
+    if(blocked)return;
     if(orig)((void(*)(id,SEL,int,id,unsigned long long))orig)(self,cmd,chat,peer,seq);
 }
 static NSArray *TKPreserveUpdateRecords(id records) {
@@ -36,11 +43,17 @@ static NSArray *TKPreserveUpdateRecords(id records) {
     NSMutableArray *result=[NSMutableArray arrayWithCapacity:[records count]];
     for(id record in records) {
         if(![record isKindOfClass:recordClass]){[result addObject:record];continue;}
-        // 2.0.2: 只有"已由撤回通知标记过"的消息才恢复；原 recallTime>0 条件在 TIM 上误报严重（正常消息也会被写正数）
-        if(TKAntiRecallEnabled()&&TKWasRecalled(record)&&TKHasCachedContent(record)) {
-            TKRestoreRecord(record);
-            id old=TKCachedMessage(record)[@"record"];
-            if(old){TKMarkRecall(old);TKRestoreRecord(old);[result addObject:old];}else [result addObject:record];
+        // 2.0.3: 只要确认被撤回（事实记录/缓存标记）就处理——有快照恢复内容，无快照用归档重建；都没有也保留标记
+        if(TKAntiRecallEnabled()&&TKWasRecalled(record)) {
+            TKMarkRecall(record);
+            if(TKHasCachedContent(record)) {
+                TKRestoreRecord(record);
+                id old=TKCachedMessage(record)[@"record"];
+                if(old){TKMarkRecall(old);TKRestoreRecord(old);[result addObject:old];}else [result addObject:record];
+            } else {
+                TKRestoreFromArchive(record);
+                [result addObject:record];
+            }
         } else {TKRememberMessage(record);[result addObject:record];}
     }
     return [result copy];

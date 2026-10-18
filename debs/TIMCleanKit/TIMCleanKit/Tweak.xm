@@ -571,6 +571,72 @@ static NSString *TKMessageIdentity(id record) {
     int chat=(int)TKScalar(record,@"chatType","i");
     return [peer isKindOfClass:NSString.class]&&mid?[NSString stringWithFormat:@"%d:%@:%lld",chat,peer,mid]:nil;
 }
+/* 2.0.3: 撤回事实——onMsgRecall 通知一到达就把"哪个会话哪条序号被撤回了"记下来，
+   完全不依赖消息内容缓存是否命中。显示时凭事实打标，退出重进/重启后从磁盘恢复。 */
+static NSMutableSet *gTKRecallFacts=nil;
+static NSString *TKRecallFactKey(int chat,NSString *peer,unsigned long long seq) {
+    return (seq&&[peer isKindOfClass:NSString.class])?[NSString stringWithFormat:@"%d:%@:%llu",chat,peer,seq]:nil;
+}
+static NSString *TKRecallFactKeyOfRecord(id record) {
+    NSString *peer=TKObjectCall(record,@"peerUid");unsigned long long seq=(unsigned long long)TKScalar(record,@"msgSeq","q");
+    int chat=(int)TKScalar(record,@"chatType","i");
+    return TKRecallFactKey(chat,peer,seq);
+}
+static NSString *TKRecallStorePath(void) {
+    NSString *base=[NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory,NSUserDomainMask,YES) firstObject];
+    if(!base)return nil;
+    NSString *dir=[base stringByAppendingPathComponent:@"TIMCleanKit"];
+    [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:NULL];
+    return [dir stringByAppendingPathComponent:@"recall-facts.json"];
+}
+static void TKRecallFactsLoad(void) {
+    static BOOL loaded=NO;if(loaded)return;loaded=YES;
+    @try {
+        NSString *path=TKRecallStorePath();if(!path)return;
+        NSData *d=[NSData dataWithContentsOfFile:path];if(!d)return;
+        id obj=[NSJSONSerialization JSONObjectWithData:d options:0 error:NULL];
+        NSArray *facts=[obj isKindOfClass:NSDictionary.class]?obj[@"facts"]:([obj isKindOfClass:NSArray.class]?obj:nil);
+        if(![facts isKindOfClass:NSArray.class]||!facts.count)return;
+        [gTKCacheLock lock];
+        if(!gTKRecallFacts)gTKRecallFacts=[NSMutableSet new];
+        for(id f in facts)if([f isKindOfClass:NSString.class])[gTKRecallFacts addObject:f];
+        [gTKCacheLock unlock];
+    } @catch(NSException *ignored) {}
+}
+static void TKRecallFactsSaveAsync(void) {
+    [gTKCacheLock lock];NSArray *snapshot=gTKRecallFacts.allObjects;[gTKCacheLock unlock];
+    NSString *path=TKRecallStorePath();if(!path)return;
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND,0),^{
+        @try {
+            NSData *d=[NSJSONSerialization dataWithJSONObject:@{@"facts":snapshot,@"updated":@([[NSDate date] timeIntervalSince1970])} options:0 error:NULL];
+            [d writeToFile:path atomically:YES];
+        } @catch(NSException *ignored) {}
+    });
+}
+static BOOL TKRecallFactsContains(NSString *fact) {
+    if(!fact)return NO;
+    [gTKCacheLock lock];BOOL r=[gTKRecallFacts containsObject:fact];[gTKCacheLock unlock];
+    return r;
+}
+static void TKRecallFactAdd(NSString *fact) {
+    if(!fact)return;
+    [gTKCacheLock lock];
+    if(!gTKRecallFacts)gTKRecallFacts=[NSMutableSet new];
+    [gTKRecallFacts addObject:fact];
+    if(gTKRecallFacts.count>10000)[gTKRecallFacts removeAllObjects];
+    [gTKCacheLock unlock];
+    TKRecallFactsSaveAsync();
+}
+static NSDictionary *TKRecallArchiveCache(void) {
+    static NSDictionary *arch=nil;static BOOL loaded=NO;
+    if(!loaded){loaded=YES;@try{
+        NSString *path=TKRecallStorePath();if(path){
+            path=[[path stringByDeletingLastPathComponent] stringByAppendingPathComponent:@"recall-archive.json"];
+            NSData *d=[NSData dataWithContentsOfFile:path];
+            if(d)arch=[NSJSONSerialization JSONObjectWithData:d options:0 error:NULL];}
+    }@catch(NSException *ignored){}}
+    return [arch isKindOfClass:NSDictionary.class]?arch:nil;
+}
 static NSDictionary *TKCachedMessage(id record) {
     NSString *identity=TKMessageIdentity(record);if(!identity)return nil;
     [gTKCacheLock lock];NSDictionary *saved=gTKMessageCache[identity];[gTKCacheLock unlock];
@@ -578,10 +644,13 @@ static NSDictionary *TKCachedMessage(id record) {
 }
 static BOOL TKHasCachedContent(id record) {return [TKCachedMessage(record)[@"elements"] count]>0;}
 static BOOL TKWasRecalled(id record) {
+    if(!record)return NO;
     if([objc_getAssociatedObject(record,&kTKRecallFlag) boolValue])return YES;
-    NSString *identity=TKMessageIdentity(record);if(!identity)return NO;
-    [gTKCacheLock lock];BOOL recalled=[gTKRecalledIDs containsObject:identity];[gTKCacheLock unlock];
-    return recalled;
+    NSString *identity=TKMessageIdentity(record);
+    [gTKCacheLock lock];BOOL recalled=identity&&[gTKRecalledIDs containsObject:identity];[gTKCacheLock unlock];
+    if(recalled)return YES;
+    TKRecallFactsLoad();
+    return TKRecallFactsContains(TKRecallFactKeyOfRecord(record));
 }
 static void TKMarkRecall(id record) {
     objc_setAssociatedObject(record,&kTKRecallFlag,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -589,17 +658,50 @@ static void TKMarkRecall(id record) {
     [gTKCacheLock lock];
     if(!gTKRecalledIDs)gTKRecalledIDs=[NSMutableSet new];
     if(![gTKRecalledIDs containsObject:identity]){[gTKRecalledIDs addObject:identity];__atomic_fetch_add(&gTKRecallEvents,1,__ATOMIC_RELAXED);}
-    if(gTKRecalledIDs.count>2000)[gTKRecalledIDs removeAllObjects];
+    if(gTKRecalledIDs.count>10000)[gTKRecalledIDs removeAllObjects];
     [gTKCacheLock unlock];
+}
+/* 2.0.3: 无缓存快照但磁盘归档有文本——重建文本元素恢复内容（跨重启） */
+static BOOL TKRestoreFromArchive(id record) {
+    @try {
+        NSDictionary *arch=TKRecallArchiveCache();if(!arch)return NO;
+        NSString *identity=TKMessageIdentity(record);if(!identity)return NO;
+        id item=arch[identity];
+        if(![item isKindOfClass:NSDictionary.class])return NO;
+        NSString *text=item[@"text"];
+        if(![text isKindOfClass:NSString.class]||!text.length)return NO;
+        Class elCls=NSClassFromString(@"OCMsgElement"),txCls=NSClassFromString(@"OCTextElement");
+        if(!elCls||!txCls)return NO;
+        id tx=[[txCls alloc] init],el=[[elCls alloc] init];
+        SEL setContent=NSSelectorFromString(@"setContent:");
+        SEL setType=NSSelectorFromString(@"setElementType:");
+        SEL setTextEle=NSSelectorFromString(@"setTextElement:");
+        if(!tx||!el||!TKMethodABI(tx,setContent,"v24@0:8@16")||!TKMethodABI(el,setType,"v20@0:8i16")||!TKMethodABI(el,setTextEle,"v24@0:8@16"))return NO;
+        ((void(*)(id,SEL,id))objc_msgSend)(tx,setContent,[text copy]);
+        ((void(*)(id,SEL,int))objc_msgSend)(el,setType,1);
+        ((void(*)(id,SEL,id))objc_msgSend)(el,setTextEle,tx);
+        IMP original=TKOriginalIMP(TKRecord(@"OCMsgRecord",@selector(setElements:)));
+        if(!original)return NO;
+        ((void(*)(id,SEL,id))original)(record,@selector(setElements:),@[el]);
+        original=TKOriginalIMP(TKRecord(@"OCMsgRecord",@selector(setRecallTime:)));
+        if(original)((void(*)(id,SEL,long long))original)(record,@selector(setRecallTime:),0);
+        [gTKCacheLock lock];
+        if(!gTKMessageCache)gTKMessageCache=[NSMutableDictionary new];
+        if(!gTKRecentMessages)gTKRecentMessages=[NSMutableArray new];
+        if(!gTKMessageCache[identity]){gTKMessageCache[identity]=@{@"record":record,@"elements":@[el],@"msgType":@((int)TKScalar(record,@"msgType","i"))};[gTKRecentMessages addObject:identity];}
+        [gTKCacheLock unlock];
+        __atomic_fetch_add(&gTKRecallRestores,1,__ATOMIC_RELAXED);
+        TKRecallEvent([NSString stringWithFormat:@"归档恢复:%@",text.length>12?[text substringToIndex:12]:text]);
+        return YES;
+    } @catch(NSException *ignored) {}
+    return NO;
 }
 static void TKRememberMessage(id record) {
     if(!record || TKWasRecalled(record))return;
     NSString *identity=TKMessageIdentity(record);if(!identity)return;
     NSArray *elements=TKObjectCall(record,@"elements");
     if(![elements isKindOfClass:NSArray.class]||!elements.count)return;
-    TKHookRecord *recallHook=TKRecord(@"OCMsgRecord",@selector(recallTime));
-    IMP recall=TKOriginalIMP(recallHook);
-    if(recall && ((long long(*)(id,SEL))recall)(record,@selector(recallTime))>0)return;
+    /* 2.0.3: 不再按 recallTime>0 跳过——该字段不代表被撤回（TIM 正常流程也会写正数），跳过导致大量消息无法缓存、撤回时无内容可恢复 */
     NSMutableArray *snapshot=[NSMutableArray new];
     for(id element in elements){
         id copy=[element conformsToProtocol:@protocol(NSCopying)]?[element copy]:element;
@@ -612,7 +714,7 @@ static void TKRememberMessage(id record) {
     if(!gTKMessageCache[identity]) {
         gTKMessageCache[identity]=@{@"record":record,@"elements":[snapshot copy],@"msgType":@(type)};
         [gTKRecentMessages addObject:identity];
-        if(gTKRecentMessages.count>500){NSString *old=gTKRecentMessages.firstObject;[gTKRecentMessages removeObjectAtIndex:0];[gTKMessageCache removeObjectForKey:old];[gTKRecalledIDs removeObject:old];}
+        if(gTKRecentMessages.count>1500){NSString *old=gTKRecentMessages.firstObject;[gTKRecentMessages removeObjectAtIndex:0];[gTKMessageCache removeObjectForKey:old];} /* 2.0.3: 不在于此删撤回标记——标记的生命周期独立于消息缓存 */
     }
     [gTKCacheLock unlock];
 }
@@ -819,8 +921,8 @@ static NSDictionary *TKRuntimeSnapshot(void) {
         unsigned long long hits=__atomic_load_n(&r->hits,__ATOMIC_RELAXED);
         [rows addObject:@{@"name":[NSString stringWithFormat:@"%s\n%s",r->className,sel_getName(r->selector)],@"state":hits?@"已实际调用":states[MIN(state,4)],@"hits":@(hits),@"lastHit":@""}];
     }
-    return @{@"engine":@{@"status":gTKEngineStatus?:@"未知",@"listenerRegistered":@(gTKListenerRegistered),@"received":@(gTKReceived),@"claimRequests":@(gTKAutoAttempts),@"claimCallbacks":@(gTKAutoCompleted),@"claimFailures":@(gTKAutoErrors),@"repeatRequests":@(gTKRepeats),@"repeatFailures":@(gTKRepeatFailures),@"messageCellBinds":@(gTKMessageBinds),@"gestureTaps":@(gTKGestureTaps),@"gestureNoRecord":@(gTKGestureNoRecord),@"recordReadFailures":@(gTKRecordReadFailures),@"recallBlocked":@(__atomic_load_n(&gTKRecallBlocked,__ATOMIC_RELAXED)),@"hardwareReads":@(__atomic_load_n(&gTKHardwareReads,__ATOMIC_RELAXED)),@"recallEvents":@(__atomic_load_n(&gTKRecallEvents,__ATOMIC_RELAXED)),@"recallRestores":@(__atomic_load_n(&gTKRecallRestores,__ATOMIC_RELAXED)),@"lastRedType":@(gTKLastRedType),@"lastRedAmount":@(gTKLastRedAmount),@"skipCommonType":@(gTKSkipCommonType),@"skipUnknownAmount":@(gTKSkipUnknownAmount),@"layoutAssociations":@(gTKLayoutAssociations),@"layoutMatchFails":@(gTKLayoutMatchFails),@"noRecordNoCell":@(gTKNoRecordNoCell),@"noRecordAssocFail":@(gTKNoRecordAssocFail),@"noRecordMatchFail":@(gTKNoRecordMatchFail),@"lastHitInfo":TKStrSafe(gTKLastHitInfo),@"textProbe":TKStrSafe(gTKTextProbe),@"redProbe":(gTKLastRedProbe?:@"")},@"redTypeHist":@[ @(gTKRedTypeHist[0]),@(gTKRedTypeHist[1]),@(gTKRedTypeHist[2]),@(gTKRedTypeHist[3]),@(gTKRedTypeHist[4]),@(gTKRedTypeHist[5]),@(gTKRedTypeHist[6]),@(gTKRedTypeHist[7]),@(gTKRedTypeHist[8]),@(gTKRedTypeHist[9]),@(gTKRedTypeHist[10]),@(gTKRedTypeHist[11]),@(gTKRedTypeHist[12]),@(gTKRedTypeHist[13]),@(gTKRedTypeHist[14]),@(gTKRedTypeHist[15]) ],@"version":@"2.0.2",@"process":[NSString stringWithFormat:@"TIM %@ · PID %d · 注册检查 %u 轮\nUIDevice.model = %@",([NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"]?:@"?"),getpid(),gRegistrationRounds,UIDevice.currentDevice.model],@"hookRows":rows,@"classProbe":gTKClassProbeCache,@"redEvents":(gTKRedEvents?[gTKRedEvents copy]:@[]),@"recallLog":(gTKRecallLog?[gTKRecallLog copy]:@[]),@"setRecallPositive":@(gTKSetRecallPos),@"warnings":@[@"调用次数只能证明该入口被调用，不能证明防撤回或过滤效果。",@"自动领取：只处理前台两分钟内新收到的红包，不保证后台唤醒；完成回调不等于到账，请核对结果。",@"防撤回：本次进程缓存最近500条收到/显示的消息；启动前丢失内容无法恢复。"]};
-    } @catch(NSException *e) { return @{@"engine":@{@"status":@"诊断构造异常（已捕获，未影响聊天）",@"version":@"2.0.2"}}; }
+    return @{@"engine":@{@"status":gTKEngineStatus?:@"未知",@"listenerRegistered":@(gTKListenerRegistered),@"received":@(gTKReceived),@"claimRequests":@(gTKAutoAttempts),@"claimCallbacks":@(gTKAutoCompleted),@"claimFailures":@(gTKAutoErrors),@"repeatRequests":@(gTKRepeats),@"repeatFailures":@(gTKRepeatFailures),@"messageCellBinds":@(gTKMessageBinds),@"gestureTaps":@(gTKGestureTaps),@"gestureNoRecord":@(gTKGestureNoRecord),@"recordReadFailures":@(gTKRecordReadFailures),@"recallBlocked":@(__atomic_load_n(&gTKRecallBlocked,__ATOMIC_RELAXED)),@"hardwareReads":@(__atomic_load_n(&gTKHardwareReads,__ATOMIC_RELAXED)),@"recallEvents":@(__atomic_load_n(&gTKRecallEvents,__ATOMIC_RELAXED)),@"recallRestores":@(__atomic_load_n(&gTKRecallRestores,__ATOMIC_RELAXED)),@"lastRedType":@(gTKLastRedType),@"lastRedAmount":@(gTKLastRedAmount),@"skipCommonType":@(gTKSkipCommonType),@"skipUnknownAmount":@(gTKSkipUnknownAmount),@"layoutAssociations":@(gTKLayoutAssociations),@"layoutMatchFails":@(gTKLayoutMatchFails),@"noRecordNoCell":@(gTKNoRecordNoCell),@"noRecordAssocFail":@(gTKNoRecordAssocFail),@"noRecordMatchFail":@(gTKNoRecordMatchFail),@"lastHitInfo":TKStrSafe(gTKLastHitInfo),@"textProbe":TKStrSafe(gTKTextProbe),@"redProbe":(gTKLastRedProbe?:@"")},@"redTypeHist":@[ @(gTKRedTypeHist[0]),@(gTKRedTypeHist[1]),@(gTKRedTypeHist[2]),@(gTKRedTypeHist[3]),@(gTKRedTypeHist[4]),@(gTKRedTypeHist[5]),@(gTKRedTypeHist[6]),@(gTKRedTypeHist[7]),@(gTKRedTypeHist[8]),@(gTKRedTypeHist[9]),@(gTKRedTypeHist[10]),@(gTKRedTypeHist[11]),@(gTKRedTypeHist[12]),@(gTKRedTypeHist[13]),@(gTKRedTypeHist[14]),@(gTKRedTypeHist[15]) ],@"version":@"2.0.3",@"process":[NSString stringWithFormat:@"TIM %@ · PID %d · 注册检查 %u 轮\nUIDevice.model = %@",([NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"]?:@"?"),getpid(),gRegistrationRounds,UIDevice.currentDevice.model],@"hookRows":rows,@"classProbe":gTKClassProbeCache,@"redEvents":(gTKRedEvents?[gTKRedEvents copy]:@[]),@"recallLog":(gTKRecallLog?[gTKRecallLog copy]:@[]),@"setRecallPositive":@(gTKSetRecallPos),@"warnings":@[@"调用次数只能证明该入口被调用，不能证明防撤回或过滤效果。",@"自动领取：只处理前台两分钟内新收到的红包，不保证后台唤醒；完成回调不等于到账，请核对结果。",@"防撤回：撤回检测为独立记录（退出重进/重启仍显示标记）；消息内容尽力恢复（进程缓存1500条 / 磁盘归档）。"]};
+    } @catch(NSException *e) { return @{@"engine":@{@"status":@"诊断构造异常（已捕获，未影响聊天）",@"version":@"2.0.3"}}; }
 }
 
 
