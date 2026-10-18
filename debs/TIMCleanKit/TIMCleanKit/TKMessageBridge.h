@@ -28,7 +28,7 @@ static void TKBridgeRecall(id self,SEL cmd,int chat,id peer,unsigned long long s
         for(NSDictionary *saved in savedRecords) {
             id record=saved[@"record"];
             if(record && TKScalar(record,@"chatType","i")==chat && (unsigned long long)TKScalar(record,@"msgSeq","q")==seq && [saved[@"elements"] count]) {
-                long long rt=TKScalar(record,@"recallTime","q");
+                long long rt=TKRecordRecallTimeRaw(record); /* 2.1.0: Raw 读，防递归 */
                 if(rt>0 && rt>now-3600) {
                     TKMarkRecall(record);TKArchiveRecalledRecord(record);marked=YES;
                     TKRecallEvent([NSString stringWithFormat:@"onMsgRecall 校验标记(recallTime=%lld):%@",rt,TKRecallTextOf(record)]);

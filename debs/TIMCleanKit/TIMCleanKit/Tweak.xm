@@ -608,6 +608,16 @@ static NSString *TKMessageIdentity(id record) {
     NSArray *keys=TKMessageIdentityKeys(record);
     return keys.firstObject;
 }
+/* 2.1.0: 直接读"撤回时间"，走 hook 之前的原 IMP。
+   绝不能用 TKScalar/常规 getter 读——recallTime getter 被 AR_recallTime 替换，
+   而 AR_recallTime 又调用 TKWasRecalled，会与本函数形成无限递归（2.0.9 闪退根因）。 */
+static long long TKRecordRecallTimeRaw(id record) {
+    static SEL sel;static dispatch_once_t once;
+    dispatch_once(&once,^{sel=NSSelectorFromString(@"recallTime");});
+    IMP orig=OrigIMP(@"OCMsgRecord",sel);
+    if(!orig)return 0;
+    return ((long long(*)(id,SEL))orig)(record,sel);
+}
 /* 2.0.3: 撤回事实——onMsgRecall 通知一到达就把"哪个会话哪条序号被撤回了"记下来，
    完全不依赖消息内容缓存是否命中。显示时凭事实打标，退出重进/重启后从磁盘恢复。 */
 static NSMutableSet *gTKRecallFacts=nil;
@@ -699,9 +709,10 @@ static BOOL TKWasRecalled(id record) {
         if(hit)return YES;
     }
     /* 2.0.9: 直接看 TIM 自己写在 record 上的撤回时间——1 小时内写入的视为真撤回；
-       历史同步的旧值不认（避免把很早以前正常消息上的字段当撤回）。 */
-    long long rt=TKScalar(record,@"recallTime","q");
-    if(rt>0 && rt>(long long)[[NSDate date] timeIntervalSince1970]-3600) {TKMarkRecall(record);return YES;}
+       历史同步的旧值不认（避免把很早以前正常消息上的字段当撤回）。
+       2.1.0: 用 Raw 读（走原 IMP，避免与 AR_recallTime hook 形成无限递归）；只判定不写标记。 */
+    long long rt=TKRecordRecallTimeRaw(record);
+    if(rt>0 && rt>(long long)[[NSDate date] timeIntervalSince1970]-3600)return YES;
     TKRecallArchiveCache(); /* 2.0.7: 懒装载 v>=2 归档 identity（重启后标签保留；旧版归档不复活误标） */
     if(keys.count) {
         [gTKCacheLock lock];BOOL hit2=NO;for(NSString *k in keys){if([gTKRecalledIDs containsObject:k]){hit2=YES;break;}}[gTKCacheLock unlock];
@@ -982,8 +993,8 @@ static NSDictionary *TKRuntimeSnapshot(void) {
         unsigned long long hits=__atomic_load_n(&r->hits,__ATOMIC_RELAXED);
         [rows addObject:@{@"name":[NSString stringWithFormat:@"%s\n%s",r->className,sel_getName(r->selector)],@"state":hits?@"已实际调用":states[MIN(state,4)],@"hits":@(hits),@"lastHit":@""}];
     }
-    return @{@"engine":@{@"status":gTKEngineStatus?:@"未知",@"listenerRegistered":@(gTKListenerRegistered),@"received":@(gTKReceived),@"claimRequests":@(gTKAutoAttempts),@"claimCallbacks":@(gTKAutoCompleted),@"claimFailures":@(gTKAutoErrors),@"repeatRequests":@(gTKRepeats),@"repeatFailures":@(gTKRepeatFailures),@"messageCellBinds":@(gTKMessageBinds),@"gestureTaps":@(gTKGestureTaps),@"gestureNoRecord":@(gTKGestureNoRecord),@"recordReadFailures":@(gTKRecordReadFailures),@"recallBlocked":@(__atomic_load_n(&gTKRecallBlocked,__ATOMIC_RELAXED)),@"hardwareReads":@(__atomic_load_n(&gTKHardwareReads,__ATOMIC_RELAXED)),@"recallEvents":@(__atomic_load_n(&gTKRecallEvents,__ATOMIC_RELAXED)),@"recallRestores":@(__atomic_load_n(&gTKRecallRestores,__ATOMIC_RELAXED)),@"lastRedType":@(gTKLastRedType),@"lastRedAmount":@(gTKLastRedAmount),@"skipCommonType":@(gTKSkipCommonType),@"skipUnknownAmount":@(gTKSkipUnknownAmount),@"layoutAssociations":@(gTKLayoutAssociations),@"layoutMatchFails":@(gTKLayoutMatchFails),@"noRecordNoCell":@(gTKNoRecordNoCell),@"noRecordAssocFail":@(gTKNoRecordAssocFail),@"noRecordMatchFail":@(gTKNoRecordMatchFail),@"lastHitInfo":TKStrSafe(gTKLastHitInfo),@"textProbe":TKStrSafe(gTKTextProbe),@"redProbe":(gTKLastRedProbe?:@"")},@"redTypeHist":@[ @(gTKRedTypeHist[0]),@(gTKRedTypeHist[1]),@(gTKRedTypeHist[2]),@(gTKRedTypeHist[3]),@(gTKRedTypeHist[4]),@(gTKRedTypeHist[5]),@(gTKRedTypeHist[6]),@(gTKRedTypeHist[7]),@(gTKRedTypeHist[8]),@(gTKRedTypeHist[9]),@(gTKRedTypeHist[10]),@(gTKRedTypeHist[11]),@(gTKRedTypeHist[12]),@(gTKRedTypeHist[13]),@(gTKRedTypeHist[14]),@(gTKRedTypeHist[15]) ],@"version":@"2.0.9",@"process":[NSString stringWithFormat:@"TIM %@ · PID %d · 注册检查 %u 轮\nUIDevice.model = %@",([NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"]?:@"?"),getpid(),gRegistrationRounds,UIDevice.currentDevice.model],@"hookRows":rows,@"classProbe":gTKClassProbeCache,@"redEvents":(gTKRedEvents?[gTKRedEvents copy]:@[]),@"recallLog":(gTKRecallLog?[gTKRecallLog copy]:@[]),@"setRecallPositive":@(gTKSetRecallPos),@"labelLog":(gTKLabelLog?[gTKLabelLog copy]:@[]),@"labelShown":@(__atomic_load_n(&gTKLabelShown,__ATOMIC_RELAXED)),@"labelHidden":@(__atomic_load_n(&gTKLabelHidden,__ATOMIC_RELAXED)),@"warnings":@[@"调用次数只能证明该入口被调用，不能证明防撤回或过滤效果。",@"自动领取：只处理前台两分钟内新收到的红包，不保证后台唤醒；完成回调不等于到账，请核对结果。",@"防撤回：撤回检测为独立记录（退出重进/重启仍显示标记）；消息内容尽力恢复（进程缓存1500条 / 磁盘归档）。"]};
-    } @catch(NSException *e) { return @{@"engine":@{@"status":@"诊断构造异常（已捕获，未影响聊天）",@"version":@"2.0.9"}}; }
+    return @{@"engine":@{@"status":gTKEngineStatus?:@"未知",@"listenerRegistered":@(gTKListenerRegistered),@"received":@(gTKReceived),@"claimRequests":@(gTKAutoAttempts),@"claimCallbacks":@(gTKAutoCompleted),@"claimFailures":@(gTKAutoErrors),@"repeatRequests":@(gTKRepeats),@"repeatFailures":@(gTKRepeatFailures),@"messageCellBinds":@(gTKMessageBinds),@"gestureTaps":@(gTKGestureTaps),@"gestureNoRecord":@(gTKGestureNoRecord),@"recordReadFailures":@(gTKRecordReadFailures),@"recallBlocked":@(__atomic_load_n(&gTKRecallBlocked,__ATOMIC_RELAXED)),@"hardwareReads":@(__atomic_load_n(&gTKHardwareReads,__ATOMIC_RELAXED)),@"recallEvents":@(__atomic_load_n(&gTKRecallEvents,__ATOMIC_RELAXED)),@"recallRestores":@(__atomic_load_n(&gTKRecallRestores,__ATOMIC_RELAXED)),@"lastRedType":@(gTKLastRedType),@"lastRedAmount":@(gTKLastRedAmount),@"skipCommonType":@(gTKSkipCommonType),@"skipUnknownAmount":@(gTKSkipUnknownAmount),@"layoutAssociations":@(gTKLayoutAssociations),@"layoutMatchFails":@(gTKLayoutMatchFails),@"noRecordNoCell":@(gTKNoRecordNoCell),@"noRecordAssocFail":@(gTKNoRecordAssocFail),@"noRecordMatchFail":@(gTKNoRecordMatchFail),@"lastHitInfo":TKStrSafe(gTKLastHitInfo),@"textProbe":TKStrSafe(gTKTextProbe),@"redProbe":(gTKLastRedProbe?:@"")},@"redTypeHist":@[ @(gTKRedTypeHist[0]),@(gTKRedTypeHist[1]),@(gTKRedTypeHist[2]),@(gTKRedTypeHist[3]),@(gTKRedTypeHist[4]),@(gTKRedTypeHist[5]),@(gTKRedTypeHist[6]),@(gTKRedTypeHist[7]),@(gTKRedTypeHist[8]),@(gTKRedTypeHist[9]),@(gTKRedTypeHist[10]),@(gTKRedTypeHist[11]),@(gTKRedTypeHist[12]),@(gTKRedTypeHist[13]),@(gTKRedTypeHist[14]),@(gTKRedTypeHist[15]) ],@"version":@"2.1.0",@"process":[NSString stringWithFormat:@"TIM %@ · PID %d · 注册检查 %u 轮\nUIDevice.model = %@",([NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"]?:@"?"),getpid(),gRegistrationRounds,UIDevice.currentDevice.model],@"hookRows":rows,@"classProbe":gTKClassProbeCache,@"redEvents":(gTKRedEvents?[gTKRedEvents copy]:@[]),@"recallLog":(gTKRecallLog?[gTKRecallLog copy]:@[]),@"setRecallPositive":@(gTKSetRecallPos),@"labelLog":(gTKLabelLog?[gTKLabelLog copy]:@[]),@"labelShown":@(__atomic_load_n(&gTKLabelShown,__ATOMIC_RELAXED)),@"labelHidden":@(__atomic_load_n(&gTKLabelHidden,__ATOMIC_RELAXED)),@"warnings":@[@"调用次数只能证明该入口被调用，不能证明防撤回或过滤效果。",@"自动领取：只处理前台两分钟内新收到的红包，不保证后台唤醒；完成回调不等于到账，请核对结果。",@"防撤回：撤回检测为独立记录（退出重进/重启仍显示标记）；消息内容尽力恢复（进程缓存1500条 / 磁盘归档）。"]};
+    } @catch(NSException *e) { return @{@"engine":@{@"status":@"诊断构造异常（已捕获，未影响聊天）",@"version":@"2.1.0"}}; }
 }
 
 
