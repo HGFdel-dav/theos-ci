@@ -53,7 +53,7 @@ extern NSString *_Nonnull const TWPrefsBundleName;   // @"TwinPrefs"
 // PSListController 的 detail 分发是私有方法（SDK 头文件里没有声明）。直接写
 // [super controllerForSpecifier:] 编不过，写死调用又可能 doesNotRecognizeSelector，
 // 所以这里做"确实实现了才转发"的守卫。
-id _Nullable TWSuperControllerForSpecifier(id host, id specifier);
+id _Nullable TWSuperControllerForSpecifier(id _Nonnull host, id _Nonnull specifier);
 
 NS_ASSUME_NONNULL_BEGIN
 
