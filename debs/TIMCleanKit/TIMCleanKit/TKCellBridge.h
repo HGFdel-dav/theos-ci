@@ -16,7 +16,7 @@ static BOOL TKIsUsableObjectPtr(id p) {
     if(isav % sizeof(void*) || isav<0x1000)return NO;
     return YES;
 }
-static char kTKBoundModelKey,kTKRecallLabelKey,kTKLabelRecordKey;
+static char kTKBoundModelKey,kTKRecallLabelKey,kTKLabelRecordKey,kTKLabelRetryKey;
 static NSHashTable *gTKVisibleCells;
 static unsigned long long gTKRecordReadFailures;
 static id TKSwiftRecordField(id vm) {
@@ -237,6 +237,18 @@ static BOOL TKCellHasRedPacketView(UIView *cell) {   // 1.0.23: 视图级红包�
     TKScanViewsForRedPacket(cell,&found);
     return found;
 }
+static void TKUpdateRecallLabel(UIView *cell);
+static void TKUpdateRecallLabelRetry(UIView *cell) {
+    /* 2.0.6: cell 刚重绑时布局未完成，锚定会失败且之后可能没有第二次评估——
+       0.2s 后（布局完成）补一次，标签就不会"要退出重进才显示"。 */
+    if(!cell)return;
+    if(objc_getAssociatedObject(cell,&kTKLabelRetryKey))return;
+    objc_setAssociatedObject(cell,&kTKLabelRetryKey,@YES,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.2*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+        objc_setAssociatedObject(cell,&kTKLabelRetryKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        TKUpdateRecallLabel(cell);
+    });
+}
 static NSString *TKLabelBriefText(id record) {
     id els=TKObjectCall(record,@"elements");
     NSString *t=TKRecordTextOfElements([els isKindOfClass:NSArray.class]?els:@[]);
@@ -270,7 +282,7 @@ static void TKUpdateRecallLabel(UIView *cell) {
     label.hidden=YES;label.frame=CGRectZero;   /* 2.0.4: 先隐藏并归零，锚定成功后才显示——杜绝 cell 复用残留帧错位 */
     CGFloat width=70,height=18;
     CGFloat cellW=cell.bounds.size.width,cellH=cell.bounds.size.height;
-    if(cellW<120||cellH<30)return;
+    if(cellW<120||cellH<30){TKUpdateRecallLabelRetry(cell);return;}
     // 1) 气泡识别：类名含 "Bubble" 的可见视图，取其中面积最大且非整行者（最外层气泡容器）。
     CGRect bubble=CGRectZero;double bestArea=0;
     NSMutableArray *queue=[NSMutableArray arrayWithArray:cell.subviews];
@@ -297,7 +309,7 @@ static void TKUpdateRecallLabel(UIView *cell) {
             [q2 addObjectsFromArray:view.subviews];
         }
     }
-    if(CGRectIsEmpty(bubble)) {label.hidden=YES;return;} // 识别失败宁可不放，避免错位重叠。
+    if(CGRectIsEmpty(bubble)) {label.hidden=YES;TKUpdateRecallLabelRetry(cell);return;} // 识别失败宁可不放；布局未完成时 0.2s 后补标
     // 3) 三档锚定：右侧尾部 → 左侧尾部（自己消息）→ 气泡正上方；垂直优先居中，始终钳制在 cell 内。
     CGFloat x=6,y=MAX(0,(cellH-height)/2);
     CGFloat rightSpace=MAX(0,cellW-CGRectGetMaxX(bubble)-6);
