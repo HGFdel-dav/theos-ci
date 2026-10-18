@@ -3,24 +3,30 @@
 
 @implementation TWChipView
 
+- (void)setChipColor:(UIColor *)color {
+    UIColor *tint = color ?: TWStyle.accent;
+    _chipColor = tint;
+    self.backgroundColor = [tint colorWithAlphaComponent:0.15];
+    _glyphView.tintColor = tint;
+    _fallbackLabel.textColor = tint;
+}
+
 - (instancetype)initWithFrame:(CGRect)frame {
     if ((self = [super initWithFrame:frame])) {
         self.layer.cornerRadius = frame.size.height * 0.32;
         self.layer.cornerCurve = kCACornerCurveContinuous;
-        self.backgroundColor = TWStyle.accentSoft;
         self.clipsToBounds = YES;
         _glyphView = [[UIImageView alloc] initWithFrame:self.bounds];
         _glyphView.contentMode = UIViewContentModeCenter;
-        _glyphView.tintColor = TWStyle.accent;
         _glyphView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         [self addSubview:_glyphView];
         _fallbackLabel = [[UILabel alloc] initWithFrame:self.bounds];
         _fallbackLabel.textAlignment = NSTextAlignmentCenter;
         _fallbackLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightSemibold];
-        _fallbackLabel.textColor = TWStyle.accent;
         _fallbackLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         _fallbackLabel.hidden = YES;
         [self addSubview:_fallbackLabel];
+        [self setChipColor:nil];
     }
     return self;
 }
@@ -70,6 +76,43 @@ static UIColor *TWAdaptive(CGFloat lr, CGFloat lg, CGFloat lb, CGFloat dr, CGFlo
 
 + (NSArray<UIColor *> *)gradientColors {
     return @[[self accent], [self accentAlt]];
+}
+
+#pragma mark - per-row palette (0.4.0: 每行不同颜色)
+
++ (NSArray<UIColor *> *)palette {
+    // 10 个色相：蓝 / 青 / 绿 / 草绿 / 琥珀 / 橙 / 红 / 玫红 / 靛蓝 / 灰蓝。
+    // 故意不含紫色——面板不再是"一片紫"。
+    return @[
+        TWAdaptive(0.184, 0.420, 1.000,  0.427, 0.604, 1.000),
+        TWAdaptive(0.000, 0.647, 0.792,  0.208, 0.812, 0.945),
+        TWAdaptive(0.059, 0.639, 0.420,  0.247, 0.839, 0.541),
+        TWAdaptive(0.431, 0.612, 0.000,  0.702, 0.863, 0.306),
+        TWAdaptive(0.788, 0.529, 0.000,  0.961, 0.745, 0.294),
+        TWAdaptive(0.886, 0.333, 0.122,  1.000, 0.541, 0.361),
+        TWAdaptive(0.839, 0.200, 0.294,  1.000, 0.447, 0.518),
+        TWAdaptive(0.839, 0.200, 0.482,  1.000, 0.451, 0.690),
+        TWAdaptive(0.294, 0.341, 0.839,  0.529, 0.573, 1.000),
+        TWAdaptive(0.357, 0.420, 0.549,  0.576, 0.643, 0.769),
+    ];
+}
+
++ (UIColor *)paletteColorAtIndex:(NSInteger)index {
+    NSArray<UIColor *> *colors = [self palette];
+    if (!colors.count) return [self accent];
+    NSInteger slot = index % (NSInteger)colors.count;
+    if (slot < 0) slot += (NSInteger)colors.count;
+    return colors[(NSUInteger)slot];
+}
+
++ (UIColor *)chipColorForIdentifier:(NSString *)identifier {
+    if (![identifier isKindOfClass:NSString.class] || !identifier.length) return [self accent];
+    // djb2 over UTF-16 units：与 NSString.hash 不同，跨进程/跨启动稳定。
+    NSUInteger hash = 5381;
+    for (NSUInteger i = 0; i < identifier.length; i++) {
+        hash = ((hash << 5) + hash) + (NSUInteger)[identifier characterAtIndex:i];
+    }
+    return [self paletteColorAtIndex:(NSInteger)(hash % 1000003)];
 }
 
 + (UIFont *)rowTitleFont {

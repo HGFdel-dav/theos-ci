@@ -8,6 +8,7 @@
 
 // Verified against opa334/Crane-Resources master/libCrane/libCrane.h:
 // successHandler is void (^)(BOOL); only the biometric-respecting API is used.
+static BOOL TWCraneSwitching = NO;   // SpringBoard 主队列专用：同一时间只允许一次容器切换
 static BOOL TWSignature(id target, SEL sel, const char *result, NSArray<NSString *> *args) {
     if (!target || ![target respondsToSelector:sel]) return NO;
     Method method = class_getInstanceMethod(object_getClass(target), sel);
@@ -93,16 +94,37 @@ static id TWMsgSendStr(id target, SEL sel, id arg) {
 + (void)prepareLaunchForBundleID:(NSString *)bundleID completion:(void (^)(BOOL))completion {
     if (!completion) return;
     dispatch_async(dispatch_get_main_queue(), ^{
-        static BOOL switching=NO; // main queue only
         TWPrefs *prefs=TWPrefs.shared;
-        if (switching) { TWCraneNotice(@"Crane 操作尚未结束；为避免容器竞态，暂不启动应用。请完成或取消认证后重试。"); completion(NO); return; }
         if (![bundleID isKindOfClass:NSString.class] || !bundleID.length) { TWCraneNotice(@"应用标识无效，未启动应用。"); completion(NO); return; }
         if (![prefs boolForKey:TWKeyEnabled defaultValue:NO] || ![prefs boolForKey:TWKeyCraneEnabled defaultValue:NO]) { completion(YES); return; }
         id configured=[prefs craneApps][bundleID];
         if (!configured) { completion(YES); return; }
         if (![configured isKindOfClass:NSString.class] || ![configured length]) { TWCraneNotice(@"Crane 容器配置无效，请重新选择。"); completion(NO); return; }
-        NSString *container=[configured copy];
-        if (switching) { TWCraneNotice(@"Crane 正在确认容器，请完成或取消当前认证后再试。"); completion(NO); return; }
+        [self switchBundleID:bundleID toContainer:[configured copy] completion:completion];
+    });
+}
+
+// 指定容器的版本：Arc 里每个图标就是一个 (应用, 容器) 对，直接指名道姓。
++ (void)prepareLaunchForBundleID:(NSString *)bundleID containerID:(NSString *)containerID completion:(void (^)(BOOL))completion {
+    if (!completion) return;
+    if (![containerID isKindOfClass:NSString.class] || !containerID.length) {
+        [self prepareLaunchForBundleID:bundleID completion:completion];   // 退回按面板配置的映射
+        return;
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        TWPrefs *prefs=TWPrefs.shared;
+        if (![bundleID isKindOfClass:NSString.class] || !bundleID.length) { TWCraneNotice(@"应用标识无效，未启动应用。"); completion(NO); return; }
+        if (![prefs boolForKey:TWKeyEnabled defaultValue:NO] || ![prefs boolForKey:TWKeyCraneEnabled defaultValue:NO]) { completion(YES); return; }
+        [self switchBundleID:bundleID toContainer:containerID completion:completion];
+    });
+}
+
+// 真正的切换与核验（主队列调用）。completion 保证只回调一次。
++ (void)switchBundleID:(NSString *)bundleID toContainer:(NSString *)container completion:(void (^)(BOOL))completion {
+        TWPrefs *prefs=TWPrefs.shared;
+        if (!completion) return;
+        if (TWCraneSwitching) { TWCraneNotice(@"Crane 操作尚未结束；为避免容器竞态，暂不启动应用。请完成或取消认证后重试。"); completion(NO); return; }
+        if (![container isKindOfClass:NSString.class] || ![container length] || ![bundleID isKindOfClass:NSString.class] || !bundleID.length) { completion(NO); return; }
         @try {
             id manager=[self sharedManager];
             SEL sel=NSSelectorFromString(@"setActiveContainerIdentifier:forApplicationWithIdentifier:usingBiometricsIfNeededWithSuccessHandler:");
@@ -117,7 +139,7 @@ static id TWMsgSendStr(id target, SEL sel, id arg) {
                 NSString *current = [self activeContainerForBundleID:bundleID];
                 if ([current isEqualToString:container]) { completion(YES); return; }
             } @catch (__unused NSException *e) { /* fall through to explicit switch */ }
-            switching=YES; __block BOOL finished=NO; __block BOOL callbackReceived=NO;
+            TWCraneSwitching=YES; __block BOOL finished=NO; __block BOOL callbackReceived=NO;
             void (^finish)(BOOL,NSString *)=^(BOOL success,NSString *reason) {
                 if (finished) return; finished=YES;
                 if (!success) TWCraneNotice(reason);
@@ -133,12 +155,15 @@ static id TWMsgSendStr(id target, SEL sel, id arg) {
                     // Keep the gate locked through completion to reject reentrant switches.
                     if (!finished) {
                         @try {
-                            BOOL unchanged=[prefs boolForKey:TWKeyEnabled defaultValue:NO] && [prefs boolForKey:TWKeyCraneEnabled defaultValue:NO] && [[prefs craneApps][bundleID] isEqual:container];
+                            // 只在"面板里配了映射"时才要求映射未被改动；Arc 的显式容器路径没有映射。
+                            id mapped=[prefs craneApps][bundleID];
+                            BOOL unchanged=[prefs boolForKey:TWKeyEnabled defaultValue:NO] && [prefs boolForKey:TWKeyCraneEnabled defaultValue:NO];
+                            if ([mapped isKindOfClass:NSString.class] && [mapped length]) unchanged = unchanged && [mapped isEqual:container];
                             BOOL verified=success && unchanged && [[self activeContainerForBundleID:bundleID] isEqualToString:container];
                             finish(verified,@"认证取消、切换失败、配置改变或容器核验不符；为避免误开，未启动应用。");
                         } @catch (__unused NSException *e) { finish(NO,@"Crane 容器核验异常，未启动应用。"); }
                     }
-                    switching=NO;
+                    TWCraneSwitching=NO;
                 });
             };
             @try { ((void (*)(id,SEL,id,id,void (^)(BOOL)))objc_msgSend)(manager,sel,container,bundleID,callback); }
@@ -147,8 +172,61 @@ static id TWMsgSendStr(id target, SEL sel, id arg) {
                 finish(NO,@"Crane 切换发生异常，未启动应用；请重启 SpringBoard 后再试。");
             }
         } @catch (__unused NSException *e) { TWCraneNotice(@"Crane 初始化异常，未启动应用。"); completion(NO); }
-    });
 }
+// ── 容器枚举（"一容器一图标"的数据源）────────────────────────────────
++ (NSArray<NSDictionary *> *)containersForBundleID:(NSString *)bundleID {
+    id manager = [self sharedManager];
+    if (!manager || ![bundleID isKindOfClass:NSString.class] || !bundleID.length) return @[];
+    SEL sel = NSSelectorFromString(@"containerIdentifiersOfApplicationWithIdentifier:");
+    if (!TWSignature(manager, sel, @encode(id), @[@"@"])) return @[];
+    id list = TWMsgSendStr(manager, sel, bundleID);
+    if (![list isKindOfClass:NSArray.class]) return @[];
+    NSMutableArray<NSDictionary *> *result = [NSMutableArray array];
+    NSMutableSet<NSString *> *seen = [NSMutableSet set];
+    NSString *active = [self activeContainerForBundleID:bundleID];
+    for (id identifier in list) {
+        if (![identifier isKindOfClass:NSString.class] || ![identifier length]) continue;
+        if ([seen containsObject:identifier]) continue;
+        [seen addObject:identifier];
+        NSString *name = [self displayNameForContainer:identifier bundleID:bundleID];
+        // Crane 没记活动容器时，视该容器为默认容器。
+        BOOL isDefault = !active.length || [active isEqualToString:identifier];
+        [result addObject:@{@"containerID": identifier, @"name": name ?: @"", @"isDefault": @(isDefault)}];
+    }
+    return result;
+}
+
++ (NSArray<NSString *> *)applicationsWithNonDefaultContainers {
+    id manager = [self sharedManager];
+    if (!manager) return @[];
+    SEL sel = NSSelectorFromString(@"identfiersOfApplicationsThatHaveNonDefaultContainers");
+    if (!TWSignature(manager, sel, @encode(id), @[])) return @[];
+    id list = TWMsgSend(manager, sel);
+    if (![list isKindOfClass:NSArray.class]) return @[];
+    NSMutableArray<NSString *> *out = [NSMutableArray array];
+    for (id item in list) if ([item isKindOfClass:NSString.class] && [item length]) [out addObject:item];
+    return out;
+}
+
++ (NSString *)displayNameForContainer:(NSString *)containerID bundleID:(NSString *)bundleID {
+    id manager = [self sharedManager];
+    if (!manager || ![containerID isKindOfClass:NSString.class] || !containerID.length ||
+        ![bundleID isKindOfClass:NSString.class] || !bundleID.length) return @"";
+    SEL sel = NSSelectorFromString(@"displayNameForContainerWithIdentifier:ofApplicationWithIdentifier:shouldUseShortVersion:");
+    if (TWSignature(manager, sel, @encode(id), @[@"@", @"@", @encode(BOOL)])) {
+        id (*fn)(id, SEL, id, id, BOOL) = (id (*)(id, SEL, id, id, BOOL))objc_msgSend;
+        id name = fn(manager, sel, containerID, bundleID, NO);
+        if ([name isKindOfClass:NSString.class] && [name length]) return name;
+    }
+    SEL shortSel = NSSelectorFromString(@"displayNameForContainerWithIdentifier:ofApplicationWithIdentifier:");
+    if (TWSignature(manager, shortSel, @encode(id), @[@"@", @"@"])) {
+        id (*fn)(id, SEL, id, id) = (id (*)(id, SEL, id, id))objc_msgSend;
+        id name = fn(manager, shortSel, containerID, bundleID);
+        if ([name isKindOfClass:NSString.class]) return name ?: @"";
+    }
+    return @"";
+}
+
 // Legacy BOOL calls cannot represent async success; never switch or claim success.
 + (BOOL)setContainer:(NSString *)containerID forBundleID:(NSString *)bundleID { return NO; }
 + (BOOL)applyContainerIfConfiguredForBundleID:(NSString *)bundleID { return NO; }

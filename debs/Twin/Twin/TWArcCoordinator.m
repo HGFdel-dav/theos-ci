@@ -43,6 +43,21 @@ static id TWArcValue(id target, NSString *key) {
     @catch (__unused NSException *exception) { return nil; }
 }
 
+// 显示名：LSApplicationProxy.localizedName，取不到就用 bundleID。
+static NSString *TWArcDisplayName(NSString *bundleID) {
+    @try {
+        Class proxyClass = NSClassFromString(@"LSApplicationProxy");
+        SEL selector = NSSelectorFromString(@"applicationProxyForIdentifier:");
+        if (proxyClass && [proxyClass respondsToSelector:selector]) {
+            id (*fn)(id, SEL, id) = (id (*)(id, SEL, id))objc_msgSend;
+            id proxy = fn(proxyClass, selector, bundleID);
+            NSString *name = TWArcValue(proxy, @"localizedName");
+            if ([name isKindOfClass:[NSString class]] && name.length) return name;
+        }
+    } @catch (__unused NSException *exception) {}
+    return [bundleID isKindOfClass:[NSString class]] ? bundleID : @"";
+}
+
 static BOOL TWArcBool(id target, NSString *name, BOOL *known) {
     *known = NO;
     SEL selector = NSSelectorFromString(name);
@@ -79,6 +94,7 @@ static BOOL TWArcDeviceUnlocked(void) {
     UIPanGestureRecognizer *_pan;
     TWArcMenuView *_menu;
     CGPoint _startPoint;
+    NSInteger _startCorner;
     BOOL _hasStartPoint;
     BOOL _tracking;
     BOOL _didPresent;
@@ -110,17 +126,37 @@ static BOOL TWArcDeviceUnlocked(void) {
 - (void)start {
     if (_started) return;
     _started = YES;
-    [self attachRecognizer];
+    [self applyWakeMode];
     // attach may have been too early (no window yet); retry briefly.
     if (!_pan) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [self attachRecognizer];
+            [self applyWakeMode];
         });
     }
 }
 
-// Tapping the status bar or system gestures must keep working; we only own
-// a thin strip along the chosen edge, outside the top/bottom system zones.
+// 唤醒方式二选一（用户定稿）：
+//   0 = Arc 角落唤醒 —— Twin 接管手势（从屏幕角落起手）
+//   1 = ParallelX 原生边缘手柄 —— Twin 完全不接管手势，原版手柄照旧
+- (void)applyWakeMode {
+    NSInteger mode = [[TWPrefs shared] integerForKey:TWKeyWakeMode defaultValue:TWWakeModeCorner];
+    if (mode == TWWakeModeHandle) {
+        [self detachRecognizer];
+        return;
+    }
+    [self attachRecognizer];
+}
+
+- (void)detachRecognizer {
+    if (!_pan) return;
+    UIView *view = _pan.view;
+    if (view) [view removeGestureRecognizer:_pan];
+    _pan = nil;
+    [self cancelCurrentGesture];
+}
+
+// 只在屏幕四个角落的一块方形区域里接管触摸：不碰状态栏、不碰 Home 条，
+// 也不与 ParallelX 的边缘手柄抢地方（手柄在边中间，Arc 在角上）。
 - (void)attachRecognizer {
     if (_pan) return;
     UIWindow *window = nil;
@@ -142,6 +178,8 @@ static BOOL TWArcDeviceUnlocked(void) {
     if (!TWArcDeviceUnlocked() ||
         ![[TWPrefs shared] boolForKey:TWKeyEnabled defaultValue:NO] ||
         ![[TWPrefs shared] boolForKey:TWKeyArcEnabled defaultValue:YES]) [self cancelCurrentGesture];
+    // 用户在面板里切换"Arc 角落 / 边缘手柄"要立刻生效。
+    [self applyWakeMode];
 }
 
 #pragma mark - gesture delegate
@@ -154,9 +192,11 @@ static BOOL TWArcDeviceUnlocked(void) {
         ![[TWPrefs shared] boolForKey:TWKeyArcEnabled defaultValue:YES] ||
         !TWArcDeviceUnlocked()) return NO;
     CGPoint point = [touch locationInView:recognizer.view];
-    NSInteger side = [[TWPrefs shared] integerForKey:TWKeyArcSide defaultValue:0];
-    CGFloat width = [[TWPrefs shared] floatForKey:TWKeyArcTriggerWidth defaultValue:24];
-    if (![TWArcGeometry point:point inTriggerRegionForSide:side width:width bounds:recognizer.view.bounds]) return NO;
+    NSInteger corners = [[TWPrefs shared] integerForKey:TWKeyArcCorners defaultValue:3];
+    CGFloat size = [[TWPrefs shared] floatForKey:TWKeyArcCornerSize defaultValue:64];
+    NSInteger corner = [TWArcGeometry cornerAtPoint:point corners:corners size:size bounds:recognizer.view.bounds];
+    if (corner < 0) return NO;
+    _startCorner = corner;
     _startPoint = point; // UITouch origin, before UIPanGestureRecognizer's threshold.
     _hasStartPoint = YES;
     return YES;
@@ -213,7 +253,7 @@ static BOOL TWArcDeviceUnlocked(void) {
             if (!_tracking) {
                 CGFloat dx = p.x - _startPoint.x, dy = p.y - _startPoint.y;
                 if (hypot(dx, dy) >= 22) {
-                    [self presentMenuFromPoint:_startPoint];
+                    [self presentMenuFromPoint:_startPoint corner:_startCorner];
                     _tracking = _menu.isPresented;
                 }
             }
@@ -222,8 +262,8 @@ static BOOL TWArcDeviceUnlocked(void) {
         }
         case UIGestureRecognizerStateEnded: {
             if (_tracking) {
-                NSString *selected = [_menu finishSelectionAtPoint:[pan locationInView:_menu]];
-                if (selected.length && TWArcDeviceUnlocked()) [self launchBundleID:selected];
+                NSDictionary *selected = [_menu finishSelectionAtPoint:[pan locationInView:_menu]];
+                if ([selected isKindOfClass:[NSDictionary class]] && TWArcDeviceUnlocked()) [self launchEntry:selected];
             }
             _hasStartPoint = NO;
             _tracking = NO;
@@ -239,7 +279,7 @@ static BOOL TWArcDeviceUnlocked(void) {
     }
 }
 
-- (void)presentMenuFromPoint:(CGPoint)point {
+- (void)presentMenuFromPoint:(CGPoint)point corner:(NSInteger)corner {
     if (_didPresent || !TWArcDeviceUnlocked()) return;
     UIWindow *reference = (UIWindow *)_pan.view; // the recognizer is attached to the SB window
     if (![reference isKindOfClass:[UIWindow class]] || reference.hidden) return;
@@ -267,43 +307,132 @@ static BOOL TWArcDeviceUnlocked(void) {
     _menu.userInteractionEnabled = YES;
     [container addSubview:_menu];
 
-    NSArray *bundleIDs = [self recentBundleIDs];
-    NSInteger side = [[TWPrefs shared] integerForKey:TWKeyArcSide defaultValue:0];
-    CGFloat radius = [[TWPrefs shared] floatForKey:TWKeyArcRadius defaultValue:140];
-    NSInteger count = [[TWPrefs shared] integerForKey:TWKeyArcItemCount defaultValue:6];
-    count = MAX(2, MIN(8, count));
-    if (bundleIDs.count > (NSUInteger)count) bundleIDs = [bundleIDs subarrayWithRange:NSMakeRange(0, (NSUInteger)count)];
-    [_menu presentFromTriggerPoint:point bundleIDs:bundleIDs side:side radius:radius menuScale:1.0];
+    NSArray *entries = [self menuEntries];
+    CGFloat radius = [[TWPrefs shared] floatForKey:TWKeyArcRadius defaultValue:150];
+    if (!entries.count) { [self cancelCurrentGesture]; return; }
+    [_menu presentFromTriggerPoint:point entries:entries corner:corner radius:radius menuScale:1.0];
     if ([[TWPrefs shared] boolForKey:TWKeyArcSound defaultValue:YES]) {
         AudioServicesPlaySystemSound(1104);
     }
 }
 
+#pragma mark - 菜单条目（一个容器 = 一个图标）
+
+// 优先用面板里配置过的容器清单；没配置就现场问 Crane 要容器；再不行退回"最近使用应用"。
+- (NSArray<NSDictionary *> *)menuEntries {
+    TWPrefs *prefs = [TWPrefs shared];
+    NSInteger limit = MAX(2, MIN(8, [prefs integerForKey:TWKeyArcItemCount defaultValue:6]));
+    NSMutableArray<NSDictionary *> *entries = [NSMutableArray array];
+
+    NSArray *configured = [prefs objectForKey:TWKeyCraneContainers];
+    if ([configured isKindOfClass:[NSArray class]] && configured.count) {
+        for (id raw in configured) {
+            if ((NSInteger)entries.count >= limit) break;
+            if (![raw isKindOfClass:[NSDictionary class]]) continue;
+            if (raw[@"enabled"] && ![raw[@"enabled"] boolValue]) continue;
+            NSString *bundleID = raw[@"bundleID"];
+            if (![bundleID isKindOfClass:[NSString class]] || !bundleID.length) continue;
+            NSString *badge = [raw[@"badge"] isKindOfClass:[NSString class]] ? raw[@"badge"] : @"";
+            NSString *name = ([raw[@"name"] isKindOfClass:[NSString class]] && [raw[@"name"] length]) ? raw[@"name"] : TWArcDisplayName(bundleID);
+            [entries addObject:@{@"bundleID": bundleID,
+                                 @"containerID": [raw[@"containerID"] isKindOfClass:[NSString class]] ? raw[@"containerID"] : @"",
+                                 @"title": badge.length ? [NSString stringWithFormat:@"%@ · %@", name, badge] : name,
+                                 @"badge": badge}];
+        }
+        if (entries.count) return entries;
+    }
+
+    NSMutableArray<NSString *> *apps = [NSMutableArray array];
+    NSArray *configuredApps = [prefs objectForKey:TWKeyCraneAppList];
+    if ([configuredApps isKindOfClass:[NSArray class]]) {
+        for (id app in configuredApps) {
+            if ([app isKindOfClass:[NSString class]] && [app length] && ![apps containsObject:app]) [apps addObject:app];
+        }
+    }
+    if (!apps.count) [apps addObjectsFromArray:[self recentBundleIDs]];
+
+    BOOL craneOn = [prefs boolForKey:TWKeyCraneEnabled defaultValue:NO];
+    for (NSString *bundleID in apps) {
+        if ((NSInteger)entries.count >= limit) break;
+        NSString *name = TWArcDisplayName(bundleID);
+        NSArray<NSDictionary *> *containers = craneOn ? [TWCraneBridge containersForBundleID:bundleID] : @[];
+        if (containers.count > 1) {
+            // 一个应用几个容器，就几个图标：默认容器角标"默"，其余用容器名（没名字就"分"）。
+            for (NSDictionary *container in containers) {
+                if ((NSInteger)entries.count >= limit) break;
+                NSString *containerID = [container[@"containerID"] isKindOfClass:[NSString class]] ? container[@"containerID"] : @"";
+                if (!containerID.length) continue;
+                BOOL isDefault = container[@"isDefault"] ? [container[@"isDefault"] boolValue] : NO;
+                NSString *containerName = [container[@"name"] isKindOfClass:[NSString class]] ? container[@"name"] : @"";
+                NSString *badge = isDefault ? @"默" : (containerName.length ? containerName : @"分");
+                [entries addObject:@{@"bundleID": bundleID, @"containerID": containerID,
+                                     @"title": [NSString stringWithFormat:@"%@ · %@", name, badge],
+                                     @"badge": badge}];
+            }
+            continue;
+        }
+        NSString *active = craneOn ? [TWCraneBridge activeContainerForBundleID:bundleID] : @"";
+        [entries addObject:@{@"bundleID": bundleID,
+                             @"containerID": [active isKindOfClass:[NSString class]] ? active : @"",
+                             @"title": name,
+                             @"badge": @""}];
+    }
+    return entries;
+}
+
 #pragma mark - app launching
 
-- (void)launchBundleID:(NSString *)bundleID {
+// 选中一个"应用 + 容器"条目：先把容器切过去（Crane 可能弹认证），确认后才打开；
+// 打开方式看面板里的「ARC 打开方式」（分屏启动 / 全屏启动）。
+- (void)launchEntry:(NSDictionary *)entry {
+    NSString *bundleID = entry[@"bundleID"];
     if (![bundleID isKindOfClass:[NSString class]] || !bundleID.length || !TWArcDeviceUnlocked()) return;
+    NSString *containerID = [entry[@"containerID"] isKindOfClass:[NSString class]] ? entry[@"containerID"] : @"";
     if ([[TWPrefs shared] boolForKey:TWKeyArcSound defaultValue:YES]) AudioServicesPlaySystemSound(1519);
-    // Crane gate first: container switch (possibly biometric) must settle
-    // before any launch. completion runs on the main queue.
-    [TWCraneBridge prepareLaunchForBundleID:bundleID completion:^(BOOL success) {
+    if (containerID.length) {
+        // 记忆模块据此知道"这次打开的是哪个容器"（面板窗口出现时只有 bundleID）。
+        [[TWPrefs shared] setObject:@{@"bundleID": bundleID, @"containerID": containerID, @"at": [NSDate date]}
+                              forKey:TWKeyLastLaunch];
+    }
+    __weak TWArcCoordinator *weakSelf = self;
+    [TWCraneBridge prepareLaunchForBundleID:bundleID containerID:containerID completion:^(BOOL success) {
         if (!success || !TWArcDeviceUnlocked()) return;
-        [self performVerifiedLaunch:bundleID];
+        [weakSelf performVerifiedLaunch:bundleID];
     }];
 }
 
 // Actual launch, called from the Crane completion on the main queue only.
 - (void)performVerifiedLaunch:(NSString *)bundleID {
-    // Split-window behavior still depends on the installed ParallelX engine.
+    NSInteger openMode = [[TWPrefs shared] integerForKey:TWKeyArcOpenMode defaultValue:0];
+    if (openMode == 1) {
+        // 全屏启动
+        if ([self performParallelXLaunch:bundleID selector:@"openFullscreenApplication:"]) return;
+    } else {
+        // 分屏启动：沿用已实测可用的 +applicationActivated:（ParallelX 自己开窗、自己动动画，
+        // 连带它自己的缩小/贴边小窗那一套也归它）。
+        if ([self performParallelXLaunch:bundleID selector:@"applicationActivated:"]) return;
+    }
+    [self performSystemLaunch:bundleID];
+}
+
+// 让 ParallelX 自己打开应用（窗口 / 动画 / 小窗全部是它的）。
+- (BOOL)performParallelXLaunch:(NSString *)bundleID selector:(NSString *)selectorName {
     Class pxEntry = NSClassFromString(@"PXPanelEntry");
-    SEL pxSelector = NSSelectorFromString(@"applicationActivated:");
+    SEL pxSelector = NSSelectorFromString(selectorName);
     NSMethodSignature *pxSig = TWArcSignature(pxEntry, pxSelector, 3);
     @try {
         if (pxSig && !strcmp(TWArcType(pxSig.methodReturnType), @encode(void)) &&
             TWArcType([pxSig getArgumentTypeAtIndex:2])[0] == '@') {
             ((void (*)(id, SEL, id))objc_msgSend)(pxEntry, pxSelector, bundleID);
-            return;
+            return YES;
         }
+    } @catch (__unused NSException *exception) { /* 交给系统回退 */ }
+    return NO;
+}
+
+// 系统启动回退（没装 ParallelX，或它的接口签名不匹配时）。
+- (void)performSystemLaunch:(NSString *)bundleID {
+    @try {
         UIApplication *app = [UIApplication sharedApplication];
         SEL selector = NSSelectorFromString(@"launchApplicationWithIdentifier:suspended:");
         NSMethodSignature *sig = TWArcSignature(app, selector, 4);

@@ -109,5 +109,28 @@ static inline NSString *TWPrefsFilePath(void) {
 #define TWArcPriorityMax      2200
 #define TWKeyCraneEnabled     @"TWCraneEnabled"
 #define TWKeyCraneApps        @"TWCraneApps"        // NSDictionary { bundleID : containerID }
-#define TWKeyRememberSize     @"TWRememberSize"     // BOOL, default YES
-#define TWKeyRememberFrames   @"TWRememberFrames"   // dict { bundleID : {x,y,w,h} }
+#define TWKeyRememberSize     @"TWRememberSize"     // BOOL, default NO
+#define TWKeyRememberFrames   @"TWRememberFrames"   // 旧格式（只读迁移）: dict { bundleID : {x,y,w,h} }
+
+// ── 0.4.0：唤醒方式二选一 ──────────────────────────────────────────────
+// 0 = Arc 角落唤醒（Twin 新增，从屏幕角落起手；默认）
+// 1 = ParallelX 原生边缘手柄（Twin 不接管手势，原样保留）
+#define TWKeyWakeMode         @"TWWakeMode"
+#define TWWakeModeCorner      0
+#define TWWakeModeHandle      1
+// 角落触发区：位掩码 1=右下 2=左下 4=左上 8=右上（默认 3 = 下边两角）
+#define TWKeyArcCorners       @"TWArcCorners"
+#define TWKeyArcCornerSize    @"TWArcCornerSize"    // 触发区边长(pt)，默认 64
+// 打开方式：0 = 分屏启动（默认） 1 = 全屏启动
+#define TWKeyArcOpenMode      @"TWArcOpenMode"
+#define TWKeySideOpenMode     @"TWSideOpenMode"
+// 分身：Arc 里显示哪些应用（有序 bundleID）＋ 每个容器的显示/角标
+#define TWKeyCraneAppList     @"TWCraneAppList"     // NSArray<NSString *>
+#define TWKeyCraneContainers  @"TWCraneContainers"  // NSArray<NSDictionary *>
+// 记忆：总开关 + 形态快照 { "bundleID|containerID" : @{p,l,docked,side,updated} }
+// 记忆模块要靠这个知道"这次打开的是哪个容器"：ParallelX 的面板窗口出现时
+// 只带 bundleID，容器信息只能由 Twin 在打开前记一笔。
+#define TWKeyLastLaunch       @"TWLastLaunch"       // @{bundleID, containerID, at}
+#define TWKeyRememberStates   @"TWRememberStates"
+// 判定"缩小/贴边"的阈值：面板宽度 < 屏幕宽度 * 该比例
+#define TWRememberDockRatio   0.55

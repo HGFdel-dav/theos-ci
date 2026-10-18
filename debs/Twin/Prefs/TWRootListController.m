@@ -1,20 +1,41 @@
-// TWRootListController.m — Twin settings panel.
+// TWRootListController.m — Twin 设置面板（0.4.0 改版）。
 //
-// Own look, own data path:
-//   * gradient hero header with the Twin mark and a live enable badge
-//   * self-drawn cells (TWSwitchCell / TWSliderCell / TWSegmentCell /
-//     TWActionCell / TWStatusCell) — no stock specifier rows
-//   * every value is read/written through TWPrefs, i.e. the jbroot-private
-//     com.niubiprass.twin.plist, never the real /var/mobile/Library/Preferences
+// 五节结构（与用户确认过的设计一致）：
+//   1. 插件状态   : 启用 Twin
+//   2. 唤醒方式   : 一行二选一 + 「Arc 面板与手势」子页
+//   3. 启动       : ARC 打开方式 / 侧边打开方式
+//   4. 分身（容器＝图标）: 「分身应用（容器）」「Arc 图标顺序」两个子页
+//   5. 记忆       : 记忆大小位置 / 已记忆的窗口 / 重置记忆大小及位置
+//
+// 硬性约定（避免面板空白或崩溃）：
+//   * 真正编译的 PSListController 子类；-specifiers 沿用官方缓存模式
+//     （if (!_specifiers) { _specifiers = 动态生成; } return _specifiers;），
+//     所有动态 specifier 都加进继承来的 ivar `_specifiers`。
+//   * 每个 specifier 的 bundle / detail / label / isController 保持一致
+//     （见 Prefs/TWSpecifiers.m 的 TWRowSpecifier）。
+//   * 子页一律由 controllerForSpecifier: 直接 new 我们自己的控制器。
+//   * 读写一律走 TWPrefs（jbroot 私有 plist），路径统一来自 TWPath.h；
+//     KeyWindow / 系统版本等只读信息用 -performSelector/反射，不做硬链接。
 #import "TWRootListController.h"
 #import "TWCells.h"
 #import "TWStyle.h"
+#import "TWSpecifiers.h"
 #import "TWPath.h"
 #import "TWPrefs.h"
-#import "TWCraneAppsController.h"
-#import "TWRememberAppsController.h"
+#import "TWArcPanelController.h"
+#import "TWContainerListController.h"
+#import "TWRememberListController.h"
 
-static NSString *const kTWVersion = @"0.3.1";
+#import <sys/utsname.h>
+#import <objc/message.h>
+
+static NSString *const kTWVersion = @"0.4.0";
+
+// 唤醒方式：0 = Arc 角落唤醒（默认），1 = ParallelX 边缘手柄。
+typedef NS_ENUM(NSInteger, TWWakeModeValue) {
+    TWWakeModeArc       = 0,
+    TWWakeModeParallelX = 1,
+};
 
 @implementation TWRootListController {
     UIView *_hero;
@@ -30,36 +51,53 @@ static NSString *const kTWVersion = @"0.3.1";
 
 #pragma mark - helpers
 
-- (PSSpecifier *)twGroup:(NSString *)name footer:(NSString *)footer {
-    PSSpecifier *group = [PSSpecifier groupSpecifierWithName:name];
-    if (footer.length) [group setProperty:footer forKey:@"footerText"];
-    return group;
+// 「Arc 面板与手势」的一句摘要（触发角 / 半径 / 图标数 / 音效）。
+- (NSString *)twArcSummary {
+    TWPrefs *prefs = [TWPrefs shared];
+    NSInteger corners = [prefs integerForKey:TWKeyArcCorners defaultValue:3];
+    CGFloat cornerSize = [prefs floatForKey:TWKeyArcCornerSize defaultValue:64];
+    NSInteger items = [prefs integerForKey:TWKeyArcItemCount defaultValue:6];
+    CGFloat radius = [prefs floatForKey:TWKeyArcRadius defaultValue:150];
+    BOOL sound = [prefs boolForKey:TWKeyArcSoundEnabled defaultValue:YES];
+    NSMutableArray<NSString *> *picked = [NSMutableArray array];
+    NSArray<NSString *> *names = @[@"右下", @"左下", @"左上", @"右上"];
+    for (NSInteger i = 0; i < (NSInteger)names.count; i++) {
+        if (corners & ((NSInteger)1 << i)) [picked addObject:names[(NSUInteger)i]];
+    }
+    return [NSString stringWithFormat:@"%@ · 触发 %.0fpt · %ld 图标 · 半径 %.0fpt · %@",
+            picked.count ? [picked componentsJoinedByString:@"/"] : @"未选角",
+            cornerSize, (long)items, radius, sound ? @"音效开" : @"音效关"];
 }
 
-- (PSSpecifier *)twRow:(NSString *)title
-                   key:(NSString *)key
-               default:(id)fallback
-              cellName:(NSString *)cellName
-              cellType:(PSCellType)cellType
-                symbol:(NSString *)symbol
-                detail:(NSString *)detail
-                  link:(Class)linkClass
-                extras:(NSDictionary *)extras {
-    PSSpecifier *spec = [PSSpecifier preferenceSpecifierNamed:title
-                                                      target:self
-                                                         set:NULL
-                                                         get:NULL
-                                                      detail:linkClass
-                                                        cell:cellType
-                                                        edit:nil];
-    if (key.length) [spec setProperty:key forKey:@"key"];
-    if (fallback) [spec setProperty:fallback forKey:@"default"];
-    if (cellName.length) [spec setProperty:cellName forKey:@"cellClass"];
-    if (symbol.length) [spec setProperty:symbol forKey:@"twSymbol"];
-    if (detail.length) [spec setProperty:detail forKey:@"twDetail"];
-    if (linkClass) [spec setProperty:NSStringFromClass(linkClass) forKey:@"detail"];
-    for (NSString *extraKey in extras) [spec setProperty:extras[extraKey] forKey:extraKey];
-    return spec;
+// 运行环境（只读状态行）。类名/选择器全部延迟解析，缺符号也不会崩。
+- (NSString *)twCraneLabel {
+    if (NSClassFromString(@"CraneManager")) return @"就绪";
+    return NSClassFromString(@"Crane") ? @"部分可见" : @"未安装";
+}
+
+- (NSString *)twParallelXLabel {
+    return NSClassFromString(@"PXPanelEntry") ? @"就绪" : @"未安装";
+}
+
+- (NSString *)twTwinLabel {
+    return [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"] ?: kTWVersion;
+}
+
+- (NSString *)twSystemLabel {
+    Class deviceClass = NSClassFromString(@"UIDevice");
+    SEL sel = NSSelectorFromString(@"currentDevice");
+    NSString *system = nil;
+    if (deviceClass && [deviceClass respondsToSelector:sel]) {
+        id device = ((id (*)(id, SEL))objc_msgSend)(deviceClass, sel);
+        if ([device respondsToSelector:NSSelectorFromString(@"systemVersion")]) {
+            id version = ((id (*)(id, SEL))objc_msgSend)(device, NSSelectorFromString(@"systemVersion"));
+            if ([version isKindOfClass:NSString.class]) system = version;
+        }
+    }
+    struct utsname info;
+    NSString *machine = @"iOS";
+    if (uname(&info) == 0) machine = [NSString stringWithUTF8String:info.machine] ?: @"iOS";
+    return system.length ? [NSString stringWithFormat:@"iOS %@ · %@", system, machine] : machine;
 }
 
 #pragma mark - specifiers
@@ -68,89 +106,99 @@ static NSString *const kTWVersion = @"0.3.1";
     if (!_specifiers) {
         NSMutableArray *specs = [NSMutableArray array];
 
-        NSInteger craneCount = (NSInteger)[TWPrefs shared].craneApps.count;
-        NSInteger arcPriority = [[TWPrefs shared] integerForKey:TWKeyArcWindowPriority
-                                                   defaultValue:TWArcPriorityDefault];
-        NSDictionary *frames = [[TWPrefs shared] objectForKey:TWKeyRememberFrames];
-        NSInteger frameCount = [frames isKindOfClass:NSDictionary.class] ? (NSInteger)frames.count : 0;
+        TWPrefs *prefs = [TWPrefs shared];
+        BOOL enabled = [prefs boolForKey:TWKeyEnabled defaultValue:NO];
+        NSInteger wake = [prefs integerForKey:TWKeyWakeMode defaultValue:TWWakeModeArc];
+        if (wake != TWWakeModeArc && wake != TWWakeModeParallelX) wake = TWWakeModeArc;
+        NSInteger arcOpen = [prefs integerForKey:TWKeyArcOpenMode defaultValue:0] == 1 ? 1 : 0;
+        NSInteger sideOpen = [prefs integerForKey:TWKeySideOpenMode defaultValue:0] == 1 ? 1 : 0;
+        NSInteger containerCount = TWCraneContainerCount();
+        NSInteger orderCount = (NSInteger)TWArcOrderList().count;
+        NSInteger memoryCount = TWRememberSnapshotCount();
 
-        // ---- 总览 ----
-        [specs addObject:[self twGroup:@"总览"
-                                footer:[NSString stringWithFormat:@"Twin %@ · 独立增强层：不替换、不冲突 ParallelX；关闭总开关即完全恢复系统原状。", kTWVersion]]];
-        [specs addObject:[self twRow:@"启用 Twin" key:TWKeyEnabled default:@NO cellName:@"TWSwitchCell"
-                            cellType:PSSwitchCell symbol:@"power" detail:nil link:nil
-                              extras:@{@"height": @62}]];
+        // ---------- 1. 插件状态 ----------
+        [specs addObject:TWGroupSpecifier(@"插件状态",
+            [NSString stringWithFormat:@"Twin %@ · 独立增强层：不替换、不冲突 ParallelX；关闭总开关即完全恢复系统原状。设置只写越狱环境的私有目录，不会出现在真实 /var/mobile/Library/Preferences。", kTWVersion])];
+        [specs addObject:TWRowSpecifier(self, @"启用 Twin", TWKeyEnabled, @NO, @"TWSwitchCell", PSSwitchCell,
+                                        @"power", nil, @{@"height": @62, @"twColor": @5})];
+        [specs addObject:TWRowSpecifier(self, @"Twin 版本", nil, nil, @"TWStatusCell", PSStaticTextCell,
+                                        @"tag", nil,
+                                        @{@"height": @50, @"twDetail": [self twTwinLabel], @"twPositive": @YES, @"twColor": @0})];
+        [specs addObject:TWRowSpecifier(self, @"Crane 分身", nil, nil, @"TWStatusCell", PSStaticTextCell,
+                                        @"square.on.square.dashed", nil,
+                                        @{@"height": @50, @"twDetail": [self twCraneLabel], @"twPositive": @NO, @"twColor": @2})];
+        [specs addObject:TWRowSpecifier(self, @"ParallelX 分屏", nil, nil, @"TWStatusCell", PSStaticTextCell,
+                                        @"rectangle.inset.filled.and.person.filled", nil,
+                                        @{@"height": @50, @"twDetail": [self twParallelXLabel], @"twPositive": @NO, @"twColor": @1})];
+        [specs addObject:TWRowSpecifier(self, @"运行环境", nil, nil, @"TWStatusCell", PSStaticTextCell,
+                                        @"iphone.gen3", nil,
+                                        @{@"height": @50, @"twDetail": [self twSystemLabel], @"twPositive": @NO, @"twColor": @9})];
 
-        // ---- Arc ----
-        [specs addObject:[self twGroup:@"Arc 弧形唤醒"
-                                footer:@"在屏幕边缘按住并向屏幕内侧拖动即可唤出弧形应用菜单，松手选中图标打开应用；关闭后完全不接管手势。"]];
-        [specs addObject:[self twRow:@"Arc 弧形唤醒" key:TWKeyArcEnabled default:@YES cellName:@"TWSwitchCell"
-                            cellType:PSSwitchCell symbol:@"hand.draw.fill" detail:nil link:nil
-                              extras:@{@"height": @62}]];
-        [specs addObject:[self twRow:@"触发边缘" key:TWKeyArcSide default:@0 cellName:@"TWSegmentCell"
-                            cellType:PSSegmentCell symbol:@"arrow.left.arrow.right" detail:nil link:nil
-                              extras:@{@"height": @58, @"twTitles": @[@"左边缘", @"右边缘"]}]];
-        [specs addObject:[self twRow:@"触发区宽度" key:TWKeyArcTriggerWidth default:@24 cellName:@"TWSliderCell"
-                            cellType:PSSliderCell symbol:@"arrow.left.and.right.square" detail:nil link:nil
-                              extras:@{@"height": @78, @"twMin": @12, @"twMax": @60, @"twStep": @1, @"twUnit": @" pt"}]];
-        [specs addObject:[self twRow:@"菜单图标数" key:TWKeyArcItemCount default:@6 cellName:@"TWSliderCell"
-                            cellType:PSSliderCell symbol:@"square.grid.2x2" detail:nil link:nil
-                              extras:@{@"height": @78, @"twMin": @2, @"twMax": @8, @"twStep": @1, @"twUnit": @" 个"}]];
-        [specs addObject:[self twRow:@"弧形半径" key:TWKeyArcRadius default:@140 cellName:@"TWSliderCell"
-                            cellType:PSSliderCell symbol:@"circle.dashed" detail:nil link:nil
-                              extras:@{@"height": @78, @"twMin": @90, @"twMax": @220, @"twStep": @5, @"twUnit": @" pt"}]];
-        [specs addObject:[self twRow:@"操作音效" key:TWKeyArcSoundEnabled default:@YES cellName:@"TWSwitchCell"
-                            cellType:PSSwitchCell symbol:@"speaker.wave.2.fill" detail:nil link:nil
-                              extras:@{@"height": @62}]];
+        // ---------- 2. 唤醒方式（二选一） ----------
+        [specs addObject:TWGroupSpecifier(@"唤醒方式（二选一）",
+            @"选哪个就用哪个唤出菜单：选「Arc 角落唤醒」时 Twin 接管角落手势；选「ParallelX 边缘手柄」时 Twin 完全不接管手势，改用 ParallelX 自己的边缘手柄唤出。")];
+        [specs addObject:TWRowSpecifier(self, @"唤醒方式", TWKeyWakeMode, @(TWWakeModeArc), @"TWSegmentCell", PSSegmentCell,
+                                        @"hand.draw.fill", nil,
+                                        @{@"height": @94, @"twWideSegment": @YES, @"twColor": @7,
+                                          @"twTitles": @[@"Arc 角落唤醒", @"ParallelX 边缘手柄"]})];
+        [specs addObject:TWLinkRowSpecifier(self, @"Arc 面板与手势", @"circle.grid.cross", @"TWArcPanelController",
+                                            [self twArcSummary], @{@"height": @62, @"twColor": @1})];
 
-        // ---- Arc 窗口层级（对齐 Arc-X 的「视图优先级」概念）----
-        [specs addObject:[self twGroup:@"Arc 窗口层级"
-                                footer:[NSString stringWithFormat:@"生效层级 = 1998 + 视图优先级，当前 %ld。默认 %ld 已高于状态栏(1000)与系统弹窗(2000)；拉到 %ld 为「至高无上」。层级再高也盖不过 iOS 安全界面（密码／支付），也不解除锁屏保护。菜单收起后整窗隐藏，不劫持触摸。",
-                                                         (long)(1998 + arcPriority), (long)TWArcPriorityDefault, (long)TWArcPriorityMax]]];
-        [specs addObject:[self twRow:@"视图优先级" key:TWKeyArcWindowPriority default:@(TWArcPriorityDefault) cellName:@"TWSliderCell"
-                            cellType:PSSliderCell symbol:@"square.stack.3d.up" detail:nil link:nil
-                              extras:@{@"height": @78, @"twMin": @0, @"twMax": @(TWArcPriorityMax), @"twStep": @1, @"twUnit": @""}]];
+        // ---------- 3. 启动 ----------
+        [specs addObject:TWGroupSpecifier(@"启动",
+            @"分别决定 Arc 菜单和侧边（ParallelX 手柄）两条路径打开应用时的窗口形态；选中的那条路径生效。")];
+        [specs addObject:TWRowSpecifier(self, @"ARC 打开方式", TWKeyArcOpenMode, @0, @"TWSegmentCell", PSSegmentCell,
+                                        @"rectangle.split.2x1", nil,
+                                        @{@"height": @58, @"twColor": @0, @"twTitles": @[@"分屏启动", @"全屏启动"]})];
+        [specs addObject:TWRowSpecifier(self, @"侧边打开方式", TWKeySideOpenMode, @0, @"TWSegmentCell", PSSegmentCell,
+                                        @"rectangle.righthalf.inset.filled", nil,
+                                        @{@"height": @58, @"twColor": @6, @"twTitles": @[@"分屏启动", @"全屏启动"]})];
+        [specs addObject:TWRowSpecifier(self, @"当前 ARC 打开方式", nil, nil, @"TWStatusCell", PSStaticTextCell,
+                                        @"info.circle", nil,
+                                        @{@"height": @50, @"twDetail": (arcOpen ? @"全屏启动" : @"分屏启动"), @"twPositive": @NO, @"twColor": @0})];
+        [specs addObject:TWRowSpecifier(self, @"当前侧边打开方式", nil, nil, @"TWStatusCell", PSStaticTextCell,
+                                        @"info.circle", nil,
+                                        @{@"height": @50, @"twDetail": (sideOpen ? @"全屏启动" : @"分屏启动"), @"twPositive": @NO, @"twColor": @6})];
 
-        // ---- Crane ----
-        [specs addObject:[self twGroup:@"Crane 分身"
-                                footer:@"为指定应用固定 Crane 容器：命中映射时先完成容器切换（含生物认证）再打开，认证取消、切换失败或容器核验不符都不会打开应用。"]];
-        [specs addObject:[self twRow:@"Crane 分身" key:TWKeyCraneEnabled default:@NO cellName:@"TWSwitchCell"
-                            cellType:PSSwitchCell symbol:@"square.on.square.dashed" detail:nil link:nil
-                              extras:@{@"height": @62}]];
-        [specs addObject:[self twRow:@"分身应用" key:nil default:nil cellName:@"TWActionCell"
-                            cellType:PSLinkCell symbol:@"app.badge"
-                              detail:[NSString stringWithFormat:@"%ld 个", (long)craneCount]
-                                link:NSClassFromString(@"TWCraneAppsController")
-                              extras:@{@"height": @56}]];
+        // ---------- 4. 分身（容器 ＝ 图标） ----------
+        [specs addObject:TWGroupSpecifier(@"分身（容器 ＝ 图标）",
+            @"一个应用有几个容器，菜单里就有几个图标（角标区分），点哪个就用哪个容器打开。容器 ID 来自 Crane，Twin 只记录要显示哪几个。")];
+        [specs addObject:TWLinkRowSpecifier(self, @"分身应用（容器）", @"app.badge", @"TWContainerListController",
+                                            (containerCount ? [NSString stringWithFormat:@"%ld 个容器", (long)containerCount] : @"未添加"),
+                                            @{@"height": @62, @"twColor": @8})];
+        [specs addObject:TWLinkRowSpecifier(self, @"Arc 图标顺序", @"list.number", @"TWArcOrderController",
+                                            (orderCount ? [NSString stringWithFormat:@"%ld 个", (long)orderCount] : @"未设置"),
+                                            @{@"height": @62, @"twColor": @3})];
+        [specs addObject:TWRowSpecifier(self, @"Twin 已启用", nil, nil, @"TWStatusCell", PSStaticTextCell,
+                                        @"bolt.fill", nil,
+                                        @{@"height": @50, @"twDetail": (enabled ? @"是" : @"否"), @"twPositive": @YES, @"twColor": @5})];
 
-        // ---- 窗口记忆 ----
-        [specs addObject:[self twGroup:@"窗口记忆"
-                                footer:@"记住每个应用分屏窗口的位置与大小，下次打开自动恢复；该功能依赖 ParallelX 提供的分屏窗口。"]];
-        [specs addObject:[self twRow:@"记忆窗口尺寸" key:TWKeyRememberSize default:@YES cellName:@"TWSwitchCell"
-                            cellType:PSSwitchCell symbol:@"arrow.up.left.and.arrow.down.right" detail:nil link:nil
-                              extras:@{@"height": @62}]];
-        [specs addObject:[self twRow:@"已记忆的窗口" key:nil default:nil cellName:@"TWActionCell"
-                            cellType:PSLinkCell symbol:@"clock.arrow.circlepath"
-                              detail:[NSString stringWithFormat:@"%ld 个", (long)frameCount]
-                                link:NSClassFromString(@"TWRememberAppsController")
-                              extras:@{@"height": @56}]];
-        [specs addObject:[self twRow:@"清除全部记忆" key:nil default:nil cellName:@"TWActionCell"
-                            cellType:PSButtonCell symbol:@"trash" detail:nil link:nil
-                              extras:@{@"height": @56, @"twDestructive": @YES, @"twAction": @"clearFrames"}]];
-
-        // ---- 关于 ----
-        [specs addObject:[self twGroup:@"关于"
-                                footer:@"设置仅写入越狱环境的私有目录，不会出现在真实 /var/mobile/Library/Preferences，避免被检测与误清理。"]];
-        [specs addObject:[self twRow:@"版本" key:nil default:nil cellName:@"TWStatusCell"
-                            cellType:PSStaticTextCell symbol:@"tag" detail:kTWVersion link:nil
-                              extras:@{@"height": @50, @"twPositive": @YES}]];
-        [specs addObject:[self twRow:@"作者" key:nil default:nil cellName:@"TWStatusCell"
-                            cellType:PSStaticTextCell symbol:@"person.crop.circle" detail:@"Niubiprass" link:nil
-                              extras:@{@"height": @50, @"twPositive": @YES}]];
+        // ---------- 5. 记忆 ----------
+        [specs addObject:TWGroupSpecifier(@"记忆",
+            @"按「应用 + 容器」记形态：竖屏/横屏的窗口 frame、是否处于缩小(贴边)态、停在左还是右。下次打开同一个容器就按上次的样子出现。")];
+        [specs addObject:TWRowSpecifier(self, @"记忆大小位置", TWKeyRememberSize, @NO, @"TWSwitchCell", PSSwitchCell,
+                                        @"arrow.up.left.and.arrow.down.right", nil,
+                                        @{@"height": @62, @"twColor": @4})];
+        [specs addObject:TWLinkRowSpecifier(self, @"已记忆的窗口", @"clock.arrow.circlepath", @"TWRememberListController",
+                                            (memoryCount ? [NSString stringWithFormat:@"%ld 条", (long)memoryCount] : @"暂无"),
+                                            @{@"height": @62, @"twColor": @2})];
+        [specs addObject:TWButtonRowSpecifier(self, @"重置记忆大小及位置", @"resetMemory", @"arrow.counterclockwise",
+                                              YES, @{@"height": @56})];
+        [specs addObject:TWRowSpecifier(self, @"记忆条数", nil, nil, @"TWStatusCell", PSStaticTextCell,
+                                        @"number", nil,
+                                        @{@"height": @50, @"twDetail": [NSString stringWithFormat:@"%ld 条", (long)memoryCount], @"twPositive": @NO, @"twColor": @4})];
 
         _specifiers = specs;
     }
     return _specifiers;
+}
+
+#pragma mark - 子页分发（自己 new，避免跨 bundle 类查找）
+
+- (id)controllerForSpecifier:(PSSpecifier *)specifier {
+    id controller = TWControllerForSpecifier(self, specifier);
+    if (controller) return controller;
+    return [super controllerForSpecifier:specifier];
 }
 
 #pragma mark - hero header
@@ -222,14 +270,14 @@ static NSString *const kTWVersion = @"0.3.1";
 
 #pragma mark - row actions
 
-- (void)twConfirmClearFrames {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"清除全部窗口记忆"
-                                                                   message:@"所有已记录的应用分屏窗口位置与大小都会被移除，下次打开应用将使用默认窗口。"
+- (void)twConfirmResetMemory {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"重置记忆大小及位置"
+                                                                   message:@"所有应用（含各自容器）的窗口形态记忆都会被清空，下次打开应用将使用默认窗口。"
                                                             preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
     __weak TWRootListController *weakSelf = self;
-    [alert addAction:[UIAlertAction actionWithTitle:@"清除" style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *action) {
-        [[TWPrefs shared] clearRememberedFrames];
+    [alert addAction:[UIAlertAction actionWithTitle:@"重置" style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *action) {
+        TWRememberWipe();
         [weakSelf reloadSpecifiers];
     }]];
     [self presentViewController:alert animated:YES completion:nil];
@@ -239,9 +287,9 @@ static NSString *const kTWVersion = @"0.3.1";
     PSSpecifier *spec = nil;
     if ([self respondsToSelector:@selector(specifierAtIndexPath:)]) spec = [self specifierAtIndexPath:indexPath];
     NSString *action = [spec propertyForKey:@"twAction"];
-    if ([action isKindOfClass:NSString.class] && [action isEqualToString:@"clearFrames"]) {
+    if ([action isKindOfClass:NSString.class] && action.length) {
         [tableView deselectRowAtIndexPath:indexPath animated:YES];
-        [self twConfirmClearFrames];
+        if ([action isEqualToString:@"resetMemory"]) [self twConfirmResetMemory];
         return;
     }
     [super tableView:tableView didSelectRowAtIndexPath:indexPath];

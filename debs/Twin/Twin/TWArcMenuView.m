@@ -1,4 +1,6 @@
 // TWArcMenuView.m
+// 角落弧形菜单（0.4.0）：条目 = { bundleID, containerID, title, badge }，
+// 一个应用有几个容器就有几个图标，角标用 @"默"/@"分" 之类区分。
 #import "TWArcMenuView.h"
 #import "TWArcGeometry.h"
 #import <AudioToolbox/AudioServices.h>
@@ -68,19 +70,22 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 #pragma mark - item view
 
 @interface TWArcItemView : UIView
-@property (nonatomic, copy) NSString *bundleID;
+@property (nonatomic, copy) NSDictionary *entry;
 @property (nonatomic, strong) UIImageView *imageView;
 @property (nonatomic, strong) UIView *glowView;
+@property (nonatomic, strong) UILabel *badgeLabel;
+@property (nonatomic, strong) UILabel *nameLabel;
 @property (nonatomic, assign, getter=isHighlighted) BOOL highlighted;
 @property (nonatomic, assign) CGPoint targetCenter;
 @property (nonatomic, assign) CGFloat baseScale;
 @end
 
 @implementation TWArcItemView
-- (instancetype)initWithBundleID:(NSString *)bundleID image:(UIImage *)image size:(CGFloat)size {
+- (instancetype)initWithEntry:(NSDictionary *)entry image:(UIImage *)image size:(CGFloat)size {
     if ((self = [super initWithFrame:CGRectMake(0, 0, size, size)])) {
-        _bundleID = [bundleID copy];
-        self.layer.cornerRadius = 20;
+        _entry = [entry copy];
+        CGFloat radius = size * 0.26;
+        self.layer.cornerRadius = radius;
         self.backgroundColor = [UIColor colorWithWhite:0.12 alpha:0.55];
         self.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.25].CGColor;
         self.layer.borderWidth = 0.5;
@@ -88,18 +93,59 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
         _glowView.backgroundColor = [UIColor clearColor];
         _glowView.layer.borderColor = [UIColor systemBlueColor].CGColor;
         _glowView.layer.borderWidth = 2.5;
-        _glowView.layer.cornerRadius = 20;
+        _glowView.layer.cornerRadius = radius;
         _glowView.alpha = 0;
         [self addSubview:_glowView];
-        _imageView = [[UIImageView alloc] initWithFrame:CGRectMake(9, 9, size - 18, size - 18)];
+        CGFloat inset = MAX(5.0, size * 0.16);
+        _imageView = [[UIImageView alloc] initWithFrame:CGRectMake(inset, inset, size - inset * 2, size - inset * 2)];
         _imageView.image = image;
         _imageView.contentMode = UIViewContentModeScaleAspectFit;
-        _imageView.layer.cornerRadius = 13;
+        _imageView.layer.cornerRadius = radius * 0.75;
         _imageView.clipsToBounds = YES;
         [self addSubview:_imageView];
+
+        // 角标：区分同一个应用的哪个容器（默 / 分 / 名）
+        NSString *badge = [entry[@"badge"] isKindOfClass:NSString.class] ? entry[@"badge"] : nil;
+        if (badge.length) {
+            CGFloat badgeHeight = MAX(13.0, size * 0.36);
+            _badgeLabel = [[UILabel alloc] init];
+            _badgeLabel.text = badge;
+            _badgeLabel.font = [UIFont systemFontOfSize:MAX(9.0, badgeHeight * 0.64) weight:UIFontWeightHeavy];
+            _badgeLabel.textColor = UIColor.whiteColor;
+            _badgeLabel.textAlignment = NSTextAlignmentCenter;
+            _badgeLabel.backgroundColor = [badge isEqualToString:@"默"] ? [UIColor systemGrayColor] : [UIColor systemPinkColor];
+            CGSize text = [_badgeLabel sizeThatFits:CGSizeMake(size * 2, badgeHeight)];
+            CGFloat width = MAX(badgeHeight, text.width + badgeHeight * 0.6);
+            _badgeLabel.frame = CGRectMake((size - width) / 2, size - badgeHeight * 0.75, width, badgeHeight);
+            _badgeLabel.layer.cornerRadius = badgeHeight / 2;
+            _badgeLabel.layer.borderWidth = 1.5;
+            _badgeLabel.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.9].CGColor;
+            _badgeLabel.clipsToBounds = YES;
+            [self addSubview:_badgeLabel];
+        }
+
+        // 名字气泡：高亮时浮在图标上方
+        NSString *title = [entry[@"title"] isKindOfClass:NSString.class] ? entry[@"title"] : nil;
+        if (!title.length) title = [entry[@"bundleID"] isKindOfClass:NSString.class] ? entry[@"bundleID"] : @"";
+        if (title.length) {
+            _nameLabel = [[UILabel alloc] init];
+            _nameLabel.text = title;
+            _nameLabel.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightBold];
+            _nameLabel.textColor = UIColor.whiteColor;
+            _nameLabel.backgroundColor = [UIColor colorWithWhite:0.09 alpha:0.9];
+            _nameLabel.textAlignment = NSTextAlignmentCenter;
+            _nameLabel.alpha = 0;
+            CGSize text = [_nameLabel sizeThatFits:CGSizeMake(240, 20)];
+            CGFloat width = MIN(240, text.width + 18);
+            _nameLabel.frame = CGRectMake((size - width) / 2, -26, width, 20);
+            _nameLabel.layer.cornerRadius = 10;
+            _nameLabel.clipsToBounds = YES;
+            [self addSubview:_nameLabel];
+        }
     }
     return self;
 }
+
 - (void)setHighlighted:(BOOL)highlighted {
     _highlighted = highlighted;
     CGFloat scale = (self.baseScale > 0 ? self.baseScale : 1) * (highlighted ? 1.18 : 1);
@@ -107,6 +153,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     [UIView animateWithDuration:0.12 delay:0 options:UIViewAnimationOptionBeginFromCurrentState animations:^{
         self.transform = CGAffineTransformMakeScale(scale, scale);
         self.glowView.alpha = glowAlpha;
+        self.nameLabel.alpha = highlighted ? 1.0 : 0.0;
     } completion:nil];
 }
 @end
@@ -115,10 +162,10 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 
 @implementation TWArcMenuView {
     NSMutableArray<TWArcItemView *> *_items;
-    NSArray<NSString *> *_bundleIDs;
+    NSArray<NSDictionary *> *_entries;
     CGPoint _triggerPoint;
     CGPoint _anchor;
-    NSInteger _side;
+    NSInteger _corner;
     CGFloat _radius;
     UIView *_backgroundBand;
     CAGradientLayer *_bandGradient;
@@ -132,20 +179,24 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
         self.userInteractionEnabled = NO;
         _items = [NSMutableArray array];
         _menuScale = 1.0;
+        _corner = TWCornerBottomRight;
     }
     return self;
 }
 
-- (void)presentFromTriggerPoint:(CGPoint)point bundleIDs:(NSArray<NSString *> *)bundleIDs side:(NSInteger)side radius:(CGFloat)radius menuScale:(CGFloat)menuScale {
+- (void)presentFromTriggerPoint:(CGPoint)point entries:(NSArray<NSDictionary *> *)entries corner:(NSInteger)corner radius:(CGFloat)radius menuScale:(CGFloat)menuScale {
     [self dismissAnimated:NO];
-    _bundleIDs = [bundleIDs copy];
+    if (![entries isKindOfClass:NSArray.class] || !entries.count) return;
+    _entries = [entries copy];
     _triggerPoint = point;
-    _side = side;
+    _corner = (corner < 0 || corner > 3) ? TWCornerBottomRight : corner;
     _menuScale = isfinite(menuScale) && menuScale > 0.1 ? MIN(menuScale, 2) : 1;
-    _radius = [TWArcGeometry radiusForItemCount:_bundleIDs.count preferredRadius:radius menuScale:_menuScale bounds:self.bounds];
-    CGFloat itemSize = [TWArcGeometry itemSizeForCount:_bundleIDs.count radius:_radius menuScale:_menuScale];
-    if (itemSize <= 0 || !_bundleIDs.count) return;
-    _anchor = [TWArcGeometry anchorForTriggerPoint:point side:side radius:_radius itemSize:itemSize menuScale:_menuScale bounds:self.bounds];
+    NSInteger count = (NSInteger)_entries.count;
+    _radius = [TWArcGeometry radiusForItemCount:count preferredRadius:radius menuScale:_menuScale corner:_corner bounds:self.bounds];
+    CGFloat itemSize = [TWArcGeometry itemSizeForCount:count radius:_radius menuScale:_menuScale];
+    if (itemSize <= 0 || _radius <= 0) return;
+    CGFloat margin = itemSize * _menuScale * 1.18 / 2 + 10;
+    _anchor = [TWArcGeometry anchorForCorner:_corner margin:margin bounds:self.bounds];
 
     // dim
     _dimView = [[UIView alloc] initWithFrame:self.bounds];
@@ -159,8 +210,9 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     _bandGradient.frame = self.bounds;
     _bandGradient.colors = @[(id)[UIColor systemBlueColor].CGColor,
                              (id)[UIColor cyanColor].CGColor];
-    _bandGradient.startPoint = CGPointMake(0.5, 0.5);
-    _bandGradient.endPoint = CGPointMake(side == 0 ? 1 : 0, 0.5);
+    _bandGradient.startPoint = CGPointMake(_corner == TWCornerBottomLeft || _corner == TWCornerTopLeft ? 1 : 0,
+                                           _corner == TWCornerTopLeft || _corner == TWCornerTopRight ? 1 : 0);
+    _bandGradient.endPoint = CGPointMake(0.5, 0.5);
     _bandMask = [CAShapeLayer layer];
     _bandMask.strokeColor = UIColor.whiteColor.CGColor;
     _bandMask.fillColor = UIColor.clearColor.CGColor;
@@ -172,14 +224,14 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     [self addSubview:_backgroundBand];
 
     // items
-    NSInteger count = (NSInteger)_bundleIDs.count;
     for (NSInteger i = 0; i < count; i++) {
-        NSString *bundleID = _bundleIDs[i];
-        UIImage *icon = TWIconImageForBundleID(bundleID);
+        NSDictionary *entry = _entries[i];
+        NSString *bundleID = [entry[@"bundleID"] isKindOfClass:NSString.class] ? entry[@"bundleID"] : nil;
+        UIImage *icon = bundleID.length ? TWIconImageForBundleID(bundleID) : nil;
         if (!icon) icon = [self placeholderImage];
-        TWArcItemView *item = [[TWArcItemView alloc] initWithBundleID:bundleID image:icon size:itemSize];
+        TWArcItemView *item = [[TWArcItemView alloc] initWithEntry:entry image:icon size:itemSize];
         item.baseScale = _menuScale;
-        CGPoint center = [TWArcGeometry centerForItemAtIndex:i count:count radius:_radius anchor:_anchor side:_side bounds:self.bounds];
+        CGPoint center = [TWArcGeometry centerForItemAtIndex:i count:count radius:_radius anchor:_anchor corner:_corner bounds:self.bounds];
         item.targetCenter = center;
         item.center = _triggerPoint;
         item.alpha = 0;
@@ -209,22 +261,12 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 }
 
 - (void)updateBandPath {
-    // Arc band: same sweep angles as the item placement.
-    NSInteger count = MAX((NSInteger)_bundleIDs.count, 1);
-    CGFloat startAngle = M_PI / 2.0;
-    CGFloat sweep = 1.45f * (M_PI / 2.0);
-    CGFloat step = (count > 1) ? sweep / (count - 1) : 0;
-    CGFloat a0, a1;
-    if (_side == 0) {
-        a0 = startAngle;
-        a1 = startAngle - step * (count - 1);
-    } else {
-        a0 = M_PI - startAngle;
-        a1 = M_PI - (startAngle - step * (count - 1));
-    }
+    if (!_bandMask) return;
+    CGFloat start = [TWArcGeometry startAngleForCorner:_corner];
+    CGFloat sweep = [TWArcGeometry sweepAngle];
+    // UIBezierPath 与我们的 UIKit 角度约定一致（0 = 向右，角度增大 = 顺时针）。
     UIBezierPath *path = [UIBezierPath bezierPath];
-    // UIBezierPath uses downward-positive y, unlike the math placement above.
-    [path addArcWithCenter:_anchor radius:_radius startAngle:-a0 endAngle:-a1 clockwise:(_side == 0)];
+    [path addArcWithCenter:_anchor radius:_radius startAngle:start endAngle:start + sweep clockwise:YES];
     _bandMask.path = path.CGPath;
 }
 
@@ -263,9 +305,9 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     }
 }
 
-- (NSString *)finishSelectionAtPoint:(CGPoint)point {
+- (NSDictionary *)finishSelectionAtPoint:(CGPoint)point {
     TWArcItemView *item = [self itemAtPoint:point];
-    NSString *selected = item.bundleID;
+    NSDictionary *selected = item.entry;
     item.highlighted = NO;
     [self dismissAnimated:selected != nil];
     return selected;
@@ -281,7 +323,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
         UIView *dismissedBand = _backgroundBand;
         UIView *dismissedDim = _dimView;
         [_items removeAllObjects];
-        _bundleIDs = nil;
+        _entries = nil;
         _backgroundBand = nil;
         _bandGradient = nil;
         _bandMask = nil;
@@ -304,7 +346,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 - (void)cleanup {
     [self.subviews makeObjectsPerformSelector:@selector(removeFromSuperview)];
     [_items removeAllObjects];
-    _bundleIDs = nil;
+    _entries = nil;
     _backgroundBand = nil;
     _bandGradient = nil;
     _bandMask = nil;

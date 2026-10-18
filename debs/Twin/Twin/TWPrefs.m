@@ -8,7 +8,7 @@
 
 static BOOL TWValidMigration(NSDictionary *dict) {
     if (![dict isKindOfClass:NSDictionary.class] || !dict.count) return NO;
-    NSSet *numbers = [NSSet setWithArray:@[TWKeyEnabled,TWKeyArcEnabled,TWKeyArcSide,TWKeyArcTriggerWidth,TWKeyArcItemCount,TWKeyArcRadius,TWKeyArcSound,TWKeyArcWindowPriority,TWKeyCraneEnabled,TWKeyRememberSize]];
+    NSSet *numbers = [NSSet setWithArray:@[TWKeyEnabled,TWKeyArcEnabled,TWKeyArcSide,TWKeyArcTriggerWidth,TWKeyArcItemCount,TWKeyArcRadius,TWKeyArcSound,TWKeyArcWindowPriority,TWKeyCraneEnabled,TWKeyRememberSize,TWKeyWakeMode,TWKeyArcCorners,TWKeyArcCornerSize,TWKeyArcOpenMode,TWKeySideOpenMode]];
     for (id key in dict) {
         id value = dict[key];
         if ([numbers containsObject:key]) { if (![value isKindOfClass:NSNumber.class]) return NO; }
@@ -27,6 +27,48 @@ static BOOL TWValidMigration(NSDictionary *dict) {
                     if (![num isKindOfClass:NSNumber.class]) return NO;
                     if ([k isEqual:@"w"] || [k isEqual:@"h"]) { if ([num doubleValue] <= 0 || [num doubleValue] > 5000) return NO; }
                     else { double v = [num doubleValue]; if (v < -5000 || v > 5000) return NO; }
+                }
+            }
+        } else if ([key isEqual:TWKeyCraneAppList]) {
+            // NSArray<NSString *>：Arc 里显示哪些应用（有序 bundleID）。
+            if (![value isKindOfClass:NSArray.class]) return NO;
+            for (id app in value) if (![app isKindOfClass:NSString.class] || ![app length]) return NO;
+        } else if ([key isEqual:TWKeyCraneContainers]) {
+            // NSArray<NSDictionary *>：每项 {bundleID, containerID?, name?, badge?, enabled?}
+            if (![value isKindOfClass:NSArray.class]) return NO;
+            for (id entry in value) {
+                if (![entry isKindOfClass:NSDictionary.class]) return NO;
+                id bundleID = entry[@"bundleID"];
+                if (![bundleID isKindOfClass:NSString.class] || ![bundleID length]) return NO;
+                for (NSString *k in @[@"containerID", @"name", @"badge"]) {
+                    id v = entry[k];
+                    if (v && ![v isKindOfClass:NSString.class]) return NO;
+                }
+                id enabled = entry[@"enabled"];
+                if (enabled && ![enabled isKindOfClass:NSNumber.class]) return NO;
+            }
+        } else if ([key isEqual:TWKeyRememberStates]) {
+            // { "bundleID|containerID" : @{p,l,docked,side,updated} } —— 形态快照。
+            if (![value isKindOfClass:NSDictionary.class]) return NO;
+            for (id entryKey in value) {
+                id state = value[entryKey];
+                if (![entryKey isKindOfClass:NSString.class] || ![entryKey length]) return NO;
+                if (![state isKindOfClass:NSDictionary.class]) return NO;
+                for (NSString *orientation in @[@"p", @"l"]) {
+                    id frame = state[orientation];
+                    if (!frame) continue;
+                    if (![frame isKindOfClass:NSDictionary.class]) return NO;
+                    for (NSString *k in @[@"x", @"y", @"w", @"h"]) {
+                        id num = frame[k];
+                        if (![num isKindOfClass:NSNumber.class]) return NO;
+                        double v = [num doubleValue];
+                        if ([k isEqual:@"w"] || [k isEqual:@"h"]) { if (v <= 0 || v > 5000) return NO; }
+                        else if (v < -5000 || v > 5000) return NO;
+                    }
+                }
+                for (NSString *k in @[@"docked", @"side"]) {
+                    id v = state[k];
+                    if (v && ![v isKindOfClass:NSNumber.class]) return NO;
                 }
             }
         } else return NO;

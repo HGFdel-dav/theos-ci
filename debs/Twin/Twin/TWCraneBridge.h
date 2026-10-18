@@ -15,6 +15,11 @@ NS_ASSUME_NONNULL_BEGIN
 // no enabled mapping exists, or Crane confirmed and read-back verified it.
 // NO must never fall through to launching the app. Failures show a UI notice.
 + (void)prepareLaunchForBundleID:(NSString *)bundleID completion:(void (^)(BOOL success))completion;
++ (NSArray<NSDictionary *> *)containersForBundleID:(NSString *)bundleID;
++ (NSArray<NSString *> *)applicationsWithNonDefaultContainers;
++ (NSString *)displayNameForContainer:(NSString *)containerID bundleID:(NSString *)bundleID;
+// 指定容器打开（Arc 的"点哪个图标就用哪个容器"走这里）。completion 主线程回调一次。
++ (void)prepareLaunchForBundleID:(NSString *)bundleID containerID:(NSString *)containerID completion:(void (^)(BOOL success))completion;
 // Legacy synchronous APIs fail closed: they never initiate an async switch.
 + (BOOL)setContainer:(NSString *)containerID forBundleID:(NSString *)bundleID;
 + (BOOL)applyContainerIfConfiguredForBundleID:(NSString *)bundleID;

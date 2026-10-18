@@ -11,6 +11,7 @@ static const CGFloat kTitleGap = 14.0;
     UILabel *_twTitle;
     UIView *_controlHost;
     CGFloat _controlWidth;
+    UIColor *_twRowColor;
 }
 
 #pragma mark - setup
@@ -50,6 +51,26 @@ static const CGFloat kTitleGap = 14.0;
 
 - (NSString *)twKey { return [self.specifier propertyForKey:@"key"]; }
 
+#pragma mark - per-row colour (0.4.0)
+
+- (UIColor *)twRowColor {
+    id explicit = [self.specifier propertyForKey:@"twColor"];
+    if ([explicit respondsToSelector:@selector(integerValue)]) {
+        return [TWStyle paletteColorAtIndex:[explicit integerValue]];
+    }
+    NSString *identifier = self.specifier.name;
+    if (![identifier isKindOfClass:NSString.class] || !identifier.length) identifier = [self twKey];
+    return [TWStyle chipColorForIdentifier:identifier];
+}
+
+- (void)twApplyRowColor:(UIColor *)color {
+    // 默认什么都不做；具体控件在各自子类里上色。
+}
+
+- (BOOL)twUsesWideLayout {
+    return [[self.specifier propertyForKey:@"twWideSegment"] boolValue];
+}
+
 - (void)twApplyAppearance {
     if (!_twTitle) [self twBuild];
     NSString *title = self.specifier.name ?: @"";
@@ -60,6 +81,11 @@ static const CGFloat kTitleGap = 14.0;
     if ([subtitle isKindOfClass:NSString.class] && subtitle.length) _twTitle.text = subtitle;
 
     [_chip setSymbolNamed:symbol fallbackText:title];
+
+    // 每行自己的颜色：芯片 + 该行控件都用它，整页不再是同一种紫。
+    _twRowColor = [self twRowColor];
+    [_chip setChipColor:_twRowColor];
+    [self twApplyRowColor:_twRowColor];
 
     // Everything except the master switch dims while Twin is off.
     NSString *key = [self twKey];
@@ -118,9 +144,33 @@ static const CGFloat kTitleGap = 14.0;
     [_controlHost addSubview:_toggle];
 }
 
+// twBit：同一个键（位掩码）上的一行开关，例如 TWArcCorners 的 1/2/4/8。
+- (NSNumber *)twBit {
+    id bit = [self.specifier propertyForKey:@"twBit"];
+    return [bit respondsToSelector:@selector(integerValue)] ? bit : nil;
+}
+
+- (NSInteger)twMaskValue {
+    id stored = [[TWPrefs shared] objectForKey:[self twKey]];
+    if (![stored respondsToSelector:@selector(integerValue)]) stored = [self.specifier propertyForKey:@"default"];
+    return [stored respondsToSelector:@selector(integerValue)] ? [stored integerValue] : 0;
+}
+
 - (void)twToggleChanged {
-    [self twSaveObject:@(_toggle.isOn) forKey:[self twKey]];
+    NSNumber *bit = [self twBit];
+    if (bit) {
+        NSInteger flag = (NSInteger)1 << [bit integerValue];
+        NSInteger mask = [self twMaskValue];
+        mask = _toggle.isOn ? (mask | flag) : (mask & ~flag);
+        [self twSaveObject:@(mask) forKey:[self twKey]];
+    } else {
+        [self twSaveObject:@(_toggle.isOn) forKey:[self twKey]];
+    }
     [self twNotifyHostReload];
+}
+
+- (void)twApplyRowColor:(UIColor *)color {
+    _toggle.onTintColor = color ?: [TWStyle accent];
 }
 
 - (CGFloat)twLayoutControlInHeight:(CGFloat)height width:(CGFloat)width {
@@ -135,7 +185,13 @@ static const CGFloat kTitleGap = 14.0;
     if (!_toggle) [self twBuild];
     NSString *key = [specifier propertyForKey:@"key"];
     id fallback = [specifier propertyForKey:@"default"];
-    _toggle.on = [[TWPrefs shared] boolForKey:key defaultValue:[fallback respondsToSelector:@selector(boolValue)] ? [fallback boolValue] : NO];
+    NSNumber *bit = [self twBit];
+    if (bit) {
+        NSInteger mask = [self twMaskValue];
+        _toggle.on = (mask & ((NSInteger)1 << [bit integerValue])) != 0;
+    } else {
+        _toggle.on = [[TWPrefs shared] boolForKey:key defaultValue:[fallback respondsToSelector:@selector(boolValue)] ? [fallback boolValue] : NO];
+    }
     self.titleLabel.hidden = YES;
     [self twApplyAppearance];
     [self setNeedsLayout];
@@ -177,9 +233,27 @@ static const CGFloat kTitleGap = 14.0;
     return _slider.minimumValue;
 }
 
+// twDerivedOffset：把这个滑杆的值换算成"用户真正看到的数字"（如窗口层级
+// 生效值 = 1998 + 视图优先级），拖的时候实时更新。
+- (BOOL)twHasDerivedOffset {
+    return [[self.specifier propertyForKey:@"twDerivedOffset"] respondsToSelector:@selector(doubleValue)];
+}
+
 - (NSString *)twValueText:(CGFloat)value {
     NSString *unit = [self.specifier propertyForKey:@"twUnit"];
-    return [NSString stringWithFormat:@"%.0f%@", value, [unit isKindOfClass:NSString.class] ? unit : @""];
+    NSString *text = [NSString stringWithFormat:@"%.0f%@", value, [unit isKindOfClass:NSString.class] ? unit : @""];
+    if ([self twHasDerivedOffset]) {
+        id offset = [self.specifier propertyForKey:@"twDerivedOffset"];
+        text = [NSString stringWithFormat:@"%@→%.0f", text, [offset doubleValue] + value];
+    }
+    return text;
+}
+
+- (void)twApplyRowColor:(UIColor *)color {
+    UIColor *tint = color ?: [TWStyle accent];
+    _slider.minimumTrackTintColor = tint;
+    _slider.thumbTintColor = tint;
+    _valueLabel.textColor = tint;
 }
 
 - (void)twSliderMoved {
@@ -208,7 +282,7 @@ static const CGFloat kTitleGap = 14.0;
 
     _chip.frame = CGRectMake(kMarginLeft, 14.0, kChipSize, kChipSize);
 
-    CGFloat valueWidth = 72.0;
+    CGFloat valueWidth = [self twHasDerivedOffset] ? 108.0 : 72.0;
     _valueLabel.frame = CGRectMake(width - kMarginRight - valueWidth, 16.0, valueWidth, 20.0);
 
     CGSize titleSize = [_twTitle sizeThatFits:CGSizeMake(width - titleX - valueWidth - kMarginRight - 8.0, 40.0)];
@@ -253,6 +327,37 @@ static const CGFloat kTitleGap = 14.0;
 - (void)twSegmentChanged {
     [self twSaveObject:@(_segment.selectedSegmentIndex) forKey:[self twKey]];
     [self twNotifyHostReload];
+}
+
+- (void)twApplyRowColor:(UIColor *)color {
+    UIColor *tint = color ?: [TWStyle accent];
+    if (@available(iOS 13.0, *)) _segment.selectedSegmentTintColor = tint;
+    _segment.tintColor = tint;
+}
+
+// twWideSegment：标题一行、选项控件整行在下面一行。中文选项（如
+// "Arc 角落唤醒 / ParallelX 边缘手柄"）塞进右上角的小控件会被截断，所以
+// 需要这种两行排布。
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    if (![self twUsesWideLayout]) return;
+    if (!_segment) [self twBuild];
+
+    CGFloat height = self.contentView.bounds.size.height;
+    CGFloat width = self.contentView.bounds.size.width;
+    CGFloat titleX = kMarginLeft + kChipSize + kTitleGap;
+
+    _chip.frame = CGRectMake(kMarginLeft, 12.0, kChipSize, kChipSize);
+
+    CGFloat titleWidth = MAX(60.0, width - titleX - kMarginRight);
+    CGSize titleSize = [_twTitle sizeThatFits:CGSizeMake(titleWidth, 40.0)];
+    _twTitle.frame = CGRectMake(titleX, 14.0, titleWidth, titleSize.height);
+
+    CGFloat controlHeight = 32.0;
+    CGFloat controlY = MAX(CGRectGetMaxY(_twTitle.frame) + 6.0, height - controlHeight - 10.0);
+    _controlHost.frame = CGRectMake(titleX, controlY, width - titleX - kMarginRight, controlHeight);
+    _segment.frame = _controlHost.bounds;
+    _controlWidth = _controlHost.frame.size.width;
 }
 
 - (CGFloat)twLayoutControlInHeight:(CGFloat)height width:(CGFloat)width {
@@ -314,6 +419,14 @@ static const CGFloat kTitleGap = 14.0;
     return (destructive ? available : available + chevronWidth);
 }
 
+- (void)twApplyRowColor:(UIColor *)color {
+    // 破坏性按钮整行（含芯片）用红色，其余行保持各自颜色但强调色不抢眼。
+    if ([[self.specifier propertyForKey:@"twDestructive"] boolValue]) {
+        [_chip setChipColor:[TWStyle danger]];
+        _twTitle.textColor = [TWStyle danger];
+    }
+}
+
 - (void)refreshCellContentsWithSpecifier:(PSSpecifier *)specifier {
     [super refreshCellContentsWithSpecifier:specifier];
     if (!_detailLabel) [self twBuild];
@@ -356,6 +469,10 @@ static const CGFloat kTitleGap = 14.0;
     _statusLabel.frame = CGRectMake(width - kMarginRight - available, (height - 20.0) / 2.0, available, 20.0);
     _controlHost.frame = self.contentView.bounds;
     return available;
+}
+
+- (void)twApplyRowColor:(UIColor *)color {
+    if ([[self.specifier propertyForKey:@"twPositive"] boolValue] && color) _statusLabel.textColor = color;
 }
 
 - (void)refreshCellContentsWithSpecifier:(PSSpecifier *)specifier {

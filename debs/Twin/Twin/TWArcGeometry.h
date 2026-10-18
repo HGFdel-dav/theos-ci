@@ -1,22 +1,42 @@
 // TWArcGeometry.h
-// Ported geometry from ScreenCore's arc launcher:
-//   - trigger region: a vertical strip along the chosen screen edge
-//   - item placement: icons laid out along an arc anchored at the trigger point
+// 角落版几何（0.4.0）：手势从屏幕**角落**起手，图标以该角为圆心扇形展开。
+// 旧版是"沿选定边缘的竖条触发"，与 ParallelX 手柄重复，已按用户要求改掉。
 #import <UIKit/UIKit.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
+typedef NS_ENUM(NSInteger, TWCorner) {
+    TWCornerBottomRight = 0,   // 右下
+    TWCornerBottomLeft  = 1,   // 左下
+    TWCornerTopLeft     = 2,   // 左上
+    TWCornerTopRight    = 3,   // 右上
+};
+
 @interface TWArcGeometry : NSObject
-// Returns YES if the point lies inside the trigger strip for the given side.
-+ (BOOL)point:(CGPoint)point inTriggerRegionForSide:(NSInteger)side width:(CGFloat)width bounds:(CGRect)bounds;
-// Anchor (arc center) derived from the trigger point.
-+ (CGPoint)anchorForTriggerPoint:(CGPoint)triggerPoint side:(NSInteger)side bounds:(CGRect)bounds;
-// Fit the whole arc (including the 1.18x highlight) without clamping items separately.
-+ (CGFloat)radiusForItemCount:(NSInteger)count preferredRadius:(CGFloat)radius menuScale:(CGFloat)scale bounds:(CGRect)bounds;
+// 命中哪个角落（cornersMask 位掩码 = 1<<TWCorner*），未命中返回 -1。
+// bounds 为屏幕尺寸；statusZone 为顶部状态栏/底部 Home 条保留高度。
++ (NSInteger)cornerAtPoint:(CGPoint)point corners:(NSInteger)cornersMask size:(CGFloat)size bounds:(CGRect)bounds;
+
+// 扇形总角度（弧度）：一个象限。
++ (CGFloat)sweepAngle;
+
+// 角落对应的起始角（UIKit 坐标：0=向右，π/2=向下）。
++ (CGFloat)startAngleForCorner:(NSInteger)corner;
+
+// 弧心位置：从角落往屏内缩 margin，保证贴边的图标不出屏。
++ (CGPoint)anchorForCorner:(NSInteger)corner margin:(CGFloat)margin bounds:(CGRect)bounds;
+
+// 半径上限：把整个扇形塞进屏幕（不越出对角线外侧两条边）。
++ (CGFloat)maxRadiusForCorner:(NSInteger)corner anchor:(CGPoint)anchor margin:(CGFloat)margin bounds:(CGRect)bounds;
+
+// 半径适配：既要排得下 count 个图标，又不让扇形出屏。
++ (CGFloat)radiusForItemCount:(NSInteger)count preferredRadius:(CGFloat)radius menuScale:(CGFloat)scale corner:(NSInteger)corner bounds:(CGRect)bounds;
+
+// 图标直径：按相邻圆心弦长反推。
 + (CGFloat)itemSizeForCount:(NSInteger)count radius:(CGFloat)radius menuScale:(CGFloat)scale;
-+ (CGPoint)anchorForTriggerPoint:(CGPoint)point side:(NSInteger)side radius:(CGFloat)radius itemSize:(CGFloat)size menuScale:(CGFloat)scale bounds:(CGRect)bounds;
-// Center of the i-th menu item (0-based) when placing count items along the arc.
-+ (CGPoint)centerForItemAtIndex:(NSInteger)index count:(NSInteger)count radius:(CGFloat)radius anchor:(CGPoint)anchor side:(NSInteger)side bounds:(CGRect)bounds;
+
+// 第 index 个（0-based）图标中心。
++ (CGPoint)centerForItemAtIndex:(NSInteger)index count:(NSInteger)count radius:(CGFloat)radius anchor:(CGPoint)anchor corner:(NSInteger)corner bounds:(CGRect)bounds;
 @end
 
 NS_ASSUME_NONNULL_END
