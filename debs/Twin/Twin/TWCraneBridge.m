@@ -213,7 +213,7 @@ static id TWMsgSendStr(id target, SEL sel, id arg) {
     if (!manager || ![containerID isKindOfClass:NSString.class] || !containerID.length ||
         ![bundleID isKindOfClass:NSString.class] || !bundleID.length) return @"";
     SEL sel = NSSelectorFromString(@"displayNameForContainerWithIdentifier:ofApplicationWithIdentifier:shouldUseShortVersion:");
-    if (TWSignature(manager, sel, @encode(id), @[@"@", @"@", @encode(BOOL)])) {
+    if (TWSignature(manager, sel, @encode(id), @[@"@", @"@", [NSString stringWithUTF8String:@encode(BOOL)]])) {
         id (*fn)(id, SEL, id, id, BOOL) = (id (*)(id, SEL, id, id, BOOL))objc_msgSend;
         id name = fn(manager, sel, containerID, bundleID, NO);
         if ([name isKindOfClass:NSString.class] && [name length]) return name;
