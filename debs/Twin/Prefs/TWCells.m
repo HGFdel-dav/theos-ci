@@ -6,13 +6,7 @@ static const CGFloat kMarginLeft = 16.0;
 static const CGFloat kMarginRight = 16.0;
 static const CGFloat kTitleGap = 14.0;
 
-@implementation TWBaseCell {
-    TWChipView *_chip;
-    UILabel *_twTitle;
-    UIView *_controlHost;
-    CGFloat _controlWidth;
-    UIColor *_twRowColor;
-}
+@implementation TWBaseCell   // 共享 ivar 已移到 TWCells.h 的 @protected 区
 
 #pragma mark - setup
 

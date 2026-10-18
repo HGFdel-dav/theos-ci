@@ -8,7 +8,16 @@
 NS_ASSUME_NONNULL_BEGIN
 
 // Shared scaffolding: tinted symbol chip + bold title + right-aligned control.
-@interface TWBaseCell : PSTableCell
+// ★ 这些 ivar 必须放在这里（@protected）：子类在各自的 @implementation 里直接读写它们。
+//   放在 @implementation 的 ivar 块里是私有的，子类访问会报 "instance variable is private"。
+@interface TWBaseCell : PSTableCell {
+@protected
+    TWChipView *_chip;
+    UILabel *_twTitle;
+    UIView *_controlHost;
+    CGFloat _controlWidth;
+    UIColor *_twRowColor;
+}
 - (void)twBuild;                                                  // one-time subview setup
 - (void)twApplyAppearance;                                        // chip/title/dimming
 - (void)twSaveObject:(nullable id)value forKey:(nullable NSString *)key;
