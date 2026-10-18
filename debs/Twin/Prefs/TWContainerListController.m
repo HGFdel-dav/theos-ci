@@ -50,7 +50,8 @@ static UIImage *TWAppIcon(NSString *bundleID) {
     // ② 兜底：LSApplicationProxy iconDataForVariant:
     Class proxyCls = NSClassFromString(@"LSApplicationProxy");
     if (proxyCls) {
-        id proxy = [proxyCls performSelector:NSSelectorFromString(@"applicationProxyForIdentifier:") withObject:bundleID];
+        SEL proxySel = NSSelectorFromString(@"applicationProxyForIdentifier:");
+        id proxy = ((id (*)(id, SEL, id))objc_msgSend)(proxyCls, proxySel, bundleID);
         if (proxy) {
             SEL sel = NSSelectorFromString(@"iconDataForVariant:");
             if ([proxy respondsToSelector:sel]) {
