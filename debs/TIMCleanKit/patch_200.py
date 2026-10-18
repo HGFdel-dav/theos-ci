@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# TIMCleanKit 2.0.0 红包路由/归档/诊断补丁（已完成，留档）。
 # TIMCleanKit 2.0.0 重构补丁：
 #  1) 红包领取路由重构：NTRedPackRouterService 模拟点击（TIM 真实入口）优先，QQ 服务仅兜底
 #  2) 诊断加入 classProbe（探测进程内红包/钱包相关类名）
