@@ -60,21 +60,20 @@ static NSString *TWCornerNamesText(NSInteger mask) {
         NSInteger corners = [[TWPrefs shared] integerForKey:TWKeyArcCorners defaultValue:3];
         NSInteger priority = [[TWPrefs shared] integerForKey:TWKeyArcWindowPriority defaultValue:TWArcPriorityDefault];
 
-        // ---- 四角 ----
+        // ---- 触发角落 ----
         [specs addObject:TWGroupSpecifier(@"触发角落",
-            [NSString stringWithFormat:@"从选中的角落向屏幕内侧拖动即唤出弧形菜单；可以同时启用多个角。已选：%@。四个角全关时角落唤醒不会触发。",
-                                       TWCornerNamesText(corners)])];
-        NSArray<NSArray *> *cornerRows = @[
-            @[@"右下", @"arrow.down.right",  @0, @0],
-            @[@"左下", @"arrow.down.left",   @1, @1],
-            @[@"左上", @"arrow.up.left",     @2, @2],
-            @[@"右上", @"arrow.up.right",    @3, @3],
-        ];
-        for (NSArray *row in cornerRows) {
-            [specs addObject:TWRowSpecifier(self, row[0], TWKeyArcCorners, @3, @"TWSwitchCell", PSSwitchCell,
-                                            row[1], nil,
-                                            @{@"height": @58, @"twBit": row[3], @"twColor": row[2]})];
-        }
+            @"从选中的角落向屏幕内侧拖动即唤出弧形菜单；默认启用右下与左下，全部关闭后角落唤醒不触发。")];
+        // 0.4.3：位掩码开关无法用标准 PSSwitchCell 直读直写，改"总开关 + 当前状态只读行"，
+        // 用标准机制里的自定义 get/set 选择子读写掩码（开=默认双角，关=0）。
+        [specs addObject:TWRowSpecifier(self, @"启用角落唤醒", TWKeyArcCorners, @3, nil, PSSwitchCell,
+                                        @"hand.draw.fill", nil,
+                                        @{@"height": @58,
+                                          @"twGet": @"twArcCornersEnabled:",
+                                          @"twSet": @"twArcCornersSetEnabled:specifier:"})];
+        [specs addObject:TWRowSpecifier(self,
+                                        [NSString stringWithFormat:@"当前角落：%@", TWCornerNamesText(corners)],
+                                        nil, nil, nil, PSStaticTextCell, @"location.fill", nil,
+                                        @{@"height": @44})];
 
         // ---- 面板 ----
         [specs addObject:TWGroupSpecifier(@"面板",
@@ -150,6 +149,18 @@ static NSString *TWCornerNamesText(NSInteger mask) {
         return;
     }
     [super setPreferenceValue:value specifier:specifier];
+}
+
+#pragma mark - 触发角落总开关（标准 get/set 选择子，0.4.3）
+
+- (id)twArcCornersEnabled:(PSSpecifier *)specifier {
+    return @([[TWPrefs shared] integerForKey:TWKeyArcCorners defaultValue:3] != 0);
+}
+
+- (void)twArcCornersSetEnabled:(id)value specifier:(PSSpecifier *)specifier {
+    // 标准的双参 set：PSListController 以 (value, specifier) 调用。
+    [[TWPrefs shared] setInteger:[value boolValue] ? 3 : 0 forKey:TWKeyArcCorners];
+    [[TWPrefs shared] synchronize];
 }
 
 @end

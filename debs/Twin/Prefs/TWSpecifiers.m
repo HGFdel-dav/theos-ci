@@ -29,23 +29,26 @@ PSSpecifier *TWRowSpecifier(id target,
                             NSString *title,
                             NSString *key,
                             id defaultValue,
-                            NSString *cellName,
+                            NSString * __unused cellName,
                             PSCellType cellType,
                             NSString *symbol,
                             NSString *controllerClass,
                             NSDictionary *extras) {
-    // ★ 0.4.1 崩溃修复：控制类行（开关/分段/滑杆）必须用系统 cell + 接通 set:/get: 值链。
-    //   之前挂自定义 cellClass（自绘 TWSwitchCell 等，裸 PSTableCell 子类）——系统
-    //   PSSwitchCell/PSSegmentCell/PSSliderCell 的值链方法它们一概没有，PSListController
-    //   建 cell 时发 setValue: 等消息 → 转发失败 → SIGABRT → 设置页一打开就崩。
-    //   例外：带 twBit 的开关行（位掩码）取值逻辑特殊，保留自绘 cell。
-    BOOL stockControl = (cellType == PSSwitchCell || cellType == PSSegmentCell || cellType == PSSliderCell);
-    BOOL bitRow = stockControl && [extras[@"twBit"] respondsToSelector:@selector(integerValue)];
-
-    SEL setSel = NULL, getSel = NULL;
-    if (stockControl && !bitRow) {
-        setSel = @selector(setPreferenceValue:specifier:);   // 与各控制器里实现的签名一致
-        getSel = @selector(readPreferenceValue:);
+    // ★ 0.4.3 定案：全面回归纯标准行。绝不设置 cellClass——自绘 cell（裸 PSTableCell
+    //   子类）没有系统控制 cell 的值链 API，PSListController 建 cell 时发的私有消息
+    //   它们不响应 → 0.4.0 崩、0.4.1 崩、0.4.2 白屏（开关行能显示 = 唯一没挂自绘
+    //   cellClass 的行）。现在所有行一律用系统类渲染：PSSwitchCell / PSSegmentCell /
+    //   PSSliderCell / PSLinkCell / PSButtonCell / PSStaticTextCell。
+    //   cellName 参数保留仅为不惊动调用点，内容一律忽略。
+    //   值链：所有行接标准 set:/get:；需要特殊取值/写值的行（如 ARC 四角掩码）
+    //   用 extras 的 twGet/twSet 指定控制器上的自定义选择子（标准机制）。
+    SEL setSel = @selector(setPreferenceValue:specifier:);   // 与各控制器里实现的签名一致
+    SEL getSel = @selector(readPreferenceValue:);
+    if ([extras[@"twGet"] isKindOfClass:NSString.class] && [extras[@"twGet"] length]) {
+        getSel = NSSelectorFromString(extras[@"twGet"]);
+    }
+    if ([extras[@"twSet"] isKindOfClass:NSString.class] && [extras[@"twSet"] length]) {
+        setSel = NSSelectorFromString(extras[@"twSet"]);
     }
 
     // detail 一律先给 nil，链接行在下面统一按"类名字符串"补上，
@@ -60,9 +63,7 @@ PSSpecifier *TWRowSpecifier(id target,
     if (!spec) return nil;
     if (key.length) [spec setProperty:key forKey:@"key"];
     if (defaultValue) [spec setProperty:defaultValue forKey:@"default"];
-    if (!(stockControl && !bitRow) && cellName.length) {
-        [spec setProperty:cellName forKey:@"cellClass"];
-    }
+    // 0.4.3：cellClass 永不上报（自绘 cell 全家桶下线，全部用系统类渲染）。
     if (symbol.length) [spec setProperty:symbol forKey:@"twSymbol"];
     if (controllerClass.length) {
         [spec setProperty:controllerClass forKey:@"twController"];  // 我们自己 new
@@ -99,9 +100,10 @@ PSSpecifier *TWLinkRowSpecifier(id target,
     NSMutableDictionary *all = [NSMutableDictionary dictionaryWithDictionary:extras ?: @{}];
     all[@"height"] = all[@"height"] ?: @56;
     if (detailText.length) all[@"twDetail"] = detailText;
-    PSSpecifier *spec = TWRowSpecifier(target, title, nil, nil, @"TWActionCell", PSLinkCell,
+    PSSpecifier *spec = TWRowSpecifier(target, title, nil, nil, nil, PSLinkCell,
                                        symbol, controllerClass, all);
     [spec setProperty:@YES forKey:@"twLink"];
+    [spec setProperty:detailText ?: @"" forKey:@"detailText"];  // 系统链接行标准副标题键
     return spec;
 }
 
@@ -115,7 +117,10 @@ PSSpecifier *TWButtonRowSpecifier(id target,
     all[@"height"] = all[@"height"] ?: @56;
     if (destructive) all[@"twDestructive"] = @YES;
     all[@"twAction"] = action ?: @"";
-    return TWRowSpecifier(target, title, nil, nil, @"TWActionCell", PSButtonCell, symbol, nil, all);
+    PSSpecifier *spec = TWRowSpecifier(target, title, nil, nil, nil, PSButtonCell, symbol, nil, all);
+    // 标准按钮行：PSButtonCell 点击回调走 buttonAction（0.4.3 起不用自绘 TWActionCell）
+    if (action.length) [spec setButtonAction:NSSelectorFromString(action)];
+    return spec;
 }
 
 id TWControllerForSpecifier(PSListController *host, PSSpecifier *specifier) {
@@ -346,9 +351,17 @@ NSString *TWPrefsAppName(NSString *bundleID) {
     return bundleID;
 }
 
-#pragma mark - 诊断（0.4.2 观测版）：异常原文落盘
+#pragma mark - 诊断（0.4.3 观测版）：异常原文 + 构建轨迹落盘（沙盒内）
 
-NSString *const TWDiagLogPath = @"/var/mobile/Documents/TwinPrefs-diagnose.log";
+// ★ 必须写应用沙盒 Documents：Preferences 进程有沙盒，真实 /var/mobile/Documents
+//   写不进去（0.4.2 的路径就是被沙盒挡了，日志根本没落盘）。
+//   设备端用 root 从 /var/mobile/Containers/Data/Application/<UUID>/Documents/ 取。
+NSString *TWDiagLogPathResolve(void) {
+    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+    return paths.count ? [paths[0] stringByAppendingPathComponent:@"TwinPrefs-diagnose.log"] : nil;
+}
+
+NSString *const TWDiagLogPath = @"/var/mobile/Containers/Data/Application/TwinPrefs-DIAG.log"; // 仅占位防编译告警，实际用 Resolve
 
 void TWDiagLog(NSString *fmt, ...) {
     va_list ap;
@@ -356,10 +369,12 @@ void TWDiagLog(NSString *fmt, ...) {
     NSString *msg = [[NSString alloc] initWithFormat:fmt arguments:ap];
     va_end(ap);
     @try {
-        if (![[NSFileManager defaultManager] fileExistsAtPath:TWDiagLogPath]) {
-            [[NSFileManager defaultManager] createFileAtPath:TWDiagLogPath contents:nil attributes:nil];
+        NSString *path = TWDiagLogPathResolve();
+        if (!path) return;
+        if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
+            [[NSFileManager defaultManager] createFileAtPath:path contents:nil attributes:nil];
         }
-        NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:TWDiagLogPath];
+        NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
         if (!fh) return;
         [fh seekToEndOfFile];
         NSString *line = [NSString stringWithFormat:@"%@ [TwinPrefs] %@\n",

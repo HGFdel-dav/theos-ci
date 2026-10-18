@@ -29,7 +29,7 @@
 #import <sys/utsname.h>
 #import <objc/message.h>
 
-static NSString *const kTWVersion = @"0.4.2";
+static NSString *const kTWVersion = @"0.4.3";
 
 // 唤醒方式：0 = Arc 角落唤醒（默认），1 = ParallelX 边缘手柄。
 typedef NS_ENUM(NSInteger, TWWakeModeValue) {
@@ -102,20 +102,44 @@ typedef NS_ENUM(NSInteger, TWWakeModeValue) {
 
 #pragma mark - specifiers
 
-// ★ 0.4.2 观测版：建 cell 时兜住异常，把"未识别选择子"原文 + 该行 specifier
-//   明细落盘（/var/mobile/Documents/TwinPrefs-diagnose.log），并返回空白 cell，
-//   面板不再闪退——日志是判案依据。
+#pragma mark - 观测轨（0.4.3）：整页行构建轨迹 + 异常原文落盘
+
+static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
+    if (!sp) return @"(nil specifier)";
+    return [NSString stringWithFormat:@"name=%@ key=%@ type=%ld class=%@ cellClassProp=%@ detail=%@ bundle=%@ validV=%ld validT=%ld height=%@",
+            sp.name, [sp propertyForKey:@"key"], (long)[sp cellType], NSStringFromClass([sp class] ?: Nil) ?: @"?",
+            [sp propertyForKey:@"cellClass"], [sp propertyForKey:@"detail"], [sp propertyForKey:@"bundle"],
+            (long)[[sp propertyForKey:@"validValues"] count], (long)[[sp propertyForKey:@"validTitles"] count],
+            [sp propertyForKey:@"height"]];
+}
+
+- (NSInteger)numberOfRowsInSection:(NSInteger)section {
+    NSInteger n = 0;
+    if ([super respondsToSelector:@selector(numberOfRowsInSection:)]) {
+        n = [super numberOfRowsInSection:section];
+    }
+    TWDiagLog(@"numberOfRowsInSection sec=%ld -> %ld", (long)section, (long)n);
+    return n;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    CGFloat h = [super tableView:tableView heightForRowAtIndexPath:indexPath];
+    PSSpecifier *sp = [self specifierAtIndexPath:indexPath];
+    TWDiagLog(@"heightForRow sec=%ld row=%ld -> %.1f | %@", (long)indexPath.section, (long)indexPath.row, h, TWDiagSpecSummary(sp));
+    return h;
+}
+
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    PSSpecifier *sp = [self specifierAtIndexPath:indexPath];
+    TWDiagLog(@">> cellFor sec=%ld row=%ld | %@", (long)indexPath.section, (long)indexPath.row, TWDiagSpecSummary(sp));
     @try {
-        return [super tableView:tableView cellForRowAtIndexPath:indexPath];
+        UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];
+        TWDiagLog(@"<< cellFor sec=%ld row=%ld ok cell=%@", (long)indexPath.section, (long)indexPath.row, NSStringFromClass([cell class]));
+        return cell;
     } @catch (NSException *e) {
-        PSSpecifier *sp = [self specifierAtIndexPath:indexPath];
         TWDiagDumpException(e, [NSString stringWithFormat:@"cellForRow sec=%ld row=%ld",
                                 (long)indexPath.section, (long)indexPath.row]);
-        TWDiagLog(@"specifier: name=%@ key=%@ cellType=%ld cellClass=%@ detail=%@ bundle=%@",
-                  sp.name, [sp propertyForKey:@"key"], (long)[sp cellType],
-                  [sp propertyForKey:@"cellClass"], [sp propertyForKey:@"detail"],
-                  [sp propertyForKey:@"bundle"]);
+        TWDiagLog(@"specifier detail: %@", TWDiagSpecSummary(sp));
         TWDiagLog(@"specifier description: %@", sp);
         return [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault
                                       reuseIdentifier:@"TWBlankCell"];
