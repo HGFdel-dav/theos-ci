@@ -77,8 +77,14 @@ static Class TWCraneManagerClass(void) {
         if (!cls) {
             NSMutableArray<NSString *> *paths = [NSMutableArray array];
             NSString *root = TWJBRootPath();
-            if (root.length) [paths addObject:[root stringByAppendingPathComponent:@"usr/lib/libcrane.dylib"]];
-            [paths addObjectsFromArray:@[@"/var/jb/usr/lib/libcrane.dylib", @"/usr/lib/libcrane.dylib"]];
+            if (root.length) {
+                [paths addObject:[root stringByAppendingPathComponent:@"usr/lib/libcrane.dylib"]];
+                [paths addObject:[root stringByAppendingPathComponent:@"Library/MobileSubstrate/DynamicLibraries/Crane.dylib"]];
+            }
+            [paths addObjectsFromArray:@[@"/var/jb/usr/lib/libcrane.dylib",
+                                         @"/var/jb/Library/MobileSubstrate/DynamicLibraries/Crane.dylib",
+                                         @"/usr/lib/libcrane.dylib",
+                                         @"/Library/MobileSubstrate/DynamicLibraries/Crane.dylib"]];
             for (NSString *path in paths) {
                 if ([NSFileManager.defaultManager fileExistsAtPath:path] &&
                     dlopen(path.fileSystemRepresentation, RTLD_NOW | RTLD_GLOBAL)) {
@@ -277,6 +283,9 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
     if (section == 0) return nil;
     if (!_rows.count) {
+        if (![NSFileManager.defaultManager fileExistsAtPath:@"/var/mobile/Library/Twin/crane-containers.plist"]) {
+            return @"Twin 后台还没导出容器清单（Crane 未加载或导出失败）。\n请确认 Crane 已安装并运行，然后下拉刷新重试。\n诊断日志：/var/mobile/Library/Twin/export.log";
+        }
         return @"没有发现容器。先在 Crane 里给应用建好容器，再回来下拉刷新。";
     }
     return @"「应用名 - 容器名」：开关控制它是否出现在 Twin 的弧形菜单里。\n容器 ID 可在 Crane 设置中查看。\n\n⚠️ 认证取消或容器核验不符时不会打开应用。";

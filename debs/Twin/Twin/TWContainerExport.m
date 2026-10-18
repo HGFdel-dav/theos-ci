@@ -72,12 +72,44 @@ NSString *TWContainerExportPath(void) {
     return @"/var/mobile/Library/Twin/crane-containers.plist";
 }
 
-void TWContainerExportNow(void) {
+// 诊断日志：面板/用户可以直接看这个文件判断导出卡在哪一步。
+static void TWELog(NSString *fmt, ...) {
+    @try {
+        va_list ap;
+        va_start(ap, fmt);
+        NSString *line = [[NSString alloc] initWithFormat:fmt arguments:ap];
+        va_end(ap);
+        NSString *path = @"/var/mobile/Library/Twin/export.log";
+        [[NSFileManager defaultManager] createDirectoryAtPath:[path stringByDeletingLastPathComponent]
+                                  withIntermediateDirectories:YES attributes:nil error:nil];
+        NSString *stamp = [NSDateFormatter localizedStringFromDate:[NSDate date]
+                                                         dateStyle:NSDateFormatterNoStyle
+                                                         timeStyle:NSDateFormatterMediumStyle];
+        NSString *entry = [NSString stringWithFormat:@"[%@] %@\n", stamp, line];
+        NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:path];
+        if (!fh) {
+            [entry writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+        } else {
+            [fh seekToEndOfFile];
+            [fh writeData:[entry dataUsingEncoding:NSUTF8StringEncoding]];
+            [fh closeFile];
+        }
+    } @catch (__unused NSException *e) { }
+}
+
+BOOL TWContainerExportNow(void) {
     Class cls = TWE_CraneManager();
-    if (!cls) return;   // Crane 还没加载：保留上次导出的缓存，不清空。
+    if (!cls) {
+        TWELog(@"CraneManager 不存在（Crane 未加载或类名不匹配）");
+        return NO;   // Crane 还没加载：保留上次导出的缓存，不清空。
+    }
 
     id apps = TWE_Call(@"identfiersOfApplicationsThatHaveNonDefaultContainers", @[]);
-    if (![apps isKindOfClass:NSArray.class]) return;
+    if (![apps isKindOfClass:NSArray.class]) {
+        TWELog(@"identfiersOfApplicationsThatHaveNonDefaultContainers 返回异常: %@", apps);
+        return NO;
+    }
+    TWELog(@"CraneManager 可用，有非默认容器的应用数: %lu", (unsigned long)[(NSArray *)apps count]);
 
     NSMutableArray *exported = [NSMutableArray array];
     for (id item in (NSArray *)apps) {
@@ -104,22 +136,24 @@ void TWContainerExportNow(void) {
     NSString *path = TWContainerExportPath();
     NSString *dir = [path stringByDeletingLastPathComponent];
     [NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
-    [payload writeToFile:path atomically:YES];
+    BOOL ok = [payload writeToFile:path atomically:YES];
     chmod(path.fileSystemRepresentation, 0644);
+    TWELog(@"导出%@：%lu 个应用 -> %@", ok ? @"成功" : @"失败", (unsigned long)exported.count, path);
+    return ok;
 }
 
 void TWContainerExportStart(void) {
-    // Crane 可能比 Twin 晚加载：先等几秒，再在应用启动后刷新。
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        TWContainerExportNow();
+    // Crane 可能比 Twin 晚加载，也可能在运行中才建容器：
+    // 轮询导出（2 秒后开始，每 4 秒一次，最多 15 次），成功即停。
+    __block NSInteger attempts = 0;
+    dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+    dispatch_source_set_timer(timer, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
+                              (uint64_t)(4.0 * NSEC_PER_SEC), (uint64_t)(1.0 * NSEC_PER_SEC));
+    dispatch_source_set_event_handler(timer, ^{
+        attempts++;
+        if (TWContainerExportNow() || attempts >= 15) {
+            dispatch_source_cancel(timer);
+        }
     });
-    static id observer;
-    if (!observer) {
-        observer = [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidFinishLaunchingNotification
-                                                                     object:nil
-                                                                      queue:[NSOperationQueue mainQueue]
-                                                                 usingBlock:^(__unused NSNotification *note) {
-            TWContainerExportNow();
-        }];
-    }
+    dispatch_resume(timer);
 }

@@ -9,8 +9,8 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-// 立即导出一次（幂等，主线程调用）。
-FOUNDATION_EXPORT void TWContainerExportNow(void);
+// 立即导出一次（幂等，主线程调用）。成功写文件返回 YES。
+FOUNDATION_EXPORT BOOL TWContainerExportNow(void);
 // 启动导出：等 Crane 加载后执行，并在应用启动/容器切换后自动刷新。
 FOUNDATION_EXPORT void TWContainerExportStart(void);
 // 导出文件路径（面板侧也用这个路径）。
