@@ -48,53 +48,52 @@
         NSMutableArray *specs = [NSMutableArray array];
 
         NSInteger priority = [[TWPrefs shared] integerForKey:TWKeyArcWindowPriority defaultValue:TWArcPriorityDefault];
+        NSInteger orderCount = (NSInteger)TWArcOrderList().count;
 
-        // ---- 触发角落 ----
-        [specs addObject:TWGroupSpecifier(@"触发角落",
-            @"从选中的角落向屏幕内侧拖动即唤出弧形菜单；可同时启用多个角，全部关闭后角落唤醒不触发。")];
-        // 0.4.4：恢复四角独立开关——标准 PSSwitchCell + 标准 get/set 选择子（twBit 位掩码，
-        // 自定义选择子签名 get:带specifier / set:双参value+specifier，全是标准机制）。
-        NSArray<NSArray *> *cornerRows = @[
-            @[@"右下", @"arrow.down.right",  @0],
-            @[@"左下", @"arrow.down.left",   @1],
-            @[@"左上", @"arrow.up.left",     @2],
-            @[@"右上", @"arrow.up.right",    @3],
-        ];
-        for (NSArray *row in cornerRows) {
-            [specs addObject:TWRowSpecifier(self, row[0], TWKeyArcCorners, @3, nil, PSSwitchCell,
-                                            row[1], nil,
-                                            @{@"height": @58, @"twBit": row[2],
-                                              @"twGet": @"twCornerEnabled:",
-                                              @"twSet": @"twCornerSetEnabled:specifier:"})];
-        }
+        // ============ 0.5.0：按设计稿②（Arc 面板与手势）重建 ============
 
-        // ---- 面板 ----
-        [specs addObject:TWGroupSpecifier(@"面板",
-            @"图标以该角为圆心扇形展开：半径越大越靠屏内，图标数量越少单个图标越大。")];
-        [specs addObject:TWRowSpecifier(self, @"触发区大小", TWKeyArcCornerSize, @64, @"TWSliderCell", PSSliderCell,
-                                        @"square.dashed", nil,
-                                        @{@"height": @78, @"twMin": @40, @"twMax": @120, @"twStep": @2,
-                                          @"twUnit": @" pt", @"twColor": @3})];
-        [specs addObject:TWRowSpecifier(self, @"图标数量", TWKeyArcItemCount, @6, @"TWSliderCell", PSSliderCell,
+        // ---- 唤醒 ----
+        [specs addObject:TWGroupSpecifier(@"唤醒", nil)];
+        [specs addObject:TWRowSpecifier(self, @"触发边缘", TWKeyArcSide, @1, nil, PSSegmentCell,
+                                        @"rectangle.portrait.lefthalf.inset.filled", nil,
+                                        @{@"height": @58, @"twColor": @0, @"twTitles": @[@"左侧", @"右侧", @"两侧"]})];
+        [specs addObject:TWRowSpecifier(self, @"触发区宽度", TWKeyArcTriggerWidth, @24, nil, PSSliderCell,
+                                        @"arrow.left.and.right", nil,
+                                        @{@"height": @78, @"twMin": @8, @"twMax": @60, @"twStep": @1, @"twUnit": @" pt", @"twColor": @2})];
+        [specs addObject:TWRowSpecifier(self, @"菜单图标数", TWKeyArcItemCount, @6, nil, PSSliderCell,
                                         @"square.grid.2x2", nil,
-                                        @{@"height": @78, @"twMin": @2, @"twMax": @8, @"twStep": @1,
-                                          @"twUnit": @" 个", @"twColor": @2})];
-        [specs addObject:TWRowSpecifier(self, @"弧半径", TWKeyArcRadius, @150, @"TWSliderCell", PSSliderCell,
+                                        @{@"height": @78, @"twMin": @2, @"twMax": @8, @"twStep": @1, @"twUnit": @" 个", @"twColor": @3})];
+        [specs addObject:TWRowSpecifier(self, @"弧形半径", TWKeyArcRadius, @140, nil, PSSliderCell,
                                         @"circle.dashed", nil,
-                                        @{@"height": @78, @"twMin": @100, @"twMax": @220, @"twStep": @5,
-                                          @"twUnit": @" pt", @"twColor": @1})];
-        [specs addObject:TWRowSpecifier(self, @"音效", TWKeyArcSoundEnabled, @YES, @"TWSwitchCell", PSSwitchCell,
-                                        @"speaker.wave.2.fill", nil,
-                                        @{@"height": @62, @"twColor": @4})];
+                                        @{@"height": @78, @"twMin": @100, @"twMax": @220, @"twStep": @5, @"twUnit": @" pt", @"twColor": @4})];
 
         // ---- 窗口层级 ----
         [specs addObject:TWGroupSpecifier(@"窗口层级",
-            [NSString stringWithFormat:@"生效层级 = 1998 + 视图优先级，当前 %ld。默认 %ld 已高于状态栏(1000)与系统弹窗(2000)；拉到 %ld 为「至高无上」。层级再高也盖不过 iOS 安全界面（密码／支付），也不解除锁屏保护。菜单收起后整窗隐藏，不劫持触摸。",
+            [NSString stringWithFormat:@"生效层级 = 1998 + 视图优先级，当前 %ld。默认 %ld 已高于状态栏(1000)与系统弹窗(2000)；拉到 %ld 为「至高无上」。层级再高也盖不过 iOS 安全界面（密码／支付），也不解除锁屏保护。",
                                        (long)(1998 + priority), (long)TWArcPriorityDefault, (long)TWArcPriorityMax])];
-        [specs addObject:TWRowSpecifier(self, @"窗口层级优先级", TWKeyArcWindowPriority, @(TWArcPriorityDefault),
-                                        @"TWSliderCell", PSSliderCell, @"square.stack.3d.up", nil,
-                                        @{@"height": @78, @"twMin": @0, @"twMax": @(TWArcPriorityMax), @"twStep": @1,
-                                          @"twUnit": @"", @"twDerivedOffset": @1998, @"twColor": @9})];
+        [specs addObject:TWRowSpecifier(self, @"视图优先级", TWKeyArcWindowPriority, @(TWArcPriorityDefault), nil, PSSliderCell,
+                                        @"square.stack.3d.up", nil,
+                                        @{@"height": @78, @"twMin": @0, @"twMax": @(TWArcPriorityMax), @"twStep": @1, @"twUnit": @"", @"twColor": @1})];
+
+        // ---- 图标来源 ----
+        [specs addObject:TWGroupSpecifier(@"图标来源", nil)];
+        [specs addObject:TWRowSpecifier(self, @"显示哪些应用", TWKeyArcIconSource, @0, nil, PSSegmentCell,
+                                        @"person.crop.square", nil,
+                                        @{@"height": @58, @"twColor": @5, @"twTitles": @[@"最近应用", @"自选应用"]})];
+        [specs addObject:TWLinkRowSpecifier(self, @"自选应用与排序", @"list.number", @"TWArcOrderController",
+                                            (orderCount ? [NSString stringWithFormat:@"%ld 个", (long)orderCount] : @"未设置"),
+                                            @{@"height": @62, @"twColor": @3})];
+
+        // ---- 反馈与长按 ----
+        [specs addObject:TWGroupSpecifier(@"反馈与长按",
+            @"边缘按住向屏内拖动唤出弧形菜单；松手打开分屏，长按图标按上面选择的方式打开。")];
+        [specs addObject:TWRowSpecifier(self, @"音效", TWKeyArcSound, @YES, nil, PSSwitchCell,
+                                        @"speaker.wave.2.fill", nil, @{@"height": @62, @"twColor": @4})];
+        [specs addObject:TWRowSpecifier(self, @"震动反馈", TWKeyArcHaptic, @YES, nil, PSSwitchCell,
+                                        @"iphone.radiowaves.left.and.right", nil, @{@"height": @62, @"twColor": @2})];
+        [specs addObject:TWRowSpecifier(self, @"长按图标", TWKeyArcLongPressMode, @0, nil, PSSegmentCell,
+                                        @"hand.tap.fill", nil,
+                                        @{@"height": @58, @"twColor": @1, @"twTitles": @[@"分身", @"小窗", @"无"]})];
 
         _specifiers = specs;
     }

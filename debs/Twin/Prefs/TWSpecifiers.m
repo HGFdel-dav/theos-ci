@@ -444,3 +444,27 @@ static void TWDiagInstallUncaughtHandler(void) {
         NSSetUncaughtExceptionHandler(TWUncaughtHandler);
     });
 }
+#pragma mark - 开发中占位页（0.5.0：设计稿里尚未落地的入口，页面已就位）
+
+@interface TWStubController : PSListController
+@end
+
+@implementation TWStubController
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = self.specifier.name ?: @"Twin";
+    self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
+}
+
+- (NSArray *)specifiers {
+    if (!_specifiers) {
+        _specifiers = @[
+            TWGroupSpecifier(@"开发中",
+                @"这个入口来自设计稿，页面结构已就位；功能实现后原地生效，不会再换位置。"),
+        ];
+    }
+    return _specifiers;
+}
+
+@end

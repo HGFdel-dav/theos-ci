@@ -209,7 +209,7 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
     if (section == 0) {
         return _containers.count
-            ? @"点一下切换「是否出现在菜单里」，左滑删除。角标：默＝默认容器，分＝分身容器。"
+            ? @"点一下切换「是否出现在菜单里」，左滑删除。角标：默＝默认容器，分＝分身容器。\n\n⚠️ 认证取消或容器核验不符时不会打开应用。"
             : @"还没有容器。先在 Crane 里给应用建好容器，再在下面把它加进来。";
     }
     return TWCraneManagerClass()

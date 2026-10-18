@@ -29,7 +29,7 @@
 #import <sys/utsname.h>
 #import <objc/message.h>
 
-static NSString *const kTWVersion = @"0.4.5";
+static NSString *const kTWVersion = @"0.5.0";
 
 // 唤醒方式：0 = Arc 角落唤醒（默认），1 = ParallelX 边缘手柄。
 typedef NS_ENUM(NSInteger, TWWakeModeValue) {
@@ -155,86 +155,62 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
         NSMutableArray *specs = [NSMutableArray array];
 
         TWPrefs *prefs = [TWPrefs shared];
-        BOOL enabled = [prefs boolForKey:TWKeyEnabled defaultValue:NO];
-        NSInteger wake = [prefs integerForKey:TWKeyWakeMode defaultValue:TWWakeModeArc];
-        if (wake != TWWakeModeArc && wake != TWWakeModeParallelX) wake = TWWakeModeArc;
-        NSInteger arcOpen = [prefs integerForKey:TWKeyArcOpenMode defaultValue:0] == 1 ? 1 : 0;
-        NSInteger sideOpen = [prefs integerForKey:TWKeySideOpenMode defaultValue:0] == 1 ? 1 : 0;
         NSInteger containerCount = TWCraneContainerCount();
-        NSInteger orderCount = (NSInteger)TWArcOrderList().count;
         NSInteger memoryCount = TWRememberSnapshotCount();
 
-        // ---------- 1. 插件状态 ----------
+        // ============ 0.5.0：按设计稿（合并后的面板/根页）重建 ============
+
+        // ---------- 插件状态 ----------
         [specs addObject:TWGroupSpecifier(@"插件状态",
-            [NSString stringWithFormat:@"Twin %@ · 独立增强层：不替换、不冲突 ParallelX；关闭总开关即完全恢复系统原状。设置只写越狱环境的私有目录，不会出现在真实 /var/mobile/Library/Preferences。", kTWVersion])];
-        [specs addObject:TWRowSpecifier(self, @"启用 Twin", TWKeyEnabled, @NO, @"TWSwitchCell", PSSwitchCell,
-                                        @"power", nil, @{@"height": @62, @"twColor": @5})];
-        [specs addObject:TWRowSpecifier(self, @"Twin 版本", nil, nil, @"TWStatusCell", PSStaticTextCell,
-                                        @"tag", nil,
-                                        @{@"height": @50, @"twDetail": [self twTwinLabel], @"twPositive": @YES, @"twColor": @0})];
-        [specs addObject:TWRowSpecifier(self, @"Crane 分身", nil, nil, @"TWStatusCell", PSStaticTextCell,
-                                        @"square.on.square.dashed", nil,
-                                        @{@"height": @50, @"twDetail": [self twCraneLabel], @"twPositive": @NO, @"twColor": @2})];
-        [specs addObject:TWRowSpecifier(self, @"ParallelX 分屏", nil, nil, @"TWStatusCell", PSStaticTextCell,
-                                        @"rectangle.inset.filled.and.person.filled", nil,
-                                        @{@"height": @50, @"twDetail": [self twParallelXLabel], @"twPositive": @NO, @"twColor": @1})];
-        [specs addObject:TWRowSpecifier(self, @"运行环境", nil, nil, @"TWStatusCell", PSStaticTextCell,
-                                        @"iphone.gen3", nil,
-                                        @{@"height": @50, @"twDetail": [self twSystemLabel], @"twPositive": @NO, @"twColor": @9})];
+            [NSString stringWithFormat:@"Twin %@ · 独立增强层，不替换、不冲突 ParallelX。关闭总开关即完全恢复系统原状；设置只写越狱环境私有目录。", kTWVersion])];
+        [specs addObject:TWRowSpecifier(self, @"启用 Twin", TWKeyEnabled, @NO, nil, PSSwitchCell,
+                                        @"power", nil, @{@"height": @62, @"twColor": @0})];
 
-        // ---------- 2. 唤醒方式（二选一） ----------
-        [specs addObject:TWGroupSpecifier(@"唤醒方式（二选一）",
-            @"选哪个就用哪个唤出菜单：选「Arc 角落唤醒」时 Twin 接管角落手势；选「ParallelX 边缘手柄」时 Twin 完全不接管手势，改用 ParallelX 自己的边缘手柄唤出。")];
-        [specs addObject:TWRowSpecifier(self, @"唤醒方式", TWKeyWakeMode, @(TWWakeModeArc), @"TWSegmentCell", PSSegmentCell,
-                                        @"hand.draw.fill", nil,
-                                        @{@"height": @94, @"twWideSegment": @YES, @"twColor": @7,
-                                          @"twTitles": @[@"Arc 角落唤醒", @"ParallelX 边缘手柄"]})];
-        [specs addObject:TWLinkRowSpecifier(self, @"Arc 面板与手势", @"circle.grid.cross", @"TWArcPanelController",
-                                            [self twArcSummary], @{@"height": @62, @"twColor": @1})];
+        // ---------- Twin 增强 ----------
+        [specs addObject:TWGroupSpecifier(@"Twin 增强", nil)];
+        [specs addObject:TWRowSpecifier(self, @"Arc 唤醒", TWKeyArcEnabled, @YES, nil, PSSwitchCell,
+                                        @"bolt.horizontal.fill", nil, @{@"height": @62, @"twColor": @1})];
+        [specs addObject:TWLinkRowSpecifier(self, @"Arc 面板与手势", @"hand.point.up.left.fill", @"TWArcPanelController",
+                                            @"触发边缘、半径、图标与反馈", @{@"height": @62, @"twColor": @0})];
+        [specs addObject:TWRowSpecifier(self, @"分身打开", TWKeyCraneEnabled, @YES, nil, PSSwitchCell,
+                                        @"square.on.square", nil, @{@"height": @62, @"twColor": @3})];
+        [specs addObject:TWLinkRowSpecifier(self, @"分身应用", @"square.grid.2x2", @"TWContainerListController",
+                                            (containerCount ? [NSString stringWithFormat:@"%ld 个", (long)containerCount] : @"未添加"),
+                                            @{@"height": @62, @"twColor": @4})];
+        [specs addObject:TWRowSpecifier(self, @"记忆功能", TWKeyRememberSize, @YES, nil, PSSwitchCell,
+                                        @"clock.arrow.circlepath", nil, @{@"height": @62, @"twColor": @2})];
+        [specs addObject:TWLinkRowSpecifier(self, @"记忆的窗口", @"macwindow", @"TWRememberListController",
+                                            (memoryCount ? [NSString stringWithFormat:@"%ld 个", (long)memoryCount] : @"暂无"),
+                                            @{@"height": @62, @"twColor": @5})];
 
-        // ---------- 3. 启动 ----------
-        [specs addObject:TWGroupSpecifier(@"启动",
-            @"分别决定 Arc 菜单和侧边（ParallelX 手柄）两条路径打开应用时的窗口形态；选中的那条路径生效。")];
-        [specs addObject:TWRowSpecifier(self, @"ARC 打开方式", TWKeyArcOpenMode, @0, @"TWSegmentCell", PSSegmentCell,
-                                        @"rectangle.split.2x1", nil,
-                                        @{@"height": @58, @"twColor": @0, @"twTitles": @[@"分屏启动", @"全屏启动"]})];
-        [specs addObject:TWRowSpecifier(self, @"侧边打开方式", TWKeySideOpenMode, @0, @"TWSegmentCell", PSSegmentCell,
-                                        @"rectangle.righthalf.inset.filled", nil,
-                                        @{@"height": @58, @"twColor": @6, @"twTitles": @[@"分屏启动", @"全屏启动"]})];
-        [specs addObject:TWRowSpecifier(self, @"当前 ARC 打开方式", nil, nil, @"TWStatusCell", PSStaticTextCell,
-                                        @"info.circle", nil,
-                                        @{@"height": @50, @"twDetail": (arcOpen ? @"全屏启动" : @"分屏启动"), @"twPositive": @NO, @"twColor": @0})];
-        [specs addObject:TWRowSpecifier(self, @"当前侧边打开方式", nil, nil, @"TWStatusCell", PSStaticTextCell,
-                                        @"info.circle", nil,
-                                        @{@"height": @50, @"twDetail": (sideOpen ? @"全屏启动" : @"分屏启动"), @"twPositive": @NO, @"twColor": @6})];
+        // ---------- 应用与面板 ----------
+        [specs addObject:TWGroupSpecifier(@"应用与面板", nil)];
+        [specs addObject:TWLinkRowSpecifier(self, @"应用、快捷操作与排序", @"square.grid.2x2.fill", @"TWStubController",
+                                            @"开发中", @{@"height": @62, @"twColor": @0})];
+        [specs addObject:TWLinkRowSpecifier(self, @"半圆面板与手柄", @"circle.lefthalf.filled", @"TWStubController",
+                                            @"开发中", @{@"height": @62, @"twColor": @1})];
 
-        // ---------- 4. 分身（容器 ＝ 图标） ----------
-        [specs addObject:TWGroupSpecifier(@"分身（容器 ＝ 图标）",
-            @"一个应用有几个容器，菜单里就有几个图标（角标区分），点哪个就用哪个容器打开。容器 ID 来自 Crane，Twin 只记录要显示哪几个。")];
-        [specs addObject:TWLinkRowSpecifier(self, @"分身应用（容器）", @"app.badge", @"TWContainerListController",
-                                            (containerCount ? [NSString stringWithFormat:@"%ld 个容器", (long)containerCount] : @"未添加"),
-                                            @{@"height": @62, @"twColor": @8})];
-        [specs addObject:TWLinkRowSpecifier(self, @"Arc 图标顺序", @"list.number", @"TWArcOrderController",
-                                            (orderCount ? [NSString stringWithFormat:@"%ld 个", (long)orderCount] : @"未设置"),
-                                            @{@"height": @62, @"twColor": @3})];
-        [specs addObject:TWRowSpecifier(self, @"Twin 已启用", nil, nil, @"TWStatusCell", PSStaticTextCell,
-                                        @"bolt.fill", nil,
-                                        @{@"height": @50, @"twDetail": (enabled ? @"是" : @"否"), @"twPositive": @YES, @"twColor": @5})];
+        // ---------- 窗口与交互 ----------
+        [specs addObject:TWGroupSpecifier(@"窗口与交互", nil)];
+        [specs addObject:TWLinkRowSpecifier(self, @"分屏窗口与角落小窗", @"rectangle.split.3x1", @"TWStubController",
+                                            @"开发中", @{@"height": @62, @"twColor": @2})];
+        [specs addObject:TWLinkRowSpecifier(self, @"手势区域", @"hand.tap", @"TWStubController",
+                                            @"开发中", @{@"height": @62, @"twColor": @0})];
+        [specs addObject:TWLinkRowSpecifier(self, @"键盘", @"keyboard", @"TWStubController",
+                                            @"开发中", @{@"height": @62, @"twColor": @3})];
 
-        // ---------- 5. 记忆 ----------
-        [specs addObject:TWGroupSpecifier(@"记忆",
-            @"按「应用 + 容器」记形态：竖屏/横屏的窗口 frame、是否处于缩小(贴边)态、停在左还是右。下次打开同一个容器就按上次的样子出现。")];
-        [specs addObject:TWRowSpecifier(self, @"记忆大小位置", TWKeyRememberSize, @NO, @"TWSwitchCell", PSSwitchCell,
-                                        @"arrow.up.left.and.arrow.down.right", nil,
-                                        @{@"height": @62, @"twColor": @4})];
-        [specs addObject:TWLinkRowSpecifier(self, @"已记忆的窗口", @"clock.arrow.circlepath", @"TWRememberListController",
-                                            (memoryCount ? [NSString stringWithFormat:@"%ld 条", (long)memoryCount] : @"暂无"),
-                                            @{@"height": @62, @"twColor": @2})];
-        [specs addObject:TWButtonRowSpecifier(self, @"重置记忆大小及位置", @"resetMemory", @"arrow.counterclockwise",
-                                              YES, @{@"height": @56})];
-        [specs addObject:TWRowSpecifier(self, @"记忆条数", nil, nil, @"TWStatusCell", PSStaticTextCell,
-                                        @"number", nil,
-                                        @{@"height": @50, @"twDetail": [NSString stringWithFormat:@"%ld 条", (long)memoryCount], @"twPositive": @NO, @"twColor": @4})];
+        // ---------- 外部打开与系统 ----------
+        [specs addObject:TWGroupSpecifier(@"外部打开与系统", nil)];
+        [specs addObject:TWLinkRowSpecifier(self, @"通知与 URL 跳转", @"bell.badge", @"TWStubController",
+                                            @"开发中", @{@"height": @62, @"twColor": @1})];
+        [specs addObject:TWLinkRowSpecifier(self, @"锁屏、截图与录屏", @"lock.shield", @"TWStubController",
+                                            @"开发中", @{@"height": @62, @"twColor": @6})];
+
+        // ---------- 配置 ----------
+        [specs addObject:TWGroupSpecifier(@"配置",
+            [NSString stringWithFormat:@"Twin %@ · 标注「开发中」的入口来自设计稿，页面已就位，功能落地后原地生效。", kTWVersion])];
+        [specs addObject:TWLinkRowSpecifier(self, @"备份与恢复", @"arrow.down.doc", @"TWStubController",
+                                            @"开发中", @{@"height": @62, @"twColor": @0})];
 
         _specifiers = specs;
     }
