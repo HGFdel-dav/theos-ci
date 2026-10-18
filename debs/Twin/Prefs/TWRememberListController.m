@@ -115,7 +115,7 @@
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     if (indexPath.section == 0) {
         if (indexPath.row == 0) {
-            return [self switchCell:@"记忆功能" key:TWKeyRememberSize def:YES tag:0];
+            return [self switchCell:@"记忆大小位置" key:TWKeyRememberSize def:YES tag:0];
         }
         return [self segmentCell:@"记住哪些应用" titles:@[@"全部", @"指定"]
                         selected:[[TWPrefs shared] integerForKey:TWKeyRememberAppsScope defaultValue:0]];
@@ -131,8 +131,8 @@
     if (self.entries.count && indexPath.row >= (NSInteger)self.entries.count) {
         UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"clear"];
         if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"clear"];
-        cell.textLabel.text = @"清除全部记忆";
-        cell.textLabel.textColor = UIColor.systemRedColor;
+        cell.textLabel.text = @"重置记忆大小及位置";
+        cell.textLabel.textColor = UIColor.systemBlueColor;
         cell.textLabel.textAlignment = NSTextAlignmentNatural;
         cell.selectionStyle = UITableViewCellSelectionStyleDefault;
         cell.accessoryType = UITableViewCellAccessoryNone;

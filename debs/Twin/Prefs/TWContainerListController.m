@@ -1,4 +1,12 @@
-// TWContainerListController.m
+// TWContainerListController.m — 「分身应用（容器）」（0.6.0 照 ScreenCore 原版重写）。
+//
+// 行样式与 ScreenCore 的 Crane 容器页一致：
+//   [应用图标]  应用名 - 容器名            [开关]
+//   · 自动列出 Crane 里所有带容器的应用（含「默认」容器），无需手动添加
+//   · 开关控制该容器是否出现在 Twin 的弧形菜单里
+//   · 图标用 _applicationIconImageForBundleIdentifier:format:scale:
+//     （ScreenCore 同款私有方法），LSApplicationProxy 兜底
+//   · Crane 未装时页面照常显示，只是没有行
 #import "TWContainerListController.h"
 #import "TWSpecifiers.h"
 #import "TWPath.h"
@@ -6,7 +14,7 @@
 #import <objc/message.h>
 #import <dlfcn.h>
 
-#pragma mark - 容器列表的读写（只写 jbroot 私有 plist）
+#pragma mark - 容器列表读写（只写 jbroot 私有 plist）
 
 static void TWSaveContainers(NSArray<NSDictionary *> *containers) {
     NSMutableArray *clean = [NSMutableArray array];
@@ -28,9 +36,36 @@ static void TWSaveContainers(NSArray<NSDictionary *> *containers) {
     [[TWPrefs shared] synchronize];
 }
 
+#pragma mark - 应用图标（照抄 ScreenCore 的取法）
+
+static UIImage *TWAppIcon(NSString *bundleID) {
+    if (!bundleID.length) return nil;
+    CGFloat scale = UIScreen.mainScreen.scale;
+    // ① ScreenCore 同款：私有 UIImage 方法，Preferences 进程内可用
+    SEL sel3 = NSSelectorFromString(@"_applicationIconImageForBundleIdentifier:format:scale:");
+    if ([UIImage respondsToSelector:sel3]) {
+        UIImage *img = ((id (*)(id, SEL, id, long, double))objc_msgSend)(UIImage.class, sel3, bundleID, 0, (double)scale);
+        if ([img isKindOfClass:UIImage.class] && img.size.width > 0) return img;
+    }
+    // ② 兜底：LSApplicationProxy iconDataForVariant:
+    Class proxyCls = NSClassFromString(@"LSApplicationProxy");
+    if (proxyCls) {
+        id proxy = [proxyCls performSelector:NSSelectorFromString(@"applicationProxyForIdentifier:") withObject:bundleID];
+        if (proxy) {
+            SEL sel = NSSelectorFromString(@"iconDataForVariant:");
+            if ([proxy respondsToSelector:sel]) {
+                id data = ((id (*)(id, SEL, int))objc_msgSend)(proxy, sel, 2);
+                if ([data isKindOfClass:NSData.class]) {
+                    UIImage *img = [UIImage imageWithData:data scale:scale];
+                    if (img) return img;
+                }
+            }
+        }
+    }
+    return nil;
+}
+
 #pragma mark - Crane 反射（Crane 未装时全部返回空，页面照样能用）
-// 注意：Preferences 进程里 CraneManager 默认不存在，必须先 dlopen libcrane.dylib
-// （与 SpringBoard 侧 TWCraneBridge.m 同一套路径回退），否则容器列表永远是空的。
 
 static Class TWCraneManagerClass(void) {
     static Class cls;
@@ -67,7 +102,7 @@ static id TWCraneCall(NSString *selectorName, NSArray *arguments) {
 
 // Crane 的容器显示名（方法名按已解包的 com.wkk.crane 1.3.17 原样使用）。
 static NSString *TWCraneContainerName(NSString *containerID, NSString *bundleID) {
-    if (!containerID.length) return @"默认容器";
+    if (!containerID.length) return @"默认";
     id name = TWCraneCall(@"displayNameForContainerWithIdentifier:ofApplicationWithIdentifier:shouldUseShortVersion:",
                           @[containerID, bundleID]);
     if ([name isKindOfClass:NSString.class] && [name length]) return name;
@@ -96,13 +131,12 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
 #pragma mark - 分身应用（容器）
 
 @implementation TWContainerListController {
-    NSArray<NSDictionary *> *_containers;   // 已加入
-    NSArray<NSString *> *_candidates;       // Crane 里还有容器的应用
+    NSArray<NSDictionary *> *_rows;   // {bundleID, containerID, enabled} 自动发现 + 开关状态
 }
 
 - (instancetype)init {
     if ((self = [super initWithStyle:UITableViewStyleInsetGrouped])) {
-        self.title = @"分身应用（容器）";
+        self.title = @"分身应用";
     }
     return self;
 }
@@ -110,358 +144,151 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
-    self.navigationItem.rightBarButtonItem = self.editButtonItem;
-    [self reloadData];
+    UIRefreshControl *refresh = [[UIRefreshControl alloc] init];
+    [refresh addTarget:self action:@selector(reloadContainers) forControlEvents:UIControlEventValueChanged];
+    self.refreshControl = refresh;
+    [self reloadContainers];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-    [self reloadData];
+    [self reloadContainers];
 }
 
-- (void)reloadData {
-    _containers = TWCraneContainers();
-    NSMutableArray<NSString *> *candidates = [NSMutableArray array];
+- (void)reloadContainers {
+    // 旧数据：用户已有的开关状态（同一键，兼容 0.5.x 存储格式）
+    NSDictionary *saved = [[TWPrefs shared] objectForKey:TWKeyCraneContainers];
+    NSMutableDictionary<NSString *, NSNumber *> *enabledMap = [NSMutableDictionary dictionary];
+    if ([saved isKindOfClass:NSArray.class]) {
+        for (id item in (NSArray *)saved) {
+            if (![item isKindOfClass:NSDictionary.class]) continue;
+            NSString *bundleID = item[@"bundleID"];
+            NSString *containerID = item[@"containerID"];
+            if (![bundleID isKindOfClass:NSString.class]) continue;
+            if (![containerID isKindOfClass:NSString.class]) containerID = @"";
+            id enabled = item[@"enabled"];
+            BOOL on = [enabled respondsToSelector:@selector(boolValue)] ? [enabled boolValue] : YES;
+            enabledMap[[NSString stringWithFormat:@"%@|%@", bundleID, containerID]] = @(on);
+        }
+    }
+
+    NSMutableArray<NSDictionary *> *rows = [NSMutableArray array];
     for (NSString *bundleID in TWCraneAppsWithContainers()) {
-        BOOL known = NO;
-        for (NSDictionary *entry in _containers) {
-            if ([entry[@"bundleID"] isEqualToString:bundleID]) { known = YES; break; }
+        NSMutableArray<NSString *> *ids = [NSMutableArray arrayWithObject:@""];
+        [ids addObjectsFromArray:TWCraneContainerIDsForBundleID(bundleID)];
+        for (NSString *containerID in ids) {
+            NSString *mapKey = [NSString stringWithFormat:@"%@|%@", bundleID, containerID];
+            NSNumber *enabled = enabledMap[mapKey];
+            [rows addObject:@{
+                @"bundleID": bundleID,
+                @"containerID": containerID,
+                @"enabled": enabled ?: @YES,   // 新发现默认开（与 ScreenCore 一致）
+            }];
         }
-        if (!known) [candidates addObject:bundleID];
     }
-    _candidates = candidates;
+    _rows = rows;
+    [self.refreshControl endRefreshing];
     [self.tableView reloadData];
 }
 
-#pragma mark - 增删改
-
-- (void)toggleContainerAtIndexPath:(NSIndexPath *)indexPath {
-    if (indexPath.row >= (NSInteger)_containers.count) return;
-    NSMutableArray *all = [_containers mutableCopy];
-    NSMutableDictionary *entry = [all[(NSUInteger)indexPath.row] mutableCopy];
-    BOOL enabled = [entry[@"enabled"] boolValue];
-    entry[@"enabled"] = @(!enabled);
-    all[(NSUInteger)indexPath.row] = entry;
-    TWSaveContainers(all);
-    [self reloadData];
-}
-
-- (void)removeContainerAtIndexPath:(NSIndexPath *)indexPath {
-    if (indexPath.row >= (NSInteger)_containers.count) return;
-    NSMutableArray *all = [_containers mutableCopy];
-    [all removeObjectAtIndex:(NSUInteger)indexPath.row];
-    TWSaveContainers(all);
-    [self reloadData];
-}
-
-- (void)addContainer:(NSString *)containerID forBundleID:(NSString *)bundleID {
-    NSMutableArray *all = [_containers mutableCopy];
-    for (NSDictionary *entry in all) {
-        if ([entry[@"bundleID"] isEqualToString:bundleID] && [entry[@"containerID"] isEqualToString:containerID ?: @""]) return;
+- (void)persistRows {
+    NSMutableArray<NSDictionary *> *saved = [NSMutableArray array];
+    for (NSDictionary *row in _rows) {
+        [saved addObject:@{
+            @"bundleID": row[@"bundleID"],
+            @"containerID": row[@"containerID"] ?: @"",
+            @"name": TWPrefsAppName(row[@"bundleID"]),
+            @"badge": [row[@"containerID"] length] ? @"分" : @"默",
+            @"enabled": row[@"enabled"] ?: @YES,
+        }];
     }
-    NSString *name = TWCraneContainerName(containerID, bundleID);
-    [all addObject:@{@"bundleID": bundleID,
-                     @"containerID": containerID ?: @"",
-                     @"name": name.length ? name : TWPrefsAppName(bundleID),
-                     @"badge": containerID.length ? @"分" : @"默",
-                     @"enabled": @YES}];
-    TWSaveContainers(all);
-    [self reloadData];
+    TWSaveContainers(saved);
 }
 
-- (void)pickContainerForBundleID:(NSString *)bundleID {
-    NSArray<NSString *> *ids = TWCraneContainerIDsForBundleID(bundleID);
+- (void)switchToggled:(UISwitch *)sw {
+    NSInteger idx = sw.tag;
+    if (idx < 0 || idx >= (NSInteger)_rows.count) return;
+    NSMutableArray *updated = [_rows mutableCopy];
+    NSMutableDictionary *row = [updated[(NSUInteger)idx] mutableCopy];
+    row[@"enabled"] = @(sw.isOn);
+    updated[(NSUInteger)idx] = row;
+    _rows = updated;
+    [self persistRows];
+}
+
+#pragma mark - 开关行（分身打开）
+
+- (void)masterSwitchToggled:(UISwitch *)sw {
+    [[TWPrefs shared] setBool:sw.isOn forKey:TWKeyCraneEnabled];
+    [[TWPrefs shared] synchronize];
+}
+
+#pragma mark - table
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 2; }
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    if (section == 0) return 1;
+    return _rows.count ? (NSInteger)_rows.count : 1;
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+    return section == 1 ? @"CRANE 分身" : nil;
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
+    if (section == 0) return nil;
+    if (!_rows.count) {
+        return @"没有发现容器。先在 Crane 里给应用建好容器，再回来下拉刷新。";
+    }
+    return @"「应用名 - 容器名」：开关控制它是否出现在 Twin 的弧形菜单里。\n容器 ID 可在 Crane 设置中查看。\n\n⚠️ 认证取消或容器核验不符时不会打开应用。";
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    return 58;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (indexPath.section == 0) {
+        UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"master"];
+        cell.textLabel.text = @"分身打开";
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        UISwitch *sw = [[UISwitch alloc] init];
+        sw.on = [[TWPrefs shared] boolForKey:TWKeyCraneEnabled defaultValue:YES];
+        [sw addTarget:self action:@selector(masterSwitchToggled:) forControlEvents:UIControlEventValueChanged];
+        cell.accessoryView = sw;
+        return cell;
+    }
+
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"crane"];
+    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"crane"];
+    cell.imageView.image = nil;
+    cell.textLabel.text = nil;
+    cell.accessoryView = nil;
+    cell.selectionStyle = UITableViewCellSelectionStyleNone;
+
+    if (!_rows.count) {
+        cell.textLabel.text = @"暂无可加入的应用";
+        cell.textLabel.textColor = UIColor.secondaryLabelColor;
+        cell.accessoryType = UITableViewCellAccessoryNone;
+        return cell;
+    }
+
+    NSDictionary *row = _rows[(NSUInteger)indexPath.row];
+    NSString *bundleID = row[@"bundleID"];
+    NSString *containerID = row[@"containerID"] ?: @"";
     NSString *appName = TWPrefsAppName(bundleID);
-    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"%@ 的容器", appName]
-                                                                  message:@"选一个容器，菜单里就会多一个图标（角标区分）。"
-                                                           preferredStyle:UIAlertControllerStyleActionSheet];
-    __weak TWContainerListController *weakSelf = self;
-    [sheet addAction:[UIAlertAction actionWithTitle:@"默认容器" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
-        [weakSelf addContainer:@"" forBundleID:bundleID];
-    }]];
-    for (NSString *containerID in ids) {
-        NSString *title = TWCraneContainerName(containerID, bundleID);
-        [sheet addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
-            [weakSelf addContainer:containerID forBundleID:bundleID];
-        }]];
-    }
-    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-    if (sheet.popoverPresentationController) {
-        sheet.popoverPresentationController.sourceView = self.view;
-        sheet.popoverPresentationController.sourceRect = CGRectMake(self.view.bounds.size.width / 2.0, self.view.bounds.size.height / 2.0, 1, 1);
-    }
-    [self presentViewController:sheet animated:YES completion:nil];
-}
-
-#pragma mark - table
-
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 2; }
-
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    if (section == 0) return _containers.count ? (NSInteger)_containers.count : 1;
-    return _candidates.count ? (NSInteger)_candidates.count : 1;
-}
-
-- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    return section == 0 ? @"已加入菜单的容器" : @"Crane 里还有容器的应用";
-}
-
-- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-    if (section == 0) {
-        return _containers.count
-            ? @"点一下切换「是否出现在菜单里」，左滑删除。角标：默＝默认容器，分＝分身容器。\n\n⚠️ 认证取消或容器核验不符时不会打开应用。"
-            : @"还没有容器。先在 Crane 里给应用建好容器，再在下面把它加进来。";
-    }
-    return TWCraneManagerClass()
-        ? @"点应用 → 选容器，即可把它加进 Arc 菜单。一个应用可以加入多个容器。"
-        : @"没有检测到 Crane（com.wkk.crane）。装好 Crane 并重启后，这里会列出已有容器的应用。";
-}
-
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"container"];
-    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"container"];
-
-    if (indexPath.section == 0) {
-        if (!_containers.count) {
-            cell.textLabel.text = @"暂无容器";
-            cell.detailTextLabel.text = TWCraneManagerClass() ? @"从下面选择一个应用开始。" : @"需要先安装 Crane。";
-            cell.accessoryType = UITableViewCellAccessoryNone;
-            cell.selectionStyle = UITableViewCellSelectionStyleNone;
-            return cell;
-        }
-        NSDictionary *entry = _containers[(NSUInteger)indexPath.row];
-        NSString *bundleID = entry[@"bundleID"];
-        BOOL enabled = [entry[@"enabled"] boolValue];
-        cell.textLabel.text = [NSString stringWithFormat:@"%@", TWPrefsAppName(bundleID)];
-        cell.detailTextLabel.text = [NSString stringWithFormat:@"角标 %@ ｜ %@ ｜ %@",
-                                     entry[@"badge"], entry[@"name"], bundleID];
-        cell.accessoryType = enabled ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
-        cell.textLabel.textColor = enabled ? [UIColor labelColor] : [UIColor tertiaryLabelColor];
-        cell.selectionStyle = UITableViewCellSelectionStyleDefault;
-        return cell;
-    }
-
-    if (!_candidates.count) {
-        cell.textLabel.text = TWCraneManagerClass() ? @"没有更多容器" : @"未检测到 Crane";
-        cell.detailTextLabel.text = @"";
-        cell.accessoryType = UITableViewCellAccessoryNone;
-        cell.selectionStyle = UITableViewCellSelectionStyleNone;
-        return cell;
-    }
-    NSString *bundleID = _candidates[(NSUInteger)indexPath.row];
-    cell.textLabel.text = TWPrefsAppName(bundleID);
-    cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ ｜ %lu 个容器",
-                                 bundleID, (unsigned long)TWCraneContainerIDsForBundleID(bundleID).count];
-    cell.textLabel.textColor = [UIColor labelColor];
-    cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-    cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+    NSString *containerName = TWCraneContainerName(containerID, bundleID);
+    // ScreenCore 同款行：应用图标 + 应用名 - 容器名 + 开关
+    cell.imageView.image = TWAppIcon(bundleID);
+    cell.textLabel.text = [NSString stringWithFormat:@"%@ - %@", appName, containerName];
+    cell.textLabel.textColor = UIColor.labelColor;
+    UISwitch *sw = [[UISwitch alloc] init];
+    sw.on = [row[@"enabled"] boolValue];
+    sw.tag = indexPath.row;
+    [sw addTarget:self action:@selector(switchToggled:) forControlEvents:UIControlEventValueChanged];
+    cell.accessoryView = sw;
     return cell;
-}
-
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    if (indexPath.section == 0) {
-        if (_containers.count) [self toggleContainerAtIndexPath:indexPath];
-        return;
-    }
-    if (_candidates.count) [self pickContainerForBundleID:_candidates[(NSUInteger)indexPath.row]];
-}
-
-- (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
-    return indexPath.section == 0 && _containers.count > 0;
-}
-
-- (void)tableView:(UITableView *)tableView
-        commitEditingStyle:(UITableViewCellEditingStyle)editingStyle
-         forRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (editingStyle == UITableViewCellEditingStyleDelete) [self removeContainerAtIndexPath:indexPath];
-}
-
-@end
-
-#pragma mark - Arc 图标顺序
-
-@implementation TWArcOrderController {
-    NSMutableArray<NSString *> *_order;
-    NSArray<NSString *> *_suggestions;
-}
-
-- (instancetype)init {
-    if ((self = [super initWithStyle:UITableViewStyleInsetGrouped])) {
-        self.title = @"Arc 图标顺序";
-    }
-    return self;
-}
-
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
-    self.navigationItem.rightBarButtonItem = self.editButtonItem;
-    // 0.4.5：leftBarButtonItem 会顶掉系统返回键 —— 必须补 leftItemsSupplementBackButton，
-    // 否则子页没有返回键，只能杀后台退出（用户实测反馈）。
-    self.navigationItem.leftItemsSupplementBackButton = YES;
-    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"加入"
-                                                                             style:UIBarButtonItemStylePlain
-                                                                            target:self
-                                                                            action:@selector(addBundleIDTapped)];
-    [self reloadData];
-}
-
-- (void)viewWillAppear:(BOOL)animated {
-    [super viewWillAppear:animated];
-    [self reloadData];
-}
-
-- (void)reloadData {
-    _order = [TWArcOrderList() mutableCopy] ?: [NSMutableArray array];
-    NSMutableArray<NSString *> *suggestions = [NSMutableArray array];
-    for (NSDictionary *entry in TWCraneContainers()) {
-        NSString *bundleID = entry[@"bundleID"];
-        if (bundleID.length && ![_order containsObject:bundleID] && ![suggestions containsObject:bundleID]) {
-            [suggestions addObject:bundleID];
-        }
-    }
-    _suggestions = suggestions;
-    [self.tableView reloadData];
-}
-
-- (void)save {
-    TWSetArcOrderList(_order);
-}
-
-- (void)addBundleIDTapped {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"加入 Arc 菜单"
-                                                                   message:@"输入应用的 bundleID（例如 com.tencent.xin）。"
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
-        field.placeholder = @"bundleID";
-        field.autocapitalizationType = UITextAutocapitalizationTypeNone;
-        field.autocorrectionType = UITextAutocorrectionTypeNo;
-    }];
-    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-    __weak TWArcOrderController *weakSelf = self;
-    [alert addAction:[UIAlertAction actionWithTitle:@"加入" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
-        NSString *text = alert.textFields.firstObject.text ?: @"";
-        text = [text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        if (!text.length) return;
-        TWArcOrderController *strongSelf = weakSelf;
-        if (!strongSelf) return;
-        if (![strongSelf->_order containsObject:text]) [strongSelf->_order addObject:text];
-        [strongSelf save];
-        [strongSelf reloadData];
-    }]];
-    [self presentViewController:alert animated:YES completion:nil];
-}
-
-#pragma mark - table
-
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 2; }
-
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    if (section == 0) return _order.count ? (NSInteger)_order.count : 1;
-    return _suggestions.count ? (NSInteger)_suggestions.count : 1;
-}
-
-- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    return section == 0 ? @"菜单里的顺序（从上到下）" : @"分身里有容器的应用";
-}
-
-- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-    if (section == 0) {
-        return _order.count
-            ? @"点「编辑」拖动排序，顺序就是 Arc 菜单里图标的排列顺序；左滑删除（只影响菜单，不动 Crane 的容器）。"
-            : @"列表为空：点左上角「加入」手动填 bundleID，或从下面的应用列表加入。";
-    }
-    return @"点一下把该应用加入菜单；容器层面的选择在「分身应用（容器）」里做。";
-}
-
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"order"];
-    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"order"];
-
-    if (indexPath.section == 0) {
-        if (!_order.count) {
-            cell.textLabel.text = @"暂无条目";
-            cell.detailTextLabel.text = @"从下面的应用列表加入，或点右上角「编辑」后拖动。";
-            cell.accessoryType = UITableViewCellAccessoryNone;
-            cell.selectionStyle = UITableViewCellSelectionStyleNone;
-            return cell;
-        }
-        NSString *bundleID = _order[(NSUInteger)indexPath.row];
-        cell.textLabel.text = [NSString stringWithFormat:@"%ld. %@", (long)(indexPath.row + 1), TWPrefsAppName(bundleID)];
-        cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ ｜ %lu 个容器",
-                                     bundleID, (unsigned long)[self containerCountForBundleID:bundleID]];
-        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-        cell.selectionStyle = UITableViewCellSelectionStyleNone;
-        return cell;
-    }
-
-    if (!_suggestions.count) {
-        cell.textLabel.text = @"没有更多可加入的应用";
-        cell.detailTextLabel.text = @"";
-        cell.accessoryType = UITableViewCellAccessoryNone;
-        cell.selectionStyle = UITableViewCellSelectionStyleNone;
-        return cell;
-    }
-    NSString *bundleID = _suggestions[(NSUInteger)indexPath.row];
-    cell.textLabel.text = TWPrefsAppName(bundleID);
-    cell.detailTextLabel.text = bundleID;
-    cell.accessoryType = UITableViewCellAccessoryNone;
-    cell.selectionStyle = UITableViewCellSelectionStyleDefault;
-    return cell;
-}
-
-- (NSUInteger)containerCountForBundleID:(NSString *)bundleID {
-    NSUInteger count = 0;
-    for (NSDictionary *entry in TWCraneContainers()) {
-        if ([entry[@"bundleID"] isEqualToString:bundleID]) count++;
-    }
-    return count;
-}
-
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    if (indexPath.section != 1 || !_suggestions.count) return;
-    NSString *bundleID = _suggestions[(NSUInteger)indexPath.row];
-    if (![_order containsObject:bundleID]) [_order addObject:bundleID];
-    [self save];
-    [self reloadData];
-}
-
-- (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
-    return indexPath.section == 0 && _order.count > 0;
-}
-
-- (BOOL)tableView:(UITableView *)tableView canMoveRowAtIndexPath:(NSIndexPath *)indexPath {
-    return indexPath.section == 0 && _order.count > 1;
-}
-
-- (UITableViewCellEditingStyle)tableView:(UITableView *)tableView
-           editingStyleForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (indexPath.section != 0) return UITableViewCellEditingStyleNone;
-    return _order.count > 0 ? UITableViewCellEditingStyleDelete : UITableViewCellEditingStyleNone;
-}
-
-- (void)tableView:(UITableView *)tableView
-        commitEditingStyle:(UITableViewCellEditingStyle)editingStyle
-         forRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (editingStyle != UITableViewCellEditingStyleDelete) return;
-    if (indexPath.row >= (NSInteger)_order.count) return;
-    [_order removeObjectAtIndex:(NSUInteger)indexPath.row];
-    [self save];
-    [self reloadData];
-}
-
-- (void)tableView:(UITableView *)tableView
-        moveRowAtIndexPath:(NSIndexPath *)sourceIndexPath
-       toIndexPath:(NSIndexPath *)destinationIndexPath {
-    if (sourceIndexPath.section != 0 || destinationIndexPath.section != 0) return;
-    if (sourceIndexPath.row >= (NSInteger)_order.count || destinationIndexPath.row >= (NSInteger)_order.count) return;
-    NSString *moved = _order[(NSUInteger)sourceIndexPath.row];
-    [_order removeObjectAtIndex:(NSUInteger)sourceIndexPath.row];
-    [_order insertObject:moved atIndex:(NSUInteger)destinationIndexPath.row];
-    [self save];
-    [self.tableView reloadData];
 }
 
 @end
