@@ -11,6 +11,11 @@ NSString *const TWPrefsBundleName = @"TwinPrefs";
 // 0.9.0：图标 cell 动态子类工厂（TWIconCells.m）
 extern Class TWIconCellClass(NSString *baseClassName);
 
+// PSSpecifier 的 setCellClass: 属于 Preferences 私有 API，这里只补签名给编译器看。
+@interface NSObject (TWCellClassSetter)
+- (void)setCellClass:(Class)cellClass;
+@end
+
 // 转发给 PSListController 自己的 detail 分发（私有方法，需 objc_msgSendSuper 绕过头文件）
 id TWSuperControllerForSpecifier(id host, id specifier) {
     if (!host || !specifier) return nil;
@@ -105,7 +110,7 @@ PSSpecifier *TWRowSpecifier(id target,
             // 同时写 cellClass 字符串属性——plist 版 specifier 就是按字符串
             // NSClassFromString 解析的，两种实现都覆盖到。
             if ([spec respondsToSelector:NSSelectorFromString(@"setCellClass:")]) {
-                [(id)spec setCellClass:iconCls];
+                [spec setCellClass:iconCls];
             }
             [spec setProperty:NSStringFromClass(iconCls) forKey:@"cellClass"];
         }
