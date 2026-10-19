@@ -194,14 +194,6 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
     NSArray<NSDictionary *> *_rows;   // {bundleID, containerID, enabled} 自动发现 + 开关状态
 }
 
-- (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)cell
-forRowAtIndexPath:(NSIndexPath *)indexPath {
-    @try {
-        PSSpecifier *sp = [self specifierAtIndexPath:indexPath];
-        TWStyleSliderCellIfNeeded(cell, sp);
-    } @catch (__unused NSException *e) {}
-}
-
 - (instancetype)init {
     if ((self = [super initWithStyle:UITableViewStyleInsetGrouped])) {
         self.title = @"分身应用";
