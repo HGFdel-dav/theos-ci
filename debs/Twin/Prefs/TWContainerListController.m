@@ -191,6 +191,8 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
 #pragma mark - 分身应用（容器）
 
 @implementation TWContainerListController {
+    NSArray<NSDictionary *> *_rows;   // {bundleID, containerID, enabled} 自动发现 + 开关状态
+}
 
 - (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)cell
 forRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -198,8 +200,6 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
         PSSpecifier *sp = [self specifierAtIndexPath:indexPath];
         TWStyleSliderCellIfNeeded(cell, sp);
     } @catch (__unused NSException *e) {}
-}
-    NSArray<NSDictionary *> *_rows;   // {bundleID, containerID, enabled} 自动发现 + 开关状态
 }
 
 - (instancetype)init {

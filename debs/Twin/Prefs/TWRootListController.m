@@ -40,6 +40,9 @@ typedef NS_ENUM(NSInteger, TWWakeModeValue) {
 };
 
 @implementation TWRootListController {
+    UIView *_hero;
+    CGFloat _heroWidth;
+}
 
 - (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)cell
 forRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -47,9 +50,6 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
         PSSpecifier *sp = [self specifierAtIndexPath:indexPath];
         TWStyleSliderCellIfNeeded(cell, sp);
     } @catch (__unused NSException *e) {}
-}
-    UIView *_hero;
-    CGFloat _heroWidth;
 }
 
 - (instancetype)init {
