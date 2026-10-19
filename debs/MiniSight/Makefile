@@ -1,4 +1,6 @@
-TARGET = iphoneos:clang:latest:15.0
+TARGET = iphone:15.5:15.0
+SDKVERSION = 15.5
+FINALPACKAGE = 1
 ARCHS = arm64 arm64e
 INSTALL_TARGET_PROCESSES = SpringBoard
 
