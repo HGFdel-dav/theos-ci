@@ -15,6 +15,14 @@
 
 @implementation TWRememberListController
 
+- (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)cell
+forRowAtIndexPath:(NSIndexPath *)indexPath {
+    @try {
+        PSSpecifier *sp = [self specifierAtIndexPath:indexPath];
+        TWStyleSliderCellIfNeeded(cell, sp);
+    } @catch (__unused NSException *e) {}
+}
+
 - (instancetype)init {
     if ((self = [super initWithStyle:UITableViewStyleInsetGrouped])) {
         self.title = @"记忆的窗口";

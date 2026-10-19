@@ -11,6 +11,14 @@
 #import "TWPrefs.h"
 
 @implementation TWArcPanelController {
+
+- (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)cell
+forRowAtIndexPath:(NSIndexPath *)indexPath {
+    @try {
+        PSSpecifier *sp = [self specifierAtIndexPath:indexPath];
+        TWStyleSliderCellIfNeeded(cell, sp);
+    } @catch (__unused NSException *e) {}
+}
     CGFloat _heroWidth;
 }
 
