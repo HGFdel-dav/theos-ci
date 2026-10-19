@@ -96,7 +96,7 @@ static id TWMsgSendStr(id target, SEL sel, id arg) {
     dispatch_async(dispatch_get_main_queue(), ^{
         TWPrefs *prefs=TWPrefs.shared;
         if (![bundleID isKindOfClass:NSString.class] || !bundleID.length) { TWCraneNotice(@"应用标识无效，未启动应用。"); completion(NO); return; }
-        if (![prefs boolForKey:TWKeyEnabled defaultValue:NO] || ![prefs boolForKey:TWKeyCraneEnabled defaultValue:NO]) { completion(YES); return; }
+        if (![prefs boolForKey:TWKeyEnabled defaultValue:YES] || ![prefs boolForKey:TWKeyCraneEnabled defaultValue:NO]) { completion(YES); return; }
         id configured=[prefs craneApps][bundleID];
         if (!configured) { completion(YES); return; }
         if (![configured isKindOfClass:NSString.class] || ![configured length]) { TWCraneNotice(@"Crane 容器配置无效，请重新选择。"); completion(NO); return; }
@@ -114,7 +114,7 @@ static id TWMsgSendStr(id target, SEL sel, id arg) {
     dispatch_async(dispatch_get_main_queue(), ^{
         TWPrefs *prefs=TWPrefs.shared;
         if (![bundleID isKindOfClass:NSString.class] || !bundleID.length) { TWCraneNotice(@"应用标识无效，未启动应用。"); completion(NO); return; }
-        if (![prefs boolForKey:TWKeyEnabled defaultValue:NO] || ![prefs boolForKey:TWKeyCraneEnabled defaultValue:NO]) { completion(YES); return; }
+        if (![prefs boolForKey:TWKeyEnabled defaultValue:YES] || ![prefs boolForKey:TWKeyCraneEnabled defaultValue:NO]) { completion(YES); return; }
         [self switchBundleID:bundleID toContainer:containerID completion:completion];
     });
 }
@@ -157,7 +157,7 @@ static id TWMsgSendStr(id target, SEL sel, id arg) {
                         @try {
                             // 只在"面板里配了映射"时才要求映射未被改动；Arc 的显式容器路径没有映射。
                             id mapped=[prefs craneApps][bundleID];
-                            BOOL unchanged=[prefs boolForKey:TWKeyEnabled defaultValue:NO] && [prefs boolForKey:TWKeyCraneEnabled defaultValue:NO];
+                            BOOL unchanged=[prefs boolForKey:TWKeyEnabled defaultValue:YES] && [prefs boolForKey:TWKeyCraneEnabled defaultValue:NO];
                             if ([mapped isKindOfClass:NSString.class] && [mapped length]) unchanged = unchanged && [mapped isEqual:container];
                             BOOL verified=success && unchanged && [[self activeContainerForBundleID:bundleID] isEqualToString:container];
                             finish(verified,@"认证取消、切换失败、配置改变或容器核验不符；为避免误开，未启动应用。");

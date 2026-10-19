@@ -17,7 +17,7 @@
 #import "TWPXPrefs.h"
 #import "TWPath.h"
 
-static NSString *const kPXPassFooter = @"以下开关由 ParallelX 读取生效，修改后立即通知 ParallelX 刷新。";
+static NSString *const kPXPassFooter = @"以下开关改完立即生效，不需要重启。";
 
 @interface TWPXSubpageController ()
 @property (nonatomic, strong) TWPXPrefs *px;
@@ -62,7 +62,7 @@ static NSString *const kPXPassFooter = @"以下开关由 ParallelX 读取生效�
         case TWPXPageExternal: return @"通知与 URL 跳转";
         case TWPXPageSystem:   return @"锁屏、截图与录屏";
     }
-    return @"ParallelX";
+    return @"Twin";
 }
 
 #pragma mark - specifiers
@@ -70,14 +70,6 @@ static NSString *const kPXPassFooter = @"以下开关由 ParallelX 读取生效�
 - (NSArray *)specifiers {
     if (!_specifiers) {
         NSMutableArray *specs = [NSMutableArray array];
-
-        // ParallelX 偏好文件定位失败 → 只给提示，不给可改的行（防写出孤儿 plist）。
-        if (!_px.available) {
-            [specs addObject:TWGroupSpecifier(@"未检测到 ParallelX 偏好",
-                @"没有找到 com.moxuan.parallelx.plist。请先打开一次 ParallelX 的设置面板让它生成偏好文件，然后回到这里下拉或重新进入即可生效。")];
-            _specifiers = specs;
-            return _specifiers;
-        }
 
         switch (_pageType) {
             case TWPXPageWindow:   [self buildWindowPage:specs];   break;

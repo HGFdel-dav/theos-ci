@@ -122,7 +122,7 @@ static NSString *TWContainerIDOfEntry(NSObject *entry) {
 #pragma mark - switches (live value on every capture)
 
 static BOOL TWTwinEnabled(void) {
-    return [TWPrefs.shared boolForKey:TWKeyEnabled defaultValue:NO];
+    return [TWPrefs.shared boolForKey:TWKeyEnabled defaultValue:YES];
 }
 
 static BOOL TWRememberEnabled(void) {

@@ -17,13 +17,15 @@
 #import "TWProbe.h"
 #import "TWContainerExport.h"
 #import "TWSceneHost.h"
+#import "TWPath.h"
 
 #import <objc/runtime.h>
 #import <mach-o/dyld.h>
 #import <dlfcn.h>
 
 static BOOL TWTwinEnabled(void) {
-    return [TWPrefs.shared boolForKey:TWKeyEnabled defaultValue:NO];
+    // 0.9.1：总开关不再是用户要去找的东西，缺省即开。
+    return [TWPrefs.shared boolForKey:TWKeyEnabled defaultValue:YES];
 }
 
 static BOOL TWCraneEnabled(void) {
@@ -84,6 +86,53 @@ static void TWImageAdded(const struct mach_header *header, intptr_t slide) {
     });
 }
 
+#pragma mark - 装完即全开
+
+// 引擎偏好 com.moxuan.parallelx.plist 的落点：优先用现成文件，没有就用当前 jbroot 的标准路径。
+static NSString *TWEnginePrefsPath(void) {
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSString *best = nil;
+    NSTimeInterval bestTime = -1;
+    for (NSString *root in TWJBRootCandidates()) {
+        NSString *p = [[root stringByAppendingPathComponent:
+                        @"var/mobile/Library/Preferences/com.moxuan.parallelx.plist"]
+                       stringByResolvingSymlinksInPath];
+        if (![fm fileExistsAtPath:p]) continue;
+        NSTimeInterval t = [[[fm attributesOfItemAtPath:p error:nil] fileModificationDate] timeIntervalSince1970];
+        if (t >= bestTime) { best = p; bestTime = t; }
+    }
+    if (best.length) return best;
+    NSString *root = TWJBRootPath();
+    if (!root.length) return nil;
+    return [root stringByAppendingPathComponent:@"var/mobile/Library/Preferences/com.moxuan.parallelx.plist"];
+}
+
+// 分屏引擎总开关 pluginEnabled 与 Twin 自身总开关：启动时强制置开。
+// 目的很直接——装上就有全部功能，不用先去面板里找开关；
+// 同时把旧版本可能留下的关闭值覆盖掉，避免"装了却什么都不动"。
+static void TWForceEnable(void) {
+    TWPrefs *prefs = TWPrefs.shared;
+    if (![prefs boolForKey:TWKeyEnabled defaultValue:YES]) {
+        [prefs setObject:@YES forKey:TWKeyEnabled];
+    }
+    [prefs synchronize];
+
+    NSString *path = TWEnginePrefsPath();
+    if (!path.length) return;
+    NSDictionary *disk = [NSDictionary dictionaryWithContentsOfFile:path];
+    if ([disk[@"pluginEnabled"] boolValue]) return;   // 已经是开的，别多写一次
+
+    NSMutableDictionary *dict = [disk mutableCopy] ?: [NSMutableDictionary dictionary];
+    dict[@"pluginEnabled"] = @YES;
+    [NSFileManager.defaultManager createDirectoryAtPath:path.stringByDeletingLastPathComponent
+                            withIntermediateDirectories:YES attributes:nil error:nil];
+    if ([dict writeToFile:path atomically:YES]) {
+        CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                             CFSTR("com.moxuan.parallelx.capture-updated"),
+                                             NULL, NULL, YES);
+    }
+}
+
 #pragma mark - entry point
 
 __attribute__((constructor)) static void TWInitialize(void) {
@@ -91,6 +140,8 @@ __attribute__((constructor)) static void TWInitialize(void) {
     // panel is a plain PreferenceBundle loaded by the Preferences process.
     NSString *bundleID = [NSBundle mainBundle].bundleIdentifier;
     if (![bundleID isEqualToString:@"com.apple.springboard"]) return;
+
+    TWForceEnable();   // 全套功能默认生效，不留"启用"开关
 
     _dyld_register_func_for_add_image(TWImageAdded);
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{

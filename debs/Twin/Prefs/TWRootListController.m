@@ -31,7 +31,7 @@
 #import <sys/utsname.h>
 #import <objc/message.h>
 
-static NSString *const kTWVersion = @"0.9.0";
+static NSString *const kTWVersion = @"0.9.1";
 
 // 唤醒方式：0 = Arc 角落唤醒（默认），1 = ParallelX 边缘手柄。
 typedef NS_ENUM(NSInteger, TWWakeModeValue) {
@@ -168,16 +168,9 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
         // 功能一条不少；后四页读的正是同一个 bundle 里的 plist。
         NSString *const PX = @"ParallelXPrefs";
 
-        // ---------- 插件状态 ----------
-        [specs addObject:TWGroupSpecifier(@"插件状态",
-            [NSString stringWithFormat:@"Twin %@ · 内置 ParallelX alpha342 分屏引擎。总开关关掉后引擎完全停手，只留 Twin 面板。", kTWVersion])];
-        // 引擎总开关：alpha342 新增 pluginEnabled（域 com.moxuan.parallelx），
-        // 这个键关着 = 分屏/Arc/小窗全都不工作，先摆在第一行。
-        [specs addObject:TWRowSpecifier(self, @"启用 ParallelX", @"pluginEnabled", @YES, nil, PSSwitchCell,
-                                        @"power", nil, @{@"height": @46, @"twColor": @9,
-                                                          @"twGet": @"pxReadValue:", @"twSet": @"pxWriteValue:specifier:"})];
-        [specs addObject:TWRowSpecifier(self, @"启用 Twin 增强", TWKeyEnabled, @NO, nil, PSSwitchCell,
-                                        @"bolt.horizontal.fill", nil, @{@"height": @46, @"twColor": @4})];
+        // 0.9.1：没有「启用」开关。装完即全套生效——总开关由 Tweak.xm 的
+        // TWForceEnable() 在启动时强制置开（引擎 pluginEnabled + Twin 自身），
+        // 面板只留功能项，不让用户先找一个开关。
 
         // ---------- 分身 ----------
         [specs addObject:TWGroupSpecifier(@"分身", nil)];
@@ -224,7 +217,7 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
 
         // ---------- 配置 ----------
         [specs addObject:TWGroupSpecifier(@"配置",
-            @"「应用与快捷操作」「半圆面板」「手势区域」「备份与恢复」是原版面板的页面，Twin 直接调用原版实现，改完即时生效。")];
+            @"这些页面改完即时生效，不需要重启。")];
         [specs addObject:TWLinkRowSpecifier(self, @"备份与恢复", @"externaldrive", @"PXPageHostController",
                                             nil, @{@"height": @46, @"twColor": @8, @"twBundle": PX, @"id": @"backup"})];
 
@@ -268,7 +261,8 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
     if (width <= 1.0) width = [UIScreen mainScreen].bounds.size.width;
     if (_hero && fabs(_heroWidth - width) < 0.5) return;
     _heroWidth = width;
-    BOOL enabled = [[TWPrefs shared] boolForKey:TWKeyEnabled defaultValue:NO];
+    // 0.9.1：总开关已取消，装上就是全开，头图不再显示可切换的状态。
+    BOOL enabled = YES;
     _hero = [TWStyle heroHeaderWithTitle:@"Twin"
                                subtitle:@"分屏增强套装 · 独立运行"
                              statusText:(enabled ? @"已启用" : @"已停用")

@@ -177,7 +177,7 @@ static BOOL TWArcDeviceUnlocked(void) {
 - (void)refreshEnabledState {
     [[TWPrefs shared] reload];
     if (!TWArcDeviceUnlocked() ||
-        ![[TWPrefs shared] boolForKey:TWKeyEnabled defaultValue:NO] ||
+        ![[TWPrefs shared] boolForKey:TWKeyEnabled defaultValue:YES] ||
         ![[TWPrefs shared] boolForKey:TWKeyArcEnabled defaultValue:YES]) [self cancelCurrentGesture];
     // 面板改了设置：容器/应用清单可能变了，缓存在非手势时刻重建。
     TWArcInvalidateContainerCache(NO);
@@ -192,7 +192,7 @@ static BOOL TWArcDeviceUnlocked(void) {
     if (recognizer != _pan || !recognizer.view) return NO;
     _hasStartPoint = NO;
     [[TWPrefs shared] reload];
-    if (![[TWPrefs shared] boolForKey:TWKeyEnabled defaultValue:NO] ||
+    if (![[TWPrefs shared] boolForKey:TWKeyEnabled defaultValue:YES] ||
         ![[TWPrefs shared] boolForKey:TWKeyArcEnabled defaultValue:YES] ||
         !TWArcDeviceUnlocked()) return NO;
     CGPoint point = [touch locationInView:recognizer.view];
@@ -208,7 +208,7 @@ static BOOL TWArcDeviceUnlocked(void) {
 
 - (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)recognizer {
     return recognizer == _pan && _hasStartPoint && TWArcDeviceUnlocked() &&
-        [[TWPrefs shared] boolForKey:TWKeyEnabled defaultValue:NO] &&
+        [[TWPrefs shared] boolForKey:TWKeyEnabled defaultValue:YES] &&
         [[TWPrefs shared] boolForKey:TWKeyArcEnabled defaultValue:YES];
 }
 
@@ -244,7 +244,7 @@ static BOOL TWArcDeviceUnlocked(void) {
 - (void)handlePan:(UIPanGestureRecognizer *)pan {
     if (pan != _pan) return;
     if (!_hasStartPoint || !TWArcDeviceUnlocked() ||
-        ![[TWPrefs shared] boolForKey:TWKeyEnabled defaultValue:NO] ||
+        ![[TWPrefs shared] boolForKey:TWKeyEnabled defaultValue:YES] ||
         ![[TWPrefs shared] boolForKey:TWKeyArcEnabled defaultValue:YES]) {
         [self cancelCurrentGesture];
         return;
