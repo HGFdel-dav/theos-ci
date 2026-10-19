@@ -520,3 +520,59 @@ static void TWDiagInstallUncaughtHandler(void) {
         NSSetUncaughtExceptionHandler(TWUncaughtHandler);
     });
 }
+
+#pragma mark - 滑块行的标题（0.9.6）
+
+// 本机 Preferences 的 PSSliderCell 不画标题（cellClass 动态子类也不生效），
+// 所以在 cell 即将显示时直接把标题/数值塞进 cell 自己，并给滑杆让出下半个身位。
+// 不改 cell 类、不覆盖任何私有方法，纯加子视图，最坏情况也只是多一个 UILabel。
+void TWStyleSliderCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier) {
+    if (![cell isKindOfClass:[UITableViewCell class]] || !specifier) return;
+    if ([specifier cellType] != PSSliderCell) return;
+
+    UISlider *slider = nil;
+    NSMutableArray *queue = [NSMutableArray arrayWithArray:cell.contentView.subviews ?: @[]];
+    [queue addObjectsFromArray:cell.subviews ?: @[]];
+    NSInteger guard = 0;
+    while (queue.count && guard++ < 200) {
+        UIView *v = queue.firstObject;
+        [queue removeObjectAtIndex:0];
+        if ([v isKindOfClass:[UISlider class]]) { slider = (UISlider *)v; break; }
+        [queue addObjectsFromArray:v.subviews ?: @[]];
+    }
+    if (!slider) return;
+
+    UILabel *title = [cell.contentView viewWithTag:0x774C4454];
+    UILabel *value = [cell.contentView viewWithTag:0x774C4455];
+    CGFloat w = CGRectGetWidth(cell.contentView.bounds);
+    if (w <= 0) w = CGRectGetWidth(cell.bounds);
+
+    if (!title) {
+        title = [[UILabel alloc] initWithFrame:CGRectMake(16, 7, w - 32, 18)];
+        title.tag = 0x774C4454;
+        title.font = [UIFont systemFontOfSize:15.0];
+        title.textColor = [UIColor labelColor];
+        [cell.contentView addSubview:title];
+
+        value = [[UILabel alloc] initWithFrame:CGRectMake(16, 7, w - 32, 18)];
+        value.tag = 0x774C4455;
+        value.font = [UIFont systemFontOfSize:14.0];
+        value.textColor = [UIColor secondaryLabelColor];
+        value.textAlignment = NSTextAlignmentRight;
+        [cell.contentView addSubview:value];
+    }
+
+    NSString *name = specifier.name ?: @"";
+    title.text = name;
+    NSString *unit = [specifier propertyForKey:@"twUnit"];
+    if (![unit isKindOfClass:NSString.class]) unit = @"";
+    value.text = [NSString stringWithFormat:@"%.0f%@", slider.value, unit];
+    title.frame = CGRectMake(16, 7, w - 32, 18);
+    value.frame = CGRectMake(16, 7, w - 32, 18);
+
+    CGFloat h = CGRectGetHeight(cell.bounds);
+    if (h < 44) h = 44;
+    CGFloat sliderH = CGRectGetHeight(slider.bounds);
+    if (sliderH <= 0 || sliderH > 40) sliderH = 31;
+    slider.frame = CGRectMake(16, h - sliderH - 6, MAX(w - 32, 40), sliderH);
+}

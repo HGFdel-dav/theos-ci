@@ -14,6 +14,14 @@
     CGFloat _heroWidth;
 }
 
+- (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)cell
+forRowAtIndexPath:(NSIndexPath *)indexPath {
+    @try {
+        PSSpecifier *sp = [self specifierAtIndexPath:indexPath];
+        TWStyleSliderCellIfNeeded(cell, sp);
+    } @catch (__unused NSException *e) {}
+}
+
 // ★ 0.4.2 观测版：同 TWRootListController，异常落盘 + 空白 cell 兜底。
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     @try {

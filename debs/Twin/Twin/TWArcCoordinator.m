@@ -93,50 +93,27 @@ static BOOL TWArcDeviceUnlocked(void) {
 }
 
 
-#pragma mark - 角落触发窗口（独立于 SpringBoard 的手势通道）
+#pragma mark - 角落触发窗口（每个角落一个小窗口）
 
-// 0.9.4：手势挂 keyWindow 会被桌面/App 的滚动手势抢走（真机实测：桌面左下角
-// 滑动无任何反应）。这里改成独立的高层级窗口：全屏铺开，但 hitTest 只在
-// 角落热区内返回自身，其余位置一律 nil 让触摸穿透。所以不会挡任何系统手势。
+// 0.9.6：彻底不做全屏窗口。
+//   0.9.4 的全屏触发窗口把整块屏幕的触摸都吃掉（桌面图标点不动），根因是
+//   UIView.hitTest 在"无子视图命中"时返回窗口自己。
+//   现在每个启用的角落只开一个 cornerSize×cornerSize 的小窗口，物理上不可能
+//   覆盖到角落以外，桌面/App 的其余区域一个像素都不受影响。
 
 @interface TWArcTriggerView : UIView
-@property (nonatomic, assign) NSInteger cornersMask;   // 1<<TWCorner
-@property (nonatomic, assign) CGFloat cornerSize;      // pt
 @end
 
 @implementation TWArcTriggerView
-- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
-    if (self.hidden || !self.userInteractionEnabled || self.alpha < 0.01) return nil;
-    if (self.cornersMask == 0) return nil;
-    CGRect b = self.bounds;
-    CGFloat s = self.cornerSize > 0 ? self.cornerSize : 64;
-    CGFloat w = CGRectGetWidth(b), h = CGRectGetHeight(b);
-    s = MIN(s, MIN(w, h) / 3.0);
-    // 底部留 28pt 给 Home 条，顶部留 28pt 给状态栏。
-    CGRect areas[4];
-    areas[TWCornerBottomRight] = CGRectMake(w - s, h - 28 - s, s, s);
-    areas[TWCornerBottomLeft]  = CGRectMake(0,     h - 28 - s, s, s);
-    areas[TWCornerTopLeft]     = CGRectMake(0,     28,         s, s);
-    areas[TWCornerTopRight]    = CGRectMake(w - s, 28,         s, s);
-    for (NSInteger i = 0; i < 4; i++) {
-        if (!(self.cornersMask & (1 << i))) continue;
-        if (CGRectContainsPoint(areas[i], point)) return self;
-    }
-    return nil;
-}
 @end
 
 @interface TWArcTriggerWindow : UIWindow
 @end
 
 @implementation TWArcTriggerWindow
-// ★ 关键：UIView 的默认 hitTest 在"点在范围内但没有子视图命中"时会返回自己，
-//   全屏窗口一旦如此就等于把整块屏幕的触摸全吃掉（0.9.4 实测：桌面图标全点不动）。
-//   这里把"命中目标是窗口本身"一律改成 nil，触摸才会继续往下层窗口穿透。
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
     UIView *hit = [super hitTest:point withEvent:event];
-    // 只有"命中窗口自己"才放行；命中根视图 = 落在角落热区，必须保留给手势。
-    return (hit == self) ? nil : hit;
+    return (hit == self) ? nil : hit;   // 窗口自身不拦，只有热区视图接
 }
 @end
 
@@ -147,7 +124,6 @@ static BOOL TWArcDeviceUnlocked(void) {
 - (void)loadView {
     TWArcTriggerView *view = [[TWArcTriggerView alloc] initWithFrame:UIScreen.mainScreen.bounds];
     view.backgroundColor = UIColor.clearColor;
-    view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.view = view;
 }
 - (BOOL)prefersStatusBarHidden { return NO; }
@@ -224,50 +200,84 @@ static BOOL TWArcDeviceUnlocked(void) {
 - (void)attachRecognizer {
     if (_pan) return;
 
-    // 独立触发窗口：只有角落热区内的触摸会落到它身上，其余位置穿透。
-    TWArcTriggerWindow *trigger = objc_getAssociatedObject(self, "TWArcTriggerWindow");
-    if (!trigger) {
-        TWArcTriggerRootController *root = [[TWArcTriggerRootController alloc] init];
-        trigger = [[TWArcTriggerWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
-        trigger.rootViewController = root;
-        trigger.backgroundColor = UIColor.clearColor;
-        trigger.opaque = NO;
-        trigger.hidden = NO;
-        trigger.userInteractionEnabled = YES;
-        // 比菜单窗口低一层，比 App 窗口高：触摸能进来，菜单仍在上层。
-        trigger.windowLevel = UIWindowLevelAlert - 3.0;
-        objc_setAssociatedObject(self, "TWArcTriggerWindow", trigger, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    NSMutableArray *windows = [NSMutableArray array];
+    for (NSInteger corner = 0; corner < 4; corner++) {
+        TWArcTriggerWindow *w = [self triggerWindowForCorner:corner];
+        if (w) [windows addObject:w];
+    }
+    objc_setAssociatedObject(self, "TWArcTriggerWindows", windows, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 
-        UIWindow *sceneWindow = nil;
-        for (UIWindow *w in [UIApplication sharedApplication].windows) {
-            if (w.windowScene && w != trigger) { sceneWindow = w; break; }
-        }
-        if (sceneWindow.windowScene && [trigger respondsToSelector:@selector(setWindowScene:)]) {
-            trigger.windowScene = sceneWindow.windowScene;
-        }
-        trigger.hidden = NO;
+    UIWindow *sceneWindow = nil;
+    for (UIWindow *w in [UIApplication sharedApplication].windows) {
+        if (w.windowScene) { sceneWindow = w; break; }
     }
 
-    [self updateTriggerHotRect];
+    NSInteger mask = [[TWPrefs shared] integerForKey:TWKeyArcCorners defaultValue:3];
+    CGFloat size = [[TWPrefs shared] floatForKey:TWKeyArcCornerSize defaultValue:64];
+    CGRect screen = UIScreen.mainScreen.bounds;
+    CGFloat s = MAX(48, MIN(size, MIN(CGRectGetWidth(screen), CGRectGetHeight(screen)) / 3.0));
 
-    UIView *host = trigger.rootViewController.view;
-    if (!host) return;
-    _pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
-    _pan.delegate = self;
-    _pan.maximumNumberOfTouches = 1;
-    _pan.cancelsTouchesInView = YES;
-    [host addGestureRecognizer:_pan];
+    UIView *firstHost = nil;
+    for (TWArcTriggerWindow *w in windows) {
+        NSInteger corner = [w tag];
+        BOOL enabled = (mask & (1 << corner)) != 0;
+        if (!enabled) { w.hidden = YES; continue; }
+
+        CGRect frame;
+        switch (corner) {
+            case TWCornerBottomLeft:  frame = CGRectMake(0, CGRectGetHeight(screen) - 28 - s, s, s); break;
+            case TWCornerTopLeft:     frame = CGRectMake(0, 28, s, s); break;
+            case TWCornerTopRight:    frame = CGRectMake(CGRectGetWidth(screen) - s, 28, s, s); break;
+            case TWCornerBottomRight:
+            default:                  frame = CGRectMake(CGRectGetWidth(screen) - s,
+                                                        CGRectGetHeight(screen) - 28 - s, s, s); break;
+        }
+        w.frame = frame;
+        w.rootViewController.view.frame = w.bounds;
+        if (!w.windowScene && sceneWindow.windowScene) w.windowScene = sceneWindow.windowScene;
+        w.hidden = NO;
+        if (!firstHost) firstHost = w.rootViewController.view;
+    }
+
+    // 每个角落各挂一个手势，touch 只可能来自那个角落的小窗口。
+    NSMutableArray *pans = [NSMutableArray array];
+    for (TWArcTriggerWindow *w in windows) {
+        if (w.hidden || !w.rootViewController.view) continue;
+        UIPanGestureRecognizer *pan =
+            [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
+        pan.delegate = self;
+        pan.maximumNumberOfTouches = 1;
+        pan.cancelsTouchesInView = YES;
+        [w.rootViewController.view addGestureRecognizer:pan];
+        [pans addObject:pan];
+        if (!_pan) _pan = pan;   // 兼容旧字段（判空用）
+    }
+    objc_setAssociatedObject(self, "TWArcTriggerPans", pans, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+- (TWArcTriggerWindow *)triggerWindowForCorner:(NSInteger)corner {
+    NSMutableArray *list = objc_getAssociatedObject(self, "TWArcTriggerWindowList");
+    if (!list) { list = [NSMutableArray array]; objc_setAssociatedObject(self, "TWArcTriggerWindowList", list, OBJC_ASSOCIATION_RETAIN_NONATOMIC); }
+    for (TWArcTriggerWindow *w in list) if (w.tag == corner) return w;
+
+    TWArcTriggerRootController *root = [[TWArcTriggerRootController alloc] init];
+    TWArcTriggerWindow *w = [[TWArcTriggerWindow alloc] initWithFrame:CGRectZero];
+    w.rootViewController = root;
+    w.backgroundColor = UIColor.clearColor;
+    w.opaque = NO;
+    w.windowLevel = UIWindowLevelAlert - 3.0;
+    w.tag = corner;
+    [list addObject:w];
+    return w;
+}
+
+// 热区：由窗口本身的 frame 决定，无需再做点判定。
+- (void)updateTriggerHotRect {
+    [self detachRecognizer];
+    [self attachRecognizer];
 }
 
 // 热区：四个角落各一块 size×size，随面板里的「触发区」设置变化。
-- (void)updateTriggerHotRect {
-    TWArcTriggerWindow *trigger = objc_getAssociatedObject(self, "TWArcTriggerWindow");
-    if (!trigger) return;
-    TWArcTriggerView *view = (TWArcTriggerView *)trigger.rootViewController.view;
-    if (![view isKindOfClass:[TWArcTriggerView class]]) return;
-    view.cornersMask = [[TWPrefs shared] integerForKey:TWKeyArcCorners defaultValue:3];
-    view.cornerSize = [[TWPrefs shared] floatForKey:TWKeyArcCornerSize defaultValue:64];
-}
 
 - (void)refreshEnabledState {
     [[TWPrefs shared] reload];
@@ -285,25 +295,27 @@ static BOOL TWArcDeviceUnlocked(void) {
 #pragma mark - gesture delegate
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)recognizer shouldReceiveTouch:(UITouch *)touch {
-    if (recognizer != _pan || !recognizer.view) return NO;
+    NSArray *pans = objc_getAssociatedObject(self, "TWArcTriggerPans");
+    BOOL known = pans.count ? [pans containsObject:recognizer] : (recognizer == _pan);
+    if (!known || !recognizer.view) return NO;
     _hasStartPoint = NO;
     [[TWPrefs shared] reload];
     if (![[TWPrefs shared] boolForKey:TWKeyEnabled defaultValue:YES] ||
         ![[TWPrefs shared] boolForKey:TWKeyArcEnabled defaultValue:YES] ||
         !TWArcDeviceUnlocked()) return NO;
-    CGPoint point = [touch locationInView:recognizer.view];
-    NSInteger corners = [[TWPrefs shared] integerForKey:TWKeyArcCorners defaultValue:3];
-    CGFloat size = [[TWPrefs shared] floatForKey:TWKeyArcCornerSize defaultValue:64];
-    NSInteger corner = [TWArcGeometry cornerAtPoint:point corners:corners size:size bounds:recognizer.view.bounds];
-    if (corner < 0) return NO;
+    // 每个手势只挂在一个角的小窗口上，窗口本身就是热区，不需要再做点判定。
+    UIWindow *hostWindow = recognizer.view.window;
+    NSInteger corner = hostWindow ? hostWindow.tag : TWCornerBottomRight;
     _startCorner = corner;
-    _startPoint = point; // UITouch origin, before UIPanGestureRecognizer's threshold.
+    _startPoint = [touch locationInView:hostWindow ?: recognizer.view];  // 屏幕坐标
     _hasStartPoint = YES;
     return YES;
 }
 
 - (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)recognizer {
-    return recognizer == _pan && _hasStartPoint && TWArcDeviceUnlocked() &&
+    NSArray *pans = objc_getAssociatedObject(self, "TWArcTriggerPans");
+    BOOL known = pans.count ? [pans containsObject:recognizer] : (recognizer == _pan);
+    return known && _hasStartPoint && TWArcDeviceUnlocked() &&
         [[TWPrefs shared] boolForKey:TWKeyEnabled defaultValue:YES] &&
         [[TWPrefs shared] boolForKey:TWKeyArcEnabled defaultValue:YES];
 }
@@ -338,14 +350,17 @@ static BOOL TWArcDeviceUnlocked(void) {
 #pragma mark - pan handling
 
 - (void)handlePan:(UIPanGestureRecognizer *)pan {
-    if (pan != _pan) return;
+    NSArray *pans = objc_getAssociatedObject(self, "TWArcTriggerPans");
+    if (pans.count && ![pans containsObject:pan]) return;
+    if (!pans.count && pan != _pan) return;
     if (!_hasStartPoint || !TWArcDeviceUnlocked() ||
         ![[TWPrefs shared] boolForKey:TWKeyEnabled defaultValue:YES] ||
         ![[TWPrefs shared] boolForKey:TWKeyArcEnabled defaultValue:YES]) {
         [self cancelCurrentGesture];
         return;
     }
-    CGPoint p = [pan locationInView:pan.view];
+    UIWindow *hostWindow = pan.view.window;
+    CGPoint p = [pan locationInView:hostWindow ?: pan.view];
     switch (pan.state) {
         case UIGestureRecognizerStateBegan:
         case UIGestureRecognizerStateChanged: {
@@ -381,8 +396,14 @@ static BOOL TWArcDeviceUnlocked(void) {
 
 - (void)presentMenuFromPoint:(CGPoint)point corner:(NSInteger)corner {
     if (_didPresent || !TWArcDeviceUnlocked()) return;
-    UIWindow *reference = (UIWindow *)_pan.view; // the recognizer is attached to the SB window
-    if (![reference isKindOfClass:[UIWindow class]] || reference.hidden) return;
+    // 菜单要挂在真正的场景窗口上（触发窗口只有 64×64，不能当宿主）。
+    UIWindow *reference = nil;
+    for (UIWindow *w in [UIApplication sharedApplication].windows) {
+        if (w.windowScene && w.windowLevel > UIWindowLevelNormal - 1 && w.bounds.size.width > 200) {
+            reference = w; break;
+        }
+    }
+    if (!reference || reference.hidden) return;
 
     // 层级：自建高层级覆盖窗口（Arc-X 结构），不再塞进 SpringBoard 的普通窗口
     // （UIWindowLevelNormal = 0，会被状态栏与系统界面压住）。取不到可用场景时

@@ -25,6 +25,14 @@ static NSString *const kPXPassFooter = @"改完立即生效，不需要重启。
 
 @implementation TWPXSubpageController
 
+- (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)cell
+forRowAtIndexPath:(NSIndexPath *)indexPath {
+    @try {
+        PSSpecifier *sp = [self specifierAtIndexPath:indexPath];
+        TWStyleSliderCellIfNeeded(cell, sp);
+    } @catch (__unused NSException *e) {}
+}
+
 - (instancetype)init {
     if ((self = [super init])) {
         _px = [[TWPXPrefs alloc] init];

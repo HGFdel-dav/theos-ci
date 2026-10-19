@@ -109,6 +109,9 @@ NSInteger TWCraneContainerCount(void);
 NSArray<NSString *> *TWArcOrderList(void);          // TWKeyCraneAppList（空则用分身数据兜底）
 void TWSetArcOrderList(NSArray<NSString *> *list);
 
+// 给系统滑块行补标题与数值（本机 PSSliderCell 不画标题）。
+void TWStyleSliderCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier);
+
 // 本机应用显示名（取不到时原样返回 bundleID）。
 NSString *TWPrefsAppName(NSString *bundleID);
 
