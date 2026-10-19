@@ -227,14 +227,14 @@ static BOOL TWArcDeviceUnlocked(void) {
     CGFloat offY = [prefs floatForKey:TWKeyArcOffsetY defaultValue:0];
     if (landscape) offX += [prefs floatForKey:TWKeyArcLandscapeOffset defaultValue:0];
     NSInteger triggerMode = [prefs integerForKey:TWKeyArcTriggerMode defaultValue:0];
-    CGFloat w = 64, h = 64;
+    CGFloat tw = 64, th = 64;
     if (triggerMode == 1) {
-        w = MAX(24.0, [prefs floatForKey:TWKeyArcRectLength defaultValue:40]);
-        h = MAX(24.0, [prefs floatForKey:TWKeyArcRectHeight defaultValue:40]);
+        tw = MAX(24.0, [prefs floatForKey:TWKeyArcRectLength defaultValue:40]);
+        th = MAX(24.0, [prefs floatForKey:TWKeyArcRectHeight defaultValue:40]);
     } else {
         CGFloat size = [prefs floatForKey:TWKeyArcCornerSize defaultValue:64];
         CGFloat s = MAX(24.0, MIN(size, MIN(CGRectGetWidth(screen), CGRectGetHeight(screen)) / 3.0));
-        w = h = s;
+        tw = th = s;
     }
 
     UIView *firstHost = nil;
@@ -245,9 +245,9 @@ static BOOL TWArcDeviceUnlocked(void) {
 
         BOOL leftSide = (corner == TWCornerBottomLeft || corner == TWCornerTopLeft);
         BOOL topSide  = (corner == TWCornerTopLeft || corner == TWCornerTopRight);
-        CGFloat ox = leftSide ? offX : CGRectGetWidth(screen) - w - offX;
-        CGFloat oy = topSide ? 28 + offY : CGRectGetHeight(screen) - 28 - h - offY;
-        CGRect frame = CGRectMake(ox, oy, w, h);
+        CGFloat ox = leftSide ? offX : CGRectGetWidth(screen) - tw - offX;
+        CGFloat oy = topSide ? 28 + offY : CGRectGetHeight(screen) - 28 - th - offY;
+        CGRect frame = CGRectMake(ox, oy, tw, th);
         if ([prefs boolForKey:TWKeyArcDebug defaultValue:NO]) {
             w.rootViewController.view.backgroundColor = [UIColor colorWithRed:1 green:0.2 blue:0.3 alpha:0.28];
         } else {
