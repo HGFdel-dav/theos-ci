@@ -257,13 +257,13 @@ static NSString *const kPXPassFooter = @"以下开关改完立即生效，不需
 - (void)buildBackupPage:(NSMutableArray *)specs {
     [specs addObject:TWGroupSpecifier(@"配置",
         @"导出把 ParallelX 全部设置写成一个 plist 存到文稿目录；导入从同一目录读回。")];
-    PSSpecifier *export = TWButtonRowSpecifier(self, @"导出配置", @"pxExport:", @"square.and.arrow.up", @2);
-    PSSpecifier *import = TWButtonRowSpecifier(self, @"导入配置", @"pxImport:", @"square.and.arrow.down", @4);
-    if (export) [specs addObject:export];
-    if (import) [specs addObject:import];
+    PSSpecifier *exportRow = TWButtonRowSpecifier(self, @"导出配置", @"pxExport:", @"square.and.arrow.up", NO, nil);
+    PSSpecifier *importRow = TWButtonRowSpecifier(self, @"导入配置", @"pxImport:", @"square.and.arrow.down", NO, nil);
+    if (exportRow) [specs addObject:exportRow];
+    if (importRow) [specs addObject:importRow];
 
     [specs addObject:TWGroupSpecifier(@"", @"恢复默认只重置 ParallelX 的分屏设置，不动 Twin 自己的偏好。")];
-    PSSpecifier *reset = TWButtonRowSpecifier(self, @"恢复默认设置", @"pxReset:", @"arrow.counterclockwise", @0);
+    PSSpecifier *reset = TWButtonRowSpecifier(self, @"恢复默认设置", @"pxReset:", @"arrow.counterclockwise", YES, nil);
     if (reset) [specs addObject:reset];
 }
 
