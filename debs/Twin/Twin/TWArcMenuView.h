@@ -10,6 +10,9 @@ NS_ASSUME_NONNULL_BEGIN
 //   @{@"bundleID": NSString, @"containerID": NSString(可空), @"title": NSString, @"badge": NSString(可空,如 @"默"/@"分")}
 - (void)presentFromTriggerPoint:(CGPoint)point entries:(NSArray<NSDictionary *> *)entries corner:(NSInteger)corner radius:(CGFloat)radius menuScale:(CGFloat)menuScale;
 - (void)updateSelectionAtPoint:(CGPoint)point;
+// 当前高亮项下标（-1 = 没有），长按判定要用。
+- (NSInteger)selectedIndex;
+- (nullable NSDictionary *)entryAtIndex:(NSInteger)index;
 // 返回选中的条目（nil = 没选中）并收起菜单。
 - (NSDictionary *)finishSelectionAtPoint:(CGPoint)point;
 - (void)dismissAnimated:(BOOL)animated;
