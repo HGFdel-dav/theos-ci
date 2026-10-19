@@ -84,6 +84,18 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
                                         @"arrow.left.and.right", nil,
                                         @{@"height": @78, @"twMin": @0, @"twMax": @40, @"twStep": @1, @"twUnit": @" pt", @"twColor": @3})];
 
+        // ---- 角落（0.9.7：由你自己勾选，不再写死） ----
+        [specs addObject:TWGroupSpecifier(@"从哪些角落唤醒", @"勾选后，从该角落往屏内拖即可唤出弧形菜单。至少保留一个。")];
+        NSArray *cornerNames = @[@"右下角", @"左下角", @"左上角", @"右上角"];
+        NSArray *cornerSymbols = @[@"arrow.down.right", @"arrow.down.left", @"arrow.up.left", @"arrow.up.right"];
+        for (NSInteger i = 0; i < 4; i++) {
+            [specs addObject:TWRowSpecifier(self, cornerNames[i], TWKeyArcCorners, @YES, nil, PSSwitchCell,
+                                            cornerSymbols[i], nil,
+                                            @{@"height": @62, @"twColor": @(i % 6), @"twBit": @(i),
+                                              @"twGet": @"twCornerEnabled:",
+                                              @"twSet": @"twCornerSetEnabled:specifier:"})];
+        }
+
         // ---- 窗口层级 ----
         [specs addObject:TWGroupSpecifier(@"窗口层级",
             [NSString stringWithFormat:@"生效层级 = 1998 + 视图优先级，当前 %ld。默认 %ld 已高于状态栏(1000)与系统弹窗(2000)；拉到 %ld 为「至高无上」。层级再高也盖不过 iOS 安全界面（密码／支付），也不解除锁屏保护。",
