@@ -18,6 +18,7 @@
 #import "TWContainerExport.h"
 #import "TWSceneHost.h"
 #import "TWPath.h"
+#import "TWRuntimeLog.h"
 
 #import <objc/runtime.h>
 #import <mach-o/dyld.h>
@@ -142,6 +143,9 @@ __attribute__((constructor)) static void TWInitialize(void) {
     if (![bundleID isEqualToString:@"com.apple.springboard"]) return;
 
     TWForceEnable();   // 全套功能默认生效，不留"启用"开关
+
+    TWRuntimeLog(@"[tweak] init 0.9.8 jbRoot=%@ prefs=%@ engine=%@",
+                 TWJBRootPath() ?: @"(nil)", TWPrefsFilePath() ?: @"(nil)", TWEnginePrefsPath() ?: @"(nil)");
 
     _dyld_register_func_for_add_image(TWImageAdded);
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{

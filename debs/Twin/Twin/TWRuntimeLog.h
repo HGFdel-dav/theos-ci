@@ -1,0 +1,39 @@
+// TWRuntimeLog.h — 真机运行诊断（SpringBoard 的 dylib 与设置面板的 bundle 共用一份）
+//
+// 为什么要它：这台机器上"面板改了没反应"曾经完全靠猜。现在引擎和面板都把
+// 关键动作写进同一份日志，出问题直接读文件就能定位（路径 + 值 + 结果）。
+// 位置：/var/mobile/Library/Application Support/Twin/runtime.log
+#import <Foundation/Foundation.h>
+#import <stdarg.h>
+
+static inline NSString *TWRuntimeLogPath(void) {
+    return @"/var/mobile/Library/Application Support/Twin/runtime.log";
+}
+
+static inline void TWRuntimeLog(NSString *format, ...) {
+    if (![format isKindOfClass:NSString.class] || !format.length) return;
+    @try {
+        NSFileManager *fm = NSFileManager.defaultManager;
+        NSString *path = TWRuntimeLogPath();
+        NSDictionary *attrs = [fm attributesOfItemAtPath:path error:nil];
+        if ([[attrs objectForKey:NSFileSize] unsignedLongLongValue] > 262144) { [fm removeItemAtPath:path error:nil]; attrs = nil; }
+        if (!attrs) {
+            [fm createDirectoryAtPath:[path stringByDeletingLastPathComponent]
+          withIntermediateDirectories:YES attributes:nil error:nil];
+        }
+        va_list args;
+        va_start(args, format);
+        NSString *body = [[NSString alloc] initWithFormat:format arguments:args];
+        va_end(args);
+        NSString *line = [NSString stringWithFormat:@"%@ [%@] %@\n",
+                          [NSDate date], NSProcessInfo.processInfo.processName, body ?: @"(null)"];
+        NSData *data = [line dataUsingEncoding:NSUTF8StringEncoding];
+        NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath:path];
+        if (handle) {
+            @try { [handle seekToEndOfFile]; [handle writeData:data]; }
+            @finally { [handle closeFile]; }
+        } else {
+            [data writeToFile:path atomically:YES];
+        }
+    } @catch (__unused NSException *exception) { /* 诊断永不打扰主流程 */ }
+}

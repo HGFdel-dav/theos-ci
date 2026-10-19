@@ -641,9 +641,17 @@ void TWDecorateCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier) {
     iv.image = img;
     iv.frame = CGRectMake(13, (CGRectGetHeight(cell.contentView.bounds) - 27) / 2.0, 27, 27);
 
-    // 让标题右移，不碰布局系统
-    UILabel *text = cell.textLabel;
-    if (text && !CGAffineTransformEqualToTransform(text.transform, CGAffineTransformMakeTranslation(38, 0))) {
-        text.transform = CGAffineTransformMakeTranslation(38, 0);
+    // 0.9.8：只挪 cell.textLabel 是不够的 —— 滑块行/分段行里真正画标题的是 cell
+    // 自己的私有 label（textLabel 为 nil 或不可见），结果就是图标压在文字上
+    //（用户原话："图标全部遮住了"）。改成：凡是起点落在图标区（x < 46）且有一定
+    // 宽度的子视图，统统右移 38pt 并按同样数值缩短，右边缘保持不变。
+    // 已经右移过的（x >= 46）直接跳过，重复调用天然幂等。
+    for (UIView *sub in cell.contentView.subviews) {
+        if (sub == iv) continue;
+        CGRect frame = sub.frame;
+        if (frame.size.width < 40 || frame.origin.x >= 46) continue;
+        frame.origin.x += 38;
+        frame.size.width = MAX(40, frame.size.width - 38);
+        sub.frame = frame;
     }
 }

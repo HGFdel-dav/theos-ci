@@ -61,17 +61,19 @@ static id TWIconScalar(id target, NSString *name, NSInteger value) {
 
 static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     id proxy = TWIconObject(NSClassFromString(@"LSApplicationProxy"), @"applicationProxyForIdentifier:", bundleID, YES);
-    id data = TWIconScalar(proxy, @"iconDataForVariant:", 4);
-    UIImage *icon = [data isKindOfClass:[NSData class]] ? [UIImage imageWithData:data] : nil;
-    if (!icon) {
-        id controller = TWIconObject(NSClassFromString(@"SBIconController"), @"sharedInstance", nil, NO);
-        id model = TWIconObject(controller, @"model", nil, NO);
-        id iconObj = TWIconObject(model, @"expectedIconForDisplayIdentifier:", bundleID, YES);
-        if (!iconObj) iconObj = TWIconObject(model, @"iconForDisplayIdentifier:", bundleID, YES);
-        id image = TWIconScalar(iconObj, @"generateIconImage:", 1);
-        if ([image isKindOfClass:[UIImage class]]) icon = image;
+    // 0.9.8：变体依次试，别只试一个（不同 iOS 返回的变体不同，试不到就整排变灰块）。
+    for (NSNumber *variant in @[@4, @2, @0]) {
+        id data = TWIconScalar(proxy, @"iconDataForVariant:", variant.integerValue);
+        UIImage *icon = [data isKindOfClass:[NSData class]] ? [UIImage imageWithData:data] : nil;
+        if (icon) return icon;
     }
-    return icon;
+    id controller = TWIconObject(NSClassFromString(@"SBIconController"), @"sharedInstance", nil, NO);
+    id model = TWIconObject(controller, @"model", nil, NO);
+    id iconObj = TWIconObject(model, @"expectedIconForDisplayIdentifier:", bundleID, YES);
+    if (!iconObj) iconObj = TWIconObject(model, @"iconForDisplayIdentifier:", bundleID, YES);
+    id image = TWIconScalar(iconObj, @"generateIconImage:", 1);
+    if ([image isKindOfClass:[UIImage class]]) return image;
+    return nil;
 }
 
 #pragma mark - item view
@@ -176,6 +178,10 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 @end
 
 #pragma mark - menu view
+
+@interface TWArcMenuView ()
+- (UIImage *)placeholderImageForEntry:(NSDictionary *)entry;
+@end
 
 @implementation TWArcMenuView {
     NSMutableArray<TWArcItemView *> *_items;
@@ -284,7 +290,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
         NSDictionary *entry = _entries[i];
         NSString *bundleID = [entry[@"bundleID"] isKindOfClass:NSString.class] ? entry[@"bundleID"] : nil;
         UIImage *icon = bundleID.length ? TWIconImageForBundleID(bundleID) : nil;
-        if (!icon) icon = [self placeholderImage];
+        if (!icon) icon = [self placeholderImageForEntry:entry];
         TWArcItemView *item = [[TWArcItemView alloc] initWithEntry:entry image:icon size:itemSize];
         [item applyIconScalePercent:iconScalePct backgroundAlphaPercent:iconBgPct];
         item.baseScale = _menuScale;
@@ -339,12 +345,25 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     _bandMask.path = path.CGPath;
 }
 
-- (UIImage *)placeholderImage {
-    UIGraphicsBeginImageContextWithOptions(CGSizeMake(56, 56), NO, 0);
-    [[UIColor secondarySystemBackgroundColor] setFill];
-    UIRectFill(CGRectMake(0, 0, 56, 56));
-    UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
-    UIGraphicsEndImageContext();
+// 图标取不到时不再画一块空灰板（那看起来就是"图标被盖住了"），
+// 改成带首字的彩色圆角块，一眼能认。
+- (UIImage *)placeholderImageForEntry:(NSDictionary *)entry {
+    NSString *title = [entry[@"title"] isKindOfClass:NSString.class] ? entry[@"title"] : nil;
+    if (!title.length) title = [entry[@"bundleID"] isKindOfClass:NSString.class] ? entry[@"bundleID"] : @"?";
+    NSString *letter = title.length ? [title substringToIndex:1] : @"?";
+    CGSize size = CGSizeMake(96, 96);
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size];
+    UIImage *img = [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
+        UIBezierPath *path = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, size.width, size.height)
+                                                            cornerRadius:size.width * 0.26];
+        [[UIColor colorWithWhite:0.25 alpha:1.0] setFill];
+        [path fill];
+        NSDictionary *attrs = @{ NSFontAttributeName: [UIFont systemFontOfSize:46 weight:UIFontWeightSemibold],
+                                 NSForegroundColorAttributeName: UIColor.whiteColor };
+        CGSize text = [letter sizeWithAttributes:attrs];
+        [letter drawAtPoint:CGPointMake((size.width - text.width) / 2, (size.height - text.height) / 2)
+             withAttributes:attrs];
+    }];
     return img;
 }
 

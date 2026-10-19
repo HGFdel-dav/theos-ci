@@ -6,6 +6,8 @@
 #import "TWArcPXBridge.h"
 #import "TWPrefs.h"
 #import "TWCraneBridge.h"
+#import "TWPath.h"
+#import "TWRuntimeLog.h"
 #import <AudioToolbox/AudioServices.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
@@ -100,6 +102,61 @@ static BOOL TWArcDeviceUnlocked(void) {
 //   UIView.hitTest 在"无子视图命中"时返回窗口自己。
 //   现在每个启用的角落只开一个 cornerSize×cornerSize 的小窗口，物理上不可能
 //   覆盖到角落以外，桌面/App 的其余区域一个像素都不受影响。
+// 0.9.8：再加一层保险 —— 小窗口在个别系统状态（锁屏/场景重建）下可能收不到
+//   触摸，于是在主窗口上再挂一条"只在角落热区内成立"的备用手势。它不取消
+//   触摸（cancelsTouchesInView=NO），热区之外一律拒绝，因此不抢桌面图标。
+
+typedef struct {
+    CGRect rects[4];
+    NSInteger mask;
+} TWArcHotAreas;
+
+// 触发区几何：与面板「从哪些角落唤醒 / 触发区」完全对应，两个使用者
+//（小窗口和备用手势）共用一份，避免两处算法漂移。
+static TWArcHotAreas TWArcComputeHotAreas(void) {
+    TWArcHotAreas out;
+    memset(&out, 0, sizeof(out));
+    TWPrefs *prefs = TWPrefs.shared;
+    NSInteger mask = [prefs integerForKey:TWKeyArcCorners defaultValue:3];
+    if ([prefs boolForKey:TWKeyArcMirror defaultValue:NO]) {
+        if (mask & 1) mask |= 2;
+        if (mask & 2) mask |= 1;
+        if (mask & 4) mask |= 8;
+        if (mask & 8) mask |= 4;
+    }
+    CGRect screen = UIScreen.mainScreen.bounds;
+    BOOL landscape = CGRectGetWidth(screen) > CGRectGetHeight(screen);
+    CGFloat offX = [prefs floatForKey:TWKeyArcOffsetX defaultValue:0];
+    CGFloat offY = [prefs floatForKey:TWKeyArcOffsetY defaultValue:0];
+    if (landscape) offX += [prefs floatForKey:TWKeyArcLandscapeOffset defaultValue:0];
+    NSInteger triggerMode = [prefs integerForKey:TWKeyArcTriggerMode defaultValue:0];
+    CGFloat tw = 64, th = 64;
+    if (triggerMode == 1) {
+        tw = MAX(24.0, [prefs floatForKey:TWKeyArcRectLength defaultValue:40]);
+        th = MAX(24.0, [prefs floatForKey:TWKeyArcRectHeight defaultValue:40]);
+    } else {
+        CGFloat size = [prefs floatForKey:TWKeyArcCornerSize defaultValue:64];
+        tw = th = MAX(24.0, MIN(size, MIN(CGRectGetWidth(screen), CGRectGetHeight(screen)) / 3.0));
+    }
+    for (NSInteger corner = 0; corner < 4; corner++) {
+        BOOL leftSide = (corner == TWCornerBottomLeft || corner == TWCornerTopLeft);
+        BOOL topSide  = (corner == TWCornerTopLeft || corner == TWCornerTopRight);
+        CGFloat ox = leftSide ? offX : CGRectGetWidth(screen) - tw - offX;
+        CGFloat oy = topSide ? 28 + offY : CGRectGetHeight(screen) - 28 - th - offY;
+        out.rects[corner] = CGRectMake(ox, oy, tw, th);
+    }
+    out.mask = mask;
+    return out;
+}
+
+static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
+    TWArcHotAreas areas = TWArcComputeHotAreas();
+    for (NSInteger corner = 0; corner < 4; corner++) {
+        if (!(areas.mask & ((NSInteger)1 << corner))) continue;
+        if (CGRectContainsPoint(areas.rects[corner], point)) return corner;
+    }
+    return -1;
+}
 
 @interface TWArcTriggerView : UIView
 @end
@@ -138,6 +195,7 @@ static BOOL TWArcDeviceUnlocked(void) {
     BOOL _tracking;
     BOOL _didPresent;
     BOOL _started;
+    NSInteger _sceneRetries;
     NSArray<NSString *> *_cachedBundleIDs;
 }
 
@@ -165,6 +223,11 @@ static BOOL TWArcDeviceUnlocked(void) {
 - (void)start {
     if (_started) return;
     _started = YES;
+    TWRuntimeLog(@"[arc] start enabled=%@ arcEnabled=%@ wakeMode=%ld prefs=%@",
+                 @([[TWPrefs shared] boolForKey:TWKeyEnabled defaultValue:YES]),
+                 @([[TWPrefs shared] boolForKey:TWKeyArcEnabled defaultValue:YES]),
+                 (long)[[TWPrefs shared] integerForKey:TWKeyWakeMode defaultValue:TWWakeModeCorner],
+                 TWPrefsFilePath() ?: @"(nil)");
     [self applyWakeMode];
     [self scheduleContainerPrefetch];
     // attach may have been too early (no window yet); retry briefly.
@@ -188,15 +251,36 @@ static BOOL TWArcDeviceUnlocked(void) {
 }
 
 - (void)detachRecognizer {
-    if (!_pan) return;
-    UIView *view = _pan.view;
-    if (view) [view removeGestureRecognizer:_pan];
+    NSArray *pans = objc_getAssociatedObject(self, "TWArcTriggerPans");
+    for (UIPanGestureRecognizer *pan in pans) {
+        UIView *view = pan.view;
+        if (view) [view removeGestureRecognizer:pan];
+    }
+    objc_setAssociatedObject(self, "TWArcTriggerPans", nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    UIPanGestureRecognizer *backup = objc_getAssociatedObject(self, "TWArcBackupPan");
+    if (backup.view) [backup.view removeGestureRecognizer:backup];
+    objc_setAssociatedObject(self, "TWArcBackupPan", nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     _pan = nil;
     [self cancelCurrentGesture];
 }
 
 // 只在屏幕四个角落的一块方形区域里接管触摸：不碰状态栏、不碰 Home 条，
 // 也不与 ParallelX 的边缘手柄抢地方（手柄在边中间，Arc 在角上）。
+// SpringBoard 里取当前可用场景：优先已挂窗口的场景，其次前台激活场景，
+// 最后退回任意 UIWindowScene。取不到就别建窗口（建了也是瞎的）。
+- (UIWindowScene *)activeWindowScene {
+    for (UIWindow *w in [UIApplication sharedApplication].windows) {
+        if (w.windowScene) return w.windowScene;
+    }
+    UIWindowScene *fallback = nil;
+    for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+        if (![scene isKindOfClass:[UIWindowScene class]]) continue;
+        if (scene.activationState == UISceneActivationStateForegroundActive) return (UIWindowScene *)scene;
+        if (!fallback) fallback = (UIWindowScene *)scene;
+    }
+    return fallback;
+}
+
 - (void)attachRecognizer {
     if (_pan) return;
 
@@ -207,35 +291,34 @@ static BOOL TWArcDeviceUnlocked(void) {
     }
     objc_setAssociatedObject(self, "TWArcTriggerWindows", windows, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 
+    UIWindowScene *scene = [self activeWindowScene];
     UIWindow *sceneWindow = nil;
     for (UIWindow *w in [UIApplication sharedApplication].windows) {
-        if (w.windowScene) { sceneWindow = w; break; }
+        if (w.windowScene == scene && w.bounds.size.width > 200) { sceneWindow = w; break; }
     }
+    if (!sceneWindow) sceneWindow = scene.windows.firstObject;
+    if (!scene) {
+        // SpringBoard 还没建好窗口/场景时，创建出来的 UIWindow 没有场景，
+        // 永远不会显示，也永远收不到触摸——表现就是"角落怎么拖都没反应"。
+        // 这里改成等场景出现再挂，最多等 20 秒。
+        if (_sceneRetries < 40) {
+            _sceneRetries++;
+            TWRuntimeLog(@"[arc] no scene yet (retry %ld)", (long)_sceneRetries);
+            __weak TWArcCoordinator *weakSelf = self;
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                [weakSelf detachRecognizer];
+                [weakSelf attachRecognizer];
+            });
+        } else {
+            TWRuntimeLog(@"[arc] no scene after %ld retries; corner wake inactive", (long)_sceneRetries);
+        }
+        return;
+    }
+    _sceneRetries = 0;
 
     TWPrefs *prefs = [TWPrefs shared];
-    NSInteger mask = [prefs integerForKey:TWKeyArcCorners defaultValue:3];
-    // 对称镜像（ScreenCore arcSymmetricMirrorEnabled）：开了就把另一侧也点亮。
-    if ([prefs boolForKey:TWKeyArcMirror defaultValue:NO]) {
-        if (mask & 1) mask |= 2;
-        if (mask & 2) mask |= 1;
-        if (mask & 4) mask |= 8;
-        if (mask & 8) mask |= 4;
-    }
-    CGRect screen = UIScreen.mainScreen.bounds;
-    BOOL landscape = CGRectGetWidth(screen) > CGRectGetHeight(screen);
-    CGFloat offX = [prefs floatForKey:TWKeyArcOffsetX defaultValue:0];
-    CGFloat offY = [prefs floatForKey:TWKeyArcOffsetY defaultValue:0];
-    if (landscape) offX += [prefs floatForKey:TWKeyArcLandscapeOffset defaultValue:0];
-    NSInteger triggerMode = [prefs integerForKey:TWKeyArcTriggerMode defaultValue:0];
-    CGFloat tw = 64, th = 64;
-    if (triggerMode == 1) {
-        tw = MAX(24.0, [prefs floatForKey:TWKeyArcRectLength defaultValue:40]);
-        th = MAX(24.0, [prefs floatForKey:TWKeyArcRectHeight defaultValue:40]);
-    } else {
-        CGFloat size = [prefs floatForKey:TWKeyArcCornerSize defaultValue:64];
-        CGFloat s = MAX(24.0, MIN(size, MIN(CGRectGetWidth(screen), CGRectGetHeight(screen)) / 3.0));
-        tw = th = s;
-    }
+    TWArcHotAreas areas = TWArcComputeHotAreas();
+    NSInteger mask = areas.mask;
 
     UIView *firstHost = nil;
     for (TWArcTriggerWindow *w in windows) {
@@ -243,19 +326,14 @@ static BOOL TWArcDeviceUnlocked(void) {
         BOOL enabled = (mask & (1 << corner)) != 0;
         if (!enabled) { w.hidden = YES; continue; }
 
-        BOOL leftSide = (corner == TWCornerBottomLeft || corner == TWCornerTopLeft);
-        BOOL topSide  = (corner == TWCornerTopLeft || corner == TWCornerTopRight);
-        CGFloat ox = leftSide ? offX : CGRectGetWidth(screen) - tw - offX;
-        CGFloat oy = topSide ? 28 + offY : CGRectGetHeight(screen) - 28 - th - offY;
-        CGRect frame = CGRectMake(ox, oy, tw, th);
         if ([prefs boolForKey:TWKeyArcDebug defaultValue:NO]) {
             w.rootViewController.view.backgroundColor = [UIColor colorWithRed:1 green:0.2 blue:0.3 alpha:0.28];
         } else {
             w.rootViewController.view.backgroundColor = UIColor.clearColor;
         }
-        w.frame = frame;
+        w.frame = areas.rects[corner];
         w.rootViewController.view.frame = w.bounds;
-        if (!w.windowScene && sceneWindow.windowScene) w.windowScene = sceneWindow.windowScene;
+        if (w.windowScene != scene) w.windowScene = scene;
         w.hidden = NO;
         if (!firstHost) firstHost = w.rootViewController.view;
     }
@@ -273,7 +351,25 @@ static BOOL TWArcDeviceUnlocked(void) {
         [pans addObject:pan];
         if (!_pan) _pan = pan;   // 兼容旧字段（判空用）
     }
+
+    // 备用：把同一条手势挂到主窗口上。只在角落热区内成立（见 shouldReceiveTouch），
+    // 且 cancelsTouchesInView=NO，所以热区外的图标点按完全不受影响。
+    // SpringBoard 主窗口不一定有 rootViewController，没有就挂在窗口本身上。
+    UIView *backupHost = sceneWindow.rootViewController.view ?: sceneWindow;
+    if (backupHost) {
+        UIPanGestureRecognizer *backup =
+            [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
+        backup.delegate = self;
+        backup.maximumNumberOfTouches = 1;
+        backup.cancelsTouchesInView = NO;
+        [backupHost addGestureRecognizer:backup];
+        objc_setAssociatedObject(self, "TWArcBackupPan", backup, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [pans addObject:backup];
+    }
     objc_setAssociatedObject(self, "TWArcTriggerPans", pans, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    TWRuntimeLog(@"[arc] attach mask=%ld rect=%@ windows=%lu backup=%@ scene=%@",
+                 (long)mask, NSStringFromCGRect(areas.rects[TWCornerBottomRight]),
+                 (unsigned long)windows.count, backupHost ? @"yes" : @"no", scene ? @"yes" : @"no");
 }
 
 - (TWArcTriggerWindow *)triggerWindowForCorner:(NSInteger)corner {
@@ -324,12 +420,19 @@ static BOOL TWArcDeviceUnlocked(void) {
     if (![[TWPrefs shared] boolForKey:TWKeyEnabled defaultValue:YES] ||
         ![[TWPrefs shared] boolForKey:TWKeyArcEnabled defaultValue:YES] ||
         !TWArcDeviceUnlocked()) return NO;
-    // 每个手势只挂在一个角的小窗口上，窗口本身就是热区，不需要再做点判定。
-    UIWindow *hostWindow = recognizer.view.window;
-    NSInteger corner = hostWindow ? hostWindow.tag : TWCornerBottomRight;
+    // 统一用屏幕坐标判定：小窗口的气手和主窗口的备用手势走同一套热区。
+    UIWindow *touchWindow = touch.window;
+    CGPoint screenPoint = touchWindow ? [touchWindow convertPoint:[touch locationInView:touchWindow] toWindow:nil]
+                                      : [touch locationInView:recognizer.view];
+    NSInteger corner = TWArcCornerAtScreenPoint(screenPoint);
+    if (corner < 0) {
+        // 热区之外：备用手势必须放行，桌面图标/系统手势照常。
+        return NO;
+    }
     _startCorner = corner;
-    _startPoint = [touch locationInView:hostWindow ?: recognizer.view];  // 屏幕坐标
+    _startPoint = screenPoint;
     _hasStartPoint = YES;
+    TWRuntimeLog(@"[arc] touch corner=%ld p=%.0f,%.0f", (long)corner, screenPoint.x, screenPoint.y);
     return YES;
 }
 
@@ -381,7 +484,8 @@ static BOOL TWArcDeviceUnlocked(void) {
         return;
     }
     UIWindow *hostWindow = pan.view.window;
-    CGPoint p = [pan locationInView:hostWindow ?: pan.view];
+    CGPoint p = hostWindow ? [hostWindow convertPoint:[pan locationInView:hostWindow] toWindow:nil]
+                           : [pan locationInView:pan.view];
     switch (pan.state) {
         case UIGestureRecognizerStateBegan:
         case UIGestureRecognizerStateChanged: {
@@ -389,6 +493,8 @@ static BOOL TWArcDeviceUnlocked(void) {
             if (!_tracking) {
                 CGFloat dx = p.x - _startPoint.x, dy = p.y - _startPoint.y;
                 if (hypot(dx, dy) >= 22) {
+                    TWRuntimeLog(@"[arc] drag %.0f,%.0f -> %.0f,%.0f (corner %ld)",
+                                 _startPoint.x, _startPoint.y, p.x, p.y, (long)_startCorner);
                     [self presentMenuFromPoint:_startPoint corner:_startCorner];
                     _tracking = _menu.isPresented;
                 }
@@ -399,7 +505,10 @@ static BOOL TWArcDeviceUnlocked(void) {
         case UIGestureRecognizerStateEnded: {
             if (_tracking) {
                 NSDictionary *selected = [_menu finishSelectionAtPoint:[pan locationInView:_menu]];
-                if ([selected isKindOfClass:[NSDictionary class]] && TWArcDeviceUnlocked()) [self launchEntry:selected];
+                if ([selected isKindOfClass:[NSDictionary class]] && TWArcDeviceUnlocked()) {
+                    TWRuntimeLog(@"[arc] selected %@", selected[@"title"] ?: selected[@"bundleID"]);
+                    [self launchEntry:selected];
+                }
             }
             _hasStartPoint = NO;
             _tracking = NO;
@@ -463,6 +572,7 @@ static BOOL TWArcDeviceUnlocked(void) {
 
     NSArray *entries = [self menuEntries];
     CGFloat radius = [[TWPrefs shared] floatForKey:TWKeyArcRadius defaultValue:150];
+    TWRuntimeLog(@"[arc] present corner=%ld entries=%lu radius=%.0f", (long)corner, (unsigned long)entries.count, radius);
     if (!entries.count) { [self cancelCurrentGesture]; return; }
     [_menu presentFromTriggerPoint:point entries:entries corner:corner radius:radius menuScale:1.0];
     if ([[TWPrefs shared] boolForKey:TWKeyArcSound defaultValue:YES]) {

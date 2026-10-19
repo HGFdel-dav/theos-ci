@@ -1,5 +1,7 @@
 // TWPrefs.m
 #import "TWPrefs.h"
+#import "TWPath.h"
+#import "TWRuntimeLog.h"
 #import <UIKit/UIKit.h>
 #import <notify.h>
 #import <sys/file.h>
@@ -91,9 +93,9 @@ static void TWMigratePrefs(NSString *target) {
     if (!target.length || [fm fileExistsAtPath:target]) return;
     int fd = TWLockPrefs(target); if (fd < 0) return;
     if (![fm fileExistsAtPath:target]) {
-        NSMutableArray *sources = [NSMutableArray array];
-        for (NSString *root in TWJBRootCandidates()) [sources addObject:[root stringByAppendingPathComponent:@"var/mobile/Library/Preferences/com.niubiprass.twin.plist"]];
-        [sources addObject:@"/var/mobile/Library/Preferences/com.niubiprass.twin.plist"];
+        // 旧版本把偏好写在 Preferences 目录；这里取"最新且校验通过"的一份迁过来，
+        // 迁完删除旧副本（用户要求：真实 Preferences 目录不留插件痕迹）。
+        NSMutableArray *sources = [TWLegacyPrefsFiles() mutableCopy];
         [sources sortUsingComparator:^NSComparisonResult(NSString *a, NSString *b) {
             NSDate *ad = [[fm attributesOfItemAtPath:a error:nil] fileModificationDate] ?: NSDate.distantPast;
             NSDate *bd = [[fm attributesOfItemAtPath:b error:nil] fileModificationDate] ?: NSDate.distantPast;
@@ -119,6 +121,7 @@ static void TWMigratePrefs(NSString *target) {
     NSMutableDictionary *_cache;
     NSMutableSet *_pendingKeys;
     int _notifyToken;
+    BOOL _loggedPath;
 }
 
 + (instancetype)shared {
@@ -156,6 +159,13 @@ static void TWMigratePrefs(NSString *target) {
             if (_cache[key]) disk[key] = _cache[key]; else [disk removeObjectForKey:key];
         }
         _cache = disk;
+        if (!_loggedPath) {
+            _loggedPath = YES;
+            TWRuntimeLog(@"[prefs] path=%@ keys=%lu twEnabled=%@ wakeMode=%@ arcEnabled=%@",
+                         path ?: @"(nil)", (unsigned long)_cache.count,
+                         _cache[TWKeyEnabled] ?: @"-", _cache[TWKeyWakeMode] ?: @"-",
+                         _cache[TWKeyArcEnabled] ?: @"-");
+        }
     }
 }
 
@@ -197,7 +207,10 @@ static void TWMigratePrefs(NSString *target) {
     @synchronized (self) {
         if (!_pendingKeys.count) return;
         NSString *path = TWPrefsFilePath(); int fd = TWLockPrefs(path);
-        if (fd < 0) { NSLog(@"[Twin] Preferences not saved: unavailable, unsafe or busy root; pending edits retained."); return; }
+        if (fd < 0) {
+            TWRuntimeLog(@"[prefs] WRITE FAILED (lock/unavailable) path=%@ pending=%lu", path ?: @"(nil)", (unsigned long)_pendingKeys.count);
+            return;
+        }
         NSMutableDictionary *merged = [[NSDictionary dictionaryWithContentsOfFile:path] mutableCopy] ?: [NSMutableDictionary dictionary];
         for (NSString *key in _pendingKeys) {
             if (_cache[key]) merged[key] = _cache[key]; else [merged removeObjectForKey:key];
@@ -205,8 +218,9 @@ static void TWMigratePrefs(NSString *target) {
         BOOL ok = TWPrefsPathIsSafe(path) && [merged writeToFile:path atomically:YES] && [[NSDictionary dictionaryWithContentsOfFile:path] isEqual:merged];
         if (ok) { _cache = merged; [_pendingKeys removeAllObjects]; }
         flock(fd, LOCK_UN); close(fd);
+        TWRuntimeLog(@"[prefs] save %@ path=%@ keys=%@", ok ? @"ok" : @"FAILED", path ?: @"(nil)",
+                     [[_pendingKeys allObjects] componentsJoinedByString:@","] ?: @"-");
         if (ok) notify_post(TWPrefsChangedNotification);
-        else NSLog(@"[Twin] Preferences write failed; pending edits retained.");
     }
 }
 
