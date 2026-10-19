@@ -65,7 +65,16 @@
                                         @{@"height": @78, @"twMin": @2, @"twMax": @8, @"twStep": @1, @"twUnit": @" 个", @"twColor": @3})];
         [specs addObject:TWRowSpecifier(self, @"弧形半径", TWKeyArcRadius, @140, nil, PSSliderCell,
                                         @"circle.dashed", nil,
-                                        @{@"height": @78, @"twMin": @100, @"twMax": @220, @"twStep": @5, @"twUnit": @" pt", @"twColor": @4})];
+                                        @{@"height": @78, @"twMin": @80, @"twMax": @220, @"twStep": @5, @"twUnit": @" pt", @"twColor": @4})];
+        [specs addObject:TWRowSpecifier(self, @"图标大小", TWKeyArcIconSize, @44, nil, PSSliderCell,
+                                        @"app.badge", nil,
+                                        @{@"height": @78, @"twMin": @28, @"twMax": @80, @"twStep": @2, @"twUnit": @" pt", @"twColor": @0})];
+        [specs addObject:TWRowSpecifier(self, @"第一环图标数", TWKeyArcFirstRowCount, @5, nil, PSSliderCell,
+                                        @"circle.grid.2x2", nil,
+                                        @{@"height": @78, @"twMin": @3, @"twMax": @9, @"twStep": @1, @"twUnit": @" 个", @"twColor": @5})];
+        [specs addObject:TWRowSpecifier(self, @"环间距", TWKeyArcRingGap, @10, nil, PSSliderCell,
+                                        @"arrow.left.and.right", nil,
+                                        @{@"height": @78, @"twMin": @0, @"twMax": @40, @"twStep": @1, @"twUnit": @" pt", @"twColor": @3})];
 
         // ---- 窗口层级 ----
         [specs addObject:TWGroupSpecifier(@"窗口层级",

@@ -28,6 +28,7 @@
 #import <math.h>
 #import <string.h>
 #import "TWRemember.h"
+#import "TWArcPXBridge.h"
 #import "TWPrefs.h"
 #import "TWCraneBridge.h"
 
@@ -665,6 +666,8 @@ static id (*origInit)(id, SEL);
 static id replInit(id self, SEL _cmd) {
     self = origInit(self, _cmd);   // 原实现先跑，返回值原样透传（绝不能吞掉）
     if (self) {
+        // 角落手势要用它唤出 ParallelX 自己的面板（动画/图标都是 PX 的）。
+        @try { TWArcPXBridgeCapture(self); } @catch (__unused NSException *e) {}
         // Apply the remembered shape shortly after a fresh entry lays out.
         @try {
             __weak NSObject *weakEntry = self;

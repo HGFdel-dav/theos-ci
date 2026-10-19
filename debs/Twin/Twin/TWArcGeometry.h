@@ -37,6 +37,24 @@ typedef NS_ENUM(NSInteger, TWCorner) {
 
 // 第 index 个（0-based）图标中心。
 + (CGPoint)centerForItemAtIndex:(NSInteger)index count:(NSInteger)count radius:(CGFloat)radius anchor:(CGPoint)anchor corner:(NSInteger)corner bounds:(CGRect)bounds;
+
+#pragma mark - 多环扇形（ScreenCore 几何）
+
+// 屏幕角落的扇形排布：90° 象限内按环排开，第一环 firstRowCount 个，
+// 后续环按半径加大继续排，直到 n 个图标全部放下。
+// 返回 NSArray<NSValue *>（CGPoint），顺序与条目顺序一致。
+// 几何来自 ScreenCore 2.0.4（起始角 180°、扫描角 90°），排布用等效实现。
++ (NSArray<NSValue *> *)centersForCount:(NSInteger)count
+                          firstRowCount:(NSInteger)firstRowCount
+                               iconSize:(CGFloat)iconSize
+                                  radius:(CGFloat)radius
+                                ringGap:(CGFloat)ringGap
+                                 anchor:(CGPoint)anchor
+                                 corner:(NSInteger)corner
+                                 bounds:(CGRect)bounds;
+
+// 在给定几何下算出实际使用的半径上限（不越出屏幕）。
++ (CGFloat)clampedRadius:(CGFloat)radius anchor:(CGPoint)anchor corner:(NSInteger)corner bounds:(CGRect)bounds;
 @end
 
 NS_ASSUME_NONNULL_END

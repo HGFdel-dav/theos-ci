@@ -3,6 +3,7 @@
 #import "TWArcMenuView.h"
 #import "TWArcGeometry.h"
 #import "TWArcWindow.h"
+#import "TWArcPXBridge.h"
 #import "TWPrefs.h"
 #import "TWCraneBridge.h"
 #import <AudioToolbox/AudioServices.h>
@@ -310,6 +311,18 @@ static BOOL TWArcDeviceUnlocked(void) {
     _menu.hidden = NO;
     _menu.userInteractionEnabled = YES;
     [container addSubview:_menu];
+
+    // 优先让 ParallelX 自己弹面板：动画、图标、流畅度都是 PX 本体的。
+    // 只有 PX 不可用（未装 / ABI 不符）时才退回 Twin 自绘的弧形菜单。
+    NSInteger pxSide = [[TWPrefs shared] integerForKey:TWKeyArcSide defaultValue:0] == 1 ? 1 : 0;
+    if ([[TWPrefs shared] boolForKey:TWKeyArcUsePXPanel defaultValue:NO] &&
+        TWArcPXBridgePresent(pxSide)) {
+        _didPresent = YES;
+        if ([[TWPrefs shared] boolForKey:TWKeyArcSound defaultValue:YES]) {
+            AudioServicesPlaySystemSound(1104);
+        }
+        return;
+    }
 
     NSArray *entries = [self menuEntries];
     CGFloat radius = [[TWPrefs shared] floatForKey:TWKeyArcRadius defaultValue:150];

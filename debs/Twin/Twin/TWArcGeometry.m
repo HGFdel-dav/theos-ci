@@ -103,4 +103,67 @@ static const CGFloat kTWBottomInset = 28;      // Home 条区不触发
     return CGPointMake(anchor.x + radius * cos(angle), anchor.y + radius * sin(angle));
 }
 
+#pragma mark - 多环扇形
+
+// 90° 象限内排环：第一环 firstRowCount 个，之后每环按"最小夹角 36°"排，
+// 放不下就换到下一环。半径逐环加大 iconSize + ringGap。
+// 起点/终点各内缩 6°，避免贴边的图标被屏幕裁掉一半。
++ (NSArray<NSValue *> *)centersForCount:(NSInteger)count
+                          firstRowCount:(NSInteger)firstRowCount
+                               iconSize:(CGFloat)iconSize
+                                  radius:(CGFloat)radius
+                                ringGap:(CGFloat)ringGap
+                                 anchor:(CGPoint)anchor
+                                 corner:(NSInteger)corner
+                                 bounds:(CGRect)bounds {
+    NSMutableArray<NSValue *> *centers = [NSMutableArray array];
+    if (count <= 0) return centers;
+    if (!isfinite(iconSize) || iconSize <= 0) iconSize = 44;
+    if (!isfinite(radius) || radius <= 0) radius = 140;
+    if (!isfinite(ringGap) || ringGap < 0) ringGap = 10;
+    NSInteger first = firstRowCount > 0 ? MIN(firstRowCount, count) : MIN((NSInteger)5, count);
+
+    CGFloat start = [self startAngleForCorner:corner];
+    CGFloat inset = 6.0 * M_PI / 180.0;
+    CGFloat a0 = start + inset;
+    CGFloat a1 = start + kTWSweepAngle - inset;
+    if (a1 <= a0) { a0 = start; a1 = start + kTWSweepAngle; }
+
+    // 每环容量：第一环按设置，之后按最小夹角推。
+    CGFloat minStep = 36.0 * M_PI / 180.0;
+    NSInteger perRing = MAX((NSInteger)floor((a1 - a0) / minStep) + 1, 1);
+
+    NSInteger remaining = count;
+    NSInteger ring = 0;
+    CGFloat rowRadius = radius;
+    CGFloat stepOut = iconSize + ringGap;
+
+    while (remaining > 0 && ring < 8) {
+        NSInteger capacity = (ring == 0) ? first : perRing;
+        NSInteger n = MIN(remaining, MAX(capacity, 1));
+        for (NSInteger i = 0; i < n; i++) {
+            CGFloat t = (n == 1) ? 0.5 : (CGFloat)i / (CGFloat)(n - 1);
+            CGFloat angle = a0 + (a1 - a0) * t;
+            CGPoint p = CGPointMake(anchor.x + rowRadius * cos(angle),
+                                    anchor.y + rowRadius * sin(angle));
+            // 夹进屏幕（留半个图标的内边距），保证不被裁。
+            CGFloat half = iconSize * 0.5 + 2;
+            p.x = MIN(MAX(p.x, half), CGRectGetWidth(bounds) - half);
+            p.y = MIN(MAX(p.y, half), CGRectGetHeight(bounds) - half);
+            [centers addObject:[NSValue valueWithCGPoint:p]];
+        }
+        remaining -= n;
+        ring++;
+        rowRadius += stepOut;
+    }
+    return centers;
+}
+
++ (CGFloat)clampedRadius:(CGFloat)radius anchor:(CGPoint)anchor corner:(NSInteger)corner bounds:(CGRect)bounds {
+    if (!isfinite(radius) || radius <= 0) radius = 140;
+    CGFloat cap = [self maxRadiusForCorner:corner anchor:anchor margin:12 bounds:bounds];
+    if (cap > 0) radius = MIN(radius, cap);
+    return MAX(radius, 60);
+}
+
 @end

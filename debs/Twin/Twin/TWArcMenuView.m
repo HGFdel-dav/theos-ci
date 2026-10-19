@@ -3,6 +3,13 @@
 // 一个应用有几个容器就有几个图标，角标用 @"默"/@"分" 之类区分。
 #import "TWArcMenuView.h"
 #import "TWArcGeometry.h"
+#import "TWPrefs.h"
+
+// ParallelX 的动画数值（从其二进制扫出：0.16 / 0.40 / 0.34 / 0.72）
+static const NSTimeInterval TWPXPresentDuration = 0.16;
+static const NSTimeInterval TWPXDismissDuration = 0.40;
+static const NSTimeInterval TWPXItemDuration    = 0.34;
+static const CGFloat        TWPXSpringDamping   = 0.72;
 #import <AudioToolbox/AudioServices.h>
 #import <objc/message.h>
 #import <string.h>
@@ -192,11 +199,27 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     _corner = (corner < 0 || corner > 3) ? TWCornerBottomRight : corner;
     _menuScale = isfinite(menuScale) && menuScale > 0.1 ? MIN(menuScale, 2) : 1;
     NSInteger count = (NSInteger)_entries.count;
-    _radius = [TWArcGeometry radiusForItemCount:count preferredRadius:radius menuScale:_menuScale corner:_corner bounds:self.bounds];
-    CGFloat itemSize = [TWArcGeometry itemSizeForCount:count radius:_radius menuScale:_menuScale];
-    if (itemSize <= 0 || _radius <= 0) return;
-    CGFloat margin = itemSize * _menuScale * 1.18 / 2 + 10;
+
+    // ---- 几何：ScreenCore 的 90° 角落扇形 + 多环排布 ----
+    TWPrefs *prefs = [TWPrefs shared];
+    CGFloat itemSize = [prefs floatForKey:TWKeyArcIconSize defaultValue:44];
+    if (!isfinite(itemSize) || itemSize < 20) itemSize = 44;
+    NSInteger firstRow = [prefs integerForKey:TWKeyArcFirstRowCount defaultValue:5];
+    CGFloat ringGap = [prefs floatForKey:TWKeyArcRingGap defaultValue:10];
+
+    CGFloat margin = itemSize * 0.5 + 14;
     _anchor = [TWArcGeometry anchorForCorner:_corner margin:margin bounds:self.bounds];
+    _radius = [TWArcGeometry clampedRadius:radius anchor:_anchor corner:_corner bounds:self.bounds];
+
+    NSArray<NSValue *> *centers = [TWArcGeometry centersForCount:count
+                                                   firstRowCount:firstRow
+                                                        iconSize:itemSize
+                                                           radius:_radius
+                                                         ringGap:ringGap
+                                                          anchor:_anchor
+                                                          corner:_corner
+                                                          bounds:self.bounds];
+    if (centers.count < (NSUInteger)count) return;
 
     // dim
     _dimView = [[UIView alloc] initWithFrame:self.bounds];
@@ -216,7 +239,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     _bandMask = [CAShapeLayer layer];
     _bandMask.strokeColor = UIColor.whiteColor.CGColor;
     _bandMask.fillColor = UIColor.clearColor.CGColor;
-    _bandMask.lineWidth = (itemSize + 18) * _menuScale;
+    _bandMask.lineWidth = (itemSize + 16) * _menuScale;
     _bandMask.lineCap = kCALineCapRound;
     _bandGradient.mask = _bandMask;
     [_backgroundBand.layer addSublayer:_bandGradient];
@@ -231,7 +254,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
         if (!icon) icon = [self placeholderImage];
         TWArcItemView *item = [[TWArcItemView alloc] initWithEntry:entry image:icon size:itemSize];
         item.baseScale = _menuScale;
-        CGPoint center = [TWArcGeometry centerForItemAtIndex:i count:count radius:_radius anchor:_anchor corner:_corner bounds:self.bounds];
+        CGPoint center = [centers[(NSUInteger)i] CGPointValue];
         item.targetCenter = center;
         item.center = _triggerPoint;
         item.alpha = 0;
@@ -241,16 +264,17 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     }
     [self updateBandPath];
 
-    // spring in
+    // ---- 动画：ParallelX 的数值（0.16 展开 / 0.34 单图标 / 阻尼 0.72）----
     _dimView.alpha = 0.001;
-    [UIView animateWithDuration:0.18 animations:^{ self->_dimView.alpha = 0.18; }];
+    [UIView animateWithDuration:TWPXPresentDuration animations:^{ self->_dimView.alpha = 0.18; }];
 
     NSTimeInterval baseDelay = 0.02;
     [_items enumerateObjectsUsingBlock:^(TWArcItemView *item, NSUInteger idx, BOOL *stop) {
         NSTimeInterval delay = baseDelay * (double)idx;
-        [UIView animateWithDuration:0.34 delay:delay
-             usingSpringWithDamping:0.72 initialSpringVelocity:0 options:UIViewAnimationOptionCurveEaseOut
-             animations:^{
+        [UIView animateWithDuration:TWPXItemDuration delay:delay
+             usingSpringWithDamping:TWPXSpringDamping initialSpringVelocity:0
+                            options:UIViewAnimationOptionCurveEaseOut
+                         animations:^{
                  item.alpha = 1;
                  item.center = item.targetCenter;
                  item.transform = CGAffineTransformMakeScale(self->_menuScale, self->_menuScale);
@@ -328,7 +352,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
         _bandGradient = nil;
         _bandMask = nil;
         _dimView = nil;
-        [UIView animateWithDuration:0.18 delay:0 options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionCurveEaseIn animations:^{
+        [UIView animateWithDuration:TWPXDismissDuration delay:0 options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionCurveEaseIn animations:^{
             for (TWArcItemView *item in dismissedItems) {
                 item.alpha = 0;
                 item.transform = CGAffineTransformMakeScale(0.4, 0.4);

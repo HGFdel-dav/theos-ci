@@ -8,7 +8,7 @@
 
 static BOOL TWValidMigration(NSDictionary *dict) {
     if (![dict isKindOfClass:NSDictionary.class] || !dict.count) return NO;
-    NSSet *numbers = [NSSet setWithArray:@[TWKeyEnabled,TWKeyArcEnabled,TWKeyArcSide,TWKeyArcTriggerWidth,TWKeyArcItemCount,TWKeyArcRadius,TWKeyArcSound,TWKeyArcWindowPriority,TWKeyCraneEnabled,TWKeyRememberSize,TWKeyWakeMode,TWKeyArcCorners,TWKeyArcCornerSize,TWKeyArcOpenMode,TWKeySideOpenMode]];
+    NSSet *numbers = [NSSet setWithArray:@[TWKeyEnabled,TWKeyArcEnabled,TWKeyArcSide,TWKeyArcTriggerWidth,TWKeyArcItemCount,TWKeyArcRadius,TWKeyArcSound,TWKeyArcWindowPriority,TWKeyCraneEnabled,TWKeyRememberSize,TWKeyWakeMode,TWKeyArcUsePXPanel,TWKeyArcIconSize,TWKeyArcFirstRowCount,TWKeyArcRingGap,TWKeyArcCorners,TWKeyArcCornerSize,TWKeyArcOpenMode,TWKeySideOpenMode]];
     for (id key in dict) {
         id value = dict[key];
         if ([numbers containsObject:key]) { if (![value isKindOfClass:NSNumber.class]) return NO; }

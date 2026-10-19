@@ -98,6 +98,10 @@ static inline NSString *TWPrefsFilePath(void) {
 #define TWKeyEnabled          @"TWEnabled"
 #define TWKeyArcEnabled       @"TWArcEnabled"
 #define TWKeyArcSide          @"TWArcSide"          // 0 left, 1 right
+#define TWKeyArcUsePXPanel    @"TWArcUsePXPanel"     // 1 = 用 ParallelX 自己的面板（默认）
+#define TWKeyArcIconSize     @"TWArcIconSize"      // 图标直径(pt)，默认 44
+#define TWKeyArcFirstRowCount @"TWArcFirstRowCount" // 第一环图标数，默认 5
+#define TWKeyArcRingGap      @"TWArcRingGap"       // 环间距(pt)，默认 10
 #define TWKeyArcTriggerWidth  @"TWArcTriggerWidth"  // points
 #define TWKeyArcItemCount     @"TWArcItemCount"     // icons per menu
 #define TWKeyArcRadius        @"TWArcRadius"        // points
