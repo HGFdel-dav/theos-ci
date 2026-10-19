@@ -576,3 +576,74 @@ void TWStyleSliderCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier) {
     if (sliderH <= 0 || sliderH > 40) sliderH = 31;
     slider.frame = CGRectMake(16, h - sliderH - 6, MAX(w - 32, 40), sliderH);
 }
+
+#pragma mark - 行图标（0.9.7：不依赖 cellClass，直接往标准 cell 里塞）
+
+static UIColor *TWDecoTint(NSInteger idx) {
+    switch (((idx % 6) + 6) % 6) {
+        case 0: return [UIColor systemBlueColor];
+        case 1: return [UIColor systemGreenColor];
+        case 2: return [UIColor systemPinkColor];
+        case 3: return [UIColor systemOrangeColor];
+        case 4: return [UIColor systemPurpleColor];
+        default: return [UIColor systemTealColor];
+    }
+}
+
+static UIImage *TWDecoIcon(NSString *symbol, NSInteger colorIdx) {
+    if (![symbol isKindOfClass:NSString.class] || !symbol.length) return nil;
+    static NSMutableDictionary *cache = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ cache = [NSMutableDictionary dictionary]; });
+    NSString *key = [NSString stringWithFormat:@"%@|%ld", symbol, (long)colorIdx];
+    UIImage *hit = cache[key];
+    if (hit) return hit;
+
+    UIImageSymbolConfiguration *cfg =
+        [UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightSemibold];
+    UIImage *glyph = [UIImage systemImageNamed:symbol withConfiguration:cfg];
+    if (!glyph) return nil;
+    UIImage *white = [glyph imageWithTintColor:UIColor.whiteColor
+                                  renderingMode:UIImageRenderingModeAlwaysTemplate];
+
+    CGSize size = CGSizeMake(27, 27);
+    UIGraphicsImageRenderer *r = [[UIGraphicsImageRenderer alloc] initWithSize:size];
+    UIImage *img = [r imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
+        UIBezierPath *p = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, 27, 27) cornerRadius:6.5];
+        [TWDecoTint(colorIdx) setFill];
+        [p fill];
+        CGFloat side = 15.0;
+        [white drawInRect:CGRectMake((27 - side) / 2, (27 - side) / 2, side, side)
+                blendMode:kCGBlendModeNormal alpha:1.0];
+    }];
+    if (img) cache[key] = img;
+    return img;
+}
+
+// 标准 cell 上补一个彩色圆角图标，并把标题往右让 38pt。
+void TWDecorateCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier) {
+    if (![cell isKindOfClass:[UITableViewCell class]] || !specifier) return;
+    NSString *symbol = [specifier propertyForKey:@"twSymbol"];
+    if (![symbol isKindOfClass:NSString.class] || !symbol.length) return;
+
+    id colorObj = [specifier propertyForKey:@"twColor"];
+    NSInteger colorIdx = [colorObj isKindOfClass:NSNumber.class] ? [colorObj integerValue] : 0;
+    UIImage *img = TWDecoIcon(symbol, colorIdx);
+    if (!img) return;
+
+    UIImageView *iv = [cell.contentView viewWithTag:0x774C4450];
+    if (!iv) {
+        iv = [[UIImageView alloc] initWithFrame:CGRectMake(13, 0, 27, 27)];
+        iv.tag = 0x774C4450;
+        iv.contentMode = UIViewContentModeCenter;
+        [cell.contentView addSubview:iv];
+    }
+    iv.image = img;
+    iv.frame = CGRectMake(13, (CGRectGetHeight(cell.contentView.bounds) - 27) / 2.0, 27, 27);
+
+    // 让标题右移，不碰布局系统
+    UILabel *text = cell.textLabel;
+    if (text && !CGAffineTransformEqualToTransform(text.transform, CGAffineTransformMakeTranslation(38, 0))) {
+        text.transform = CGAffineTransformMakeTranslation(38, 0);
+    }
+}

@@ -29,6 +29,7 @@ static NSString *const kPXPassFooter = @"改完立即生效，不需要重启。
 forRowAtIndexPath:(NSIndexPath *)indexPath {
     @try {
         PSSpecifier *sp = [self specifierAtIndexPath:indexPath];
+        TWDecorateCellIfNeeded(cell, sp);
         TWStyleSliderCellIfNeeded(cell, sp);
     } @catch (__unused NSException *e) {}
 }

@@ -112,6 +112,9 @@ void TWSetArcOrderList(NSArray<NSString *> *list);
 // 给系统滑块行补标题与数值（本机 PSSliderCell 不画标题）。
 void TWStyleSliderCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier);
 
+// 给标准 cell 补一个彩色图标（不需要自定义 cellClass）。
+void TWDecorateCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier);
+
 // 本机应用显示名（取不到时原样返回 bundleID）。
 NSString *TWPrefsAppName(NSString *bundleID);
 

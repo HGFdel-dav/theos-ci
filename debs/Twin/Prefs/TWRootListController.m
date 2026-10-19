@@ -48,6 +48,7 @@ typedef NS_ENUM(NSInteger, TWWakeModeValue) {
 forRowAtIndexPath:(NSIndexPath *)indexPath {
     @try {
         PSSpecifier *sp = [self specifierAtIndexPath:indexPath];
+        TWDecorateCellIfNeeded(cell, sp);
         TWStyleSliderCellIfNeeded(cell, sp);
     } @catch (__unused NSException *e) {}
 }

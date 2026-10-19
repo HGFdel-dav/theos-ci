@@ -212,10 +212,30 @@ static BOOL TWArcDeviceUnlocked(void) {
         if (w.windowScene) { sceneWindow = w; break; }
     }
 
-    NSInteger mask = [[TWPrefs shared] integerForKey:TWKeyArcCorners defaultValue:3];
-    CGFloat size = [[TWPrefs shared] floatForKey:TWKeyArcCornerSize defaultValue:64];
+    TWPrefs *prefs = [TWPrefs shared];
+    NSInteger mask = [prefs integerForKey:TWKeyArcCorners defaultValue:3];
+    // 对称镜像（ScreenCore arcSymmetricMirrorEnabled）：开了就把另一侧也点亮。
+    if ([prefs boolForKey:TWKeyArcMirror defaultValue:NO]) {
+        if (mask & 1) mask |= 2;
+        if (mask & 2) mask |= 1;
+        if (mask & 4) mask |= 8;
+        if (mask & 8) mask |= 4;
+    }
     CGRect screen = UIScreen.mainScreen.bounds;
-    CGFloat s = MAX(48, MIN(size, MIN(CGRectGetWidth(screen), CGRectGetHeight(screen)) / 3.0));
+    BOOL landscape = CGRectGetWidth(screen) > CGRectGetHeight(screen);
+    CGFloat offX = [prefs floatForKey:TWKeyArcOffsetX defaultValue:0];
+    CGFloat offY = [prefs floatForKey:TWKeyArcOffsetY defaultValue:0];
+    if (landscape) offX += [prefs floatForKey:TWKeyArcLandscapeOffset defaultValue:0];
+    NSInteger triggerMode = [prefs integerForKey:TWKeyArcTriggerMode defaultValue:0];
+    CGFloat w = 64, h = 64;
+    if (triggerMode == 1) {
+        w = MAX(24.0, [prefs floatForKey:TWKeyArcRectLength defaultValue:40]);
+        h = MAX(24.0, [prefs floatForKey:TWKeyArcRectHeight defaultValue:40]);
+    } else {
+        CGFloat size = [prefs floatForKey:TWKeyArcCornerSize defaultValue:64];
+        CGFloat s = MAX(24.0, MIN(size, MIN(CGRectGetWidth(screen), CGRectGetHeight(screen)) / 3.0));
+        w = h = s;
+    }
 
     UIView *firstHost = nil;
     for (TWArcTriggerWindow *w in windows) {
@@ -223,14 +243,15 @@ static BOOL TWArcDeviceUnlocked(void) {
         BOOL enabled = (mask & (1 << corner)) != 0;
         if (!enabled) { w.hidden = YES; continue; }
 
-        CGRect frame;
-        switch (corner) {
-            case TWCornerBottomLeft:  frame = CGRectMake(0, CGRectGetHeight(screen) - 28 - s, s, s); break;
-            case TWCornerTopLeft:     frame = CGRectMake(0, 28, s, s); break;
-            case TWCornerTopRight:    frame = CGRectMake(CGRectGetWidth(screen) - s, 28, s, s); break;
-            case TWCornerBottomRight:
-            default:                  frame = CGRectMake(CGRectGetWidth(screen) - s,
-                                                        CGRectGetHeight(screen) - 28 - s, s, s); break;
+        BOOL leftSide = (corner == TWCornerBottomLeft || corner == TWCornerTopLeft);
+        BOOL topSide  = (corner == TWCornerTopLeft || corner == TWCornerTopRight);
+        CGFloat ox = leftSide ? offX : CGRectGetWidth(screen) - w - offX;
+        CGFloat oy = topSide ? 28 + offY : CGRectGetHeight(screen) - 28 - h - offY;
+        CGRect frame = CGRectMake(ox, oy, w, h);
+        if ([prefs boolForKey:TWKeyArcDebug defaultValue:NO]) {
+            w.rootViewController.view.backgroundColor = [UIColor colorWithRed:1 green:0.2 blue:0.3 alpha:0.28];
+        } else {
+            w.rootViewController.view.backgroundColor = UIColor.clearColor;
         }
         w.frame = frame;
         w.rootViewController.view.frame = w.bounds;

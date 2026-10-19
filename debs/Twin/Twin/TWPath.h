@@ -105,6 +105,27 @@ static inline NSString *TWPrefsFilePath(void) {
 #define TWKeyArcTriggerWidth  @"TWArcTriggerWidth"  // points
 #define TWKeyArcItemCount     @"TWArcItemCount"     // icons per menu
 #define TWKeyArcRadius        @"TWArcRadius"        // points
+
+// ── 0.9.7：照抄 ScreenCore TriggerSettings 的全部 arc 参数 ──────────────
+#define TWKeyArcMirror          @"TWArcMirror"              // 对称镜像，默认 NO
+#define TWKeyArcOffsetX         @"TWArcOffsetX"             // 圆心偏移 X，0–100，默认 0
+#define TWKeyArcOffsetY         @"TWArcOffsetY"             // 圆心偏移 Y，0–100，默认 0
+#define TWKeyArcOffsetDistance  @"TWArcOffsetDistance"      // 偏移距离，0–200，默认 0
+#define TWKeyArcLandscapeOffset @"TWArcLandscapeOffset"     // 横屏水平偏移，0–200，默认 0
+#define TWKeyArcMenuScale       @"TWArcMenuScalePercent"    // 菜单整体缩放，50–150，默认 100
+#define TWKeyArcAppIconScale    @"TWArcAppIconScalePercent" // 应用图标缩放，10–100，默认 70
+#define TWKeyArcIconBgAlpha     @"TWArcIconBgAlphaPercent"  // 图标底色透明度，0–100，默认 100
+#define TWKeyArcTriggerMode     @"TWArcTriggerMode"         // 0=扇形(默认) 1=矩形
+#define TWKeyArcRectLength      @"TWArcRectLength"          // 矩形长度，1–150，默认 40
+#define TWKeyArcRectHeight      @"TWArcRectHeight"          // 矩形高度，1–150，默认 40
+#define TWKeyArcRectCorner      @"TWArcRectCorner"          // 矩形圆角，0–150，默认 12
+#define TWKeyArcSpringEnabled   @"TWArcSpringEnabled"       // 弹性动画，默认 NO
+#define TWKeyArcSpringDamping   @"TWArcSpringDamping"       // 弹性阻尼，0.5–1.0，默认 0.68
+#define TWKeyArcSelectedIcon    @"TWArcSelectedIconEnabled" // 选中高亮，默认 YES
+#define TWKeyArcBgEnabled       @"TWArcBackgroundEnabled"   // 菜单背景，默认 NO
+#define TWKeyArcBgAlpha         @"TWArcBackgroundAlpha"     // 背景透明度，0.1–1.0，默认 0.3
+#define TWKeyArcDebug           @"TWArcDebugMode"           // 调试模式，默认 NO
+#define TWKeyArcHideCapture     @"TWArcHideFromCapture"     // 截图时隐藏，默认 NO
 #define TWKeyArcSound         @"TWArcSoundEnabled"
 #define TWKeyArcHaptic        @"TWArcHapticEnabled"   // 震动反馈（0.5.0）
 #define TWKeyArcIconSource    @"TWArcIconSource"      // 0=最近应用 1=自选应用（0.5.0）

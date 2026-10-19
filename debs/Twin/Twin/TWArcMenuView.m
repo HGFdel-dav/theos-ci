@@ -88,6 +88,15 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 @end
 
 @implementation TWArcItemView
+- (void)applyIconScalePercent:(CGFloat)pct backgroundAlphaPercent:(CGFloat)alphaPct {
+    if (!isfinite(pct) || pct <= 0) pct = 70;
+    if (!isfinite(alphaPct)) alphaPct = 100;
+    CGFloat side = CGRectGetWidth(self.bounds);
+    CGFloat shrink = side * (1.0 - MIN(pct, 100.0) / 100.0) * 0.5;
+    _imageView.frame = CGRectInset(self.bounds, shrink, shrink);
+    _imageView.layer.cornerRadius = MAX(0, self.layer.cornerRadius - shrink * 0.5);
+    self.backgroundColor = [UIColor colorWithWhite:0.12 alpha:MAX(0, MIN(alphaPct, 100.0)) / 100.0];
+}
 - (instancetype)initWithEntry:(NSDictionary *)entry image:(UIImage *)image size:(CGFloat)size {
     if ((self = [super initWithFrame:CGRectMake(0, 0, size, size)])) {
         _entry = [entry copy];
@@ -155,8 +164,9 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 
 - (void)setHighlighted:(BOOL)highlighted {
     _highlighted = highlighted;
-    CGFloat scale = (self.baseScale > 0 ? self.baseScale : 1) * (highlighted ? 1.18 : 1);
-    CGFloat glowAlpha = highlighted ? 1.0 : 0.0;
+    BOOL glowOn = [[TWPrefs shared] boolForKey:TWKeyArcSelectedIcon defaultValue:YES];
+    CGFloat scale = (self.baseScale > 0 ? self.baseScale : 1) * ((highlighted && glowOn) ? 1.18 : 1);
+    CGFloat glowAlpha = (highlighted && glowOn) ? 1.0 : 0.0;
     [UIView animateWithDuration:0.12 delay:0 options:UIViewAnimationOptionBeginFromCurrentState animations:^{
         self.transform = CGAffineTransformMakeScale(scale, scale);
         self.glowView.alpha = glowAlpha;
@@ -194,6 +204,12 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 - (void)presentFromTriggerPoint:(CGPoint)point entries:(NSArray<NSDictionary *> *)entries corner:(NSInteger)corner radius:(CGFloat)radius menuScale:(CGFloat)menuScale {
     [self dismissAnimated:NO];
     if (![entries isKindOfClass:NSArray.class] || !entries.count) return;
+    // 截图/录屏时隐藏（ScreenCore 的 hideArcFromScreenCaptureEnabled）
+    BOOL hideCapture = [[TWPrefs shared] boolForKey:TWKeyArcHideCapture defaultValue:NO];
+    SEL hideSel = NSSelectorFromString(@"_setHideFromCapture:");
+    if ([self respondsToSelector:hideSel]) {
+        @try { ((void (*)(id, SEL, BOOL))objc_msgSend)(self, hideSel, hideCapture); } @catch (__unused NSException *e) {}
+    }
     _entries = [entries copy];
     _triggerPoint = point;
     _corner = (corner < 0 || corner > 3) ? TWCornerBottomRight : corner;
@@ -207,8 +223,23 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     NSInteger firstRow = [prefs integerForKey:TWKeyArcFirstRowCount defaultValue:5];
     CGFloat ringGap = [prefs floatForKey:TWKeyArcRingGap defaultValue:10];
 
+    // 以下全部对应 ScreenCore 的同名参数。
+    CGFloat menuPct = [prefs floatForKey:TWKeyArcMenuScale defaultValue:100];
+    if (isfinite(menuPct) && menuPct > 10) _menuScale *= MIN(menuPct, 200.0) / 100.0;
+    CGFloat iconScalePct = [prefs floatForKey:TWKeyArcAppIconScale defaultValue:70];
+    if (!isfinite(iconScalePct)) iconScalePct = 70;
+    CGFloat iconBgPct = [prefs floatForKey:TWKeyArcIconBgAlpha defaultValue:100];
+    if (!isfinite(iconBgPct)) iconBgPct = 100;
+    CGFloat offX = [prefs floatForKey:TWKeyArcOffsetX defaultValue:0];
+    CGFloat offY = [prefs floatForKey:TWKeyArcOffsetY defaultValue:0];
+    radius += [prefs floatForKey:TWKeyArcOffsetDistance defaultValue:0];
+
     CGFloat margin = itemSize * 0.5 + 14;
     _anchor = [TWArcGeometry anchorForCorner:_corner margin:margin bounds:self.bounds];
+    BOOL leftSide = (_corner == TWCornerBottomLeft || _corner == TWCornerTopLeft);
+    BOOL topSide = (_corner == TWCornerTopLeft || _corner == TWCornerTopRight);
+    _anchor = CGPointMake(_anchor.x + (leftSide ? offX : -offX),
+                          _anchor.y + (topSide ? offY : -offY));
     _radius = [TWArcGeometry clampedRadius:radius anchor:_anchor corner:_corner bounds:self.bounds];
 
     NSArray<NSValue *> *centers = [TWArcGeometry centersForCount:count
@@ -243,7 +274,9 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     _bandMask.lineCap = kCALineCapRound;
     _bandGradient.mask = _bandMask;
     [_backgroundBand.layer addSublayer:_bandGradient];
-    _backgroundBand.alpha = 0.22;
+    _backgroundBand.hidden = ![prefs boolForKey:TWKeyArcBgEnabled defaultValue:NO];
+    CGFloat bgAlpha = [prefs floatForKey:TWKeyArcBgAlpha defaultValue:0.3];
+    _backgroundBand.alpha = (isfinite(bgAlpha) && bgAlpha > 0) ? MIN(bgAlpha, 1.0) : 0.3;
     [self addSubview:_backgroundBand];
 
     // items
@@ -253,6 +286,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
         UIImage *icon = bundleID.length ? TWIconImageForBundleID(bundleID) : nil;
         if (!icon) icon = [self placeholderImage];
         TWArcItemView *item = [[TWArcItemView alloc] initWithEntry:entry image:icon size:itemSize];
+        [item applyIconScalePercent:iconScalePct backgroundAlphaPercent:iconBgPct];
         item.baseScale = _menuScale;
         CGPoint center = [centers[(NSUInteger)i] CGPointValue];
         item.targetCenter = center;
@@ -268,18 +302,29 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     _dimView.alpha = 0.001;
     [UIView animateWithDuration:TWPXPresentDuration animations:^{ self->_dimView.alpha = 0.18; }];
 
+    BOOL springOn = [prefs boolForKey:TWKeyArcSpringEnabled defaultValue:NO];
+    CGFloat damping = [prefs floatForKey:TWKeyArcSpringDamping defaultValue:0.68];
+    if (!isfinite(damping) || damping <= 0 || damping > 1) damping = 0.68;
+    CGFloat bgFinal = _backgroundBand.hidden ? 0 : _backgroundBand.alpha;
     NSTimeInterval baseDelay = 0.02;
     [_items enumerateObjectsUsingBlock:^(TWArcItemView *item, NSUInteger idx, BOOL *stop) {
         NSTimeInterval delay = baseDelay * (double)idx;
-        [UIView animateWithDuration:TWPXItemDuration delay:delay
-             usingSpringWithDamping:TWPXSpringDamping initialSpringVelocity:0
-                            options:UIViewAnimationOptionCurveEaseOut
-                         animations:^{
-                 item.alpha = 1;
-                 item.center = item.targetCenter;
-                 item.transform = CGAffineTransformMakeScale(self->_menuScale, self->_menuScale);
-                 self->_backgroundBand.alpha = 0.5;
-             } completion:nil];
+        void (^anim)(void) = ^{
+            item.alpha = 1;
+            item.center = item.targetCenter;
+            item.transform = CGAffineTransformMakeScale(self->_menuScale, self->_menuScale);
+            self->_backgroundBand.alpha = bgFinal;
+        };
+        if (springOn) {
+            [UIView animateWithDuration:TWPXItemDuration delay:delay
+                 usingSpringWithDamping:damping initialSpringVelocity:0
+                                options:UIViewAnimationOptionCurveEaseOut
+                             animations:anim completion:nil];
+        } else {
+            [UIView animateWithDuration:TWPXItemDuration delay:delay
+                                options:UIViewAnimationOptionCurveEaseOut
+                             animations:anim completion:nil];
+        }
     }];
     _presented = YES;
 }
