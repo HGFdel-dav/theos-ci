@@ -8,7 +8,7 @@ include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = MiniSight
 MiniSight_FILES = Tweak.xm
-MiniSight_CFLAGS = -fobjc-arc
+MiniSight_CFLAGS = -fobjc-arc -Wno-deprecated-declarations
 # UIKit/QuartzCore 需要显式链接（浮窗绘制 + CABasicAnimation）
 MiniSight_FRAMEWORKS = UIKit Foundation QuartzCore
 

@@ -399,7 +399,7 @@ static void MiniSightBuildUI(void) {
     pill.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:pill.bounds
                                                           cornerRadius:kMiniSightRadius].CGPath;
     if (@available(iOS 13.0, *)) {
-        pill.layer.cornerCurve = kCALayerCornerCurveContinuous;
+        pill.layer.cornerCurve = kCACornerCurveContinuous;
     }
 
     // ---- 圆点：先放脉动圈，再压实心点（实心点在上面） ----
