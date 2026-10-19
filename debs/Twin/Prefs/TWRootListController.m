@@ -26,11 +26,12 @@
 #import "TWContainerListController.h"
 #import "TWRememberListController.h"
 #import "TWPXSubpageController.h"
+#import "TWPXPrefs.h"
 
 #import <sys/utsname.h>
 #import <objc/message.h>
 
-static NSString *const kTWVersion = @"0.7.0";
+static NSString *const kTWVersion = @"0.9.0";
 
 // 唤醒方式：0 = Arc 角落唤醒（默认），1 = ParallelX 边缘手柄。
 typedef NS_ENUM(NSInteger, TWWakeModeValue) {
@@ -159,67 +160,95 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
         NSInteger containerCount = TWCraneContainerCount();
         NSInteger memoryCount = TWRememberSnapshotCount();
 
-        // ============ 0.7.0：根页照 ParallelX 设备版 Root.plist 逐行重建 ============
-        // 节顺序与行标题、图标、颜色均与设备版 ParallelX 一致：
-        //   插件状态 → 应用与面板 → 窗口与交互 → 外部打开与系统 → 配置。
-        // Twin 增强节置顶（Twin 自己的功能），四个透传子页直连
-        // com.moxuan.parallelx 偏好（TWPXSubpageController），改完即时热刷新。
+        // ============ 0.9.0：原版功能全保留 + 全部合进 Twin 面板 ============
+        // 原版 ParallelX 面板共 8 个功能页：
+        //   picker / launcher / gestures / backup → 原版 Swift 实现（PXPageHostController）
+        //   window / keyboard / external / system → 原版 plist 页，由 Twin 重画成紫色面板
+        // 前四页不重写：原版面板 bundle 随包安装，Twin 根页直连它的控制器，
+        // 功能一条不少；后四页读的正是同一个 bundle 里的 plist。
+        NSString *const PX = @"ParallelXPrefs";
 
-        // ---------- 插件状态（原版第一节：总开关） ----------
+        // ---------- 插件状态 ----------
         [specs addObject:TWGroupSpecifier(@"插件状态",
-            [NSString stringWithFormat:@"Twin %@ · 独立增强层，不替换、不冲突 ParallelX。关闭总开关即完全恢复系统原状；设置只写越狱环境私有目录。", kTWVersion])];
-        [specs addObject:TWRowSpecifier(self, @"启用 Twin", TWKeyEnabled, @NO, nil, PSSwitchCell,
-                                        @"power", nil, @{@"height": @62, @"twColor": @0})];
+            [NSString stringWithFormat:@"Twin %@ · 内置 ParallelX alpha342 分屏引擎。总开关关掉后引擎完全停手，只留 Twin 面板。", kTWVersion])];
+        // 引擎总开关：alpha342 新增 pluginEnabled（域 com.moxuan.parallelx），
+        // 这个键关着 = 分屏/Arc/小窗全都不工作，先摆在第一行。
+        [specs addObject:TWRowSpecifier(self, @"启用 ParallelX", @"pluginEnabled", @YES, nil, PSSwitchCell,
+                                        @"power", nil, @{@"height": @46, @"twColor": @9,
+                                                          @"twGet": @"pxReadValue:", @"twSet": @"pxWriteValue:specifier:"})];
+        [specs addObject:TWRowSpecifier(self, @"启用 Twin 增强", TWKeyEnabled, @NO, nil, PSSwitchCell,
+                                        @"bolt.horizontal.fill", nil, @{@"height": @46, @"twColor": @4})];
 
-        // ---------- Twin 增强（Twin 自有功能，置顶保留） ----------
-        [specs addObject:TWGroupSpecifier(@"Twin 增强", nil)];
-        [specs addObject:TWRowSpecifier(self, @"Arc 唤醒", TWKeyArcEnabled, @YES, nil, PSSwitchCell,
-                                        @"bolt.horizontal.fill", nil, @{@"height": @62, @"twColor": @1})];
-        [specs addObject:TWLinkRowSpecifier(self, @"Arc 面板与手势", @"hand.point.up.left.fill", @"TWArcPanelController",
-                                            @"触发边缘、半径、图标与反馈", @{@"height": @62, @"twColor": @0})];
+        // ---------- 分身 ----------
+        [specs addObject:TWGroupSpecifier(@"分身", nil)];
         [specs addObject:TWRowSpecifier(self, @"分身打开", TWKeyCraneEnabled, @YES, nil, PSSwitchCell,
-                                        @"square.on.square", nil, @{@"height": @62, @"twColor": @3})];
+                                        @"square.on.square", nil, @{@"height": @46, @"twColor": @4})];
         [specs addObject:TWLinkRowSpecifier(self, @"分身应用", @"square.grid.2x2", @"TWContainerListController",
                                             (containerCount ? [NSString stringWithFormat:@"%ld 个", (long)containerCount] : @"未添加"),
-                                            @{@"height": @62, @"twColor": @4})];
+                                            @{@"height": @46, @"twColor": @4})];
         [specs addObject:TWRowSpecifier(self, @"记忆功能", TWKeyRememberSize, @YES, nil, PSSwitchCell,
-                                        @"clock.arrow.circlepath", nil, @{@"height": @62, @"twColor": @2})];
+                                        @"clock.arrow.circlepath", nil, @{@"height": @46, @"twColor": @2})];
         [specs addObject:TWLinkRowSpecifier(self, @"记忆的窗口", @"macwindow", @"TWRememberListController",
                                             (memoryCount ? [NSString stringWithFormat:@"%ld 个", (long)memoryCount] : @"暂无"),
-                                            @{@"height": @62, @"twColor": @5})];
+                                            @{@"height": @46, @"twColor": @2})];
 
-        // ---------- 应用与面板（原版：app.badge.checkmark indigo / circle.grid.3x3 purple） ----------
+        // ---------- Arc 面板 ----------
+        [specs addObject:TWGroupSpecifier(@"Arc 面板", nil)];
+        [specs addObject:TWRowSpecifier(self, @"Arc 唤醒", TWKeyArcEnabled, @YES, nil, PSSwitchCell,
+                                        @"bolt.horizontal.fill", nil, @{@"height": @46, @"twColor": @6})];
+        [specs addObject:TWLinkRowSpecifier(self, @"Arc 面板与手势", @"hand.point.up.left.fill", @"TWArcPanelController",
+                                            nil, @{@"height": @46, @"twColor": @6})];
+
+        // ---------- 应用与面板（原版 Swift 页，直连原版控制器） ----------
         [specs addObject:TWGroupSpecifier(@"应用与面板", nil)];
-        [specs addObject:TWLinkRowSpecifier(self, @"应用、快捷操作与排序", @"app.badge.checkmark", @"TWStubController",
-                                            @"在 ParallelX 面板中设置", @{@"height": @62, @"twColor": @7})];
-        [specs addObject:TWLinkRowSpecifier(self, @"半圆面板与手柄", @"circle.grid.3x3", @"TWStubController",
-                                            @"在 ParallelX 面板中设置", @{@"height": @62, @"twColor": @4})];
+        [specs addObject:TWLinkRowSpecifier(self, @"应用、快捷操作与排序", @"app.badge.checkmark", @"PXPageHostController",
+                                            nil, @{@"height": @46, @"twColor": @7, @"twBundle": PX, @"id": @"picker"})];
+        [specs addObject:TWLinkRowSpecifier(self, @"半圆面板与手柄", @"circle.grid.3x3", @"PXPageHostController",
+                                            nil, @{@"height": @46, @"twColor": @4, @"twBundle": PX, @"id": @"launcher"})];
 
-        // ---------- 窗口与交互（原版：rectangle.on.rectangle blue / hand.draw orange / keyboard teal） ----------
+        // ---------- 窗口与交互 ----------
         [specs addObject:TWGroupSpecifier(@"窗口与交互", nil)];
         [specs addObject:TWLinkRowSpecifier(self, @"分屏窗口与角落小窗", @"rectangle.on.rectangle", @"TWPXSubpageController",
-                                            nil, @{@"height": @62, @"twColor": @0, @"twPXPage": @(TWPXPageWindow)})];
-        [specs addObject:TWLinkRowSpecifier(self, @"手势区域", @"hand.draw", @"TWStubController",
-                                            @"在 ParallelX 面板中设置", @{@"height": @62, @"twColor": @3})];
+                                            nil, @{@"height": @46, @"twColor": @0, @"twPXPage": @(TWPXPageWindow)})];
+        [specs addObject:TWLinkRowSpecifier(self, @"手势区域", @"hand.draw", @"PXPageHostController",
+                                            nil, @{@"height": @46, @"twColor": @3, @"twBundle": PX, @"id": @"gestures"})];
         [specs addObject:TWLinkRowSpecifier(self, @"键盘", @"keyboard", @"TWPXSubpageController",
-                                            nil, @{@"height": @62, @"twColor": @6, @"twPXPage": @(TWPXPageKeyboard)})];
+                                            nil, @{@"height": @46, @"twColor": @7, @"twPXPage": @(TWPXPageKeyboard)})];
 
-        // ---------- 外部打开与系统（原版：arrow.up.forward.app green / lock pink） ----------
+        // ---------- 外部打开与系统 ----------
         [specs addObject:TWGroupSpecifier(@"外部打开与系统", nil)];
         [specs addObject:TWLinkRowSpecifier(self, @"通知与 URL 跳转", @"arrow.up.forward.app", @"TWPXSubpageController",
-                                            nil, @{@"height": @62, @"twColor": @2, @"twPXPage": @(TWPXPageExternal)})];
+                                            nil, @{@"height": @46, @"twColor": @5, @"twPXPage": @(TWPXPageExternal)})];
         [specs addObject:TWLinkRowSpecifier(self, @"锁屏、截图与录屏", @"lock", @"TWPXSubpageController",
-                                            nil, @{@"height": @62, @"twColor": @5, @"twPXPage": @(TWPXPageSystem)})];
+                                            nil, @{@"height": @46, @"twColor": @9, @"twPXPage": @(TWPXPageSystem)})];
 
-        // ---------- 配置（原版：externaldrive orange） ----------
+        // ---------- 配置 ----------
         [specs addObject:TWGroupSpecifier(@"配置",
-            @"「应用与面板」「手势区域」「备份与恢复」暂由 ParallelX 原版面板管理；窗口、键盘、通知跳转与系统四页在这里直接改，ParallelX 即时生效。")];
-        [specs addObject:TWLinkRowSpecifier(self, @"备份与恢复", @"externaldrive", @"TWStubController",
-                                            @"在 ParallelX 面板中设置", @{@"height": @62, @"twColor": @3})];
+            @"「应用与快捷操作」「半圆面板」「手势区域」「备份与恢复」是原版面板的页面，Twin 直接调用原版实现，改完即时生效。")];
+        [specs addObject:TWLinkRowSpecifier(self, @"备份与恢复", @"externaldrive", @"PXPageHostController",
+                                            nil, @{@"height": @46, @"twColor": @8, @"twBundle": PX, @"id": @"backup"})];
 
         _specifiers = specs;
     }
     return _specifiers;
+}
+
+#pragma mark - ParallelX 引擎总开关的值链（pluginEnabled 在 com.moxuan.parallelx 域）
+
+- (id)pxReadValue:(PSSpecifier *)specifier {
+    NSString *key = [specifier propertyForKey:@"key"];
+    if (![key isKindOfClass:NSString.class] || !key.length) return @NO;
+    id def = [specifier propertyForKey:@"default"] ?: @NO;
+    TWPXPrefs *px = [[TWPXPrefs alloc] init];
+    id stored = [px objectForKey:key defaultValue:def];
+    return stored ?: def;
+}
+
+- (void)pxWriteValue:(id)value specifier:(PSSpecifier *)specifier {
+    NSString *key = [specifier propertyForKey:@"key"];
+    if (![key isKindOfClass:NSString.class] || !key.length) return;
+    TWPXPrefs *px = [[TWPXPrefs alloc] init];
+    [px setObject:([value respondsToSelector:@selector(boolValue)] ? @([value boolValue]) : value) forKey:key];
 }
 
 #pragma mark - 子页分发（自己 new，避免跨 bundle 类查找）

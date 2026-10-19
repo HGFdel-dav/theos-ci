@@ -95,14 +95,18 @@ static NSString *const kPXPassFooter = @"以下开关由 ParallelX 读取生效�
 - (void)buildWindowPage:(NSMutableArray *)specs {
     [specs addObject:TWGroupSpecifier(@"分屏窗口",
         @"开启竖屏居中后，主屏竖屏时初始和复位锚点固定在屏幕正中央，优先于面板呼出侧和屏幕边距设置；横屏不受影响。不限制手动拖动或键盘避让，下次打开或复位窗口时生效。")];
+    [specs addObject:TWLinkRowSpecifier(self, @"位置、尺寸、圆角与阴影", @"slider.horizontal.3", @"PXPageHostController",
+                                            nil, @{@"height": @46, @"twColor": @0,
+                                                   @"twBundle": @"ParallelXPrefs", @"id": @"radius"})];
     [specs addObject:[self pxSwitch:@"竖屏分屏固定居中" key:@"portraitCenteredAnchor" def:@NO
                             symbol:@"rectangle.portrait.inset.filled" color:@1]];
     [specs addObject:[self pxSwitch:@"显示分屏应用图标与名称" key:@"showSplitAppIdentity" def:@YES
                             symbol:@"app.badge.checkmark" color:@0]];
 
     [specs addObject:TWGroupSpecifier(@"角落小窗", kPXPassFooter)];
-    [specs addObject:TWLinkRowSpecifier(self, @"位置、大小与排列", @"dock.rectangle", @"TWStubController",
-                                            @"在 ParallelX 面板中设置", @{@"height": @62, @"twColor": @3})];
+    [specs addObject:TWLinkRowSpecifier(self, @"位置、大小与排列", @"dock.rectangle", @"PXPageHostController",
+                                            nil, @{@"height": @46, @"twColor": @4,
+                                                   @"twBundle": @"ParallelXPrefs", @"id": @"dock"})];
 }
 
 // 「键盘」（照 Keyboard.plist）。
@@ -136,8 +140,9 @@ static NSString *const kPXPassFooter = @"以下开关由 ParallelX 读取生效�
                             symbol:@"bell.badge" color:@1]];
     [specs addObject:[self pxSwitch:@"URL 跳转分屏" key:@"urlSplitEnabled" def:@YES
                             symbol:@"arrow.up.forward.app" color:@2]];
-    [specs addObject:TWLinkRowSpecifier(self, @"URL 分屏黑名单", @"exclamationmark.shield", @"TWStubController",
-                                            @"在 ParallelX 面板中维护", @{@"height": @62, @"twColor": @4})];
+    [specs addObject:TWLinkRowSpecifier(self, @"URL 分屏黑名单", @"exclamationmark.shield", @"PXPageHostController",
+                                            nil, @{@"height": @46, @"twColor": @3,
+                                                   @"twBundle": @"ParallelXPrefs", @"id": @"urlBlacklist"})];
 }
 
 // 「锁屏、截图与录屏」（照 System.plist）。
@@ -166,7 +171,7 @@ static NSString *const kPXPassFooter = @"以下开关由 ParallelX 读取生效�
                   symbol:(NSString *)symbol
                    color:(NSNumber *)color {
     return TWRowSpecifier(self, title, key, def, nil, PSSwitchCell, symbol, nil,
-                           @{@"height": @62, @"twColor": color,
+                           @{@"height": @46, @"twColor": color,
                              @"twGet": @"pxReadValue:", @"twSet": @"pxWriteValue:specifier:"});
 }
 
@@ -178,7 +183,7 @@ static NSString *const kPXPassFooter = @"以下开关由 ParallelX 读取生效�
                   symbol:(NSString *)symbol
                   color:(NSNumber *)color {
     return TWRowSpecifier(self, title, key, def, nil, PSSliderCell, symbol, nil,
-                           @{@"height": @78, @"twColor": color,
+                           @{@"height": @58, @"twColor": color,
                              @"twMin": min, @"twMax": max,
                              @"twGet": @"pxReadValue:", @"twSet": @"pxWriteValue:specifier:"});
 }

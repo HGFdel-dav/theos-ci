@@ -24,8 +24,19 @@ static NSString *PXFindParallelXPrefs(void) {
     return best ?: @"";
 }
 
-static int PXLock(NSString *path) {
-    if (!path.length) return -1;
+// 0.9.0：plist 还不存在时的落点。
+// 原逻辑：找不到 com.moxuan.parallelx.plist 就 available=NO，面板四页直接变空页
+// ——用户从没打开过原版面板（或原版包已被替换）时就是这个状态，看起来就是
+// “所有功能都不显示”。改成：找不到现成文件就用当前 jbroot 下的标准路径，
+// 读走默认值、写时新建文件，面板始终可操作。
+static NSString *PXCanonicalPrefsPath(void) {
+    NSString *root = TWJBRootPath();
+    if (!root.length) return @"";
+    NSString *p = [root stringByAppendingPathComponent:@"var/mobile/Library/Preferences/com.moxuan.parallelx.plist"];
+    return p.stringByResolvingSymlinksInPath ?: p;
+}
+
+static int PXLock(NSString *path) {    if (!path.length) return -1;
     NSFileManager *fm = NSFileManager.defaultManager;
     [fm createDirectoryAtPath:path.stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:nil];
     int fd = open([[path stringByAppendingString:@".lock"] fileSystemRepresentation], O_CREAT|O_RDWR|O_NOFOLLOW, 0600);
@@ -36,8 +47,10 @@ static int PXLock(NSString *path) {
 @implementation TWPXPrefs
 
 - (NSString *)parallelXFilePath {
-    // 每次现扫（jbroot 可轮转），保证指向当前真实存在的文件。
-    return PXFindParallelXPrefs();
+    // 每次现扫（jbroot 可轮转），保证指向当前真实存在的文件；
+    // 不存在时给标准落点，让读写都还能进行（写会新建文件）。
+    NSString *found = PXFindParallelXPrefs();
+    return found.length ? found : PXCanonicalPrefsPath();
 }
 
 - (BOOL)available {

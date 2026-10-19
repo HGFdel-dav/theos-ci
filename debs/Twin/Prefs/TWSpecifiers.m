@@ -8,6 +8,9 @@
 
 NSString *const TWPrefsBundleName = @"TwinPrefs";
 
+// 0.9.0：图标 cell 动态子类工厂（TWIconCells.m）
+extern Class TWIconCellClass(NSString *baseClassName);
+
 // 转发给 PSListController 自己的 detail 分发（私有方法，需 objc_msgSendSuper 绕过头文件）
 id TWSuperControllerForSpecifier(id host, id specifier) {
     if (!host || !specifier) return nil;
@@ -27,7 +30,7 @@ PSSpecifier *TWGroupSpecifier(NSString *name, NSString *footer) {
     return group;
 }
 
-static UIColor *TWIconTintColor(NSInteger idx) {
+UIColor *TWIconTintColor(NSInteger idx) {
     if (@available(iOS 13.0, *)) {
         NSArray<UIColor *> *palette = @[
             UIColor.systemBlueColor, UIColor.systemRedColor, UIColor.systemGreenColor,
@@ -78,25 +81,46 @@ PSSpecifier *TWRowSpecifier(id target,
     if (!spec) return nil;
     if (key.length) [spec setProperty:key forKey:@"key"];
     if (defaultValue) [spec setProperty:defaultValue forKey:@"default"];
-    // 0.4.3：cellClass 永不上报（自绘 cell 全家桶下线，全部用系统类渲染）。
+    // 0.9.0：图标 cell = 动态子类化系统 cell 类。
+    //   基类按 cellType 定：PSSwitchCell / PSLinkCell / PSSliderCell / PSSegmentCell /
+    //   PSButtonCell / PSStaticTextCell；为它创建子类 TWIcon_<base>，只覆盖
+    //   layoutSubviews 加 27pt 彩色圆角图标并右移文本。开关/滑块/值链全部继承父类，
+    //   0.4.x 的崩溃根因（直接继承 PSTableCell 不响应 PSListController 私有消息）不会复现。
+    //   没有 symbol 的行保持原系统类，一个字节都不碰。
     if (symbol.length) {
         [spec setProperty:symbol forKey:@"twSymbol"];
-        // 0.4.4/0.4.5：标准图标——PSTableCell 的 icon/cellImage 属性，SF Symbol 着色
-        //（twColor 色板，效果贴近原版 ParallelX 面板的彩色图标）
-        if (@available(iOS 13.0, *)) {
-            UIImage *img = [UIImage systemImageNamed:symbol];
-            if (img) {
-                UIColor *tint = TWIconTintColor([extras[@"twColor"] integerValue]);
-                if (tint) img = [img imageWithTintColor:tint renderingMode:UIImageRenderingModeAlwaysOriginal];
-                [spec setProperty:img forKey:@"icon"];
-                [spec setProperty:img forKey:@"cellImage"];
+        NSString *baseName = nil;
+        switch (cellType) {
+            case PSSwitchCell:     baseName = @"PSSwitchCell"; break;
+            case PSLinkCell:       baseName = @"PSLinkCell"; break;
+            case PSSliderCell:     baseName = @"PSSliderCell"; break;
+            case PSSegmentCell:    baseName = @"PSSegmentCell"; break;
+            case PSButtonCell:     baseName = @"PSButtonCell"; break;
+            case PSStaticTextCell: baseName = @"PSStaticTextCell"; break;
+            default: break;
+        }
+        Class iconCls = baseName ? TWIconCellClass(baseName) : Nil;
+        if (iconCls) {
+            // 两条路都铺：PSSpecifier 若有 setCellClass: 就直传 Class（最可靠），
+            // 同时写 cellClass 字符串属性——plist 版 specifier 就是按字符串
+            // NSClassFromString 解析的，两种实现都覆盖到。
+            if ([spec respondsToSelector:NSSelectorFromString(@"setCellClass:")]) {
+                [(id)spec setCellClass:iconCls];
             }
+            [spec setProperty:NSStringFromClass(iconCls) forKey:@"cellClass"];
         }
     }
     if (controllerClass.length) {
-        [spec setProperty:controllerClass forKey:@"twController"];  // 我们自己 new
+        // 跨 bundle 行（原版 ParallelXPrefs 的 Swift 页）：只写 detail + bundle，
+        // 不写 twController。否则第一次进过页面后 bundle 已加载，我们的
+        // TWControllerForSpecifier 会直接 alloc 出一个没带 id 的控制器，
+        // 打开的就是错页。交给 stock 的 controllerForSpecifier: 走 bundle + id。
+        BOOL crossBundle = [extras[@"twBundle"] isKindOfClass:NSString.class] && [extras[@"twBundle"] length];
+        if (!crossBundle) {
+            [spec setProperty:controllerClass forKey:@"twController"];  // 我们自己 new
+        }
         [spec setProperty:controllerClass forKey:@"detail"];        // stock 兜底
-        [spec setProperty:TWPrefsBundleName forKey:@"bundle"];      // 与入口 plist 一致
+        if (!crossBundle) [spec setProperty:TWPrefsBundleName forKey:@"bundle"];      // 与入口 plist 一致
         [spec setProperty:@YES forKey:@"isController"];
     }
     for (NSString *extraKey in extras) {
@@ -110,6 +134,12 @@ PSSpecifier *TWRowSpecifier(id target,
         } else if ([extraKey isEqualToString:@"twMin"]) {
             [spec setProperty:v forKey:@"min"];
             [spec setProperty:v forKey:@"minimum"];
+        } else if ([extraKey isEqualToString:@"twBundle"]) {
+            // 链接行指向别的 PreferenceBundle 时（原版 ParallelXPrefs 的 Swift 页），
+            // 必须把 bundle 换成目标 bundle 名，stock 的 controllerForSpecifier: 才会
+            // 去那个 bundle 里找 detail 类。
+            [spec setProperty:v forKey:@"bundle"];
+            continue;
         } else if ([extraKey isEqualToString:@"twMax"]) {
             [spec setProperty:v forKey:@"max"];
             [spec setProperty:v forKey:@"maximum"];
@@ -153,6 +183,13 @@ PSSpecifier *TWButtonRowSpecifier(id target,
 
 id TWControllerForSpecifier(PSListController *host, PSSpecifier *specifier) {
     if (!specifier) return nil;
+    // 指向别的 bundle 的行（原版 ParallelXPrefs 的 Swift 页）一律交回 stock 分发：
+    // 它要按 bundle + id 组装控制器；我们这里 alloc 出来的实例没有 id，会开错页。
+    NSString *ownerBundle = [specifier propertyForKey:@"bundle"];
+    if ([ownerBundle isKindOfClass:NSString.class] && ownerBundle.length &&
+        ![ownerBundle isEqualToString:TWPrefsBundleName]) {
+        return nil;
+    }
     NSString *className = [specifier propertyForKey:@"twController"];
     if (![className isKindOfClass:NSString.class] || !className.length) {
         className = [specifier propertyForKey:@"detail"];
@@ -451,27 +488,3 @@ static void TWDiagInstallUncaughtHandler(void) {
         NSSetUncaughtExceptionHandler(TWUncaughtHandler);
     });
 }
-#pragma mark - 开发中占位页（0.5.0：设计稿里尚未落地的入口，页面已就位）
-
-@interface TWStubController : PSListController
-@end
-
-@implementation TWStubController
-
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    self.title = self.specifier.name ?: @"Twin";
-    self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
-}
-
-- (NSArray *)specifiers {
-    if (!_specifiers) {
-        _specifiers = [@[
-            TWGroupSpecifier(@"由 ParallelX 原版面板管理",
-                @"这一项是 ParallelX 的功能，直接在 ParallelX 自己的设置面板里操作最完整；Twin 面板会逐步接入。窗口、键盘、通知跳转与系统四页已在这里直接生效。"),
-        ] mutableCopy];
-    }
-    return _specifiers;
-}
-
-@end

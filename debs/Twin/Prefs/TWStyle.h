@@ -10,6 +10,10 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+// 0.9.0：10 色图标色板（按 twColor 索引取色，行图标背景用本色、符号用白色）。
+// 定义在 TWSpecifiers.m，TWIconCells.m 也用它渲染图标图。
+FOUNDATION_EXPORT UIColor *TWIconTintColor(NSInteger idx);
+
 // Rounded tinted square holding an SF Symbol (falls back to the row initial).
 @interface TWChipView : UIView
 @property (nonatomic, strong, readonly) UIImageView *glyphView;
