@@ -17,7 +17,7 @@
 #import "TWPXPrefs.h"
 #import "TWPath.h"
 
-static NSString *const kPXPassFooter = @"以下开关改完立即生效，不需要重启。";
+static NSString *const kPXPassFooter = @"改完立即生效，不需要重启。";
 
 @interface TWPXSubpageController ()
 @property (nonatomic, strong) TWPXPrefs *px;
@@ -93,18 +93,26 @@ static NSString *const kPXPassFooter = @"以下开关改完立即生效，不需
 - (void)buildWindowPage:(NSMutableArray *)specs {
     [specs addObject:TWGroupSpecifier(@"分屏窗口",
         @"开启竖屏居中后，主屏竖屏时初始和复位锚点固定在屏幕正中央，优先于面板呼出侧和屏幕边距设置；横屏不受影响。不限制手动拖动或键盘避让，下次打开或复位窗口时生效。")];
-    [specs addObject:TWLinkRowSpecifier(self, @"位置、尺寸、圆角与阴影", @"slider.horizontal.3", @"PXPageHostController",
-                                            nil, @{@"height": @46, @"twColor": @0,
-                                                   @"twBundle": @"ParallelXPrefs", @"id": @"radius"})];
+    [specs addObject:[self pxSlider:@"竖屏初始尺寸" key:@"portraitInitialWidthPercent" def:@85 min:@40 max:@100
+                             symbol:@"rectangle.portrait" color:@0]];
+    [specs addObject:[self pxSlider:@"竖屏横屏应用尺寸" key:@"portraitLandscapeInitialWidthPercent" def:@90 min:@40 max:@100
+                             symbol:@"rectangle" color:@0]];
+    [specs addObject:[self pxSlider:@"横屏初始尺寸" key:@"initialWidthPercent" def:@85 min:@40 max:@100
+                             symbol:@"rectangle.landscape" color:@0]];
     [specs addObject:[self pxSwitch:@"竖屏分屏固定居中" key:@"portraitCenteredAnchor" def:@NO
                             symbol:@"rectangle.portrait.inset.filled" color:@1]];
     [specs addObject:[self pxSwitch:@"显示分屏应用图标与名称" key:@"showSplitAppIdentity" def:@YES
                             symbol:@"app.badge.checkmark" color:@0]];
 
     [specs addObject:TWGroupSpecifier(@"角落小窗", kPXPassFooter)];
-    [specs addObject:TWLinkRowSpecifier(self, @"位置、大小与排列", @"dock.rectangle", @"PXPageHostController",
-                                            nil, @{@"height": @46, @"twColor": @4,
-                                                   @"twBundle": @"ParallelXPrefs", @"id": @"dock"})];
+    [specs addObject:[self pxSlider:@"竖屏小窗宽度" key:@"dockWidth" def:@180 min:@100 max:@300
+                             symbol:@"rectangle.portrait" color:@4]];
+    [specs addObject:[self pxSlider:@"横屏小窗宽度" key:@"landscapeDockWidth" def:@240 min:@140 max:@380
+                             symbol:@"rectangle.landscape" color:@4]];
+    [specs addObject:[self pxSlider:@"最多保留小窗数量" key:@"dockCount" def:@3 min:@1 max:@4
+                             symbol:@"square.grid.2x2" color:@4]];
+    [specs addObject:[self pxSwitch:@"新开分屏时当前窗口变小窗" key:@"autoParkOnNewSplit" def:@YES
+                             symbol:@"rectangle.on.rectangle" color:@4]];
 }
 
 // 「键盘」（照 Keyboard.plist）。
@@ -138,9 +146,6 @@ static NSString *const kPXPassFooter = @"以下开关改完立即生效，不需
                             symbol:@"bell.badge" color:@1]];
     [specs addObject:[self pxSwitch:@"URL 跳转分屏" key:@"urlSplitEnabled" def:@YES
                             symbol:@"arrow.up.forward.app" color:@2]];
-    [specs addObject:TWLinkRowSpecifier(self, @"URL 分屏黑名单", @"exclamationmark.shield", @"PXPageHostController",
-                                            nil, @{@"height": @46, @"twColor": @3,
-                                                   @"twBundle": @"ParallelXPrefs", @"id": @"urlBlacklist"})];
 }
 
 // 「锁屏、截图与录屏」（照 System.plist）。
@@ -255,14 +260,14 @@ static NSString *const kPXPassFooter = @"以下开关改完立即生效，不需
 
 // 「备份与恢复」——直接读写 ParallelX 的 plist 文件。
 - (void)buildBackupPage:(NSMutableArray *)specs {
-    [specs addObject:TWGroupSpecifier(@"配置",
-        @"导出把 ParallelX 全部设置写成一个 plist 存到文稿目录；导入从同一目录读回。")];
+    [specs addObject:TWGroupSpecifier(@"备份",
+        @"导出：把当前全部分屏设置存成一个文件；导入：从同一个文件读回来。导入前建议先导出一次。")];
     PSSpecifier *exportRow = TWButtonRowSpecifier(self, @"导出配置", @"pxExport:", @"square.and.arrow.up", NO, nil);
     PSSpecifier *importRow = TWButtonRowSpecifier(self, @"导入配置", @"pxImport:", @"square.and.arrow.down", NO, nil);
     if (exportRow) [specs addObject:exportRow];
     if (importRow) [specs addObject:importRow];
 
-    [specs addObject:TWGroupSpecifier(@"", @"恢复默认只重置 ParallelX 的分屏设置，不动 Twin 自己的偏好。")];
+    [specs addObject:TWGroupSpecifier(@"恢复", @"点「恢复默认设置」会把分屏相关的开关和数值全部还原成出厂值；点完之后逐项重新调即可，不需要重启。")];
     PSSpecifier *reset = TWButtonRowSpecifier(self, @"恢复默认设置", @"pxReset:", @"arrow.counterclockwise", YES, nil);
     if (reset) [specs addObject:reset];
 }

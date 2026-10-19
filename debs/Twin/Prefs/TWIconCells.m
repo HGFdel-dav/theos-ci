@@ -131,3 +131,83 @@ Class TWIconCellClass(NSString *baseClassName) {
     objc_registerClassPair(sub);
     return sub;
 }
+
+// ---------------------------------------------------------------- 滑块行（0.9.4）
+//
+// 本机 Preferences 的 PSSliderCell 不显示标题（实测：整行只剩滑杆）。
+// 这里给 PSSliderCell 加一层子类，只补一个标题 UILabel + 数值，滑杆下移，
+// 父类全部私有值链（setValue:/取值回调）原样继承，避免 0.4.x 的崩溃复现。
+#define TWSLIDER_TAG 0x774C4452  // 'wLDR'
+#define TWSLIDERVAL_TAG 0x774C4456
+
+static void TWSliderLayoutSubviews(id self, SEL _cmd) {
+    struct objc_super sup = { self, class_getSuperclass(object_getClass(self)) };
+    ((void (*)(struct objc_super *, SEL))objc_msgSendSuper)(&sup, _cmd);
+
+    id spec = nil;
+    @try { spec = [(id)self specifier]; } @catch (NSException *e) { (void)e; spec = nil; }
+
+    UIView *host = (UIView *)self;
+    UILabel *title = (UILabel *)[host viewWithTag:TWSLIDER_TAG];
+    UILabel *value = (UILabel *)[host viewWithTag:TWSLIDERVAL_TAG];
+
+    if (!title) {
+        title = [[UILabel alloc] initWithFrame:CGRectZero];
+        title.tag = TWSLIDER_TAG;
+        title.font = [UIFont systemFontOfSize:15.0];
+        title.textColor = [UIColor labelColor];
+        title.numberOfLines = 1;
+        [host addSubview:title];
+
+        value = [[UILabel alloc] initWithFrame:CGRectZero];
+        value.tag = TWSLIDERVAL_TAG;
+        value.font = [UIFont systemFontOfSize:14.0];
+        value.textColor = [UIColor secondaryLabelColor];
+        value.textAlignment = NSTextAlignmentRight;
+        [host addSubview:value];
+    }
+
+    NSString *name = nil;
+    @try { name = [spec propertyForKey:@"twTitle"]; } @catch (NSException *e) { (void)e; }
+    if (![name isKindOfClass:NSString.class] || !name.length) {
+        @try { name = [(id)spec name]; } @catch (NSException *e) { (void)e; name = @""; }
+    }
+    title.text = name ?: @"";
+
+    // 数值：读 specifier 的当前值，配 twUnit。
+    NSString *unit = @"";
+    id current = nil;
+    @try {
+        id u = [spec propertyForKey:@"twUnit"];
+        if ([u isKindOfClass:NSString.class]) unit = u;
+        current = [spec propertyForKey:@"twCurrentValue"];
+    } @catch (NSException *e) { (void)e; }
+    value.text = current ? [NSString stringWithFormat:@"%@%@", current, unit] : @"";
+
+    CGRect b = host.bounds;
+    CGFloat w = CGRectGetWidth(b);
+    title.frame = CGRectMake(16, 8, w - 32, 18);
+    value.frame = CGRectMake(16, 8, w - 32, 18);
+
+    // 把系统滑杆压到下半区，留出标题空间。
+    for (UIView *sub in host.subviews) {
+        if ([sub isKindOfClass:[UISlider class]]) {
+            CGFloat h = CGRectGetHeight(sub.bounds);
+            if (h <= 0) h = 31;
+            sub.frame = CGRectMake(16, CGRectGetHeight(b) - h - 8, w - 32, h);
+            break;
+        }
+    }
+}
+
+Class TWSliderCellClass(void) {
+    static Class cls = Nil;
+    if (cls) return cls;
+    Class base = NSClassFromString(@"PSSliderCell");
+    if (!base) return Nil;
+    cls = objc_allocateClassPair(base, "TWSlider_PSSliderCell", 0);
+    if (!cls) return Nil;
+    class_addMethod(cls, @selector(layoutSubviews), (IMP)TWSliderLayoutSubviews, "v@:");
+    objc_registerClassPair(cls);
+    return cls;
+}

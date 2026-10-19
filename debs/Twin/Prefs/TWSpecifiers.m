@@ -10,6 +10,7 @@ NSString *const TWPrefsBundleName = @"TwinPrefs";
 
 // 0.9.0：图标 cell 动态子类工厂（TWIconCells.m）
 extern Class TWIconCellClass(NSString *baseClassName);
+extern Class TWSliderCellClass(void);
 
 // PSSpecifier 的 setCellClass: 属于 Preferences 私有 API，这里只补签名给编译器看。
 @interface NSObject (TWCellClassSetter)
@@ -94,6 +95,7 @@ PSSpecifier *TWRowSpecifier(id target,
     //   没有 symbol 的行保持原系统类，一个字节都不碰。
     if (symbol.length) {
         [spec setProperty:symbol forKey:@"twSymbol"];
+        [spec setProperty:title forKey:@"twTitle"];
         // 滑块行不套图标子类：PSSliderCell 的私有布局一旦被覆盖，标题会被挤出
         // 可视区（0.9.2 实测整行只剩一根滑杆）。滑块保持系统原样渲染。
         // 0.9.3：图标子类在本机完全没生效（cellClass 没被 PSListController 采用，
@@ -111,6 +113,13 @@ PSSpecifier *TWRowSpecifier(id target,
             default: break;
         }
         Class iconCls = (baseName && !skipIconClass) ? TWIconCellClass(baseName) : Nil;
+        if (cellType == PSSliderCell) {
+            Class sliderCls = TWSliderCellClass();
+            if (sliderCls) {
+                if ([spec respondsToSelector:NSSelectorFromString(@"setCellClass:")]) [spec setCellClass:sliderCls];
+                [spec setProperty:NSStringFromClass(sliderCls) forKey:@"cellClass"];
+            }
+        }
         if (iconCls) {
             // 两条路都铺：PSSpecifier 若有 setCellClass: 就直传 Class（最可靠），
             // 同时写 cellClass 字符串属性——plist 版 specifier 就是按字符串
