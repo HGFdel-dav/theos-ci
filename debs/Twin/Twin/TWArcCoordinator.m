@@ -303,13 +303,11 @@ static BOOL TWArcDeviceUnlocked(void) {
     if (![[TWPrefs shared] boolForKey:TWKeyEnabled defaultValue:YES] ||
         ![[TWPrefs shared] boolForKey:TWKeyArcEnabled defaultValue:YES] ||
         !TWArcDeviceUnlocked()) return NO;
-    CGPoint point = [touch locationInView:recognizer.view];
-    NSInteger corners = [[TWPrefs shared] integerForKey:TWKeyArcCorners defaultValue:3];
-    CGFloat size = [[TWPrefs shared] floatForKey:TWKeyArcCornerSize defaultValue:64];
-    NSInteger corner = [TWArcGeometry cornerAtPoint:point corners:corners size:size bounds:recognizer.view.bounds];
-    if (corner < 0) return NO;
+    // 每个手势只挂在一个角的小窗口上，窗口本身就是热区，不需要再做点判定。
+    UIWindow *hostWindow = recognizer.view.window;
+    NSInteger corner = hostWindow ? hostWindow.tag : TWCornerBottomRight;
     _startCorner = corner;
-    _startPoint = point; // UITouch origin, before UIPanGestureRecognizer's threshold.
+    _startPoint = [touch locationInView:hostWindow ?: recognizer.view];  // 屏幕坐标
     _hasStartPoint = YES;
     return YES;
 }
@@ -361,7 +359,8 @@ static BOOL TWArcDeviceUnlocked(void) {
         [self cancelCurrentGesture];
         return;
     }
-    CGPoint p = [pan locationInView:pan.view];
+    UIWindow *hostWindow = pan.view.window;
+    CGPoint p = [pan locationInView:hostWindow ?: pan.view];
     switch (pan.state) {
         case UIGestureRecognizerStateBegan:
         case UIGestureRecognizerStateChanged: {
@@ -397,8 +396,14 @@ static BOOL TWArcDeviceUnlocked(void) {
 
 - (void)presentMenuFromPoint:(CGPoint)point corner:(NSInteger)corner {
     if (_didPresent || !TWArcDeviceUnlocked()) return;
-    UIWindow *reference = (UIWindow *)_pan.view; // the recognizer is attached to the SB window
-    if (![reference isKindOfClass:[UIWindow class]] || reference.hidden) return;
+    // 菜单要挂在真正的场景窗口上（触发窗口只有 64×64，不能当宿主）。
+    UIWindow *reference = nil;
+    for (UIWindow *w in [UIApplication sharedApplication].windows) {
+        if (w.windowScene && w.windowLevel > UIWindowLevelNormal - 1 && w.bounds.size.width > 200) {
+            reference = w; break;
+        }
+    }
+    if (!reference || reference.hidden) return;
 
     // 层级：自建高层级覆盖窗口（Arc-X 结构），不再塞进 SpringBoard 的普通窗口
     // （UIWindowLevelNormal = 0，会被状态栏与系统界面压住）。取不到可用场景时
