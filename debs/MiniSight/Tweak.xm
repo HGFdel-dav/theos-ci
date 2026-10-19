@@ -1,0 +1,569 @@
+// MiniSight —— 屏幕顶部的小胶囊，提示「Minis 正在操作这台手机」
+//
+// 触发方式：Darwin 通知（无需 hook 任何 Minis 内部逻辑）
+//   com.openminis.agent.started   → 淡入显示
+//   com.openminis.agent.stopped   → 淡出隐藏
+//
+// 设计要点：
+//   1. 独立 UIWindow（UIWindowLevelAlert + 1），透明背景，永不成为 key window；
+//   2. 只有胶囊本身接收触摸，屏幕其它区域全部穿透给下层窗口；
+//   3. 132×36 圆角胶囊 + 暖米色脉动圆点 + 白色小字；
+//   4. 可以拖动，位置写 NSUserDefaults（MiniSightCenterX / MiniSightCenterY）；
+//   5. 旋转时重新计算并 clamp，保证浮窗不会跑出屏幕。
+//
+// 目标系统：iOS 15.x（SpringBoard，arm64 / arm64e）
+
+#import <UIKit/UIKit.h>
+#import <QuartzCore/QuartzCore.h>
+#import <CoreFoundation/CoreFoundation.h>
+
+#pragma mark - 常量
+
+static const CGFloat kMiniSightWidth      = 132.0; // 胶囊宽度
+static const CGFloat kMiniSightHeight     = 36.0;  // 胶囊高度
+static const CGFloat kMiniSightRadius     = 18.0;  // 圆角半径（正好是高度的一半）
+static const CGFloat kMiniSightDotSize    = 7.0;   // 圆点直径
+static const CGFloat kMiniSightDotLeft    = 12.0;  // 圆点左边距
+static const CGFloat kMiniSightDotGap     = 8.0;   // 圆点到文字的距离
+static const CGFloat kMiniSightTextRight  = 15.0;  // 文字右边距
+static const CGFloat kMiniSightEdge       = 8.0;   // 拖动时距离屏幕边缘的最小留白
+
+static NSString *const kMiniSightStarted   = @"com.openminis.agent.started";
+static NSString *const kMiniSightStopped   = @"com.openminis.agent.stopped";
+static NSString *const kMiniSightCenterX   = @"MiniSightCenterX";
+static NSString *const kMiniSightCenterY   = @"MiniSightCenterY";
+static NSString *const kMiniSightText      = @"Minis 操作中";
+
+#pragma mark - 全局状态
+
+static UIWindow *gMiniSightWindow = nil;   // 浮窗载体
+static UIView   *gMiniSightPill   = nil;   // 胶囊本体
+static UIView   *gMiniSightDot    = nil;   // 实心圆点（自身发光）
+static UIView   *gMiniSightPulse  = nil;   // 圆点背后的脉动圈
+static UILabel  *gMiniSightLabel  = nil;   // 文字
+static id        gMiniSightGestureTarget = nil; // 手势/通知的 target（需强引用）
+static BOOL      gMiniSightBuilt  = NO;
+
+#pragma mark - 颜色 / 基础计算
+
+/// 暖米色 #E8DCC8
+static UIColor *MiniSightDotColor(void) {
+    return [UIColor colorWithRed:0.91 green:0.86 blue:0.78 alpha:1.0];
+}
+
+/// 当前界面方向（优先用 windowScene，旧系统回落到状态栏方向）
+static UIInterfaceOrientation MiniSightOrientation(void) {
+    if (@available(iOS 13.0, *)) {
+        if (gMiniSightWindow.windowScene) {
+            return gMiniSightWindow.windowScene.interfaceOrientation;
+        }
+    }
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    return [UIApplication sharedApplication].statusBarOrientation;
+#pragma clang diagnostic pop
+}
+
+/// 屏幕矩形（按当前界面方向换成横/竖的宽高）
+/// 说明：这里只取 UIScreen.mainScreen.bounds，不依赖 keyWindow.frame ——
+///       SpringBoard 上 keyWindow 的 frame 在启动早期/旋转过程中并不总是准的。
+static CGRect MiniSightScreenRect(void) {
+    CGRect bounds = [UIScreen mainScreen].bounds;
+    CGFloat shortSide = MIN(bounds.size.width, bounds.size.height);
+    CGFloat longSide  = MAX(bounds.size.width, bounds.size.height);
+
+    if (UIInterfaceOrientationIsLandscape(MiniSightOrientation())) {
+        return CGRectMake(0.0, 0.0, longSide, shortSide);
+    }
+    return CGRectMake(0.0, 0.0, shortSide, longSide);
+}
+
+/// 顶部安全区高度（刘海屏 47~59，普通屏 20），带多级兜底
+static CGFloat MiniSightTopInset(void) {
+    CGFloat inset = 0.0;
+
+    if (@available(iOS 11.0, *)) {
+        inset = gMiniSightWindow.safeAreaInsets.top;
+        if (inset <= 0.5) {
+            // 窗口刚创建（还没显示）时 safeAreaInsets 可能是 0，借别的窗口算
+            for (UIWindow *window in [UIApplication sharedApplication].windows) {
+                if (window == gMiniSightWindow || window.hidden) continue;
+                if (window.safeAreaInsets.top > inset) {
+                    inset = window.safeAreaInsets.top;
+                }
+            }
+        }
+        if (inset <= 0.5) {
+            // 再兜底：状态栏高度（SpringBoard 的 windowScene 上有 statusBarManager）
+            if (@available(iOS 13.0, *)) {
+                UIWindowScene *scene = gMiniSightWindow.windowScene;
+                if (scene && scene.statusBarManager) {
+                    CGFloat height = scene.statusBarManager.statusBarFrame.size.height;
+                    if (height > inset) inset = height;
+                }
+            }
+        }
+    }
+
+    if (inset <= 0.5) inset = 20.0; // 最后兜底，至少别贴到屏幕最顶上
+    return inset;
+}
+
+/// 把浮窗中心点限制在屏幕内（四周留 kMiniSightEdge 的边距）
+static CGPoint MiniSightClampCenter(CGPoint center) {
+    CGRect bounds = gMiniSightWindow ? gMiniSightWindow.bounds : MiniSightScreenRect();
+    CGFloat halfW = kMiniSightWidth / 2.0;
+    CGFloat halfH = kMiniSightHeight / 2.0;
+
+    CGFloat minX = kMiniSightEdge + halfW;
+    CGFloat maxX = bounds.size.width - kMiniSightEdge - halfW;
+    CGFloat minY = kMiniSightEdge + halfH;
+    CGFloat maxY = bounds.size.height - kMiniSightEdge - halfH;
+
+    // 极端情况（屏幕比浮窗还窄）时直接居中，避免 min > max
+    if (maxX < minX) minX = maxX = bounds.size.width / 2.0;
+    if (maxY < minY) minY = maxY = bounds.size.height / 2.0;
+
+    center.x = MIN(MAX(center.x, minX), maxX);
+    center.y = MIN(MAX(center.y, minY), maxY);
+    return center;
+}
+
+/// 默认位置：屏幕顶部、水平居中，顶部距离安全区 8pt
+static CGPoint MiniSightDefaultCenter(void) {
+    CGRect bounds = gMiniSightWindow ? gMiniSightWindow.bounds : MiniSightScreenRect();
+    CGFloat y = MiniSightTopInset() + kMiniSightEdge + kMiniSightHeight / 2.0;
+    return CGPointMake(bounds.size.width / 2.0, y);
+}
+
+/// 取一个「不会跟着浮窗一起动」的参照窗口，用来换算拖拽位移
+static UIView *MiniSightReferenceView(void) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    UIWindow *key = [UIApplication sharedApplication].keyWindow;
+#pragma clang diagnostic pop
+    if (key && key != gMiniSightWindow && !key.hidden) return key;
+
+    for (UIWindow *window in [UIApplication sharedApplication].windows) {
+        if (window == gMiniSightWindow || window.hidden) continue;
+        return window;
+    }
+    return nil;
+}
+
+#pragma mark - 前置声明
+
+static void MiniSightBuildUI(void);
+static void MiniSightShow(void);
+static void MiniSightHide(void);
+static void MiniSightUpdateGeometry(void);
+static void MiniSightApplySavedCenter(BOOL useSaved);
+static void MiniSightStartPulse(void);
+static void MiniSightStopPulse(void);
+
+#pragma mark - 窗口类
+
+/// 浮窗用 UIWindow：永远不成为 key window，避免抢走前台应用/键盘的焦点
+@interface MiniSightWindow : UIWindow
+@end
+
+@implementation MiniSightWindow
+
+- (BOOL)canBecomeKeyWindow {
+    return NO;
+}
+
+/// 空白区域返回 nil —— 让触摸继续落到下面的窗口（桌面/App），
+/// 否则一个全屏透明的高优先级窗口会把整台手机点不动。
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    UIView *hit = [super hitTest:point withEvent:event];
+    if (hit == self) return nil;
+    if (hit == self.rootViewController.view) return nil;
+    return hit;
+}
+
+@end
+
+/// 透明根视图：只有落在胶囊上的触摸才被消费，其它区域一律放行
+@interface MiniSightRootView : UIView
+@end
+
+@implementation MiniSightRootView
+
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    UIView *hit = [super hitTest:point withEvent:event];
+    if (hit == self) return nil; // 点到空白处 → 交给窗口的 hitTest 处理
+    return hit;
+}
+
+@end
+
+#pragma mark - 手势 / 旋转
+
+@interface MiniSightGestureHandler : NSObject
+- (void)handlePan:(UIPanGestureRecognizer *)pan;
+- (void)handleOrientationChange:(NSNotification *)note;
+@end
+
+@implementation MiniSightGestureHandler
+
+/// 拖动：实时改 window.center，松手后把位置写进 NSUserDefaults
+- (void)handlePan:(UIPanGestureRecognizer *)pan {
+    if (!gMiniSightWindow) return;
+
+    // 关键点：窗口本身会跟着手指移动，如果用「本窗口内」的坐标算位移，
+    // 坐标系会跟着窗口一起动，translation 会永远接近 0（拖不动 / 抖动）。
+    // 所以这里取一个固定的参照窗口来换算位移。
+    UIView *reference = MiniSightReferenceView();
+    CGPoint translation = reference ? [pan translationInView:reference]
+                                    : [pan translationInView:pan.view];
+
+    CGPoint center = gMiniSightWindow.center;
+    center.x += translation.x;
+    center.y += translation.y;
+    gMiniSightWindow.center = MiniSightClampCenter(center);
+
+    [pan setTranslation:CGPointZero inView:(reference ? reference : pan.view)];
+
+    if (pan.state == UIGestureRecognizerStateEnded ||
+        pan.state == UIGestureRecognizerStateCancelled) {
+        // 记住位置，下次显示直接恢复（只写 NSUserDefaults，不碰 plist 文件）
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        [defaults setDouble:gMiniSightWindow.center.x forKey:kMiniSightCenterX];
+        [defaults setDouble:gMiniSightWindow.center.y forKey:kMiniSightCenterY];
+    }
+}
+
+/// 旋转：界面方向变化是异步的，稍等一下再重算并 clamp
+- (void)handleOrientationChange:(NSNotification *)note {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        if (!gMiniSightWindow) return;
+
+        // 尺寸没变（比如只是 face up / face down）就不折腾
+        CGSize newSize = MiniSightScreenRect().size;
+        if (CGSizeEqualToSize(newSize, gMiniSightWindow.bounds.size)) return;
+
+        MiniSightUpdateGeometry();
+        MiniSightApplySavedCenter(YES);
+    });
+}
+
+@end
+
+#pragma mark - 找 scene（iOS 13+ 必须挂在 scene 上窗口才会显示）
+
+static UIWindowScene *MiniSightFindScene(void) {
+    if (@available(iOS 13.0, *)) {
+        // 优先用 SpringBoard 自己那个层级的窗口（层级最低的桌面窗口）
+        UIWindow *candidate = nil;
+        for (UIWindow *window in [UIApplication sharedApplication].windows) {
+            if (window == gMiniSightWindow || !window.windowScene) continue;
+            if (!candidate || window.windowLevel < candidate.windowLevel) {
+                candidate = window;
+            }
+        }
+        if (candidate.windowScene) return candidate.windowScene;
+
+        for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+            if (![scene isKindOfClass:[UIWindowScene class]]) continue;
+            if (scene.activationState == UISceneActivationStateForegroundActive) {
+                return (UIWindowScene *)scene;
+            }
+        }
+        for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+            if ([scene isKindOfClass:[UIWindowScene class]]) return (UIWindowScene *)scene;
+        }
+    }
+    return nil;
+}
+
+#pragma mark - 布局
+
+/// 重设窗口尺寸 + 把胶囊摆回窗口正中（胶囊的绝对位置由 window.center 决定）
+static void MiniSightUpdateGeometry(void) {
+    if (!gMiniSightWindow) return;
+
+    CGRect rect = MiniSightScreenRect();
+    gMiniSightWindow.frame = rect;
+
+    if (gMiniSightPill) {
+        gMiniSightPill.frame = CGRectMake((rect.size.width - kMiniSightWidth) / 2.0,
+                                          (rect.size.height - kMiniSightHeight) / 2.0,
+                                          kMiniSightWidth, kMiniSightHeight);
+        // 尺寸变了要同步阴影路径，否则阴影还是旧形状
+        gMiniSightPill.layer.shadowPath =
+            [UIBezierPath bezierPathWithRoundedRect:gMiniSightPill.bounds
+                                       cornerRadius:kMiniSightRadius].CGPath;
+    }
+}
+
+/// 恢复位置：useSaved = YES 时优先用 NSUserDefaults 里记的坐标，否则回默认顶部居中
+static void MiniSightApplySavedCenter(BOOL useSaved) {
+    if (!gMiniSightWindow) return;
+
+    CGPoint center = MiniSightDefaultCenter();
+
+    if (useSaved) {
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        BOOL hasX = ([defaults objectForKey:kMiniSightCenterX] != nil);
+        BOOL hasY = ([defaults objectForKey:kMiniSightCenterY] != nil);
+        if (hasX && hasY) {
+            center = CGPointMake([defaults doubleForKey:kMiniSightCenterX],
+                                 [defaults doubleForKey:kMiniSightCenterY]);
+        }
+    }
+
+    // 不管来自默认值还是历史记录，都要 clamp 到当前屏幕内
+    gMiniSightWindow.center = MiniSightClampCenter(center);
+}
+
+#pragma mark - 脉动动画
+
+/// 圆点背后的扩散圈：1.0 → 2.6 放大，同时 0.7 → 0 淡出，1.6 秒一轮，无限循环
+static void MiniSightStartPulse(void) {
+    if (!gMiniSightPulse) return;
+
+    CALayer *layer = gMiniSightPulse.layer;
+    [layer removeAnimationForKey:@"MiniSightPulseScale"];
+    [layer removeAnimationForKey:@"MiniSightPulseOpacity"];
+
+    CABasicAnimation *scale = [CABasicAnimation animationWithKeyPath:@"transform.scale"];
+    scale.fromValue = @(1.0);
+    scale.toValue = @(2.6);
+    scale.duration = 1.6;
+    scale.repeatCount = INFINITY;
+    scale.removedOnCompletion = NO;
+    scale.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+    [layer addAnimation:scale forKey:@"MiniSightPulseScale"];
+
+    CABasicAnimation *fade = [CABasicAnimation animationWithKeyPath:@"opacity"];
+    fade.fromValue = @(0.7);
+    fade.toValue = @(0.0);
+    fade.duration = 1.6;
+    fade.repeatCount = INFINITY;
+    fade.removedOnCompletion = NO;
+    fade.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
+    [layer addAnimation:fade forKey:@"MiniSightPulseOpacity"];
+}
+
+static void MiniSightStopPulse(void) {
+    if (!gMiniSightPulse) return;
+    [gMiniSightPulse.layer removeAnimationForKey:@"MiniSightPulseScale"];
+    [gMiniSightPulse.layer removeAnimationForKey:@"MiniSightPulseOpacity"];
+}
+
+#pragma mark - 建 UI
+
+static void MiniSightBuildUI(void) {
+    if (gMiniSightBuilt) return;
+    gMiniSightBuilt = YES;
+
+    CGRect screen = MiniSightScreenRect();
+
+    // ---- 透明浮窗 ----
+    MiniSightWindow *window = [[MiniSightWindow alloc] initWithFrame:screen];
+    window.windowLevel = UIWindowLevelAlert + 1.0; // 盖在系统弹窗之上
+    window.backgroundColor = [UIColor clearColor];
+    window.opaque = NO;
+    window.hidden = YES;                            // 默认不显示，等 started 通知
+    window.clipsToBounds = NO;
+
+    if (@available(iOS 13.0, *)) {
+        UIWindowScene *scene = MiniSightFindScene();
+        if (scene) window.windowScene = scene;
+    }
+
+    MiniSightRootView *root = [[MiniSightRootView alloc] initWithFrame:screen];
+    root.backgroundColor = [UIColor clearColor];
+    root.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+
+    UIViewController *controller = [[UIViewController alloc] init];
+    controller.view = root;                          // 透明 rootViewController
+    window.rootViewController = controller;
+
+    // ---- 胶囊本体：132 × 36，圆角 18 ----
+    UIView *pill = [[UIView alloc] initWithFrame:CGRectMake((screen.size.width - kMiniSightWidth) / 2.0,
+                                                           (screen.size.height - kMiniSightHeight) / 2.0,
+                                                           kMiniSightWidth, kMiniSightHeight)];
+    pill.backgroundColor = [UIColor colorWithWhite:0.08 alpha:0.88];
+    pill.layer.cornerRadius = kMiniSightRadius;
+    pill.layer.borderWidth = 0.5;
+    pill.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.10].CGColor;
+    pill.clipsToBounds = NO;                          // 阴影要露出来
+    pill.layer.masksToBounds = NO;
+    pill.layer.shadowColor = [UIColor blackColor].CGColor;
+    pill.layer.shadowOffset = CGSizeMake(0.0, 6.0);
+    pill.layer.shadowRadius = 22.0;
+    pill.layer.shadowOpacity = 0.34;
+    pill.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:pill.bounds
+                                                          cornerRadius:kMiniSightRadius].CGPath;
+    if (@available(iOS 13.0, *)) {
+        pill.layer.cornerCurve = kCALayerCornerCurveContinuous;
+    }
+
+    // ---- 圆点：先放脉动圈，再压实心点（实心点在上面） ----
+    CGFloat dotY = (kMiniSightHeight - kMiniSightDotSize) / 2.0;
+
+    UIView *pulse = [[UIView alloc] initWithFrame:CGRectMake(kMiniSightDotLeft, dotY,
+                                                             kMiniSightDotSize, kMiniSightDotSize)];
+    pulse.backgroundColor = MiniSightDotColor();
+    pulse.layer.cornerRadius = kMiniSightDotSize / 2.0;
+    pulse.userInteractionEnabled = NO;
+
+    UIView *dot = [[UIView alloc] initWithFrame:CGRectMake(kMiniSightDotLeft, dotY,
+                                                           kMiniSightDotSize, kMiniSightDotSize)];
+    dot.backgroundColor = MiniSightDotColor();
+    dot.layer.cornerRadius = kMiniSightDotSize / 2.0;
+    dot.layer.shadowColor = MiniSightDotColor().CGColor; // 自身发光
+    dot.layer.shadowOffset = CGSizeZero;
+    dot.layer.shadowOpacity = 0.85;
+    dot.layer.shadowRadius = 4.0;
+    dot.userInteractionEnabled = NO;
+
+    // ---- 文字：12.5pt Medium 白色，字距 0.2 ----
+    CGFloat textX = kMiniSightDotLeft + kMiniSightDotSize + kMiniSightDotGap;
+    CGFloat textW = kMiniSightWidth - textX - kMiniSightTextRight;
+
+    UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(textX, 0.0, textW, kMiniSightHeight)];
+    UIFont *font = [UIFont systemFontOfSize:12.5 weight:UIFontWeightMedium];
+    NSDictionary *attributes = @{
+        NSFontAttributeName: font,
+        NSForegroundColorAttributeName: [UIColor whiteColor],
+        NSKernAttributeName: @(0.2)
+    };
+    label.attributedText = [[NSAttributedString alloc] initWithString:kMiniSightText
+                                                          attributes:attributes];
+    label.backgroundColor = [UIColor clearColor];
+    label.textAlignment = NSTextAlignmentLeft;
+    label.numberOfLines = 1;
+    label.userInteractionEnabled = NO;
+
+    [pill addSubview:pulse];
+    [pill addSubview:dot];
+    [pill addSubview:label];
+    [root addSubview:pill];
+
+    // ---- 拖动 ----
+    UIPanGestureRecognizer *pan =
+        [[UIPanGestureRecognizer alloc] initWithTarget:gMiniSightGestureTarget
+                                                action:@selector(handlePan:)];
+    [pill addGestureRecognizer:pan];
+
+    gMiniSightWindow = window;
+    gMiniSightPill   = pill;
+    gMiniSightDot    = dot;
+    gMiniSightPulse  = pulse;
+    gMiniSightLabel  = label;
+
+    MiniSightUpdateGeometry();
+}
+
+#pragma mark - 显示 / 隐藏
+
+static void MiniSightShow(void) {
+    MiniSightBuildUI();
+    if (!gMiniSightWindow) return;
+
+    // SpringBoard 重启或场景切换后窗口可能掉出 scene，重新挂一次
+    if (@available(iOS 13.0, *)) {
+        if (!gMiniSightWindow.windowScene) {
+            UIWindowScene *scene = MiniSightFindScene();
+            if (scene) gMiniSightWindow.windowScene = scene;
+        }
+    }
+
+    MiniSightUpdateGeometry();
+    MiniSightApplySavedCenter(YES);
+    MiniSightStartPulse();
+
+    // 先透明再取消 hidden，然后 0.18s 淡入
+    gMiniSightWindow.alpha = 0.0;
+    gMiniSightWindow.hidden = NO;
+    [UIView animateWithDuration:0.18
+                          delay:0.0
+                        options:(UIViewAnimationOptionCurveEaseOut |
+                                 UIViewAnimationOptionBeginFromCurrentState)
+                     animations:^{
+        gMiniSightWindow.alpha = 1.0;
+    } completion:nil];
+}
+
+static void MiniSightHide(void) {
+    if (!gMiniSightWindow || gMiniSightWindow.hidden) return;
+
+    [UIView animateWithDuration:0.18
+                          delay:0.0
+                        options:(UIViewAnimationOptionCurveEaseOut |
+                                 UIViewAnimationOptionBeginFromCurrentState)
+                     animations:^{
+        gMiniSightWindow.alpha = 0.0;
+    } completion:^(BOOL finished) {
+        // 动画结束后才真正隐藏窗口
+        if (finished && gMiniSightWindow.alpha < 0.01) {
+            gMiniSightWindow.hidden = YES;
+            gMiniSightWindow.alpha = 1.0; // 下次显示从 0 开始淡入
+            MiniSightStopPulse();
+        }
+    }];
+}
+
+#pragma mark - Darwin 通知
+
+/// 注意：Darwin 通知的回调线程不保证是主线程，所有 UI 操作统一切回主线程
+static void MiniSightDarwinCallback(CFNotificationCenterRef center,
+                                    void *observer,
+                                    CFNotificationName name,
+                                    const void *object,
+                                    CFDictionaryRef userInfo) {
+    NSString *note = (__bridge NSString *)name;
+    if (note.length == 0) return;
+
+    BOOL shouldShow = [note isEqualToString:kMiniSightStarted];
+    BOOL shouldHide = [note isEqualToString:kMiniSightStopped];
+    if (!shouldShow && !shouldHide) return;
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (shouldShow) {
+            MiniSightShow();
+        } else {
+            MiniSightHide();
+        }
+    });
+}
+
+#pragma mark - 入口
+
+%ctor {
+    @autoreleasepool {
+        // 手势 / 旋转通知的 target（NSNotificationCenter 不持有 observer，必须自己保活）
+        gMiniSightGestureTarget = [[MiniSightGestureHandler alloc] init];
+
+        // 立刻注册 Darwin 通知：回调里会懒加载 UI，不会漏掉启动早期的事件
+        CFNotificationCenterRef center = CFNotificationCenterGetDarwinNotifyCenter();
+        CFNotificationCenterAddObserver(center,
+                                        (__bridge const void *)kMiniSightStarted,
+                                        MiniSightDarwinCallback,
+                                        (__bridge CFStringRef)kMiniSightStarted,
+                                        NULL,
+                                        CFNotificationSuspensionBehaviorDeliverImmediately);
+        CFNotificationCenterAddObserver(center,
+                                        (__bridge const void *)kMiniSightStopped,
+                                        MiniSightDarwinCallback,
+                                        (__bridge CFStringRef)kMiniSightStopped,
+                                        NULL,
+                                        CFNotificationSuspensionBehaviorDeliverImmediately);
+
+        // SpringBoard 刚启动时 UI 还没准备好，延迟 2 秒再建浮窗 + 注册旋转监听
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            MiniSightBuildUI();
+
+            [[UIDevice currentDevice] beginGeneratingDeviceOrientationNotifications];
+            [[NSNotificationCenter defaultCenter] addObserver:gMiniSightGestureTarget
+                                                     selector:@selector(handleOrientationChange:)
+                                                         name:UIDeviceOrientationDidChangeNotification
+                                                       object:nil];
+        });
+    }
+}

@@ -1,0 +1,9 @@
+Package: com.niubiprass.minisight
+Name: MiniSight
+Version: 0.1.0
+Architecture: iphoneos-arm64e
+Description: 显示 Minis 是否正在操作手机
+Maintainer: niubiprass
+Author: niubiprass
+Section: Tweaks
+Depends: mobilesubstrate
