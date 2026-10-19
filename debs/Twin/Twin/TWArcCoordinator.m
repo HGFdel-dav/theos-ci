@@ -130,6 +130,14 @@ static BOOL TWArcDeviceUnlocked(void) {
 @end
 
 @implementation TWArcTriggerWindow
+// ★ 关键：UIView 的默认 hitTest 在"点在范围内但没有子视图命中"时会返回自己，
+//   全屏窗口一旦如此就等于把整块屏幕的触摸全吃掉（0.9.4 实测：桌面图标全点不动）。
+//   这里把"命中目标是窗口本身"一律改成 nil，触摸才会继续往下层窗口穿透。
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    UIView *hit = [super hitTest:point withEvent:event];
+    // 只有"命中窗口自己"才放行；命中根视图 = 落在角落热区，必须保留给手势。
+    return (hit == self) ? nil : hit;
+}
 @end
 
 @interface TWArcTriggerRootController : UIViewController
