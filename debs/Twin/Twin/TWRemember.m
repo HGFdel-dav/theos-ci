@@ -130,7 +130,7 @@ static BOOL TWRememberEnabled(void) {
     // 总开关 TWKeyRememberSize: TWPrefs reads through to disk on every call, so
     // flipping the switch in Settings takes effect without a respring.
     // Default is NO as of 0.4.0 (spec §2).
-    return TWTwinEnabled() && [TWPrefs.shared boolForKey:TWKeyRememberSize defaultValue:NO];
+    return TWTwinEnabled() && [TWPrefs.shared boolForKey:TWKeyRememberSize defaultValue:YES];
 }
 
 static BOOL TWCanRemember(NSObject *entry) {
@@ -503,12 +503,15 @@ static void TWRememberMigrateLegacyFrames(void) {
 
 #pragma mark - capture (shape snapshot)
 
+static BOOL TWRememberScopeAllows(NSString *bundleID);
+
 static void TWCaptureEntry(NSObject *entry) {
     if (!TWRememberEnabled()) return;
     if (!TWCanRemember(entry)) return;
     UIWindow *window = TWPanelWindowOf(entry);
     NSString *bundleID = TWBundleIDOfEntry(entry);
     if (!window || !bundleID.length) return;
+    if (!TWRememberScopeAllows(bundleID)) return;
     CGRect frame = window.frame;
     if (!TWIsUsableFrame(frame)) return;
     CGRect screen = TWScreenBoundsOfWindow(window);
@@ -580,12 +583,24 @@ static CGRect TWWideTargetForState(NSDictionary *state, CGRect screen) {
     return frame;
 }
 
+static BOOL TWRememberScopeAllows(NSString *bundleID) {
+    if (!bundleID.length) return NO;
+    TWPrefs *prefs = TWPrefs.shared;
+    // 记忆范围：0=全部（默认），1=只记自选应用（Arc 里配置的那份清单）。
+    if ([prefs integerForKey:TWKeyRememberAppsScope defaultValue:0] == 0) return YES;
+    id list = [prefs objectForKey:TWKeyCraneAppList];
+    return [list isKindOfClass:[NSArray class]] && [(NSArray *)list containsObject:bundleID];
+}
+
 static void TWApplyRememberedFrame(NSObject *entry) {
     if (!TWRememberEnabled()) return;
     if (!TWCanRemember(entry)) return;
     UIWindow *window = TWPanelWindowOf(entry);
     NSString *bundleID = TWBundleIDOfEntry(entry);
     if (!window || !bundleID.length) return;
+    // 「自动恢复到上次尺寸」总开关；关掉后只记录、不主动改窗口。
+    if (![[TWPrefs shared] boolForKey:TWKeyRememberAutoRestore defaultValue:YES]) return;
+    if (!TWRememberScopeAllows(bundleID)) return;
     NSDictionary *state = TWRememberStateForEntry(bundleID, TWContainerIDOfEntry(entry));
     if (!state) return;
     CGRect screen = TWScreenBoundsOfWindow(window);

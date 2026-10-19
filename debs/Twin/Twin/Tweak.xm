@@ -30,7 +30,7 @@ static BOOL TWTwinEnabled(void) {
 }
 
 static BOOL TWCraneEnabled(void) {
-    return TWTwinEnabled() && [TWPrefs.shared boolForKey:TWKeyCraneEnabled defaultValue:NO];
+    return TWTwinEnabled() && [TWPrefs.shared boolForKey:TWKeyCraneEnabled defaultValue:YES];
 }
 
 #pragma mark - ParallelX integration (optional, runtime-detected)

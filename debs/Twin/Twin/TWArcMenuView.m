@@ -181,6 +181,8 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 
 @interface TWArcMenuView ()
 - (UIImage *)placeholderImageForEntry:(NSDictionary *)entry;
+- (NSInteger)selectedIndex;
+- (NSDictionary *)entryAtIndex:(NSInteger)index;
 @end
 
 @implementation TWArcMenuView {
@@ -367,6 +369,18 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     return img;
 }
 
+- (NSInteger)selectedIndex {
+    for (NSInteger i = 0; i < (NSInteger)_items.count; i++) {
+        if (_items[(NSUInteger)i].isHighlighted) return i;
+    }
+    return -1;
+}
+
+- (NSDictionary *)entryAtIndex:(NSInteger)index {
+    if (index < 0 || index >= (NSInteger)_entries.count) return nil;
+    return _entries[(NSUInteger)index];
+}
+
 - (TWArcItemView *)itemAtPoint:(CGPoint)point {
     if (!_presented || !isfinite(point.x) || !isfinite(point.y)) return nil;
     TWArcItemView *hit = nil;
@@ -387,7 +401,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
         BOOL should = (item == hit);
         if (item.isHighlighted != should) item.highlighted = should;
     }
-    if (newlySelected) {
+    if (newlySelected && [[TWPrefs shared] boolForKey:TWKeyArcHaptic defaultValue:YES]) {
         UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
         [gen impactOccurred];
     }

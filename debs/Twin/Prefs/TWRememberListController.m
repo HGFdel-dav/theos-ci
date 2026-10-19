@@ -50,7 +50,7 @@
 }
 
 - (void)switchChanged:(UISwitch *)sw {
-    NSArray<NSString *> *keys = @[TWKeyRememberSize, TWKeyRememberAutoRestore, TWKeyRememberShowButton];
+    NSArray<NSString *> *keys = @[TWKeyRememberSize, TWKeyRememberAutoRestore];
     if (sw.tag >= 0 && sw.tag < (NSInteger)keys.count) {
         [self setBoolPref:keys[(NSUInteger)sw.tag] value:sw.isOn];
     }
@@ -97,7 +97,7 @@
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (section == 0) return 2;
-    if (section == 1) return 2;
+    if (section == 1) return 1;
     return self.entries.count ? (NSInteger)self.entries.count + 1 : 1;
 }
 
@@ -121,10 +121,8 @@
                         selected:[[TWPrefs shared] integerForKey:TWKeyRememberAppsScope defaultValue:0]];
     }
     if (indexPath.section == 1) {
-        if (indexPath.row == 0) {
-            return [self switchCell:@"自动恢复到上次尺寸" key:TWKeyRememberAutoRestore def:YES tag:1];
-        }
-        return [self switchCell:@"显示「恢复上次尺寸」按钮" key:TWKeyRememberShowButton def:NO tag:2];
+        // 「显示恢复按钮」在引擎里没有对应实现，先不摆这个开关，避免假功能。
+        return [self switchCell:@"自动恢复到上次尺寸" key:TWKeyRememberAutoRestore def:YES tag:1];
     }
 
     // ---- 已记忆 ----

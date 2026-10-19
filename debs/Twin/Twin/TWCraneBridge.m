@@ -96,7 +96,7 @@ static id TWMsgSendStr(id target, SEL sel, id arg) {
     dispatch_async(dispatch_get_main_queue(), ^{
         TWPrefs *prefs=TWPrefs.shared;
         if (![bundleID isKindOfClass:NSString.class] || !bundleID.length) { TWCraneNotice(@"应用标识无效，未启动应用。"); completion(NO); return; }
-        if (![prefs boolForKey:TWKeyEnabled defaultValue:YES] || ![prefs boolForKey:TWKeyCraneEnabled defaultValue:NO]) { completion(YES); return; }
+        if (![prefs boolForKey:TWKeyEnabled defaultValue:YES] || ![prefs boolForKey:TWKeyCraneEnabled defaultValue:YES]) { completion(YES); return; }
         id configured=[prefs craneApps][bundleID];
         if (!configured) { completion(YES); return; }
         if (![configured isKindOfClass:NSString.class] || ![configured length]) { TWCraneNotice(@"Crane 容器配置无效，请重新选择。"); completion(NO); return; }
@@ -114,7 +114,7 @@ static id TWMsgSendStr(id target, SEL sel, id arg) {
     dispatch_async(dispatch_get_main_queue(), ^{
         TWPrefs *prefs=TWPrefs.shared;
         if (![bundleID isKindOfClass:NSString.class] || !bundleID.length) { TWCraneNotice(@"应用标识无效，未启动应用。"); completion(NO); return; }
-        if (![prefs boolForKey:TWKeyEnabled defaultValue:YES] || ![prefs boolForKey:TWKeyCraneEnabled defaultValue:NO]) { completion(YES); return; }
+        if (![prefs boolForKey:TWKeyEnabled defaultValue:YES] || ![prefs boolForKey:TWKeyCraneEnabled defaultValue:YES]) { completion(YES); return; }
         [self switchBundleID:bundleID toContainer:containerID completion:completion];
     });
 }

@@ -61,6 +61,16 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
 
         // ============ 0.5.0：按设计稿②（Arc 面板与手势）重建 ============
 
+        // ---- 唤醒方式（角落 / ParallelX 边缘手柄）----
+        [specs addObject:TWGroupSpecifier(@"唤醒方式",
+            @"二选一：从屏幕角落起手，或用 ParallelX 原版的边缘手柄。")];
+        [specs addObject:TWRowSpecifier(self, @"唤醒方式", TWKeyWakeMode, @0, nil, PSSegmentCell,
+                                        @"hand.point.up.left.fill", nil,
+                                        @{@"height": @58, @"twColor": @6, @"twTitles": @[@"角落", @"边缘手柄"]})];
+        [specs addObject:TWRowSpecifier(self, @"打开方式", TWKeyArcOpenMode, @0, nil, PSSegmentCell,
+                                        @"rectangle.split.2x1", nil,
+                                        @{@"height": @58, @"twColor": @0, @"twTitles": @[@"分屏", @"全屏"]})];
+
         // ---- 触发区（照 ScreenCore TriggerSettings）----
         [specs addObject:TWGroupSpecifier(@"从哪些角落唤醒",
             @"勾选后，从该角落往屏内拖即可唤出弧形菜单。至少保留一个。")];
@@ -181,14 +191,14 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
 
         // ---- 反馈与长按 ----
         [specs addObject:TWGroupSpecifier(@"反馈与长按",
-            @"边缘按住向屏内拖动唤出弧形菜单；松手打开分屏，长按图标按上面选择的方式打开。")];
+            @"边缘按住向屏内拖动唤出弧形菜单；松手按「打开方式」开窗，长按图标 0.45 秒可强制全屏。")];
         [specs addObject:TWRowSpecifier(self, @"音效", TWKeyArcSound, @YES, nil, PSSwitchCell,
                                         @"speaker.wave.2.fill", nil, @{@"height": @62, @"twColor": @4})];
         [specs addObject:TWRowSpecifier(self, @"震动反馈", TWKeyArcHaptic, @YES, nil, PSSwitchCell,
                                         @"iphone.radiowaves.left.and.right", nil, @{@"height": @62, @"twColor": @2})];
         [specs addObject:TWRowSpecifier(self, @"长按图标", TWKeyArcLongPressMode, @0, nil, PSSegmentCell,
                                         @"hand.tap.fill", nil,
-                                        @{@"height": @58, @"twColor": @1, @"twTitles": @[@"分身", @"小窗", @"无"]})];
+                                        @{@"height": @58, @"twColor": @1, @"twTitles": @[@"全屏", @"无"]})];
 
         _specifiers = specs;
     }

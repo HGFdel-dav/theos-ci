@@ -65,7 +65,7 @@ static id replSpecifiers(id self, SEL _cmd) {
         // Switch specifiers (pxpKey resolved through hooked read/set preference methods)
         NSArray *switches = @[
             @{@"title": @"弧形唤醒", @"key": TWKeyArcEnabled, @"default": @YES},
-            @{@"title": @"Crane 分身", @"key": TWKeyCraneEnabled, @"default": @NO},
+            @{@"title": @"Crane 分身", @"key": TWKeyCraneEnabled, @"default": @YES},
             @{@"title": @"记忆窗口尺寸", @"key": TWKeyRememberSize, @"default": @YES},
         ];
         for (NSDictionary *item in switches) {
@@ -101,7 +101,7 @@ static id replReadPreference(id self, SEL _cmd, id specifier) {
         id v = [[TWPrefs shared] objectForKey:key];
         if (v) return v;
         // Defaults must mirror the runtime defaults (TWPrefs/TWCraneBridge).
-        if ([key isEqual:TWKeyCraneEnabled]) return @NO;
+        if ([key isEqual:TWKeyCraneEnabled]) return @YES;
         return @YES; // arc, remember and anything else default on
     }
     return origReadPreference(self, _cmd, specifier);

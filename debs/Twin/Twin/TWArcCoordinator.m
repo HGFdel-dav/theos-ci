@@ -186,6 +186,14 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
 - (BOOL)prefersStatusBarHidden { return NO; }
 @end
 
+@interface TWArcCoordinator ()
+- (UIWindowScene *)activeWindowScene;
+- (void)pressReset;
+- (void)trackLongPress;
+- (void)launchEntry:(NSDictionary *)entry fullscreen:(BOOL)fullscreen;
+- (void)performVerifiedLaunch:(NSString *)bundleID fullscreen:(BOOL)fullscreen;
+@end
+
 @implementation TWArcCoordinator {
     UIPanGestureRecognizer *_pan;
     TWArcMenuView *_menu;
@@ -196,6 +204,9 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
     BOOL _didPresent;
     BOOL _started;
     NSInteger _sceneRetries;
+    NSInteger _pressedIndex;
+    NSTimeInterval _pressedSince;
+    BOOL _longPressActive;
     NSArray<NSString *> *_cachedBundleIDs;
 }
 
@@ -328,8 +339,13 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
 
         if ([prefs boolForKey:TWKeyArcDebug defaultValue:NO]) {
             w.rootViewController.view.backgroundColor = [UIColor colorWithRed:1 green:0.2 blue:0.3 alpha:0.28];
+            // 「矩形圆角」只影响可见的调试热区（热区本身是隐形的，圆角没有别的意义）。
+            CGFloat radius = [prefs floatForKey:TWKeyArcRectCorner defaultValue:12];
+            w.rootViewController.view.layer.cornerRadius = MAX(0, MIN(radius, 75));
+            w.rootViewController.view.layer.masksToBounds = YES;
         } else {
             w.rootViewController.view.backgroundColor = UIColor.clearColor;
+            w.rootViewController.view.layer.masksToBounds = NO;
         }
         w.frame = areas.rects[corner];
         w.rootViewController.view.frame = w.bounds;
@@ -445,6 +461,7 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
 }
 
 - (void)cancelCurrentGesture {
+    [self pressReset];
     [_menu dismissAnimated:NO];
     _hasStartPoint = NO;
     _tracking = NO;
@@ -499,17 +516,23 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
                     _tracking = _menu.isPresented;
                 }
             }
-            if (_tracking) [_menu updateSelectionAtPoint:[pan locationInView:_menu]];
+            if (_tracking) {
+                [_menu updateSelectionAtPoint:[pan locationInView:_menu]];
+                [self trackLongPress];
+            }
             break;
         }
         case UIGestureRecognizerStateEnded: {
             if (_tracking) {
+                BOOL fullscreen = _longPressActive;
                 NSDictionary *selected = [_menu finishSelectionAtPoint:[pan locationInView:_menu]];
                 if ([selected isKindOfClass:[NSDictionary class]] && TWArcDeviceUnlocked()) {
-                    TWRuntimeLog(@"[arc] selected %@", selected[@"title"] ?: selected[@"bundleID"]);
-                    [self launchEntry:selected];
+                    TWRuntimeLog(@"[arc] selected %@%@", selected[@"title"] ?: selected[@"bundleID"],
+                                 fullscreen ? @" (长按→全屏)" : @"");
+                    [self launchEntry:selected fullscreen:fullscreen];
                 }
             }
+            [self pressReset];
             _hasStartPoint = NO;
             _tracking = NO;
             _didPresent = NO;
@@ -522,6 +545,35 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
             break;
         default: break;
     }
+}
+
+- (void)pressReset {
+    _pressedIndex = -1;
+    _pressedSince = 0;
+    _longPressActive = NO;
+}
+
+// 长按：停在同一个图标上 0.45 秒算数。面板「长按图标 = 全屏」时，
+// 松手就以全屏打开（走 PX 的 +externalOpenApplication:）。
+- (void)trackLongPress {
+    NSInteger idx = [_menu selectedIndex];
+    NSTimeInterval now = [NSDate date].timeIntervalSince1970;
+    if (idx != _pressedIndex) {
+        _pressedIndex = idx;
+        _pressedSince = now;
+        _longPressActive = NO;
+        return;
+    }
+    if (idx < 0 || _longPressActive) return;
+    if (now - _pressedSince < 0.45) return;
+    NSInteger mode = [[TWPrefs shared] integerForKey:TWKeyArcLongPressMode defaultValue:0];
+    if (mode != 0) return;
+    _longPressActive = YES;
+    if ([[TWPrefs shared] boolForKey:TWKeyArcHaptic defaultValue:YES]) {
+        UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleHeavy];
+        [gen impactOccurred];
+    }
+    TWRuntimeLog(@"[arc] long-press idx=%ld -> fullscreen", (long)idx);
 }
 
 - (void)presentMenuFromPoint:(CGPoint)point corner:(NSInteger)corner {
@@ -548,6 +600,7 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
     }
 
     _didPresent = YES;
+    [self pressReset];
     if (!_menu) {
         _menu = [[TWArcMenuView alloc] initWithFrame:container.bounds];
         _menu.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
@@ -684,16 +737,26 @@ static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
         if (entries.count) return entries;
     }
 
+    // 面板「显示哪些应用」：0=最近应用（默认），1=自选应用。
+    // 之前这个开关只是摆着（引擎里一次都没读），现在两条来源按它排序，空的自动兜底。
+    NSInteger iconSource = [prefs integerForKey:TWKeyArcIconSource defaultValue:0];
     NSMutableArray<NSString *> *apps = [NSMutableArray array];
     NSArray *configuredApps = [prefs objectForKey:TWKeyCraneAppList];
-    if ([configuredApps isKindOfClass:[NSArray class]]) {
+    void (^addConfigured)(void) = ^{
+        if (![configuredApps isKindOfClass:[NSArray class]]) return;
         for (id app in configuredApps) {
             if ([app isKindOfClass:[NSString class]] && [app length] && ![apps containsObject:app]) [apps addObject:app];
         }
+    };
+    if (iconSource == 1) {
+        addConfigured();
+        if (!apps.count) [apps addObjectsFromArray:[self cachedRecentBundleIDs]];
+    } else {
+        [apps addObjectsFromArray:[self cachedRecentBundleIDs]];
+        if (!apps.count) addConfigured();
     }
-    if (!apps.count) [apps addObjectsFromArray:[self cachedRecentBundleIDs]];
 
-    BOOL craneOn = [prefs boolForKey:TWKeyCraneEnabled defaultValue:NO];
+    BOOL craneOn = [prefs boolForKey:TWKeyCraneEnabled defaultValue:YES];
     for (NSString *bundleID in apps) {
         if ((NSInteger)entries.count >= limit) break;
         NSString *name = TWArcDisplayName(bundleID);
@@ -728,6 +791,10 @@ static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
 // 选中一个"应用 + 容器"条目：先把容器切过去（Crane 可能弹认证），确认后才打开；
 // 打开方式看面板里的「ARC 打开方式」（分屏启动 / 全屏启动）。
 - (void)launchEntry:(NSDictionary *)entry {
+    [self launchEntry:entry fullscreen:NO];
+}
+
+- (void)launchEntry:(NSDictionary *)entry fullscreen:(BOOL)fullscreen {
     NSString *bundleID = entry[@"bundleID"];
     if (![bundleID isKindOfClass:[NSString class]] || !bundleID.length || !TWArcDeviceUnlocked()) return;
     NSString *containerID = [entry[@"containerID"] isKindOfClass:[NSString class]] ? entry[@"containerID"] : @"";
@@ -741,21 +808,37 @@ static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
     [TWCraneBridge prepareLaunchForBundleID:bundleID containerID:containerID completion:^(BOOL success) {
         if (!success || !TWArcDeviceUnlocked()) return;
         [weakSelf scheduleContainerPrefetch];
-        [weakSelf performVerifiedLaunch:bundleID];
+        [weakSelf performVerifiedLaunch:bundleID fullscreen:fullscreen];
     }];
 }
 
 // Actual launch, called from the Crane completion on the main queue only.
 - (void)performVerifiedLaunch:(NSString *)bundleID {
+    [self performVerifiedLaunch:bundleID fullscreen:NO];
+}
+
+// 打开方式真正落到 ParallelX 的入口上（探针实测的类方法）：
+//   +applicationActivated:      分屏打开（PX 自己开窗、动画、缩小小窗全套）
+//   +externalOpenApplication:   全屏打开
+// 旧代码用的 openFullscreenApplication: 在 PX 里根本不存在 → 全屏那条永远失败，
+// 静默回退系统启动，用户看到的就是"全屏打开没反应/不对"。
+- (void)performVerifiedLaunch:(NSString *)bundleID fullscreen:(BOOL)fullscreen {
     NSInteger openMode = [[TWPrefs shared] integerForKey:TWKeyArcOpenMode defaultValue:0];
-    if (openMode == 1) {
-        // 全屏启动
-        if ([self performParallelXLaunch:bundleID selector:@"openFullscreenApplication:"]) return;
-    } else {
-        // 分屏启动：沿用已实测可用的 +applicationActivated:（ParallelX 自己开窗、自己动动画，
-        // 连带它自己的缩小/贴边小窗那一套也归它）。
-        if ([self performParallelXLaunch:bundleID selector:@"applicationActivated:"]) return;
+    BOOL wantFullscreen = fullscreen || (openMode == 1);
+    if (wantFullscreen) {
+        if ([self performParallelXLaunch:bundleID selector:@"externalOpenApplication:"]) {
+            TWRuntimeLog(@"[launch] %@ fullscreen via PX", bundleID);
+            return;
+        }
+        TWRuntimeLog(@"[launch] %@ fullscreen via system (PX entry missing)", bundleID);
+        [self performSystemLaunch:bundleID];
+        return;
     }
+    if ([self performParallelXLaunch:bundleID selector:@"applicationActivated:"]) {
+        TWRuntimeLog(@"[launch] %@ split via PX", bundleID);
+        return;
+    }
+    TWRuntimeLog(@"[launch] %@ system fallback", bundleID);
     [self performSystemLaunch:bundleID];
 }
 
@@ -883,7 +966,7 @@ static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
 
 // 预热容器清单：主线程分次完成（每个应用间隔 0.25s），只在不影响手势的时刻调用。
 - (void)scheduleContainerPrefetch {
-    if (![[TWPrefs shared] boolForKey:TWKeyCraneEnabled defaultValue:NO]) return;
+    if (![[TWPrefs shared] boolForKey:TWKeyCraneEnabled defaultValue:YES]) return;
     static NSTimeInterval lastScanAt;
     NSTimeInterval now = [NSDate date].timeIntervalSince1970;
     BOOL scanApps = (now - lastScanAt >= 8.0) || ![gTWAppsCache isKindOfClass:[NSArray class]];
