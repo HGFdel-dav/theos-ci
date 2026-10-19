@@ -38,6 +38,11 @@ NS_ASSUME_NONNULL_BEGIN
 // 显式触发 ParallelX 刷新（一般不直接调；setObject: 内部已做）。
 - (void)postRefresh;
 
+// 备份与恢复用：整份 plist 的读写。
+- (NSDictionary *)allValues;
+- (void)removeAll;
+- (void)synchronize;
+
 @end
 
 NS_ASSUME_NONNULL_END

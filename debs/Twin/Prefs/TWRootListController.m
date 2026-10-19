@@ -194,17 +194,17 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
 
         // ---------- 应用与面板（原版 Swift 页，直连原版控制器） ----------
         [specs addObject:TWGroupSpecifier(@"应用与面板", nil)];
-        [specs addObject:TWLinkRowSpecifier(self, @"应用、快捷操作与排序", @"app.badge.checkmark", @"PXPageHostController",
-                                            nil, @{@"height": @46, @"twColor": @7, @"twBundle": PX, @"id": @"picker"})];
-        [specs addObject:TWLinkRowSpecifier(self, @"半圆面板与手柄", @"circle.grid.3x3", @"PXPageHostController",
-                                            nil, @{@"height": @46, @"twColor": @4, @"twBundle": PX, @"id": @"launcher"})];
+        [specs addObject:TWLinkRowSpecifier(self, @"应用、快捷操作与排序", @"app.badge.checkmark", @"TWArcOrderController",
+                                            nil, @{@"height": @46, @"twColor": @7})];
+        [specs addObject:TWLinkRowSpecifier(self, @"半圆面板与手柄", @"circle.grid.3x3", @"TWPXSubpageController",
+                                            nil, @{@"height": @46, @"twColor": @4, @"twPXPage": @(TWPXPageLauncher)})];
 
         // ---------- 窗口与交互 ----------
         [specs addObject:TWGroupSpecifier(@"窗口与交互", nil)];
         [specs addObject:TWLinkRowSpecifier(self, @"分屏窗口与角落小窗", @"rectangle.on.rectangle", @"TWPXSubpageController",
                                             nil, @{@"height": @46, @"twColor": @0, @"twPXPage": @(TWPXPageWindow)})];
-        [specs addObject:TWLinkRowSpecifier(self, @"手势区域", @"hand.draw", @"PXPageHostController",
-                                            nil, @{@"height": @46, @"twColor": @3, @"twBundle": PX, @"id": @"gestures"})];
+        [specs addObject:TWLinkRowSpecifier(self, @"手势区域", @"hand.draw", @"TWPXSubpageController",
+                                            nil, @{@"height": @46, @"twColor": @3, @"twPXPage": @(TWPXPageGestures)})];
         [specs addObject:TWLinkRowSpecifier(self, @"键盘", @"keyboard", @"TWPXSubpageController",
                                             nil, @{@"height": @46, @"twColor": @7, @"twPXPage": @(TWPXPageKeyboard)})];
 
@@ -218,8 +218,8 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
         // ---------- 配置 ----------
         [specs addObject:TWGroupSpecifier(@"配置",
             @"这些页面改完即时生效，不需要重启。")];
-        [specs addObject:TWLinkRowSpecifier(self, @"备份与恢复", @"externaldrive", @"PXPageHostController",
-                                            nil, @{@"height": @46, @"twColor": @8, @"twBundle": PX, @"id": @"backup"})];
+        [specs addObject:TWLinkRowSpecifier(self, @"备份与恢复", @"externaldrive", @"TWPXSubpageController",
+                                            nil, @{@"height": @46, @"twColor": @8, @"twPXPage": @(TWPXPageBackup)})];
 
         _specifiers = specs;
     }

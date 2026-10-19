@@ -114,6 +114,24 @@ static int PXLock(NSString *path) {    if (!path.length) return -1;
     return ok;
 }
 
+- (NSDictionary *)allValues {
+    NSDictionary *disk = [self __pxDiskCopy];
+    return [disk isKindOfClass:NSDictionary.class] ? disk : @{};
+}
+
+- (void)removeAll {
+    @synchronized (self) {
+        NSString *path = [self parallelXFilePath];
+        if (!path.length) return;
+        [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
+    }
+    [self postRefresh];
+}
+
+- (void)synchronize {
+    // 无内存缓存：每次 setObject: 已经原子落盘，这里只是接口对齐。
+}
+
 - (void)postRefresh {
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
                                          (__bridge CFStringRef)PXPXRefreshNotification,

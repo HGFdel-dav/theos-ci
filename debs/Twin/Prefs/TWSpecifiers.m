@@ -94,6 +94,12 @@ PSSpecifier *TWRowSpecifier(id target,
     //   没有 symbol 的行保持原系统类，一个字节都不碰。
     if (symbol.length) {
         [spec setProperty:symbol forKey:@"twSymbol"];
+        // 滑块行不套图标子类：PSSliderCell 的私有布局一旦被覆盖，标题会被挤出
+        // 可视区（0.9.2 实测整行只剩一根滑杆）。滑块保持系统原样渲染。
+        // 0.9.3：图标子类在本机完全没生效（cellClass 没被 PSListController 采用，
+        // 且套到滑块上还会挤掉标题）。先整体关闭，面板回归系统原样渲染，
+        // 保证文字/开关/数值全部正确；图标另起一版用独立 cell 实现。
+        BOOL skipIconClass = YES;
         NSString *baseName = nil;
         switch (cellType) {
             case PSSwitchCell:     baseName = @"PSSwitchCell"; break;
@@ -104,7 +110,7 @@ PSSpecifier *TWRowSpecifier(id target,
             case PSStaticTextCell: baseName = @"PSStaticTextCell"; break;
             default: break;
         }
-        Class iconCls = baseName ? TWIconCellClass(baseName) : Nil;
+        Class iconCls = (baseName && !skipIconClass) ? TWIconCellClass(baseName) : Nil;
         if (iconCls) {
             // 两条路都铺：PSSpecifier 若有 setCellClass: 就直传 Class（最可靠），
             // 同时写 cellClass 字符串属性——plist 版 specifier 就是按字符串
@@ -416,14 +422,26 @@ void TWSetArcOrderList(NSArray<NSString *> *list) {
 
 NSString *TWPrefsAppName(NSString *bundleID) {
     if (![bundleID isKindOfClass:NSString.class] || !bundleID.length) return @"";
+    // arm64e 上绝不能把 objc_msgSend 转成可变参数函数指针——PAC 会失效，
+    // 表现为 EXC_BAD_ACCESS / “possible pointer authentication failure”。
+    // 一律用精确签名，并整体 @try 兜底。
     Class proxyCls = NSClassFromString(@"LSApplicationProxy");
     if (proxyCls) {
-        id (*msg)(id, SEL, ...) = (id (*)(id, SEL, ...))objc_msgSend;
-        id proxy = msg(proxyCls, NSSelectorFromString(@"applicationProxyForIdentifier:"), bundleID);
-        if (proxy) {
-            id name = msg(proxy, NSSelectorFromString(@"localizedName"));
-            if ([name isKindOfClass:NSString.class] && [name length]) return name;
-        }
+        @try {
+            SEL proxySel = NSSelectorFromString(@"applicationProxyForIdentifier:");
+            if ([proxyCls respondsToSelector:proxySel]) {
+                id (*makeProxy)(id, SEL, id) = (id (*)(id, SEL, id))objc_msgSend;
+                id proxy = makeProxy(proxyCls, proxySel, bundleID);
+                if (proxy) {
+                    SEL nameSel = NSSelectorFromString(@"localizedName");
+                    if ([proxy respondsToSelector:nameSel]) {
+                        id (*getName)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
+                        id name = getName(proxy, nameSel);
+                        if ([name isKindOfClass:NSString.class] && [name length]) return name;
+                    }
+                }
+            }
+        } @catch (__unused NSException *e) {}
     }
     return bundleID;
 }

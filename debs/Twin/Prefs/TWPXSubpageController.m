@@ -61,6 +61,9 @@ static NSString *const kPXPassFooter = @"以下开关改完立即生效，不需
         case TWPXPageKeyboard: return @"键盘";
         case TWPXPageExternal: return @"通知与 URL 跳转";
         case TWPXPageSystem:   return @"锁屏、截图与录屏";
+        case TWPXPageLauncher: return @"半圆面板与手柄";
+        case TWPXPageGestures: return @"手势区域";
+        case TWPXPageBackup:   return @"备份与恢复";
     }
     return @"Twin";
 }
@@ -76,6 +79,9 @@ static NSString *const kPXPassFooter = @"以下开关改完立即生效，不需
             case TWPXPageKeyboard: [self buildKeyboardPage:specs]; break;
             case TWPXPageExternal: [self buildExternalPage:specs]; break;
             case TWPXPageSystem:   [self buildSystemPage:specs];   break;
+            case TWPXPageLauncher: [self buildLauncherPage:specs]; break;
+            case TWPXPageGestures: [self buildGesturesPage:specs]; break;
+            case TWPXPageBackup:   [self buildBackupPage:specs];   break;
         }
 
         _specifiers = specs;
@@ -178,6 +184,133 @@ static NSString *const kPXPassFooter = @"以下开关改完立即生效，不需
                            @{@"height": @58, @"twColor": color,
                              @"twMin": min, @"twMax": max,
                              @"twGet": @"pxReadValue:", @"twSet": @"pxWriteValue:specifier:"});
+}
+
+// 「半圆面板与手柄」——原生重画，不再依赖 ParallelX 的 Swift 控制器。
+- (void)buildLauncherPage:(NSMutableArray *)specs {
+    [specs addObject:TWGroupSpecifier(@"面板", kPXPassFooter)];
+    [specs addObject:[self pxSegment:@"面板启用侧" key:@"launcherSide"
+                                 def:@2 titles:@[@"左侧", @"右侧", @"两侧"]
+                              symbol:@"circle.lefthalf.filled" color:@4]];
+    [specs addObject:[self pxSlider:@"面板距边缘" key:@"launcherEdgeInset" def:@12 min:@0 max:@60
+                             symbol:@"arrow.left.and.right" color:@0]];
+    [specs addObject:[self pxSlider:@"图标大小" key:@"launcherIconSize" def:@48 min:@28 max:@80
+                             symbol:@"app.badge" color:@2]];
+    [specs addObject:[self pxSlider:@"环间距" key:@"launcherRingGap" def:@10 min:@0 max:@40
+                             symbol:@"circle.dashed" color:@5]];
+
+    [specs addObject:TWGroupSpecifier(@"每环应用数", @"设为 0 关闭该环，不删除已选应用与排序。")];
+    [specs addObject:[self pxSlider:@"第一环" key:@"launcherRing1" def:@5 min:@0 max:@9
+                             symbol:@"1.circle" color:@1]];
+    [specs addObject:[self pxSlider:@"第二环" key:@"launcherRing2" def:@6 min:@0 max:@12
+                             symbol:@"2.circle" color:@1]];
+    [specs addObject:[self pxSlider:@"第三环" key:@"launcherRing3" def:@6 min:@0 max:@12
+                             symbol:@"3.circle" color:@1]];
+    [specs addObject:[self pxSlider:@"第四环" key:@"launcherRing4" def:@0 min:@0 max:@12
+                             symbol:@"4.circle" color:@1]];
+
+    [specs addObject:TWGroupSpecifier(@"手柄", kPXPassFooter)];
+    [specs addObject:[self pxSlider:@"手柄宽度" key:@"handleWidth" def:@14 min:@6 max:@30
+                             symbol:@"arrow.left.and.right" color:@3]];
+    [specs addObject:[self pxSlider:@"手柄高度" key:@"handleHeight" def:@90 min:@40 max:@180
+                             symbol:@"arrow.up.and.down" color:@3]];
+    [specs addObject:[self pxSlider:@"手柄滑动距离" key:@"launcherDragDistance" def:@40 min:@10 max:@120
+                             symbol:@"hand.draw" color:@3]];
+    [specs addObject:[self pxSlider:@"长按全屏时长" key:@"launcherHoldMilliseconds" def:@800 min:@200 max:@2000
+                             symbol:@"clock" color:@6]];
+    [specs addObject:[self pxSlider:@"闲置渐隐时间" key:@"handleIdleSeconds" def:@3 min:@0 max:@15
+                             symbol:@"eye.slash" color:@6]];
+    [specs addObject:[self pxSlider:@"渐隐后不透明度" key:@"handleIdleOpacityPercent" def:@35 min:@0 max:@100
+                             symbol:@"circle.lefthalf.filled" color:@6]];
+
+    [specs addObject:TWGroupSpecifier(@"小窗与动画", kPXPassFooter)];
+    [specs addObject:[self pxSwitch:@"底部左右滑小窗、上滑退出分屏" key:@"dockSwipeEnabled" def:@YES
+                             symbol:@"hand.tap" color:@0]];
+    [specs addObject:[self pxSlider:@"全局动画速度" key:@"animationSpeedPercent" def:@100 min:@50 max:@200
+                             symbol:@"speedometer" color:@5]];
+}
+
+// 「手势区域」——原生重画。
+- (void)buildGesturesPage:(NSMutableArray *)specs {
+    [specs addObject:TWGroupSpecifier(@"底部触发区", @"下次打开窗口时生效。")];
+    [specs addObject:[self pxSlider:@"底部区域宽度" key:@"gestureWidth" def:@160 min:@40 max:@360
+                             symbol:@"arrow.left.and.right" color:@0]];
+    [specs addObject:[self pxSlider:@"底部区域高度" key:@"gestureHeight" def:@24 min:@8 max:@80
+                             symbol:@"arrow.up.and.down" color:@0]];
+    [specs addObject:[self pxSlider:@"底部垂直偏移" key:@"gestureOffset" def:@0 min:@-60 max:@60
+                             symbol:@"arrow.up.arrow.down" color:@0]];
+
+    [specs addObject:TWGroupSpecifier(@"顶部触发区", @"顶部左、右角落点击分别停靠为左、右侧小窗。")];
+    [specs addObject:[self pxSlider:@"顶部区域宽度" key:@"topGestureWidth" def:@160 min:@40 max:@360
+                             symbol:@"arrow.left.and.right" color:@4]];
+    [specs addObject:[self pxSlider:@"顶部区域高度" key:@"topGestureHeight" def:@24 min:@8 max:@80
+                             symbol:@"arrow.up.and.down" color:@4]];
+    [specs addObject:[self pxSlider:@"顶部垂直偏移" key:@"topGestureOffset" def:@0 min:@-60 max:@60
+                             symbol:@"arrow.up.arrow.down" color:@4]];
+
+    [specs addObject:TWGroupSpecifier(@"调试", kPXPassFooter)];
+    [specs addObject:[self pxSwitch:@"显示手势触发区域" key:@"gestureDebug" def:@NO
+                             symbol:@"viewfinder" color:@6]];
+}
+
+// 「备份与恢复」——直接读写 ParallelX 的 plist 文件。
+- (void)buildBackupPage:(NSMutableArray *)specs {
+    [specs addObject:TWGroupSpecifier(@"配置",
+        @"导出把 ParallelX 全部设置写成一个 plist 存到文稿目录；导入从同一目录读回。")];
+    PSSpecifier *export = TWButtonRowSpecifier(self, @"导出配置", @"pxExport:", @"square.and.arrow.up", @2);
+    PSSpecifier *import = TWButtonRowSpecifier(self, @"导入配置", @"pxImport:", @"square.and.arrow.down", @4);
+    if (export) [specs addObject:export];
+    if (import) [specs addObject:import];
+
+    [specs addObject:TWGroupSpecifier(@"", @"恢复默认只重置 ParallelX 的分屏设置，不动 Twin 自己的偏好。")];
+    PSSpecifier *reset = TWButtonRowSpecifier(self, @"恢复默认设置", @"pxReset:", @"arrow.counterclockwise", @0);
+    if (reset) [specs addObject:reset];
+}
+
+- (PSSpecifier *)pxSegment:(NSString *)title
+                       key:(NSString *)key
+                       def:(NSNumber *)def
+                    titles:(NSArray *)titles
+                    symbol:(NSString *)symbol
+                     color:(NSNumber *)color {
+    return TWRowSpecifier(self, title, key, def, nil, PSSegmentCell, symbol, nil,
+                          @{@"height": @58, @"twColor": color, @"twTitles": titles,
+                            @"twGet": @"pxReadValue:", @"twSet": @"pxWriteValue:specifier:"});
+}
+
+- (void)pxExport:(PSSpecifier *)specifier {
+    NSString *dir = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+    NSString *path = [dir stringByAppendingPathComponent:@"ParallelX-Backup.plist"];
+    NSDictionary *all = [_px allValues];
+    BOOL ok = [(all ?: @{}) writeToFile:path atomically:YES];
+    [self twToast:ok ? [@"已导出到 " stringByAppendingString:path] : @"导出失败"];
+}
+
+- (void)pxImport:(PSSpecifier *)specifier {
+    NSString *dir = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+    NSString *path = [dir stringByAppendingPathComponent:@"ParallelX-Backup.plist"];
+    NSDictionary *all = [NSDictionary dictionaryWithContentsOfFile:path];
+    if (![all isKindOfClass:NSDictionary.class]) { [self twToast:@"没有找到备份文件"]; return; }
+    for (NSString *k in all) [_px setObject:all[k] forKey:k];
+    [_px synchronize];
+    [self reloadSpecifiers];
+    [self twToast:@"已导入"];
+}
+
+- (void)pxReset:(PSSpecifier *)specifier {
+    [_px removeAll];
+    [self reloadSpecifiers];
+    [self twToast:@"已恢复默认"];
+}
+
+- (void)twToast:(NSString *)text {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:nil message:text
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [self presentViewController:alert animated:YES completion:^{
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [alert dismissViewControllerAnimated:YES completion:nil];
+        });
+    }];
 }
 
 #pragma mark - 值链（读写 ParallelX 真实 plist）

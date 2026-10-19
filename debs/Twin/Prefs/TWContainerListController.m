@@ -355,3 +355,145 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
 }
 
 @end
+
+#pragma mark - Arc 图标顺序（应用、快捷操作与排序）
+
+@implementation TWArcOrderController {
+    NSArray<NSString *> *_ordered;      // 已选 bundleID，按显示顺序
+    NSArray<NSString *> *_installed;    // 全部已安装应用
+    BOOL _showingAll;
+}
+
+- (instancetype)init {
+    if ((self = [super initWithStyle:UITableViewStyleInsetGrouped])) {
+        self.title = @"应用、快捷操作与排序";
+    }
+    return self;
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
+    UIBarButtonItem *toggle = [[UIBarButtonItem alloc] initWithTitle:@"全部应用"
+                                                               style:UIBarButtonItemStylePlain
+                                                              target:self
+                                                              action:@selector(toggleAll)];
+    self.navigationItem.rightBarButtonItem = toggle;
+    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"排序"
+                                                                              style:UIBarButtonItemStylePlain
+                                                                             target:self
+                                                                             action:@selector(toggleEditing)];
+    self.tableView.allowsMultipleSelection = NO;
+    [self reloadApps];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self reloadApps];
+}
+
+- (void)reloadApps {
+    _ordered = TWArcOrderList() ?: @[];
+    NSMutableArray<NSString *> *all = [NSMutableArray array];
+    @try {
+        Class ws = NSClassFromString(@"LSApplicationWorkspace");
+        SEL sel = NSSelectorFromString(@"defaultWorkspace");
+        if (ws && [ws respondsToSelector:sel]) {
+            id (*getWS)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
+            id workspace = getWS(ws, sel);
+            SEL allSel = NSSelectorFromString(@"allInstalledApplications");
+            if (workspace && [workspace respondsToSelector:allSel]) {
+                id (*getAll)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
+                NSArray *proxies = getAll(workspace, allSel);
+                for (id proxy in proxies) {
+                    SEL idSel = NSSelectorFromString(@"applicationIdentifier");
+                    if (![proxy respondsToSelector:idSel]) continue;
+                    id (*getId)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
+                    NSString *bid = getId(proxy, idSel);
+                    if ([bid isKindOfClass:NSString.class] && bid.length) [all addObject:bid];
+                }
+            }
+        }
+    } @catch (__unused NSException *e) {}
+    _installed = [all sortedArrayUsingSelector:@selector(localizedStandardCompare:)];
+    [self.tableView reloadData];
+}
+
+- (void)toggleEditing {
+    [self setEditing:!self.isEditing animated:YES];
+    self.navigationItem.leftBarButtonItem.title = self.isEditing ? @"完成" : @"排序";
+}
+
+- (void)toggleAll {
+    _showingAll = !_showingAll;
+    self.navigationItem.rightBarButtonItem.title = _showingAll ? @"只显示已选" : @"全部应用";
+    [self.tableView reloadData];
+}
+
+- (NSArray<NSString *> *)dataSourceList {
+    return _showingAll ? _installed : _ordered;
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    return (NSInteger)self.dataSourceList.count;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    static NSString *cellID = @"TWArcOrderCell";
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellID];
+    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellID];
+    NSString *bundleID = self.dataSourceList[(NSUInteger)indexPath.row];
+    cell.imageView.image = TWAppIcon(bundleID);
+    cell.textLabel.text = TWPrefsAppName(bundleID);
+    cell.textLabel.textColor = UIColor.labelColor;
+    if (_showingAll) {
+        cell.accessoryType = [_ordered containsObject:bundleID] ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
+        cell.showsReorderControl = NO;
+    } else {
+        cell.accessoryType = UITableViewCellAccessoryNone;
+        cell.showsReorderControl = YES;
+    }
+    return cell;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    if (!_showingAll) return;
+    NSString *bundleID = self.dataSourceList[(NSUInteger)indexPath.row];
+    NSMutableArray<NSString *> *list = [_ordered mutableCopy] ?: [NSMutableArray array];
+    if ([list containsObject:bundleID]) [list removeObject:bundleID];
+    else [list addObject:bundleID];
+    TWSetArcOrderList(list);
+    [self reloadApps];
+}
+
+- (BOOL)tableView:(UITableView *)tableView canMoveRowAtIndexPath:(NSIndexPath *)indexPath {
+    return !_showingAll;
+}
+
+- (void)tableView:(UITableView *)tableView moveRowAtIndexPath:(NSIndexPath *)sourceIndexPath
+      toIndexPath:(NSIndexPath *)destinationIndexPath {
+    NSMutableArray<NSString *> *list = [_ordered mutableCopy];
+    if (!list) return;
+    NSString *item = list[(NSUInteger)sourceIndexPath.row];
+    [list removeObjectAtIndex:(NSUInteger)sourceIndexPath.row];
+    [list insertObject:item atIndex:(NSUInteger)destinationIndexPath.row];
+    TWSetArcOrderList(list);
+    _ordered = [list copy];
+}
+
+- (UITableViewCellEditingStyle)tableView:(UITableView *)tableView editingStyleForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (_showingAll) return UITableViewCellEditingStyleNone;
+    return UITableViewCellEditingStyleDelete;
+}
+
+- (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle
+    forRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (editingStyle != UITableViewCellEditingStyleDelete) return;
+    NSMutableArray<NSString *> *list = [_ordered mutableCopy];
+    [list removeObjectAtIndex:(NSUInteger)indexPath.row];
+    TWSetArcOrderList(list);
+    [self reloadApps];
+}
+
+@end

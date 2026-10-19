@@ -14,6 +14,9 @@ typedef NS_ENUM(NSInteger, TWPXPageType) {
     TWPXPageKeyboard = 1,
     TWPXPageExternal = 2,
     TWPXPageSystem   = 3,
+    TWPXPageLauncher = 4,   // 半圆面板与手柄
+    TWPXPageGestures = 5,   // 手势区域
+    TWPXPageBackup   = 6,   // 备份与恢复
 };
 
 @interface TWPXSubpageController : PSListController
