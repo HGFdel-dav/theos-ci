@@ -242,6 +242,13 @@ id TWControllerForSpecifier(PSListController *host, PSSpecifier *specifier) {
     }
     if ([className isKindOfClass:NSString.class] && className.length) {
         Class cls = NSClassFromString(className);
+        // PSListItemsController 必须由 Preferences 带着 specifier 上下文来创建：
+        // 我们自己 alloc/init 出来的实例没有 userInfo，页面就是一片黑（录屏实证：
+        // 从"Arc 面板与手势"点进去的 图标形状 / 长按图标 / 显示哪些应用 全黑）。
+        if (cls) {
+            Class itemsCls = NSClassFromString(@"PSListItemsController");
+            if (itemsCls && (cls == itemsCls || [cls isSubclassOfClass:itemsCls])) return nil;
+        }
         if (cls) {
             // PSListController 的子页必须走 initForContentSize:（Preferences 就是这么建的）。
             // 直接 [[alloc] init] 出来的实例没有建好 table，推入后是一整页黑的（实机现象）。
@@ -255,6 +262,10 @@ id TWControllerForSpecifier(PSListController *host, PSSpecifier *specifier) {
                 controller = [[cls alloc] init];
             }
             if ([controller isKindOfClass:UIViewController.class]) {
+                // 标题兜底：没设标题的页面导航栏是空的，看起来就像"黑屏坏页"。
+                if (![(UIViewController *)controller title] && ![specifier.name isKindOfClass:NSNull.class]) {
+                    @try { [(UIViewController *)controller setTitle:specifier.name]; } @catch (__unused NSException *e) { }
+                }
                 // 0.7.0：ParallelX 透传子页共用一个控制器，用 twPXPage 区分页面类型。
                 id page = [specifier propertyForKey:@"twPXPage"];
                 if ([page isKindOfClass:NSNumber.class] && [controller respondsToSelector:@selector(setPageType:)]) {
