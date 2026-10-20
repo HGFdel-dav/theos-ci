@@ -587,7 +587,6 @@ static void TWDiagInstallUncaughtHandler(void) {
 // 本机 Preferences 的 PSSliderCell 不画标题（cellClass 动态子类也不生效），
 // 所以在 cell 即将显示时直接把标题/数值塞进 cell 自己，并给滑杆让出下半个身位。
 // 不改 cell 类、不覆盖任何私有方法，纯加子视图，最坏情况也只是多一个 UILabel。
-/'
 
 @interface TWSliderProxy : NSObject
 @property (nonatomic, weak) UISlider *slider;
