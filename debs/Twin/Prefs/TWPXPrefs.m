@@ -5,6 +5,7 @@
 #import <sys/file.h>
 #import <fcntl.h>
 #import <unistd.h>
+#import <CoreFoundation/CoreFoundation.h>
 
 // ParallelX 运行时的刷新通知（与 ParallelX Root.plist 的 PostNotification 同名）。
 static NSString *const PXPXRefreshNotification = @"com.moxuan.parallelx.capture-updated";
@@ -54,18 +55,26 @@ static int PXLock(NSString *path) {    if (!path.length) return -1;
 }
 
 - (BOOL)available {
-    return self.parallelXFilePath.length > 0;
+    return YES;   // cfprefsd 始终可读写，不再依赖某个具体文件是否存在
 }
 
-// 带锁读最新磁盘内容，避免与 ParallelX 自身写入冲突。
+static NSString *const PXDomain = @"com.moxuan.parallelx";
+static CFStringRef PXDomainRef(void) { return (__bridge CFStringRef)PXDomain; }
+
+// 0.9.9：改成 CFPreferences。ParallelX 本体就是用 cfprefsd 读写这个域的，
+// 之前的"直接写 plist 文件"会被 SpringBoard/设置进程各看一份，改了不生效。
 - (NSDictionary *)__pxDiskCopy {
-    NSString *path = self.parallelXFilePath;
-    if (!path.length) return nil;
-    int fd = PXLock(path);
-    if (fd < 0) return nil;
-    NSDictionary *disk = [NSDictionary dictionaryWithContentsOfFile:path];
-    flock(fd, LOCK_UN); close(fd);
-    return disk;
+    NSMutableDictionary *out = [NSMutableDictionary dictionary];
+    CFPreferencesAppSynchronize(PXDomainRef());
+    CFArrayRef keys = CFPreferencesCopyKeyList(PXDomainRef(), kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+    if (keys) {
+        for (id key in (__bridge_transfer NSArray *)keys) {
+            if (![key isKindOfClass:NSString.class]) continue;
+            CFPropertyListRef v = CFPreferencesCopyAppValue((__bridge CFStringRef)key, PXDomainRef());
+            if (v) out[key] = (__bridge_transfer id)v;
+        }
+    }
+    return out;
 }
 
 - (id)objectForKey:(NSString *)key defaultValue:(id)fallback {
@@ -93,24 +102,12 @@ static int PXLock(NSString *path) {    if (!path.length) return -1;
 }
 
 - (BOOL)setObject:(id)value forKey:(NSString *)key {
-    if (!key.length) return NO;
-    NSDictionary *disk = [self __pxDiskCopy];
-
-    NSString *path = self.parallelXFilePath;
-    if (!path.length) return NO;         // 找不到 plist → 不写（子页先提示打开面板）
-    int fd = PXLock(path);
-    if (fd < 0) return NO;
-    // 读改写防丢失：拿锁后再读一次做增量。
-    NSMutableDictionary *disk2 = [[NSDictionary dictionaryWithContentsOfFile:path] ?: @{} mutableCopy];
-    if (value) disk2[key] = value; else [disk2 removeObjectForKey:key];
-    // 注意：绝不用 CFPreferences 写——Preferences 进程里它会把改动落到真实的
-    // /var/mobile/Library/Preferences，违反 RootHide 痕迹清理铁律。
-    // 这里只直写 jbroot 下的同一份文件；ParallelX 收到 capture-updated 通知后
-    // 自己 reload 就能读到新值。
-    BOOL ok = [disk2 writeToFile:path atomically:YES];
-    flock(fd, LOCK_UN); close(fd);
-
-    if (ok) [self postRefresh];
+    if (!key.length || ![key isKindOfClass:NSString.class]) return NO;
+    CFPreferencesSetAppValue((__bridge CFStringRef)key,
+                             value ? (__bridge CFPropertyListRef)value : NULL,
+                             PXDomainRef());
+    BOOL ok = CFPreferencesAppSynchronize(PXDomainRef());
+    [self postRefresh];
     return ok;
 }
 

@@ -5,6 +5,7 @@
 // 位置：/var/mobile/Library/Application Support/Twin/runtime.log
 #import <Foundation/Foundation.h>
 #import <stdarg.h>
+#import <CoreFoundation/CoreFoundation.h>
 
 static inline NSString *TWRuntimeLogPath(void) {
     return @"/var/mobile/Library/Application Support/Twin/runtime.log";
@@ -28,6 +29,26 @@ static inline void TWRuntimeLog(NSString *format, ...) {
         NSString *line = [NSString stringWithFormat:@"%@ [%@] %@\n",
                           [NSDate date], NSProcessInfo.processInfo.processName, body ?: @"(null)"];
         NSLog(@"[Twin] %@", body);
+        // 0.9.10：同时写进偏好域的一个环形缓冲。SpringBoard 直接写文件在这台机器上
+        // 看不到（0.9.9 实测 runtime.log 根本不出现），但 cfprefsd 是通的 ——
+        // 这样我在电脑上读 com.niubiprass.twin.plist 就能看到引擎跑到哪一步。
+        @try {
+            CFStringRef domain = CFSTR("com.niubiprass.twin");
+            NSMutableArray *lines = nil;
+            CFPropertyListRef existing = CFPreferencesCopyAppValue(CFSTR("TWRuntimeLog"), domain);
+            if (existing && CFGetTypeID(existing) == CFArrayGetTypeID()) {
+                lines = [(__bridge_transfer NSArray *)existing mutableCopy];
+            } else if (existing) {
+                CFRelease(existing);
+            }
+            if (!lines) lines = [NSMutableArray array];
+            [lines addObject:line];
+            while (lines.count > 80) [lines removeObjectAtIndex:0];
+            CFPreferencesSetAppValue(CFSTR("TWRuntimeLog"),
+                                     (__bridge CFPropertyListRef)[lines copy],
+                                     domain);
+            CFPreferencesAppSynchronize(domain);
+        } @catch (__unused NSException *exception) { }
         NSData *data = [line dataUsingEncoding:NSUTF8StringEncoding];
         NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath:path];
         if (handle) {
