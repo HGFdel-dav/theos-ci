@@ -467,6 +467,9 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
     // 用户在面板里切换"Arc 角落 / 边缘手柄"要立刻生效。
     [self applyWakeMode];
     [self updateTriggerHotRect];
+    // Arc-X 的「视图优先级」：层级 = 1998 + 优先级，改完立刻套到菜单窗口上，
+    // 不用等下一次弹菜单才生效。
+    [[TWArcWindow sharedWindow] refreshLevel];
 }
 
 #pragma mark - gesture delegate
@@ -761,6 +764,10 @@ static CGPoint TWArcScreenPointForTouch(UITouch *touch) {
         TWRuntimeLog(@"[arc] present: overlay has no scene");
         return;
     }
+    // 层级：Arc-X 的做法是 UIWindowLevelAlert - 2 + 视图优先级（默认 46 → 2044），
+    // 高于状态栏(1000)与系统弹窗(2000)。App 在前台时 App 的 scene 也在这一层之上，
+    // 所以每次弹出前都重算一遍，保证菜单压在最上面。
+    [host refreshLevel];
     [host showForGestures];
     UIView *container = [host menuContainer];
     if (!container) { TWRuntimeLog(@"[arc] present: no container"); return; }
