@@ -693,34 +693,30 @@ static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
 - (NSArray<NSDictionary *> *)menuEntries {
     TWPrefs *prefs = [TWPrefs shared];
     NSInteger limit = MAX(2, MIN(8, [prefs integerForKey:TWKeyArcItemCount defaultValue:6]));
-    NSMutableArray<NSDictionary *> *entries = [NSMutableArray array];
 
+    // 面板里配置的「一个容器一个图标」：按应用分组，作为该应用的图标展开规则。
+    // 之前这里直接 return，导致配了分身之后弧菜单里只剩分身、别的应用全消失。
+    NSMutableDictionary<NSString *, NSMutableArray<NSDictionary *> *> *containerRows = [NSMutableDictionary dictionary];
+    NSMutableArray<NSString *> *configuredOrder = [NSMutableArray array];
     NSArray *configured = [prefs objectForKey:TWKeyCraneContainers];
-    if ([configured isKindOfClass:[NSArray class]] && configured.count) {
+    if ([configured isKindOfClass:[NSArray class]]) {
         for (id raw in configured) {
-            if ((NSInteger)entries.count >= limit) break;
             if (![raw isKindOfClass:[NSDictionary class]]) continue;
-            if (raw[@"enabled"] && ![raw[@"enabled"] boolValue]) continue;
             NSString *bundleID = raw[@"bundleID"];
             if (![bundleID isKindOfClass:[NSString class]] || !bundleID.length) continue;
-            // 容器 ID 归一：老版本存过空串，空串不能用（会退回"当前容器"，
-            // 点"默"却开成"分"）。Crane 的默认容器 ID 固定是 DEFAULT。
             NSString *containerID = [raw[@"containerID"] isKindOfClass:[NSString class]] ? raw[@"containerID"] : @"";
-            if (!containerID.length) containerID = @"DEFAULT";
-            BOOL isDefault = [containerID isEqualToString:@"DEFAULT"];
-            NSString *name = ([raw[@"name"] isKindOfClass:[NSString class]] && [raw[@"name"] length]) ? raw[@"name"] : TWArcDisplayName(bundleID);
-            // 角标以容器 ID 为准，不信任历史保存的 badge（0.9.12 把 DEFAULT 存成过"分"）。
-            NSString *badge = isDefault ? @"默" : (([raw[@"badge"] isKindOfClass:[NSString class]] && [raw[@"badge"] length]) ? raw[@"badge"] : @"分");
-            [entries addObject:@{@"bundleID": bundleID,
-                                 @"containerID": containerID,
-                                 @"title": [NSString stringWithFormat:@"%@ · %@", name, badge],
-                                 @"badge": badge}];
+            if (!containerID.length) containerID = @"DEFAULT";   // 老数据里的空串＝默认容器
+            BOOL enabled = raw[@"enabled"] ? [raw[@"enabled"] boolValue] : YES;
+            if (!enabled) continue;
+            if (!containerRows[bundleID]) {
+                containerRows[bundleID] = [NSMutableArray array];
+                [configuredOrder addObject:bundleID];
+            }
+            [containerRows[bundleID] addObject:@{@"containerID": containerID}];
         }
-        if (entries.count) return entries;
     }
 
-    // 面板「显示哪些应用」：0=最近应用（默认），1=自选应用。
-    // 之前这个开关只是摆着（引擎里一次都没读），现在两条来源按它排序，空的自动兜底。
+    // 应用清单：面板「显示哪些应用」＝最近使用 / 自选；空的一边自动兜底。
     NSInteger iconSource = [prefs integerForKey:TWKeyArcIconSource defaultValue:0];
     NSMutableArray<NSString *> *apps = [NSMutableArray array];
     NSArray *configuredApps = [prefs objectForKey:TWKeyCraneAppList];
@@ -737,20 +733,39 @@ static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
         [apps addObjectsFromArray:[self cachedRecentBundleIDs]];
         if (!apps.count) addConfigured();
     }
+    // 配了分身的应用必须出现在菜单里（放在最前面，方便直接点）。
+    for (NSString *bundleID in configuredOrder.reverseObjectEnumerator) {
+        [apps removeObject:bundleID];
+        [apps insertObject:bundleID atIndex:0];
+    }
 
     BOOL craneOn = [prefs boolForKey:TWKeyCraneEnabled defaultValue:YES];
+    NSMutableArray<NSDictionary *> *entries = [NSMutableArray array];
     for (NSString *bundleID in apps) {
         if ((NSInteger)entries.count >= limit) break;
         NSString *name = TWArcDisplayName(bundleID);
-        // 只读缓存：手势期间绝不调用 Crane（同步 XPC 会卡住 SpringBoard 主线程）。
+
+        NSMutableArray<NSDictionary *> *rows = craneOn ? containerRows[bundleID] : nil;
+        if (rows.count) {
+            for (NSDictionary *row in rows) {
+                if ((NSInteger)entries.count >= limit) break;
+                NSString *containerID = row[@"containerID"];
+                BOOL isDefault = [containerID isEqualToString:@"DEFAULT"];
+                NSString *badge = isDefault ? @"默" : @"分";
+                [entries addObject:@{@"bundleID": bundleID, @"containerID": containerID,
+                                     @"title": [NSString stringWithFormat:@"%@ · %@", name, badge],
+                                     @"badge": badge}];
+            }
+            continue;
+        }
+
+        // 没有面板配置时，用 Crane 导出的容器清单自动展开（一个容器一个图标）。
         NSArray<NSDictionary *> *containers = craneOn ? TWArcCachedContainers(bundleID) : @[];
         if (containers.count > 1) {
-            // 一个应用几个容器，就几个图标：默认容器角标"默"，其余用容器名（没名字就"分"）。
             for (NSDictionary *container in containers) {
                 if ((NSInteger)entries.count >= limit) break;
                 NSString *containerID = [container[@"containerID"] isKindOfClass:[NSString class]] ? container[@"containerID"] : @"";
                 if (!containerID.length) continue;
-                // 导出数据里默认容器的 ID 是 DEFAULT，没有 isDefault 字段。
                 BOOL isDefault = [containerID isEqualToString:@"DEFAULT"] ||
                                  (container[@"isDefault"] ? [container[@"isDefault"] boolValue] : NO);
                 NSString *containerName = [container[@"name"] isKindOfClass:[NSString class]] ? container[@"name"] : @"";

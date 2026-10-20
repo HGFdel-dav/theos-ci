@@ -201,13 +201,20 @@ static id TWMsgSendStr(id target, SEL sel, id arg) {
     NSMutableArray<NSDictionary *> *result = [NSMutableArray array];
     NSMutableSet<NSString *> *seen = [NSMutableSet set];
     NSString *active = [self activeContainerForBundleID:bundleID];
+    (void)active;
+    if (![list containsObject:@"DEFAULT"]) {
+        NSMutableArray *withDefault = [NSMutableArray arrayWithObject:@"DEFAULT"];
+        [withDefault addObjectsFromArray:list];
+        list = withDefault;
+    }
     for (id identifier in list) {
         if (![identifier isKindOfClass:NSString.class] || ![identifier length]) continue;
         if ([seen containsObject:identifier]) continue;
         [seen addObject:identifier];
         NSString *name = [self displayNameForContainer:identifier bundleID:bundleID];
-        // Crane 没记活动容器时，视该容器为默认容器。
-        BOOL isDefault = !active.length || [active isEqualToString:identifier];
+        // 默认容器的 ID 固定是 DEFAULT；不能把"当前活动容器"当成默认
+        // （否则正在用分身时，分身会被标成"默"，默认反而变"分"）。
+        BOOL isDefault = [identifier isEqualToString:@"DEFAULT"];
         [result addObject:@{@"containerID": identifier, @"name": name ?: @"", @"isDefault": @(isDefault)}];
     }
     return result;
