@@ -10,6 +10,7 @@
 #import "TWChoiceController.h"
 #import "TWPrefs.h"
 #import "TWPath.h"
+#import "TWStyle.h"
 
 @implementation TWChoiceController {
     NSString *_prefKey;
@@ -45,7 +46,7 @@
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     static NSString *identifier = @"TWChoiceCell";
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:identifier];
-    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:identifier];
+    if (!cell) cell = [[TWIconCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:identifier];
     cell.textLabel.text = _titles[(NSUInteger)indexPath.row];
     cell.textLabel.textColor = UIColor.labelColor;
 

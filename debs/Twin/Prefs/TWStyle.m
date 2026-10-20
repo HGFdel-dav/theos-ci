@@ -1,6 +1,38 @@
 // TWStyle.m
 #import "TWStyle.h"
 
+@implementation TWIconCell
+
+// 统一网格：图标 16 起 44pt，文字一律 64 起，右控件距右 16。
+// stock UITableViewCell 会按图片尺寸自动挪文字，所以这里自己排版，
+// 保证「有图标」和「没图标」的行文字起点完全一致。
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    CGFloat h = CGRectGetHeight(self.contentView.bounds);
+    CGFloat w = CGRectGetWidth(self.contentView.bounds);
+    if (h <= 0) h = CGRectGetHeight(self.bounds);
+
+    if (self.imageView.image) {
+        self.imageView.frame = CGRectMake(TWGridIconX, (h - TWGridIconSize) / 2.0,
+                                           TWGridIconSize, TWGridIconSize);
+    }
+    CGFloat reserve = TWGridRight;
+    if (self.accessoryView) reserve += 62.0;
+    else if (self.accessoryType != UITableViewCellAccessoryNone) reserve += 30.0;
+    if (self.showsReorderControl) reserve += 30.0;
+    CGFloat textX = TWGridTextX;
+    CGFloat textW = MAX(40.0, w - textX - reserve);
+    if (self.detailTextLabel.text.length) {
+        // 副标题行：主标题在上、副标题在下，起点同样在 64。
+        self.textLabel.frame = CGRectMake(textX, (h - 40.0) / 2.0, textW, 20.0);
+        self.detailTextLabel.frame = CGRectMake(textX, (h - 40.0) / 2.0 + 21.0, textW, 18.0);
+    } else {
+        self.textLabel.frame = CGRectMake(textX, (h - 21.0) / 2.0, textW, 21.0);
+    }
+}
+
+@end
+
 @implementation TWChipView
 
 - (void)setChipColor:(UIColor *)color {

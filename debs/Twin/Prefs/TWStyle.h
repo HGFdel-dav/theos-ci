@@ -10,6 +10,21 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+// ── 0.9.25：全页面统一网格 ────────────────────────────────────────────
+// 以前滑杆行标题写在 x=16、开关/分段行写在 x=64、图标列表页又是另一套，
+// 翻页时文字左边距一直在跳，看着"没对齐"。现在全面板只有这一条网格：
+//   图标列：x=16，44×44（圆形色块/应用图标都在这一列）
+//   文字列：x=64（所有行、所有页一律 64）
+//   右侧控件：距右 16
+#define TWGridIconX     16.0
+#define TWGridIconSize  44.0
+#define TWGridTextX     64.0
+#define TWGridRight     16.0
+
+// 按统一网格排版的行（应用图标列表、多选页等自绘页都用它）。
+@interface TWIconCell : UITableViewCell
+@end
+
 // 0.9.0：10 色图标色板（按 twColor 索引取色，行图标背景用本色、符号用白色）。
 // 定义在 TWSpecifiers.m，TWIconCells.m 也用它渲染图标图。
 FOUNDATION_EXPORT UIColor *TWIconTintColor(NSInteger idx);

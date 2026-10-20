@@ -2,6 +2,7 @@
 #import "TWSpecifiers.h"
 #import "TWChoiceController.h"
 #import "TWPath.h"
+#import "TWStyle.h"
 #import <UIKit/UIKit.h>
 #import <dlfcn.h>
 #import <objc/message.h>
@@ -634,19 +635,45 @@ void TWStyleSliderCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier) {
     title.text = name;
     NSString *unit = [specifier propertyForKey:@"twUnit"];
     if (![unit isKindOfClass:NSString.class]) unit = @"";
-    value.text = [NSString stringWithFormat:@"%.0f%@", slider.value, unit];
+    // twDecimal：带小数的行（如 0.45 秒）显示小数位。
+    NSInteger decimals = 0;
+    id dec = [specifier propertyForKey:@"twDecimal"];
+    if ([dec respondsToSelector:@selector(integerValue)]) decimals = [dec integerValue];
+    NSString *fmt = decimals > 0 ? [NSString stringWithFormat:@"%%.%ldf%%@", (long)decimals] : @"%.0f%@";
+    value.text = [NSString stringWithFormat:fmt, slider.value, unit];
     CGFloat h = CGRectGetHeight(cell.bounds);
     if (h < 44) h = 44;
     CGFloat top = (h >= 66) ? 8 : 2;
-    title.frame = CGRectMake(16, top, w - 32, 18);
-    value.frame = CGRectMake(16, top, w - 32, 18);
+
+    // ── 统一网格（0.9.25）────────────────────────────────────────────
+    // 以前滑杆行标题写 x=16、开关行写 x=64，翻页时左边距一直跳。
+    // 现在所有行：图标列 16（34/44pt）、文字列一律 64、数值距右 16。
+    CGFloat valueW = decimals > 0 ? 92.0 : 72.0;
+    CGFloat textX = TWGridTextX;
+    title.frame = CGRectMake(textX, top, MAX(60.0, w - textX - TWGridRight - valueW - 8.0), 18);
+    value.frame = CGRectMake(w - TWGridRight - valueW, top, valueW, 18);
+
+    TWChipView *chip = [cell.contentView viewWithTag:0x774C4456];
+    if (!chip) {
+        chip = [TWStyle chipWithSymbol:nil fallbackText:nil];
+        chip.tag = 0x774C4456;
+        [cell.contentView addSubview:chip];
+    }
+    NSString *symbol = [specifier propertyForKey:@"twSymbol"];
+    [chip setSymbolNamed:symbol fallbackText:name];
+    id colorIdx = [specifier propertyForKey:@"twColor"];
+    UIColor *rowColor = [colorIdx respondsToSelector:@selector(integerValue)]
+        ? [TWStyle paletteColorAtIndex:[colorIdx integerValue]]
+        : [TWStyle chipColorForIdentifier:name];
+    [chip setChipColor:rowColor];
+    chip.frame = CGRectMake(TWGridIconX, top - 8.0, 34.0, 34.0);
 
     CGFloat sliderH = CGRectGetHeight(slider.bounds);
     if (sliderH <= 0 || sliderH > 40) sliderH = 31;
-    // 78pt 的行：标题 8~26，滑杆 42~73，31pt 的圆钮顶部在 27 —— 不再压字。
+    // 74pt 的行：标题 8~26，滑杆 42~69，31pt 的圆钮顶部在 38 —— 不压字。
     CGFloat sliderY = (h >= 66) ? (h - sliderH - 5) : 24;
     if (sliderY + sliderH > h) sliderY = MAX(top + 20, h - sliderH);
-    slider.frame = CGRectMake(16, sliderY, MAX(w - 32, 40), sliderH);
+    slider.frame = CGRectMake(textX, sliderY, MAX(w - textX - TWGridRight, 40), sliderH);
 }
 
 #pragma mark - 行图标（0.9.7：不依赖 cellClass，直接往标准 cell 里塞）

@@ -13,6 +13,7 @@
 #import <AudioToolbox/AudioServices.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
+#import <notify.h>
 #import <string.h>
 #import <math.h>
 #import <CoreFoundation/CoreFoundation.h>
@@ -266,6 +267,13 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL,
             TWArcLockStateChanged, CFSTR("com.apple.springboard.lockstate"), NULL,
             CFNotificationSuspensionBehaviorDeliverImmediately);
+        // 面板改设置后立刻生效（Darwin 通知 com.niubiprass.twin/preferences-changed，
+        // 设置进程与 SpringBoard 两边都会发）。以前只有回到桌面时才刷新，
+        // 面板里关掉的开关（比如调试模式）在 App 里不立刻反映出来。
+        static int prefsToken = -1;
+        notify_register_dispatch(TWPrefsChangedNotification, &prefsToken, dispatch_get_main_queue(), ^(int token) {
+            [[TWArcCoordinator sharedInstance] refreshEnabledState];
+        });
     }
     return self;
 }

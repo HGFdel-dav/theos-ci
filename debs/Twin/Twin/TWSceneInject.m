@@ -20,11 +20,21 @@
 
 static const void *TWHotViewKey = "TWSceneHotViews";
 
+// 注入过热区的宿主视图（弱引用）。面板改了设置后要靠这个名单回头重画，
+// 否则注入视图不重新布局时颜色/尺寸就不会更新（调试橙块关不掉就是这么来的）。
+static NSHashTable *TWHotHosts(void) {
+    static NSHashTable *table;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ table = [NSHashTable weakObjectsHashTable]; });
+    return table;
+}
+
 static void (*TWOrigPresentationLayout)(id, SEL);
 
 static void TWPresentationLayout(id self, SEL _cmd) {
     TWOrigPresentationLayout(self, _cmd);
     @try {
+        [TWHotHosts() addObject:self];
         [TWArcCoordinator ensureCornerViewsInPresentationView:(UIView *)self];
     } @catch (__unused NSException *e) { }
 }
@@ -49,7 +59,15 @@ void TWSceneInjectStart(void) {
 }
 
 // 由协调器调用：按当前的唤醒方式/角落设置，维护 presentation view 上的热区。
+// 除了窗口，还要把「之前注入过的宿主视图」全部重刷一遍——面板改设置
+// （比如关掉调试模式）时，它们不会自己重新布局，不重刷就会留着旧颜色。
 void TWSceneInjectSync(void) {
+    for (UIView *host in [TWHotHosts() allObjects]) {
+        if (![host isKindOfClass:UIView.class]) continue;
+        @try {
+            [TWArcCoordinator ensureCornerViewsInPresentationView:host];
+        } @catch (__unused NSException *e) { }
+    }
     for (UIWindow *window in UIApplication.sharedApplication.windows) {
         [TWArcCoordinator ensureCornerViewsInPresentationView:window];
     }

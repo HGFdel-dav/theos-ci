@@ -6,6 +6,7 @@
 // 数据面：TWRememberSnapshot()（形态快照），删除/清空只写 jbroot 私有 plist。
 #import "TWRememberListController.h"
 #import "TWSpecifiers.h"
+#import "TWStyle.h"
 #import "TWPath.h"
 #import "TWPrefs.h"
 
@@ -64,7 +65,7 @@
 #pragma mark - 单元格构造
 
 - (UITableViewCell *)switchCell:(NSString *)title key:(NSString *)key def:(BOOL)def tag:(NSInteger)tag {
-    UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"switch"];
+    UITableViewCell *cell = [[TWIconCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"switch"];
     cell.textLabel.text = title;
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
     UISwitch *sw = [[UISwitch alloc] init];
@@ -76,7 +77,7 @@
 }
 
 - (UITableViewCell *)segmentCell:(NSString *)title titles:(NSArray<NSString *> *)titles selected:(NSInteger)selected {
-    UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"segment"];
+    UITableViewCell *cell = [[TWIconCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"segment"];
     cell.textLabel.text = title;
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
     UISegmentedControl *seg = [[UISegmentedControl alloc] initWithItems:titles];
@@ -128,7 +129,7 @@
     // ---- 已记忆 ----
     if (self.entries.count && indexPath.row >= (NSInteger)self.entries.count) {
         UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"clear"];
-        if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"clear"];
+        if (!cell) cell = [[TWIconCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"clear"];
         cell.textLabel.text = @"重置记忆大小及位置";
         cell.textLabel.textColor = UIColor.systemBlueColor;
         cell.textLabel.textAlignment = NSTextAlignmentNatural;
@@ -138,7 +139,7 @@
     }
 
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"remember"];
-    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"remember"];
+    if (!cell) cell = [[TWIconCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"remember"];
     if (!self.entries.count) {
         cell.textLabel.text = @"暂无记忆";
         cell.textLabel.textColor = UIColor.labelColor;
