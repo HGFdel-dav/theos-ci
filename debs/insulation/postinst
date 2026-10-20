@@ -1,0 +1,17 @@
+#!/bin/bash
+
+fix_existing_prefs_owner() {
+  for prefs in \
+    /var/mobile/Library/Preferences/com.be-huge.insulation-prefs.plist \
+    /var/jb/var/mobile/Library/Preferences/com.be-huge.insulation-prefs.plist \
+    /var/containers/Bundle/Application/.jbroot-*/var/mobile/Library/Preferences/com.be-huge.insulation-prefs.plist; do
+    if [ -e "$prefs" ]; then
+      chown mobile:mobile "$prefs" 2>/dev/null || true
+      chmod 644 "$prefs" 2>/dev/null || true
+    fi
+  done
+}
+
+fix_existing_prefs_owner
+killall thermalmonitord 2>/dev/null || true
+exit 0
