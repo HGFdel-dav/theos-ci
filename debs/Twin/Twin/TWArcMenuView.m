@@ -193,6 +193,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 @end
 
 @implementation TWArcMenuView {
+    UITapGestureRecognizer *_twTap;
     NSMutableArray<TWArcItemView *> *_items;
     NSArray<NSDictionary *> *_entries;
     CGPoint _triggerPoint;
@@ -237,8 +238,8 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     if (!isfinite(itemSize) || itemSize < 20) itemSize = 28;
     // 原版的 28 是「图标大小」的下限值，屏幕上实际画出来的图标比这个大得多；
     // 直接拿 28 当直径做出来只有指甲盖大小（实测效果），所以按屏幕尺寸换算。
-    CGFloat iconVisual = MAX(44.0, itemSize * 1.75);
-    iconVisual = MIN(iconVisual, 120.0);
+    CGFloat iconVisual = MAX(38.0, itemSize * 1.35);
+    iconVisual = MIN(iconVisual, 96.0);
     NSInteger firstRow = (NSInteger)TWArcOrigNumber(@"arcFirstRowItemCount", 5.0);
     CGFloat ringGap = TWArcOrigNumber(@"arcIconSpacing", 0.0);
 
@@ -278,6 +279,10 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
                                                           bounds:self.bounds];
     if (centers.count < (NSUInteger)count) return;
 
+    if (!_twTap) {
+        _twTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(twHandleTap:)];
+        [self addGestureRecognizer:_twTap];
+    }
     // dim
     _dimView = [[UIView alloc] initWithFrame:self.bounds];
     _dimView.backgroundColor = [UIColor blackColor];
@@ -403,12 +408,34 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     return _entries[(NSUInteger)index];
 }
 
+// 松手时若没落在图标上，取最近的一个（60pt 以内），不用精确"停"在图标上。
+- (TWArcItemView *)nearestItemAtPoint:(CGPoint)point limit:(CGFloat)limit {
+    TWArcItemView *best = nil;
+    CGFloat bestD = limit;
+    for (TWArcItemView *item in _items) {
+        CGFloat d = hypot(point.x - item.targetCenter.x, point.y - item.targetCenter.y);
+        if (d < bestD) { bestD = d; best = item; }
+    }
+    return best;
+}
+
+- (void)twHandleTap:(UITapGestureRecognizer *)g {
+    if (!_presented) return;
+    CGPoint p = [g locationInView:self];
+    TWArcItemView *item = [self itemAtPoint:p];
+    if (!item) item = [self nearestItemAtPoint:p limit:60.0];
+    if (!item) return;
+    NSDictionary *entry = item.entry;
+    [self dismissAnimated:YES];
+    if (entry && self.onPickEntry) self.onPickEntry(entry, NO);
+}
+
 - (TWArcItemView *)itemAtPoint:(CGPoint)point {
     if (!_presented || !isfinite(point.x) || !isfinite(point.y)) return nil;
     TWArcItemView *hit = nil;
     CGFloat nearest = CGFLOAT_MAX;
     for (TWArcItemView *item in _items) {
-        CGFloat half = CGRectGetWidth(item.bounds) * _menuScale / 2 + 12;
+        CGFloat half = CGRectGetWidth(item.bounds) * _menuScale / 2 + 22;
         CGRect hitRect = CGRectMake(item.targetCenter.x - half, item.targetCenter.y - half, half * 2, half * 2);
         CGFloat distance = hypot(point.x - item.targetCenter.x, point.y - item.targetCenter.y);
         if (CGRectContainsPoint(hitRect, point) && distance < nearest) { hit = item; nearest = distance; }
@@ -431,6 +458,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 
 - (NSDictionary *)finishSelectionAtPoint:(CGPoint)point {
     TWArcItemView *item = [self itemAtPoint:point];
+    if (!item) item = [self nearestItemAtPoint:point limit:60.0];
     NSDictionary *selected = item.entry;
     item.highlighted = NO;
     [self dismissAnimated:selected != nil];

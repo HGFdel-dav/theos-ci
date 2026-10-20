@@ -73,10 +73,10 @@ static UIImage *TWAppIconRaw(NSString *bundleID) {
 static UIImage *TWAppIcon(NSString *bundleID) {
     UIImage *raw = TWAppIconRaw(bundleID);
     if (!raw || raw.size.width <= 0) return nil;
-    if (fabs(raw.size.width - 44.0) < 0.5 && fabs(raw.size.height - 44.0) < 0.5) return raw;
-    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(44.0, 44.0)];
+    if (fabs(raw.size.width - 36.0) < 0.5 && fabs(raw.size.height - 36.0) < 0.5) return raw;
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(36.0, 36.0)];
     return [renderer imageWithActions:^(__unused UIGraphicsImageRendererContext *rendererContext) {
-        [raw drawInRect:CGRectMake(0, 0, 44.0, 44.0)];
+        [raw drawInRect:CGRectMake(0, 0, 36.0, 36.0)];
     }];
 }
 

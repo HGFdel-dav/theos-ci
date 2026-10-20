@@ -882,13 +882,19 @@ static CGPoint TWArcScreenPointForTouch(UITouch *touch) {
     }
     _menu.hidden = NO;
     _menu.userInteractionEnabled = YES;
+    __weak TWArcCoordinator *twWeak = self;
+    _menu.onPickEntry = ^(NSDictionary *entry, BOOL fullscreen) {
+        if ([entry isKindOfClass:NSDictionary.class] && TWArcDeviceUnlocked()) {
+            [twWeak launchEntry:entry fullscreen:fullscreen];
+        }
+    };
     [container addSubview:_menu];
 
     NSArray *entries = [self menuEntries];
     // 原版没有"菜单半径"这个设置：半径由图标大小 + 间距推出来（照原版几何）。
     CGFloat iconSize = TWArcOrigNumber(@"arcIconSize", 28.0);
     CGFloat iconSpacing = TWArcOrigNumber(@"arcIconSpacing", 0.0);
-    CGFloat iconVisual = MIN(MAX(44.0, iconSize * 1.75), 120.0);   // 与菜单内的换算一致
+    CGFloat iconVisual = MIN(MAX(38.0, iconSize * 1.35), 96.0);   // 与菜单内的换算一致
     CGFloat radius = MAX(120.0, iconVisual * 2.4 + iconSpacing + 60.0);
     TWRuntimeLog(@"[arc] present corner=%ld entries=%lu radius=%.0f anchor=%.0f,%.0f",
                  (long)corner, (unsigned long)entries.count, radius, local.x, local.y);

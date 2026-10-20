@@ -213,11 +213,15 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
         [specs addObject:TWGroupSpecifier(@"Arc 面板", nil)];
         [specs addObject:TWRowSpecifier(self, @"Arc 唤醒", TWKeyArcEnabled, @YES, nil, PSSwitchCell,
                                         @"bolt.horizontal.fill", nil, @{@"height": @46, @"twColor": @6})];
-        // 原版 ARC 面板（ScreenCore 的 TriggerSettings，整份搬进来）
+        // 原版触发设置页（TriggerSettings.plist 原样渲染）
         [specs addObject:TWLinkRowSpecifier(self, @"弧形菜单与手势", @"hand.point.up.left.fill",
-                                            @"TWOrigArcHost", nil, @{})];
-        [specs addObject:TWLinkRowSpecifier(self, @"图标数量与长按", @"wrench.and.screwdriver.fill",
-                                            @"TWArcPanelController", nil, @{})];
+                                            @"TWOrigArcController", nil, @{})];
+        // Twin 新增的两项直接放主页，不再单开子页
+        [specs addObject:TWRowSpecifier(self, @"菜单图标数", TWKeyArcItemCount, @6, nil, PSSliderCell,
+                                        nil, nil, @{@"twMin": @2, @"twMax": @12, @"twStep": @1, @"twUnit": @" 个"})];
+        [specs addObject:TWRowSpecifier(self, @"长按全屏时长", TWKeyArcLongPressDuration, @0.45, nil, PSSliderCell,
+                                        nil, nil, @{@"twMin": @0.1, @"twMax": @2.0, @"twStep": @0.05,
+                                                    @"twDecimal": @2, @"twUnit": @" 秒"})];
 
         // ---------- 应用与面板（原版 Swift 页，直连原版控制器） ----------
         [specs addObject:TWGroupSpecifier(@"应用与面板", nil)];

@@ -17,6 +17,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSDictionary *)finishSelectionAtPoint:(CGPoint)point;
 - (void)dismissAnimated:(BOOL)animated;
 @property (nonatomic, readonly, getter=isPresented) BOOL presented;
+// 手指没精确落在图标上时，点一下也能选中（不用"停住"等判定）。
+@property (nonatomic, copy, nullable) void (^onPickEntry)(NSDictionary *entry, BOOL fullscreen);
 @end
 
 NS_ASSUME_NONNULL_END

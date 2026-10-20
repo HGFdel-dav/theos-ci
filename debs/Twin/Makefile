@@ -17,7 +17,7 @@ Twin_FRAMEWORKS = UIKit Foundation CoreGraphics QuartzCore AudioToolbox
 # A plain PreferenceBundle: loaded by the Preferences process itself,
 # no code injection into the Settings app.
 BUNDLE_NAME = TwinPrefs
-TwinPrefs_FILES = Prefs/TWRootListController.m Prefs/TWSpecifiers.m Prefs/TWChoiceController.m Prefs/TWArcPanelController.m Prefs/TWContainerListController.m Prefs/TWRememberListController.m Prefs/TWPXSubpageController.m Prefs/TWPXPrefs.m Prefs/TWCells.m Prefs/TWStyle.m Prefs/TWIconCells.m Twin/TWPrefs.m Twin/TWCraneBridge.m Twin/TWCraneAppsController.m Twin/TWRememberAppsController.m
+TwinPrefs_FILES = Prefs/TWRootListController.m Prefs/TWSpecifiers.m Prefs/TWChoiceController.m Prefs/TWOrigArcController.m Prefs/TWArcPanelController.m Prefs/TWContainerListController.m Prefs/TWRememberListController.m Prefs/TWPXSubpageController.m Prefs/TWPXPrefs.m Prefs/TWCells.m Prefs/TWStyle.m Prefs/TWIconCells.m Twin/TWPrefs.m Twin/TWCraneBridge.m Twin/TWCraneAppsController.m Twin/TWRememberAppsController.m
 TwinPrefs_INSTALL_PATH = /Library/PreferenceBundles
 TwinPrefs_RESOURCE_FILES = Prefs/Resources/Info.plist Prefs/Resources/icon.png Prefs/Resources/icon@2x.png Prefs/Resources/icon@3x.png
 TwinPrefs_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-unused-variable -Wno-unused-function -ITwin -IPrefs -DTWIN_STRIP_LOGS=1

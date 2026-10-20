@@ -17,7 +17,7 @@ NS_ASSUME_NONNULL_BEGIN
 //   文字列：x=64（所有行、所有页一律 64）
 //   右侧控件：距右 16
 #define TWGridIconX     16.0
-#define TWGridIconSize  44.0
+#define TWGridIconSize  36.0
 #define TWGridTextX     64.0
 #define TWGridRight     16.0
 
