@@ -228,6 +228,10 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     TWPrefs *prefs = [TWPrefs shared];
     CGFloat itemSize = TWArcOrigNumber(@"arcIconSize", 28.0);
     if (!isfinite(itemSize) || itemSize < 20) itemSize = 28;
+    // 原版的 28 是「图标大小」的下限值，屏幕上实际画出来的图标比这个大得多；
+    // 直接拿 28 当直径做出来只有指甲盖大小（实测效果），所以按屏幕尺寸换算。
+    CGFloat iconVisual = MAX(44.0, itemSize * 1.75);
+    iconVisual = MIN(iconVisual, 120.0);
     NSInteger firstRow = (NSInteger)TWArcOrigNumber(@"arcFirstRowItemCount", 5.0);
     CGFloat ringGap = TWArcOrigNumber(@"arcIconSpacing", 0.0);
 
@@ -249,7 +253,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     }
     NSInteger iconShape = (NSInteger)TWArcOrigNumber(@"arcAppIconShape", 0.0);
 
-    CGFloat margin = itemSize * 0.5 + 14;
+    CGFloat margin = iconVisual * 0.5 + 14;
     _anchor = [TWArcGeometry anchorForCorner:_corner margin:margin bounds:self.bounds];
     BOOL leftSide = (_corner == TWCornerBottomLeft || _corner == TWCornerTopLeft);
     BOOL topSide = (_corner == TWCornerTopLeft || _corner == TWCornerTopRight);
@@ -259,7 +263,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 
     NSArray<NSValue *> *centers = [TWArcGeometry centersForCount:count
                                                    firstRowCount:firstRow
-                                                        iconSize:itemSize
+                                                        iconSize:iconVisual
                                                            radius:_radius
                                                          ringGap:ringGap
                                                           anchor:_anchor
@@ -285,7 +289,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     _bandMask = [CAShapeLayer layer];
     _bandMask.strokeColor = UIColor.whiteColor.CGColor;
     _bandMask.fillColor = UIColor.clearColor.CGColor;
-    _bandMask.lineWidth = (itemSize + 16) * _menuScale;
+    _bandMask.lineWidth = (iconVisual + 16) * _menuScale;
     _bandMask.lineCap = kCALineCapRound;
     _bandGradient.mask = _bandMask;
     [_backgroundBand.layer addSublayer:_bandGradient];
@@ -300,11 +304,11 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
         NSString *bundleID = [entry[@"bundleID"] isKindOfClass:NSString.class] ? entry[@"bundleID"] : nil;
         UIImage *icon = bundleID.length ? TWIconImageForBundleID(bundleID) : nil;
         if (!icon) icon = [self placeholderImageForEntry:entry];
-        TWArcItemView *item = [[TWArcItemView alloc] initWithEntry:entry image:icon size:itemSize];
+        TWArcItemView *item = [[TWArcItemView alloc] initWithEntry:entry image:icon size:iconVisual];
         [item applyIconScalePercent:iconScalePct backgroundAlphaPercent:iconBgPct];
         if (iconShape == 1) {
-            item.layer.cornerRadius = itemSize / 2.0;
-            item.imageView.layer.cornerRadius = itemSize / 2.0;
+            item.layer.cornerRadius = iconVisual / 2.0;
+            item.imageView.layer.cornerRadius = iconVisual / 2.0;
         }
         item.baseScale = _menuScale;
         CGPoint center = [centers[(NSUInteger)i] CGPointValue];
