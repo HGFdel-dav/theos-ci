@@ -223,11 +223,7 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
 - (BOOL)prefersStatusBarHidden { return NO; }
 @end
 
-@interface TWArcCoordinator (SceneInject)
-// 在任意 view（App 的 scene 呈现层 / SpringBoard 窗口）上维护四角热区。
-// 只放 66×66 的小视图，物理上不可能遮挡 App 主体内容。
-+ (void)ensureCornerViewsInPresentationView:(UIView *)host;
-@end
+// ensureCornerViewsInPresentationView: 的声明在 TWArcCoordinator.h（TWSceneInject.m 也要看到）。
 
 @interface TWArcCoordinator ()
 - (UIWindowScene *)activeWindowScene;
