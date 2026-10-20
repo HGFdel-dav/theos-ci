@@ -1054,23 +1054,9 @@ static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
             continue;
         }
 
-        // 没有面板配置时，用 Crane 导出的容器清单自动展开（一个容器一个图标）。
-        NSArray<NSDictionary *> *containers = craneOn ? TWArcCachedContainers(bundleID) : @[];
-        if (containers.count > 1) {
-            for (NSDictionary *container in containers) {
-                if ((NSInteger)entries.count >= limit) break;
-                NSString *containerID = [container[@"containerID"] isKindOfClass:[NSString class]] ? container[@"containerID"] : @"";
-                if (!containerID.length) continue;
-                BOOL isDefault = [containerID isEqualToString:@"DEFAULT"] ||
-                                 (container[@"isDefault"] ? [container[@"isDefault"] boolValue] : NO);
-                NSString *containerName = [container[@"name"] isKindOfClass:[NSString class]] ? container[@"name"] : @"";
-                NSString *badge = isDefault ? @"默" : (containerName.length ? containerName : @"分");
-                [entries addObject:@{@"bundleID": bundleID, @"containerID": containerID,
-                                     @"title": [NSString stringWithFormat:@"%@ · %@", name, badge],
-                                     @"badge": badge}];
-            }
-            continue;
-        }
+        // 以前这里会把 Crane 的所有容器自动展开成多条（同一个应用出现
+        // 「默」「分」两条），用户看到的全是重复图标。现在一律一个应用一条，
+        // 用当前所在容器；只有面板里明确配置过分身的应用才会展开。
         NSString *active = craneOn ? TWArcCachedActiveContainer(bundleID) : @"";
         [entries addObject:@{@"bundleID": bundleID,
                              @"containerID": [active isKindOfClass:[NSString class]] ? active : @"",

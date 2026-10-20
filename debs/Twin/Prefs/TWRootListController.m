@@ -214,9 +214,9 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
         [specs addObject:TWRowSpecifier(self, @"Arc 唤醒", TWKeyArcEnabled, @YES, nil, PSSwitchCell,
                                         @"bolt.horizontal.fill", nil, @{@"height": @46, @"twColor": @6})];
         // 原版 ARC 面板（ScreenCore 的 TriggerSettings，整份搬进来）
-        [specs addObject:TWLinkRowSpecifier(self, @"Arc 面板与手势（原版）", @"hand.point.up.left.fill",
+        [specs addObject:TWLinkRowSpecifier(self, @"弧形菜单与手势", @"hand.point.up.left.fill",
                                             @"TWOrigArcHost", nil, @{})];
-        [specs addObject:TWLinkRowSpecifier(self, @"Twin 扩展（图标数/长按时长/震动）", @"wrench.and.screwdriver.fill",
+        [specs addObject:TWLinkRowSpecifier(self, @"图标数量与长按", @"wrench.and.screwdriver.fill",
                                             @"TWArcPanelController", nil, @{})];
 
         // ---------- 应用与面板（原版 Swift 页，直连原版控制器） ----------

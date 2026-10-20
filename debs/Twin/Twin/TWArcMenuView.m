@@ -60,6 +60,13 @@ static id TWIconScalar(id target, NSString *name, NSInteger value) {
 }
 
 static UIImage *TWIconImageForBundleID(NSString *bundleID) {
+    // ⓿ 最稳的一条：UIImage 的私有接口（Preferences / SpringBoard 里都能用）
+    SEL clsSel = NSSelectorFromString(@"_applicationIconImageForBundleIdentifier:format:scale:");
+    if ([UIImage respondsToSelector:clsSel]) {
+        UIImage *img = ((id (*)(id, SEL, id, long, double))objc_msgSend)(
+            UIImage.class, clsSel, bundleID, 0, (double)UIScreen.mainScreen.scale);
+        if ([img isKindOfClass:UIImage.class] && img.size.width > 0) return img;
+    }
     id proxy = TWIconObject(NSClassFromString(@"LSApplicationProxy"), @"applicationProxyForIdentifier:", bundleID, YES);
     // 0.9.8：变体依次试，别只试一个（不同 iOS 返回的变体不同，试不到就整排变灰块）。
     for (NSNumber *variant in @[@4, @2, @0]) {

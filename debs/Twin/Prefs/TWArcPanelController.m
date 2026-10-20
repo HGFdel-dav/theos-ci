@@ -45,7 +45,7 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
 
 - (instancetype)init {
     if ((self = [super init])) {
-        self.title = @"Arc 面板与手势";
+        self.title = @"图标数量与长按";
     }
     return self;
 }
@@ -64,8 +64,8 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
         // 0.9.27：ARC 本体（触发区/菜单/动画/声音）整份改用原版面板
         // （TwinArcPrefs.bundle = ScreenCore 的 TriggerSettings），
         // 这里只保留原版没有、Twin 自己加的项。
-        [specs addObject:TWGroupSpecifier(@"Twin 扩展",
-            @"原版面板里没有的三项；其余 ARC 设置请返回上一页进「Arc 面板与手势（原版）」。")];
+        [specs addObject:TWGroupSpecifier(@"图标与长按",
+            @"菜单图标数量、长按全屏时长、震动、打开方式、显示哪些应用。")];
         [specs addObject:TWRowSpecifier(self, @"菜单图标数", TWKeyArcItemCount, @6, nil, PSSliderCell,
                                         nil, nil, @{@"twMin": @2, @"twMax": @12, @"twStep": @1, @"twUnit": @" 个"})];
         [specs addObject:TWRowSpecifier(self, @"长按全屏时长", TWKeyArcLongPressDuration, @0.45, nil, PSSliderCell,
