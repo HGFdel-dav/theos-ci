@@ -227,6 +227,19 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
     } @catch (__unused NSException *e) { return 0; }
 }
 
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    @try {
+        PSSpecifier *sp = [self specifierAtIndexPath:indexPath];
+        id value = [sp propertyForKey:@"height"];
+        if ([value isKindOfClass:NSNumber.class]) {
+            CGFloat h = [value doubleValue];
+            if (h >= 44 && h <= 140) return h;   // 分段/滑杆行需要 58~78pt，46pt 会挤掉控件
+        }
+    } @catch (__unused NSException *e) {}
+    return [super tableView:tableView heightForRowAtIndexPath:indexPath];
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];

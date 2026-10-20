@@ -33,7 +33,7 @@ static inline void TWRuntimeLog(NSString *format, ...) {
         // 看不到（0.9.9 实测 runtime.log 根本不出现），但 cfprefsd 是通的 ——
         // 这样我在电脑上读 com.niubiprass.twin.plist 就能看到引擎跑到哪一步。
         @try {
-            CFStringRef domain = CFSTR("com.niubiprass.twin");
+            CFStringRef domain = CFSTR("com.niubiprass.twin.log");
             NSMutableArray *lines = nil;
             CFPropertyListRef existing = CFPreferencesCopyAppValue(CFSTR("TWRuntimeLog"), domain);
             if (existing && CFGetTypeID(existing) == CFArrayGetTypeID()) {

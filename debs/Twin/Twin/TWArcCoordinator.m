@@ -296,8 +296,10 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
 }
 
 - (void)attachRecognizer {
-    if (_pan) return;
     NSArray *existingPans = objc_getAssociatedObject(self, "TWArcTriggerPans");
+    TWRuntimeLog(@"[arc] attach called pan=%@ existing=%lu", _pan ? @"yes" : @"no",
+                 (unsigned long)existingPans.count);
+    if (_pan) return;
     if (existingPans.count) return;
 
     NSMutableArray *windows = [NSMutableArray array];

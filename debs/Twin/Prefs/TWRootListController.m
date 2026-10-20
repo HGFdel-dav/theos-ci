@@ -31,7 +31,7 @@
 #import <sys/utsname.h>
 #import <objc/message.h>
 
-static NSString *const kTWVersion = @"0.9.10";
+static NSString *const kTWVersion = @"0.9.11";
 
 // 唤醒方式：0 = Arc 角落唤醒（默认），1 = ParallelX 边缘手柄。
 typedef NS_ENUM(NSInteger, TWWakeModeValue) {
@@ -125,6 +125,12 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    PSSpecifier *rowSpec = [self specifierAtIndexPath:indexPath];
+    id declared = [rowSpec propertyForKey:@"height"];
+    if ([declared isKindOfClass:NSNumber.class]) {
+        CGFloat wanted = [declared doubleValue];
+        if (wanted >= 44 && wanted <= 140) return wanted;
+    }
     CGFloat h = [super tableView:tableView heightForRowAtIndexPath:indexPath];
     PSSpecifier *sp = [self specifierAtIndexPath:indexPath];
     TWDiagLog(@"heightForRow sec=%ld row=%ld -> %.1f | %@", (long)indexPath.section, (long)indexPath.row, h, TWDiagSpecSummary(sp));
