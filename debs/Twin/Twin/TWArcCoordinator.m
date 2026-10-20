@@ -300,8 +300,15 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
         // 设置进程与 SpringBoard 两边都会发）。以前只有回到桌面时才刷新，
         // 面板里关掉的开关（比如调试模式）在 App 里不立刻反映出来。
         static int prefsToken = -1;
+        __block BOOL pending = NO;
         notify_register_dispatch(TWPrefsChangedNotification, &prefsToken, dispatch_get_main_queue(), ^(int token) {
-            [[TWArcCoordinator sharedInstance] refreshEnabledState];
+            if (pending) return;              // 0.35s 内的多次改动合并成一次
+            pending = YES;
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                pending = NO;
+                [[TWArcCoordinator sharedInstance] refreshEnabledState];
+            });
         });
     }
     return self;
@@ -501,6 +508,15 @@ static void TWArcMigrateRadiusKeys(void) {
 
 // 热区：由窗口本身的 frame 决定，无需再做点判定。
 - (void)updateTriggerHotRect {
+    // 只有触发区（掩码/矩形）真的变了才重挂手势。
+    // 以前每改一个滑杆都 detach+attach 一次，拖一下面板就重挂上百次，
+    // 手势被反复拆装，菜单自然"调了不管用"。
+    TWArcHotAreas areas = TWArcComputeHotAreas();
+    static NSInteger lastMask = -1;
+    static CGRect lastRect = {{0,0},{0,0}};
+    if (areas.mask == lastMask && CGRectEqualToRect(areas.rects[TWCornerBottomRight], lastRect)) return;
+    lastMask = areas.mask;
+    lastRect = areas.rects[TWCornerBottomRight];
     [self detachRecognizer];
     [self attachRecognizer];
 }

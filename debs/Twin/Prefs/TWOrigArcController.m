@@ -50,6 +50,7 @@ static id TWOrigRead(NSString *key, id fallback) {
 
 static void TWOrigWrite(NSString *key, id value) {
     if (!key.length || !value) return;
+    TWRuntimeLog(@"[origarc] write %@=%@", key, value);
     CFPreferencesSetAppValue((__bridge CFStringRef)key,
                              (__bridge CFPropertyListRef)value,
                              (__bridge CFStringRef)kOrigDomain);
