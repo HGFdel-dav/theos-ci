@@ -166,7 +166,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 
 - (void)setHighlighted:(BOOL)highlighted {
     _highlighted = highlighted;
-    BOOL glowOn = [[TWPrefs shared] boolForKey:TWKeyArcSelectedIcon defaultValue:YES];
+    BOOL glowOn = TWArcOrigBool(@"arcSelectedIconEnabled", YES);
     CGFloat scale = (self.baseScale > 0 ? self.baseScale : 1) * ((highlighted && glowOn) ? 1.18 : 1);
     CGFloat glowAlpha = (highlighted && glowOn) ? 1.0 : 0.0;
     [UIView animateWithDuration:0.12 delay:0 options:UIViewAnimationOptionBeginFromCurrentState animations:^{
@@ -213,7 +213,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     [self dismissAnimated:NO];
     if (![entries isKindOfClass:NSArray.class] || !entries.count) return;
     // 截图/录屏时隐藏（ScreenCore 的 hideArcFromScreenCaptureEnabled）
-    BOOL hideCapture = [[TWPrefs shared] boolForKey:TWKeyArcHideCapture defaultValue:NO];
+    BOOL hideCapture = TWArcOrigBool(@"hideArcFromScreenCaptureEnabled", NO);
     SEL hideSel = NSSelectorFromString(@"_setHideFromCapture:");
     if ([self respondsToSelector:hideSel]) {
         @try { ((void (*)(id, SEL, BOOL))objc_msgSend)(self, hideSel, hideCapture); } @catch (__unused NSException *e) {}
@@ -226,28 +226,28 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 
     // ---- 几何：ScreenCore 的 90° 角落扇形 + 多环排布 ----
     TWPrefs *prefs = [TWPrefs shared];
-    CGFloat itemSize = [prefs floatForKey:TWKeyArcIconSize defaultValue:28];
+    CGFloat itemSize = TWArcOrigNumber(@"arcIconSize", 28.0);
     if (!isfinite(itemSize) || itemSize < 20) itemSize = 28;
-    NSInteger firstRow = [prefs integerForKey:TWKeyArcFirstRowCount defaultValue:5];
-    CGFloat ringGap = [prefs floatForKey:TWKeyArcRingGap defaultValue:0];
+    NSInteger firstRow = (NSInteger)TWArcOrigNumber(@"arcFirstRowItemCount", 5.0);
+    CGFloat ringGap = TWArcOrigNumber(@"arcIconSpacing", 0.0);
 
     // 以下全部对应 ScreenCore 的同名参数。
-    CGFloat menuPct = [prefs floatForKey:TWKeyArcMenuScale defaultValue:100];
+    CGFloat menuPct = TWArcOrigNumber(@"arcMenuScalePercent", 100.0);
     if (isfinite(menuPct) && menuPct > 10) _menuScale *= MIN(menuPct, 200.0) / 100.0;
-    CGFloat iconScalePct = [prefs floatForKey:TWKeyArcAppIconScale defaultValue:70];
+    CGFloat iconScalePct = TWArcOrigNumber(@"arcAppIconScalePercent", 70.0);
     if (!isfinite(iconScalePct)) iconScalePct = 70;
-    CGFloat iconBgPct = [prefs floatForKey:TWKeyArcIconBgAlpha defaultValue:100];
+    CGFloat iconBgPct = TWArcOrigNumber(@"arcIconBackgroundAlphaPercent", 100.0);
     if (!isfinite(iconBgPct)) iconBgPct = 100;
-    CGFloat offX = [prefs floatForKey:TWKeyArcOffsetX defaultValue:0];
-    CGFloat offY = [prefs floatForKey:TWKeyArcOffsetY defaultValue:0];
+    CGFloat offX = TWArcOrigNumber(@"arcOffsetX", 0.0);
+    CGFloat offY = TWArcOrigNumber(@"arcOffsetY", 0.0);
     BOOL landscapeNow = self.bounds.size.width > self.bounds.size.height;
-    radius += [prefs floatForKey:TWKeyArcOffsetDistance defaultValue:0];
+    radius += TWArcOrigNumber(@"arcPortraitOffsetDistance", 0.0);
     if (landscapeNow) {
-        radius += [prefs floatForKey:TWKeyArcLandscapeDist defaultValue:0];
-        CGFloat landPct = [prefs floatForKey:TWKeyArcLandscapeScale defaultValue:100];
+        radius += TWArcOrigNumber(@"arcLandscapeOffsetDistance", 0.0);
+        CGFloat landPct = TWArcOrigNumber(@"arcLandscapeMenuScalePercent", 100.0);
         if (isfinite(landPct) && landPct > 10) _menuScale *= MIN(landPct, 400.0) / 100.0;
     }
-    NSInteger iconShape = [prefs integerForKey:TWKeyArcIconShape defaultValue:0];
+    NSInteger iconShape = (NSInteger)TWArcOrigNumber(@"arcAppIconShape", 0.0);
 
     CGFloat margin = itemSize * 0.5 + 14;
     _anchor = [TWArcGeometry anchorForCorner:_corner margin:margin bounds:self.bounds];
@@ -289,8 +289,8 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     _bandMask.lineCap = kCALineCapRound;
     _bandGradient.mask = _bandMask;
     [_backgroundBand.layer addSublayer:_bandGradient];
-    _backgroundBand.hidden = ![prefs boolForKey:TWKeyArcBgEnabled defaultValue:NO];
-    CGFloat bgAlpha = [prefs floatForKey:TWKeyArcBgAlpha defaultValue:0.3];
+    _backgroundBand.hidden = !TWArcOrigBool(@"arcBackgroundEnabled", NO);
+    CGFloat bgAlpha = TWArcOrigNumber(@"arcBackgroundAlpha", 0.3);
     _backgroundBand.alpha = (isfinite(bgAlpha) && bgAlpha > 0) ? MIN(bgAlpha, 1.0) : 0.3;
     [self addSubview:_backgroundBand];
 
@@ -321,8 +321,8 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     _dimView.alpha = 0.001;
     [UIView animateWithDuration:TWPXPresentDuration animations:^{ self->_dimView.alpha = 0.18; }];
 
-    BOOL springOn = [prefs boolForKey:TWKeyArcSpringEnabled defaultValue:NO];
-    CGFloat damping = [prefs floatForKey:TWKeyArcSpringDamping defaultValue:0.68];
+    BOOL springOn = TWArcOrigBool(@"arcSpringAnimationEnabled", NO);
+    CGFloat damping = TWArcOrigNumber(@"arcSpringDamping", 0.68);
     if (!isfinite(damping) || damping <= 0 || damping > 1) damping = 0.68;
     CGFloat bgFinal = _backgroundBand.hidden ? 0 : _backgroundBand.alpha;
     NSTimeInterval baseDelay = 0.02;

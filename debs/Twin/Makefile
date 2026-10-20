@@ -37,6 +37,8 @@ include $(THEOS_MAKE_PATH)/bundle.mk
 before-package::
 	install -d "$(THEOS_STAGING_DIR)/Library/PreferenceBundles"
 	cp -a vendor/ParallelXPrefs.bundle "$(THEOS_STAGING_DIR)/Library/PreferenceBundles/"
+	# 原版 ARC 面板（ScreenCore TriggerSettings）原样搬进来，Twin 引擎读它的设置
+	cp -a vendor/TwinArcPrefs.bundle "$(THEOS_STAGING_DIR)/Library/PreferenceBundles/"
 ifneq ($(THEOS_PACKAGE_SCHEME),rootless)
 	install -d "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries"
 	install -m 755 vendor/ParallelX.dylib "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/ParallelX.dylib"

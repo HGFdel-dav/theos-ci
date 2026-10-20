@@ -61,153 +61,23 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
         NSInteger priority = [[TWPrefs shared] integerForKey:TWKeyArcWindowPriority defaultValue:TWArcPriorityDefault];
         NSInteger orderCount = (NSInteger)TWArcOrderList().count;
 
-        // ============ 0.5.0：按设计稿②（Arc 面板与手势）重建 ============
-
-        // ---- 唤醒方式（角落 / 边缘手柄）----
-        [specs addObject:TWGroupSpecifier(@"唤醒方式",
-            @"二选一：从屏幕角落起手，或用边缘手柄。")];
-        [specs addObject:TWRowSpecifier(self, @"唤醒方式", TWKeyWakeMode, @0, nil, PSSegmentCell,
-                                        @"hand.point.up.left.fill", nil,
-                                        @{})];
-        [specs addObject:TWRowSpecifier(self, @"打开方式", TWKeyArcOpenMode, @0, nil, PSSegmentCell,
-                                        @"rectangle.split.2x1", nil,
-                                        @{})];
-
-        // ---- 触发区（照 ScreenCore TriggerSettings）----
-        [specs addObject:TWGroupSpecifier(@"从哪些角落唤醒",
-            @"勾选后，从该角落往屏内拖即可唤出弧形菜单。至少保留一个。")];
-        NSArray *cornerNames = @[@"右下角", @"左下角", @"左上角", @"右上角"];
-        NSArray *cornerSymbols = @[@"arrow.down.right", @"arrow.down.left", @"arrow.up.left", @"arrow.up.right"];
-        for (NSInteger i = 0; i < 4; i++) {
-            [specs addObject:TWRowSpecifier(self, cornerNames[i], TWKeyArcCorners, @YES, nil, PSSwitchCell,
-                                            cornerSymbols[i], nil,
-                                            @{})];
-        }
-
-        [specs addObject:TWGroupSpecifier(@"触发区", @"起手的那块区域：扇形按半径算，矩形按长宽算。")];
-        [specs addObject:TWRowSpecifier(self, @"触发区形状", TWKeyArcTriggerMode, @0, nil, PSSegmentCell,
-                                        @"squareshape.split.2x2", nil,
-                                        @{})];
-        [specs addObject:TWRowSpecifier(self, @"对称镜像", TWKeyArcMirror, @NO, nil, PSSwitchCell,
-                                        @"arrow.left.and.right.square", nil,
-                                        @{})];
-        [specs addObject:TWRowSpecifier(self, @"触发区半径", TWKeyArcCornerSize, @40, nil, PSSliderCell,
-                                        @"circle.dashed", nil,
-                                        @{})];
-        [specs addObject:TWRowSpecifier(self, @"矩形长度", TWKeyArcRectLength, @40, nil, PSSliderCell,
-                                        @"rectangle", nil,
-                                        @{})];
-        [specs addObject:TWRowSpecifier(self, @"矩形高度", TWKeyArcRectHeight, @40, nil, PSSliderCell,
-                                        @"rectangle.portrait", nil,
-                                        @{})];
-        [specs addObject:TWRowSpecifier(self, @"矩形圆角", TWKeyArcRectCorner, @12, nil, PSSliderCell,
-                                        @"app", nil,
-                                        @{})];
-        [specs addObject:TWRowSpecifier(self, @"触发区偏移 X", TWKeyArcOffsetX, @0, nil, PSSliderCell,
-                                        @"arrow.right.to.line", nil,
-                                        @{})];
-        [specs addObject:TWRowSpecifier(self, @"触发区偏移 Y", TWKeyArcOffsetY, @0, nil, PSSliderCell,
-                                        @"arrow.down.to.line", nil,
-                                        @{})];
-        [specs addObject:TWRowSpecifier(self, @"横屏水平偏移", TWKeyArcLandscapeOffset, @0, nil, PSSliderCell,
-                                        @"rectangle.landscape", nil,
-                                        @{})];
-
-        // ---- 扇形与图标 ----
-        [specs addObject:TWGroupSpecifier(@"扇形与图标", nil)];
-        [specs addObject:TWRowSpecifier(self, @"弧形半径", TWKeyArcRadius, @140, nil, PSSliderCell,
-                                        @"circle.dashed", nil,
-                                        @{})];
-        [specs addObject:TWRowSpecifier(self, @"偏移距离", TWKeyArcOffsetDistance, @0, nil, PSSliderCell,
-                                        @"arrow.up.left.and.arrow.down.right", nil,
-                                        @{})];
-        [specs addObject:TWRowSpecifier(self, @"菜单整体缩放", TWKeyArcMenuScale, @100, nil, PSSliderCell,
-                                        @"arrow.up.left.and.arrow.down.right.circle", nil,
-                                        @{})];
-        [specs addObject:TWRowSpecifier(self, @"横屏菜单缩放", TWKeyArcLandscapeScale, @100, nil, PSSliderCell,
-                                        @"rectangle.landscape.rotate", nil,
-                                        @{})];
-        [specs addObject:TWRowSpecifier(self, @"横屏偏移距离", TWKeyArcLandscapeDist, @0, nil, PSSliderCell,
-                                        @"arrow.left.and.right.square", nil,
-                                        @{})];
-        [specs addObject:TWRowSpecifier(self, @"图标形状", TWKeyArcIconShape, @0, nil, PSSegmentCell,
-                                        @"square.on.circle", nil,
-                                        @{})];
-        [specs addObject:TWRowSpecifier(self, @"图标大小", TWKeyArcIconSize, @28, nil, PSSliderCell,
-                                        @"app.badge", nil,
-                                        @{})];
-        [specs addObject:TWRowSpecifier(self, @"应用图标缩放", TWKeyArcAppIconScale, @70, nil, PSSliderCell,
-                                        @"app.dashed", nil,
-                                        @{})];
-        [specs addObject:TWRowSpecifier(self, @"图标底色透明度", TWKeyArcIconBgAlpha, @100, nil, PSSliderCell,
-                                        @"circle.lefthalf.filled", nil,
-                                        @{})];
+        // 0.9.27：ARC 本体（触发区/菜单/动画/声音）整份改用原版面板
+        // （TwinArcPrefs.bundle = ScreenCore 的 TriggerSettings），
+        // 这里只保留原版没有、Twin 自己加的项。
+        [specs addObject:TWGroupSpecifier(@"Twin 扩展",
+            @"原版面板里没有的三项；其余 ARC 设置请返回上一页进「Arc 面板与手势（原版）」。")];
         [specs addObject:TWRowSpecifier(self, @"菜单图标数", TWKeyArcItemCount, @6, nil, PSSliderCell,
-                                        @"square.grid.2x2", nil,
-                                        @{})];
-        [specs addObject:TWRowSpecifier(self, @"第一环图标数", TWKeyArcFirstRowCount, @5, nil, PSSliderCell,
-                                        @"circle.grid.2x2", nil,
-                                        @{})];
-        [specs addObject:TWRowSpecifier(self, @"环间距", TWKeyArcRingGap, @0, nil, PSSliderCell,
-                                        @"arrow.left.and.right", nil,
-                                        @{})];
-
-        // ---- 动画 ----
-        [specs addObject:TWGroupSpecifier(@"动画", nil)];
-        [specs addObject:TWRowSpecifier(self, @"弹性动画", TWKeyArcSpringEnabled, @NO, nil, PSSwitchCell,
-                                        @"waveform.path", nil, @{})];
-        [specs addObject:TWRowSpecifier(self, @"弹性阻尼", TWKeyArcSpringDamping, @0.68, nil, PSSliderCell,
-                                        @"dial.min", nil,
-                                        @{})];
-        [specs addObject:TWRowSpecifier(self, @"选中高亮", TWKeyArcSelectedIcon, @YES, nil, PSSwitchCell,
-                                        @"circle.dashed.inset.filled", nil, @{})];
-        [specs addObject:TWRowSpecifier(self, @"音效", TWKeyArcSound, @YES, nil, PSSwitchCell,
-                                        @"speaker.wave.2.fill", nil, @{})];
-        [specs addObject:TWRowSpecifier(self, @"震动反馈", TWKeyArcHaptic, @YES, nil, PSSwitchCell,
-                                        @"iphone.radiowaves.left.and.right", nil, @{})];
-
-        // ---- 背景 ----
-        [specs addObject:TWGroupSpecifier(@"背景", nil)];
-        [specs addObject:TWRowSpecifier(self, @"菜单背景", TWKeyArcBgEnabled, @NO, nil, PSSwitchCell,
-                                        @"square.fill", nil, @{})];
-        [specs addObject:TWRowSpecifier(self, @"背景透明度", TWKeyArcBgAlpha, @0.3, nil, PSSliderCell,
-                                        @"circle.lefthalf.filled", nil,
-                                        @{})];
-
-        // ---- 调试 ----
-        [specs addObject:TWGroupSpecifier(@"调试",
-            @"调试模式打开后，屏幕四角的触发区会显示为橙色块，方便确认位置和大小。")];
-        [specs addObject:TWRowSpecifier(self, @"调试模式", TWKeyArcDebug, @NO, nil, PSSwitchCell,
-                                        @"ant", nil, @{})];
-        [specs addObject:TWRowSpecifier(self, @"截图时隐藏", TWKeyArcHideCapture, @NO, nil, PSSwitchCell,
-                                        @"camera.metering.none", nil, @{})];
-
-        // ---- 窗口层级 ----
-        [specs addObject:TWGroupSpecifier(@"窗口层级",
-            [NSString stringWithFormat:@"生效层级 = 1998 + 视图优先级，当前 %ld。默认 %ld 已高于状态栏(1000)与系统弹窗(2000)；拉到 %ld 为「至高无上」。层级再高也盖不过 iOS 安全界面（密码／支付），也不解除锁屏保护。",
-                                       (long)(1998 + priority), (long)TWArcPriorityDefault, (long)TWArcPriorityMax])];
-        [specs addObject:TWRowSpecifier(self, @"视图优先级", TWKeyArcWindowPriority, @(TWArcPriorityDefault), nil, PSSliderCell,
-                                        @"square.stack.3d.up", nil,
-                                        @{})];
-
-        // ---- 图标来源 ----
-        [specs addObject:TWGroupSpecifier(@"图标来源", nil)];
-        [specs addObject:TWRowSpecifier(self, @"显示哪些应用", TWKeyArcIconSource, @0, nil, PSSegmentCell,
-                                        @"person.crop.square", nil,
-                                        @{})];
-        [specs addObject:TWLinkRowSpecifier(self, @"自选应用与排序", @"list.number", @"TWArcOrderController",
-                                            (orderCount ? [NSString stringWithFormat:@"%ld 个", (long)orderCount] : @"未设置"),
-                                            @{})];
-
-        // ---- 反馈与长按 ----
-        [specs addObject:TWGroupSpecifier(@"反馈与长按",
-            @"边缘按住向屏内拖动唤出弧形菜单；松手按「打开方式」开窗，长按图标可强制全屏（时长自己调）。")];
-        [specs addObject:TWRowSpecifier(self, @"长按图标", TWKeyArcLongPressMode, @0, nil, PSSegmentCell,
-                                        @"hand.tap.fill", nil,
-                                        @{})];
+                                        nil, nil, @{@"twMin": @2, @"twMax": @12, @"twStep": @1, @"twUnit": @" 个"})];
         [specs addObject:TWRowSpecifier(self, @"长按全屏时长", TWKeyArcLongPressDuration, @0.45, nil, PSSliderCell,
-                                        @"timer", nil,
-                                        @{})];
+                                        nil, nil, @{@"twMin": @0.1, @"twMax": @2.0, @"twStep": @0.05,
+                                                    @"twDecimal": @2, @"twUnit": @" 秒"})];
+        [specs addObject:TWRowSpecifier(self, @"震动反馈", TWKeyArcHaptic, @YES, nil, PSSwitchCell,
+                                        nil, nil, @{})];
+        [specs addObject:TWRowSpecifier(self, @"打开方式", TWKeyArcOpenMode, @0, nil, PSSegmentCell,
+                                        nil, nil, @{@"twTitles": @[@"分屏", @"全屏"]})];
+        [specs addObject:TWRowSpecifier(self, @"显示哪些应用", TWKeyArcIconSource, @0, nil, PSSegmentCell,
+                                        nil, nil, @{@"twTitles": @[@"最近应用", @"自选应用"]})];
+        [specs addObject:TWLinkRowSpecifier(self, @"自选应用与排序", @"list.number", @"TWArcOrderController", nil, @{})];
 
         _specifiers = specs;
     }

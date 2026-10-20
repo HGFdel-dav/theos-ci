@@ -116,49 +116,78 @@ typedef struct {
     NSInteger mask;
 } TWArcHotAreas;
 
-// 触发区几何：与面板「从哪些角落唤醒 / 触发区」完全对应，两个使用者
-//（小窗口和备用手势）共用一份，避免两处算法漂移。
+// 原版的「弧形方向」：0=右下 1=左下 2=两侧（arcSide）。镜像再补上边两个。
+static NSInteger TWArcTriggerMask(void) {
+    TWPrefs *prefs = TWPrefs.shared;
+    NSInteger side = (NSInteger)TWArcOrigNumber(@"arcSide", 0.0);
+    NSInteger mask = 0;
+    if (side == 1) mask = (NSInteger)1 << TWCornerBottomLeft;
+    else if (side == 2) mask = ((NSInteger)1 << TWCornerBottomRight) | ((NSInteger)1 << TWCornerBottomLeft);
+    else mask = (NSInteger)1 << TWCornerBottomRight;
+    if (TWArcOrigBool(@"arcSymmetricMirrorEnabled", NO)) {
+        if (mask & ((NSInteger)1 << TWCornerBottomRight)) mask |= (NSInteger)1 << TWCornerTopRight;
+        if (mask & ((NSInteger)1 << TWCornerBottomLeft)) mask |= (NSInteger)1 << TWCornerTopLeft;
+    }
+    return mask;
+}
+
+// 触发区几何（照原版 TriggerSettings 的语义）：
+//   扇形 = 以该角的角点为圆心、半径 arcRadius 的四分之一圆；
+//   矩形 = 长 arcRectangleLength × 高 arcRectangleHeight；
+//   位置 = 该角 + 偏移（arcOffsetX/Y 往屏内推），所以这块区域是可以移动的。
 static TWArcHotAreas TWArcComputeHotAreas(void) {
     TWArcHotAreas out;
     memset(&out, 0, sizeof(out));
     TWPrefs *prefs = TWPrefs.shared;
-    NSInteger mask = [prefs integerForKey:TWKeyArcCorners defaultValue:3];
-    if ([prefs boolForKey:TWKeyArcMirror defaultValue:NO]) {
-        if (mask & 1) mask |= 2;
-        if (mask & 2) mask |= 1;
-        if (mask & 4) mask |= 8;
-        if (mask & 8) mask |= 4;
-    }
     CGRect screen = UIScreen.mainScreen.bounds;
-    BOOL landscape = CGRectGetWidth(screen) > CGRectGetHeight(screen);
-    CGFloat offX = [prefs floatForKey:TWKeyArcOffsetX defaultValue:0];
-    CGFloat offY = [prefs floatForKey:TWKeyArcOffsetY defaultValue:0];
-    if (landscape) offX += [prefs floatForKey:TWKeyArcLandscapeOffset defaultValue:0];
-    NSInteger triggerMode = [prefs integerForKey:TWKeyArcTriggerMode defaultValue:0];
-    CGFloat tw = 64, th = 64;
-    if (triggerMode == 1) {
-        tw = MAX(24.0, [prefs floatForKey:TWKeyArcRectLength defaultValue:40]);
-        th = MAX(24.0, [prefs floatForKey:TWKeyArcRectHeight defaultValue:40]);
+    CGFloat W = CGRectGetWidth(screen), H = CGRectGetHeight(screen);
+    NSInteger mask = TWArcTriggerMask();
+    NSInteger mode = (NSInteger)TWArcOrigNumber(@"arcTriggerRegionMode", 0.0);
+    CGFloat offX = TWArcOrigNumber(@"arcOffsetX", 0.0);
+    CGFloat offY = TWArcOrigNumber(@"arcOffsetY", 0.0);
+    CGFloat w = 40, h = 40;
+    if (mode == 1) {
+        w = MAX(1.0, TWArcOrigNumber(@"arcRectangleLength", 40.0));
+        h = MAX(1.0, TWArcOrigNumber(@"arcRectangleHeight", 40.0));
     } else {
-        CGFloat size = [prefs floatForKey:TWKeyArcCornerSize defaultValue:64];
-        tw = th = MAX(24.0, MIN(size, MIN(CGRectGetWidth(screen), CGRectGetHeight(screen)) / 3.0));
+        w = h = MAX(1.0, TWArcOrigNumber(@"arcRadius", 40.0));
     }
     for (NSInteger corner = 0; corner < 4; corner++) {
+        if (!(mask & ((NSInteger)1 << corner))) continue;
         BOOL leftSide = (corner == TWCornerBottomLeft || corner == TWCornerTopLeft);
         BOOL topSide  = (corner == TWCornerTopLeft || corner == TWCornerTopRight);
-        CGFloat ox = leftSide ? offX : CGRectGetWidth(screen) - tw - offX;
-        CGFloat oy = topSide ? 28 + offY : CGRectGetHeight(screen) - 28 - th - offY;
-        out.rects[corner] = CGRectMake(ox, oy, tw, th);
+        CGFloat x = leftSide ? offX : W - w - offX;
+        CGFloat y = topSide ? 28.0 + offY : H - 28.0 - h - offY;
+        x = MAX(0, MIN(x, W - w));
+        y = MAX(0, MIN(y, H - h));
+        out.rects[corner] = CGRectMake(x, y, w, h);
     }
     out.mask = mask;
     return out;
+}
+
+// 点命中：扇形按圆判、矩形按框判。
+static BOOL TWArcPointInRegion(CGPoint point, CGRect rect, NSInteger corner) {
+    TWPrefs *prefs = TWPrefs.shared;
+    NSInteger mode = (NSInteger)TWArcOrigNumber(@"arcTriggerRegionMode", 0.0);
+    if (mode == 1) return CGRectContainsPoint(rect, point);
+    CGPoint anchor;
+    switch (corner) {
+        case TWCornerBottomRight: anchor = CGPointMake(CGRectGetMaxX(rect), CGRectGetMaxY(rect)); break;
+        case TWCornerBottomLeft:  anchor = CGPointMake(CGRectGetMinX(rect), CGRectGetMaxY(rect)); break;
+        case TWCornerTopLeft:     anchor = CGPointMake(CGRectGetMinX(rect), CGRectGetMinY(rect)); break;
+        default:                  anchor = CGPointMake(CGRectGetMaxX(rect), CGRectGetMinY(rect)); break;
+    }
+    CGFloat dx = point.x - anchor.x, dy = point.y - anchor.y;
+    CGFloat r = CGRectGetWidth(rect);
+    return (dx * dx + dy * dy) <= (r * r);
 }
 
 static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
     TWArcHotAreas areas = TWArcComputeHotAreas();
     for (NSInteger corner = 0; corner < 4; corner++) {
         if (!(areas.mask & ((NSInteger)1 << corner))) continue;
-        if (CGRectContainsPoint(areas.rects[corner], point)) return corner;
+        if (TWArcPointInRegion(point, areas.rects[corner], corner)) return corner;
     }
     return -1;
 }
@@ -280,6 +309,20 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
 
 #pragma mark - lifecycle
 
+// 0.9.26：TWArcRadius 的含义从「菜单半径」改成原版的「触发区半径」。
+// 老版本用户存的是 80~220，如果不迁走，触发区会变成半个屏幕。
+static void TWArcMigrateRadiusKeys(void) {
+    TWPrefs *prefs = TWPrefs.shared;
+    id menu = [prefs objectForKey:TWKeyArcMenuRadius];
+    if (menu) return;
+    CGFloat old = [prefs floatForKey:TWKeyArcRadius defaultValue:0];
+    if (old > 60) {
+        [prefs setObject:@(old) forKey:TWKeyArcMenuRadius];
+        [prefs setObject:@(40) forKey:TWKeyArcRadius];
+        [prefs synchronize];
+    }
+}
+
 - (void)start {
     if (_started) return;
     _started = YES;
@@ -288,6 +331,7 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
                  @([[TWPrefs shared] boolForKey:TWKeyArcEnabled defaultValue:YES]),
                  (long)[[TWPrefs shared] integerForKey:TWKeyWakeMode defaultValue:TWWakeModeCorner],
                  TWPrefsFilePath() ?: @"(nil)");
+    TWArcMigrateRadiusKeys();
     [self applyWakeMode];
     [self scheduleContainerPrefetch];
     // attach may have been too early (no window yet); retry briefly.
@@ -820,7 +864,7 @@ static CGPoint TWArcScreenPointForTouch(UITouch *touch) {
         if (TWArcPXBridgePresent(pxSide)) {
             _didPresent = YES;
             TWRuntimeLog(@"[arc] present via PX side=%ld", (long)pxSide);
-            if ([[TWPrefs shared] boolForKey:TWKeyArcSound defaultValue:YES]) {
+            if (TWArcOrigBool(@"arcSoundEnabled", YES)) {
                 AudioServicesPlaySystemSound(1104);
             }
             return;
@@ -841,12 +885,15 @@ static CGPoint TWArcScreenPointForTouch(UITouch *touch) {
     [container addSubview:_menu];
 
     NSArray *entries = [self menuEntries];
-    CGFloat radius = [[TWPrefs shared] floatForKey:TWKeyArcRadius defaultValue:150];
+    // 原版没有"菜单半径"这个设置：半径由图标大小 + 间距推出来（照原版几何）。
+    CGFloat iconSize = TWArcOrigNumber(@"arcIconSize", 28.0);
+    CGFloat iconSpacing = TWArcOrigNumber(@"arcIconSpacing", 0.0);
+    CGFloat radius = MAX(100.0, iconSize * 2.6 + iconSpacing + 70.0);
     TWRuntimeLog(@"[arc] present corner=%ld entries=%lu radius=%.0f anchor=%.0f,%.0f",
                  (long)corner, (unsigned long)entries.count, radius, local.x, local.y);
     if (!entries.count) { [self cancelCurrentGesture]; return; }
     [_menu presentFromTriggerPoint:local entries:entries corner:corner radius:radius menuScale:1.0];
-    if ([[TWPrefs shared] boolForKey:TWKeyArcSound defaultValue:YES]) {
+    if (TWArcOrigBool(@"arcSoundEnabled", YES)) {
         AudioServicesPlaySystemSound(1104);
     }
 }
@@ -1044,7 +1091,7 @@ static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
     NSString *bundleID = entry[@"bundleID"];
     if (![bundleID isKindOfClass:[NSString class]] || !bundleID.length || !TWArcDeviceUnlocked()) return;
     NSString *containerID = [entry[@"containerID"] isKindOfClass:[NSString class]] ? entry[@"containerID"] : @"";
-    if ([[TWPrefs shared] boolForKey:TWKeyArcSound defaultValue:YES]) AudioServicesPlaySystemSound(1519);
+    if (TWArcOrigBool(@"arcSoundEnabled", YES)) AudioServicesPlaySystemSound(1519);
     if (containerID.length) {
         // 记忆模块据此知道"这次打开的是哪个容器"（面板窗口出现时只有 bundleID）。
         [[TWPrefs shared] setObject:@{@"bundleID": bundleID, @"containerID": containerID, @"at": [NSDate date]}

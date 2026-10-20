@@ -269,3 +269,24 @@ static void TWMigrateIfNeeded(NSDictionary *current) {
 }
 
 @end
+
+
+#pragma mark - 原版 ARC 设置（域：com.susudear.screencoreprefs）
+
+static CFStringRef TWArcOrigDomain(void) { return CFSTR("com.susudear.screencoreprefs"); }
+
+double TWArcOrigNumber(NSString *key, double fallback) {
+    if (![key isKindOfClass:NSString.class] || !key.length) return fallback;
+    CFPreferencesAppSynchronize(TWArcOrigDomain());
+    CFPropertyListRef v = CFPreferencesCopyAppValue((__bridge CFStringRef)key, TWArcOrigDomain());
+    if (!v) return fallback;
+    double out = fallback;
+    if (CFGetTypeID(v) == CFNumberGetTypeID()) CFNumberGetValue(v, kCFNumberDoubleType, &out);
+    else if (CFGetTypeID(v) == CFBooleanGetTypeID()) out = CFBooleanGetValue(v) ? 1 : 0;
+    CFRelease(v);
+    return out;
+}
+
+BOOL TWArcOrigBool(NSString *key, BOOL fallback) {
+    return TWArcOrigNumber(key, fallback ? 1 : 0) != 0;
+}

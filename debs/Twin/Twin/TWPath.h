@@ -164,7 +164,10 @@ static inline NSArray<NSString *> *TWLegacyPrefsFiles(void) {
 #define TWKeyArcRingGap      @"TWArcRingGap"       // 环间距(pt)，默认 10
 #define TWKeyArcTriggerWidth  @"TWArcTriggerWidth"  // points
 #define TWKeyArcItemCount     @"TWArcItemCount"     // icons per menu
-#define TWKeyArcRadius        @"TWArcRadius"        // points
+#define TWKeyArcRadius        @"TWArcRadius"        // 触发区扇形半径（原版 arcRadius，1–300，默认 40）
+#define TWKeyArcMenuRadius    @"TWArcMenuRadius"    // 菜单展开半径（Twin 自己的，默认 140）
+#define TWKeyArcTriggerSide   @"TWArcTriggerSide"   // 0=右下 1=左下 2=两侧（原版 arcSide）
+#define TWKeyArcIconSpacing   @"TWArcIconSpacing"   // 图标间距，0–40（原版 arcIconSpacing）
 
 // ── 0.9.7：照抄 ScreenCore TriggerSettings 的全部 arc 参数 ──────────────
 #define TWKeyArcMirror          @"TWArcMirror"              // 对称镜像，默认 NO
@@ -216,6 +219,10 @@ static inline NSArray<NSString *> *TWLegacyPrefsFiles(void) {
 // 角落触发区：位掩码 1=右下 2=左下 4=左上 8=右上（默认 3 = 下边两角）
 #define TWKeyArcCorners       @"TWArcCorners"
 #define TWKeyArcCornerSize    @"TWArcCornerSize"    // 触发区边长(pt)，默认 64
+// 0.9.26：触发区不再是"四个角"，而是一块可以移动的区域（原版就是可移动的）。
+// 位置的百分比（0-100，屏幕宽/高的百分比），默认右下角 85%/85%。
+#define TWKeyTriggerXPercent  @"TWTriggerXPercent"
+#define TWKeyTriggerYPercent  @"TWTriggerYPercent"
 // 打开方式：0 = 分屏启动（默认） 1 = 全屏启动
 #define TWKeyArcOpenMode      @"TWArcOpenMode"
 #define TWKeySideOpenMode     @"TWSideOpenMode"
