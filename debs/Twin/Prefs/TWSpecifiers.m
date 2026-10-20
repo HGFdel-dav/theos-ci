@@ -149,8 +149,13 @@ PSSpecifier *TWRowSpecifier(id target,
         if ([extraKey isEqualToString:@"twTitles"] && [v isKindOfClass:NSArray.class]) {
             NSMutableArray *idx = [NSMutableArray arrayWithCapacity:[v count]];
             for (NSUInteger i = 0; i < [v count]; i++) [idx addObject:@(i)];
+            // 0.9.12：iOS 15 的 PSSegmentCell 在不同版本读的键不一样，
+            // 只给 validTitles/validValues 会渲染成一整行空白（0.9.11 实测）。
+            // 四组键全写上，总有一组能命中。
             [spec setProperty:v forKey:@"validTitles"];
             [spec setProperty:idx forKey:@"validValues"];
+            [spec setProperty:v forKey:@"titles"];
+            [spec setProperty:idx forKey:@"values"];
         } else if ([extraKey isEqualToString:@"twMin"]) {
             [spec setProperty:v forKey:@"min"];
             [spec setProperty:v forKey:@"minimum"];

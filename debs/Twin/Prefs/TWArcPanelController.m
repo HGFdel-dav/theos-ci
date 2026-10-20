@@ -9,6 +9,7 @@
 #import "TWSpecifiers.h"
 #import "TWPath.h"
 #import "TWPrefs.h"
+#import "TWRuntimeLog.h"
 
 @implementation TWArcPanelController {
     CGFloat _heroWidth;
@@ -28,6 +29,7 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
         return [super tableView:tableView cellForRowAtIndexPath:indexPath];
     } @catch (NSException *e) {
         PSSpecifier *sp = [self specifierAtIndexPath:indexPath];
+        TWRuntimeLog(@"[panel] cellFor exception sec=%ld row=%ld: %@", (long)indexPath.section, (long)indexPath.row, e.reason ?: e.name);
         TWDiagDumpException(e, [NSString stringWithFormat:@"cellForRow sec=%ld row=%ld",
                                 (long)indexPath.section, (long)indexPath.row]);
         TWDiagLog(@"specifier: name=%@ key=%@ cellType=%ld cellClass=%@ detail=%@ bundle=%@",
