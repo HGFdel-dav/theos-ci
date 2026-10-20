@@ -655,7 +655,7 @@ void TWStyleSliderCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier) {
 
     TWChipView *chip = [cell.contentView viewWithTag:0x774C4456];
     if (!chip) {
-        chip = [TWStyle chipWithSymbol:nil fallbackText:nil];
+        chip = [TWStyle chipWithSymbol:nil fallback:nil];
         chip.tag = 0x774C4456;
         [cell.contentView addSubview:chip];
     }
