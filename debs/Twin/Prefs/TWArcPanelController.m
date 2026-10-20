@@ -244,6 +244,13 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+    // 子页是 new 出来的 PSListController：table 没建好时整页是黑的。
+    // 这里补背景，至少不会出现"点进去全黑、什么都没有"。
+    self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
+    @try {
+        UITableView *tbl = [self valueForKey:@"table"];
+        if ([tbl isKindOfClass:UITableView.class]) tbl.backgroundColor = UIColor.systemGroupedBackgroundColor;
+    } @catch (__unused NSException *e) { }
     self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
 }
 

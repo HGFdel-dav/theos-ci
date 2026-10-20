@@ -190,9 +190,20 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
 @end
 
 @interface TWArcTriggerWindow : UIWindow
+- (void)refreshLevel;
 @end
 
 @implementation TWArcTriggerWindow
+// 和 Arc-X / 菜单窗口同一层级：UIWindowLevelAlert - 2 + 视图优先级。
+// 0.9.15 用的是 Alert-3（1997），在 App 前台时会被系统窗口压住，角落划不出来。
+- (void)refreshLevel {
+    [[TWPrefs shared] reload];
+    NSInteger priority = [[TWPrefs shared] integerForKey:TWKeyArcWindowPriority defaultValue:TWArcPriorityDefault];
+    if (priority < 0) priority = 0;
+    if (priority > 2200) priority = 2200;
+    CGFloat level = UIWindowLevelAlert - 2.0 + (CGFloat)priority;
+    if (fabs((double)(self.windowLevel - level)) > 0.01) self.windowLevel = level;
+}
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
     UIView *hit = [super hitTest:point withEvent:event];
     return (hit == self) ? nil : hit;   // 窗口自身不拦，只有热区视图接
@@ -363,6 +374,7 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
         w.frame = areas.rects[corner];
         w.rootViewController.view.frame = w.bounds;
         w.rootViewController.view.backgroundColor = UIColor.clearColor;
+        [w refreshLevel];
         if (w.windowScene != scene) w.windowScene = scene;
         w.hidden = NO;
         [windows addObject:w];

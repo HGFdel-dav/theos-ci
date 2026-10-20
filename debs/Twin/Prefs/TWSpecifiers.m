@@ -104,6 +104,11 @@ PSSpecifier *TWRowSpecifier(id target,
     //   layoutSubviews 加 27pt 彩色圆角图标并右移文本。开关/滑块/值链全部继承父类，
     //   0.4.x 的崩溃根因（直接继承 PSTableCell 不响应 PSListController 私有消息）不会复现。
     //   没有 symbol 的行保持原系统类，一个字节都不碰。
+    // 滑杆行：系统默认 44pt 放不下"标题 + 滑杆"，会叠在一起（实机截图）。
+    // 统一给它 78pt，TWStyleSliderCellIfNeeded 再按这个高度排版。
+    if (cellType == PSSliderCell && ![spec propertyForKey:@"height"]) {
+        [spec setProperty:@78 forKey:@"height"];
+    }
     if (symbol.length) {
         [spec setProperty:symbol forKey:@"twSymbol"];
         [spec setProperty:title forKey:@"twTitle"];
@@ -233,7 +238,17 @@ id TWControllerForSpecifier(PSListController *host, PSSpecifier *specifier) {
     if ([className isKindOfClass:NSString.class] && className.length) {
         Class cls = NSClassFromString(className);
         if (cls) {
-            id controller = [[cls alloc] init];
+            // PSListController 的子页必须走 initForContentSize:（Preferences 就是这么建的）。
+            // 直接 [[alloc] init] 出来的实例没有建好 table，推入后是一整页黑的（实机现象）。
+            id controller = nil;
+            SEL sizeSel = NSSelectorFromString(@"initForContentSize:");
+            if ([cls instancesRespondToSelector:sizeSel]) {
+                CGSize size = host.view.bounds.size;
+                if (size.width < 1) size = CGSizeMake(390, 844);
+                controller = ((id (*)(id, SEL, CGSize))objc_msgSend)([cls alloc], sizeSel, size);
+            } else {
+                controller = [[cls alloc] init];
+            }
             if ([controller isKindOfClass:UIViewController.class]) {
                 // 0.7.0：ParallelX 透传子页共用一个控制器，用 twPXPage 区分页面类型。
                 id page = [specifier propertyForKey:@"twPXPage"];
@@ -583,14 +598,18 @@ void TWStyleSliderCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier) {
     NSString *unit = [specifier propertyForKey:@"twUnit"];
     if (![unit isKindOfClass:NSString.class]) unit = @"";
     value.text = [NSString stringWithFormat:@"%.0f%@", slider.value, unit];
-    title.frame = CGRectMake(16, 7, w - 32, 18);
-    value.frame = CGRectMake(16, 7, w - 32, 18);
-
     CGFloat h = CGRectGetHeight(cell.bounds);
     if (h < 44) h = 44;
+    CGFloat top = (h >= 66) ? 10 : 2;
+    title.frame = CGRectMake(16, top, w - 32, 18);
+    value.frame = CGRectMake(16, top, w - 32, 18);
+
     CGFloat sliderH = CGRectGetHeight(slider.bounds);
     if (sliderH <= 0 || sliderH > 40) sliderH = 31;
-    slider.frame = CGRectMake(16, h - sliderH - 6, MAX(w - 32, 40), sliderH);
+    // 标题占顶部 18pt，滑杆从 34pt 起；高度不够时把滑杆压到标题下方而不是重叠。
+    CGFloat sliderY = (h >= 66) ? 34 : 24;
+    if (sliderY + sliderH > h) sliderY = MAX(top + 20, h - sliderH);
+    slider.frame = CGRectMake(16, sliderY, MAX(w - 32, 40), sliderH);
 }
 
 #pragma mark - 行图标（0.9.7：不依赖 cellClass，直接往标准 cell 里塞）

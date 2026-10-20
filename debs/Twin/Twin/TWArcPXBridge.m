@@ -51,8 +51,54 @@ void TWArcPXBridgeCapture(id entry) {
     gPXEntry = entry;
 }
 
+// 找不到入口实例时，去 SpringBoard 的窗口/控制器里把它捞出来。
+// PXPanelEntry 由 ParallelX 自己持有（窗口 rootViewController 的 ivar 里），
+// 我们的 init 钩子只覆盖"钩子装好之后新建"的实例，启动前就存在的会漏掉。
+static id TWArcPXScanIvars(id obj, Class target, NSInteger depth, NSMutableSet *seen) {
+    if (!obj || depth < 0) return nil;
+    if ([obj isKindOfClass:target]) return obj;
+    if (seen.count > 400) return nil;
+    NSValue *key = [NSValue valueWithNonretainedObject:obj];
+    if ([seen containsObject:key]) return nil;
+    [seen addObject:key];
+    unsigned int count = 0;
+    Ivar *ivars = class_copyIvarList([obj class], &count);
+    id found = nil;
+    for (unsigned int i = 0; i < count && !found; i++) {
+        const char *type = ivar_getTypeEncoding(ivars[i]);
+        if (!type || type[0] != '@') continue;
+        @try {
+            id value = object_getIvar(obj, ivars[i]);
+            if (!value) continue;
+            found = TWArcPXScanIvars(value, target, depth - 1, seen);
+        } @catch (__unused NSException *e) { }
+    }
+    if (ivars) free(ivars);
+    return found;
+}
+
+static id TWArcPXFindLiveEntry(void) {
+    Class target = NSClassFromString(@"PXPanelEntry");
+    if (!target) return nil;
+    NSMutableSet *seen = [NSMutableSet set];
+    for (UIWindow *window in UIApplication.sharedApplication.windows) {
+        @try {
+            id hit = TWArcPXScanIvars(window, target, 2, seen);
+            if (hit) return hit;
+            hit = TWArcPXScanIvars(window.rootViewController, target, 2, seen);
+            if (hit) return hit;
+            for (UIView *view in window.subviews) {
+                hit = TWArcPXScanIvars(view, target, 1, seen);
+                if (hit) return hit;
+            }
+        } @catch (__unused NSException *e) { }
+    }
+    return nil;
+}
+
 UIWindow *TWArcPXBridgeHostWindow(void) {
     id entry = gPXEntry;
+    if (!entry) { entry = TWArcPXFindLiveEntry(); if (entry) gPXEntry = entry; }
     if (!entry) return nil;
     // 要能覆盖到角落：挑面积最大且没被隐藏的那个窗口。
     UIWindow *best = nil;
@@ -115,6 +161,7 @@ static BOOL TWArcPXAnchorPanelAtSide(id entry, NSInteger side) {
 
 BOOL TWArcPXBridgePresent(NSInteger side) {
     id entry = gPXEntry;
+    if (!entry) { entry = TWArcPXFindLiveEntry(); if (entry) gPXEntry = entry; }
     if (!entry) {
         gLastResult = @"失败：没有 PXPanelEntry 实例";
         return NO;
