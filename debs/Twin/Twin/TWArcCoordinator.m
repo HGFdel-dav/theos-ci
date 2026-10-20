@@ -311,6 +311,17 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
     _pan = nil;
     [self cancelCurrentGesture];
     [[TWArcWindow sharedWindow] hideForGestures];
+    // 关键：切到「ParallelX 边缘手柄」后必须把四角热区窗口全部隐藏。
+    // 0.9.15~0.9.19 只移除了手势，窗口还留着 —— 四个 66×66 的透明窗口
+    // 正好压在屏幕边缘的 App 图标上，点不动就是这么来的。
+    for (TWArcTriggerWindow *w in objc_getAssociatedObject(self, "TWArcTriggerWindows")) {
+        if ([w isKindOfClass:UIWindow.class]) w.hidden = YES;
+    }
+    objc_setAssociatedObject(self, "TWArcTriggerWindows", nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    NSMutableArray *list = objc_getAssociatedObject(self, "TWArcTriggerWindowList");
+    for (TWArcTriggerWindow *w in list) {
+        if ([w isKindOfClass:UIWindow.class]) w.hidden = YES;
+    }
 }
 
 // 只在屏幕四个角落的一块方形区域里接管触摸：不碰状态栏、不碰 Home 条，
