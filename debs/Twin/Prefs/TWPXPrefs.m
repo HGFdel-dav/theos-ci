@@ -1,6 +1,7 @@
 // TWPXPrefs.m — 见 TWPXPrefs.h。ParallelX 偏好的轻量读写 / 通知桥。
 #import "TWPXPrefs.h"
 #import "TWPath.h"
+#import "TWRuntimeLog.h"
 #import <UIKit/UIKit.h>
 #import <sys/file.h>
 #import <fcntl.h>
@@ -107,6 +108,8 @@ static CFStringRef PXDomainRef(void) { return (__bridge CFStringRef)PXDomain; }
                              value ? (__bridge CFPropertyListRef)value : NULL,
                              PXDomainRef());
     BOOL ok = CFPreferencesAppSynchronize(PXDomainRef());
+    // 每次写都留痕：出问题时能分清"没写进去"还是"引擎没读"。
+    TWRuntimeLog(@"[pxprefs] write %@=%@ sync=%d", key, value ?: @"(nil)", ok);
     [self postRefresh];
     return ok;
 }

@@ -278,6 +278,8 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
     NSInteger _pressedIndex;
     NSTimeInterval _pressedSince;
     BOOL _longPressActive;
+    CGPoint _menuPoint;
+    CGPoint _pressLastPoint;
     NSArray<NSString *> *_cachedBundleIDs;
 }
 
@@ -637,7 +639,9 @@ static void TWArcMigrateRadiusKeys(void) {
                 _tracking = _menu.isPresented;
             }
             if (_tracking) {
-                [_menu updateSelectionAtPoint:[pan locationInView:_menu]];
+                CGPoint mp = [pan locationInView:_menu];
+                _menuPoint = mp;
+                [_menu updateSelectionAtPoint:mp];
                 [self trackLongPress];
             }
             break;
@@ -824,9 +828,22 @@ static CGPoint TWArcScreenPointForTouch(UITouch *touch) {
 // 长按：停在同一个图标上超过设定时长（默认0.45秒，面板可调）算数。
 // 面板「长按图标 = 全屏」时，
 // 松手就以全屏打开（走 PX 的 +externalOpenApplication:）。
+- (CGPoint)_lastMenuPoint { return _menuPoint; }
+
 - (void)trackLongPress {
     NSInteger idx = [_menu selectedIndex];
     NSTimeInterval now = [NSDate date].timeIntervalSince1970;
+    // 手指还在动就不算长按：以前只要停在同一个图标上 0.45s 就算，
+    // 拖着找图标很容易误触发"强制全屏"。
+    CGPoint here = [self _lastMenuPoint];
+    CGFloat moved = hypot(here.x - _pressLastPoint.x, here.y - _pressLastPoint.y);
+    _pressLastPoint = here;
+    if (moved > 4.0) {
+        _pressedIndex = idx;
+        _pressedSince = now;
+        _longPressActive = NO;
+        return;
+    }
     if (idx != _pressedIndex) {
         _pressedIndex = idx;
         _pressedSince = now;
@@ -1042,8 +1059,8 @@ static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
     // 能在菜单里看到。图标来源决定剩余位置由谁补：
     //   最近应用 = 自选在前 + 最近补位；自选应用 = 只显示自选（空了退最近）。
     if (iconSource == 1) {
+        // 自选应用模式：只显示你选的。一个没选就是空菜单，不再偷偷回退到"最近应用"。
         addConfigured();
-        if (!apps.count) [apps addObjectsFromArray:[self cachedRecentBundleIDs]];
     } else {
         addConfigured();
         for (NSString *bid in [self cachedRecentBundleIDs]) {

@@ -145,8 +145,9 @@ static void TWOrigWrite(NSString *key, id value) {
 
             // 原版在滑杆上方放了一条"纯标题"（PSStaticTextCell，无 key、无选项），
             // 我们的滑杆行本身就有标题，照搬会出现"每个都两行"，所以跳过。
-            if ([cell isEqualToString:@"PSStaticTextCell"] && !it[@"validValues"] &&
-                ![it[@"key"] isKindOfClass:NSString.class]) {
+            // 原版在滑杆上方放的是"纯标题"静态行（带 arcRadiusTitle 之类的假 key），
+            // 我们的滑杆行本身带标题，照搬就是"每项两行"，所以一律跳过。
+            if ([cell isEqualToString:@"PSStaticTextCell"] && !it[@"validValues"]) {
                 continue;
             }
             if ([cell isEqualToString:@"PSGroupCell"] || [cell isEqualToString:@"PSButtonCell"]) {
@@ -244,9 +245,7 @@ static void TWOrigWrite(NSString *key, id value) {
         c.slider.maximumValue = max;
         c.slider.value = [TWOrigRead(key, row[@"default"] ?: @(min)) doubleValue];
         double v = c.slider.value;
-        c.valueLabel.text = (fabs(v - round(v)) < 0.01)
-            ? [NSString stringWithFormat:@"%.0f", v]
-            : [NSString stringWithFormat:@"%.2f", v];
+        c.valueLabel.text = [self twFormatValue:v spec:row];
         c.slider.tag = indexPath.section * 1000 + indexPath.row;
         [c.slider removeTarget:self action:@selector(twSliderChanged:) forControlEvents:UIControlEventValueChanged];
         [c.slider addTarget:self action:@selector(twSliderChanged:) forControlEvents:UIControlEventValueChanged];
@@ -293,6 +292,14 @@ static void TWOrigWrite(NSString *key, id value) {
     return c;
 }
 
+// 大范围（pt）取整显示，小范围（比例/阻尼）保留两位。
+- (NSString *)twFormatValue:(double)v spec:(NSDictionary *)row {
+    double lo = [row[@"min"] doubleValue];
+    double hi = [row[@"max"] doubleValue];
+    BOOL small = (hi - lo) <= 5.0;
+    return small ? [NSString stringWithFormat:@"%.2f", v] : [NSString stringWithFormat:@"%.0f", v];
+}
+
 - (void)twSwitchChanged:(UISwitch *)sw {
     NSInteger rowIndex = sw.tag;
     NSIndexPath *ip = [NSIndexPath indexPathForRow:rowIndex % 1000 inSection:rowIndex / 1000];
@@ -307,10 +314,7 @@ static void TWOrigWrite(NSString *key, id value) {
     TWOrigWrite(row[@"key"], @(slider.value));
     TWOrigSliderCell *cell = (TWOrigSliderCell *)[self.tableView cellForRowAtIndexPath:ip];
     if ([cell isKindOfClass:TWOrigSliderCell.class]) {
-        double sv = slider.value;
-        cell.valueLabel.text = (fabs(sv - round(sv)) < 0.01)
-            ? [NSString stringWithFormat:@"%.0f", sv]
-            : [NSString stringWithFormat:@"%.2f", sv];
+        cell.valueLabel.text = [self twFormatValue:slider.value spec:row];
     }
 }
 

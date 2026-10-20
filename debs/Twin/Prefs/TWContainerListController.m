@@ -333,7 +333,7 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     if (indexPath.section == 0) {
-        UITableViewCell *cell = [[TWIconCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"master"];
+        UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"master"];
         cell.textLabel.text = @"分身打开";
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
         UISwitch *sw = [[UISwitch alloc] init];
@@ -344,7 +344,7 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
     }
 
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"crane"];
-    if (!cell) cell = [[TWIconCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"crane"];
+    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"crane"];
     cell.imageView.image = nil;
     cell.textLabel.text = nil;
     cell.accessoryView = nil;
@@ -467,7 +467,7 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     static NSString *cellID = @"TWArcOrderCell";
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellID];
-    if (!cell) cell = [[TWIconCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellID];
+    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellID];
     NSString *bundleID = [self bundleIDAtIndexPath:indexPath];
     cell.imageView.image = TWAppIcon(bundleID);
     cell.textLabel.text = TWPrefsAppName(bundleID);

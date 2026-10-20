@@ -375,6 +375,16 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
     return stored ?: def;
 }
 
+// 系统设置行走的是标准值链；原来只挂了 twSet/twGet 属性，
+// 而本机 Preferences 不认自定义 cellClass → 改了半天其实什么都没写。
+- (void)setPreferenceValue:(id)value specifier:(PSSpecifier *)specifier {
+    [self pxWriteValue:value specifier:specifier];
+}
+
+- (id)readPreferenceValue:(PSSpecifier *)specifier {
+    return [self pxReadValue:specifier];
+}
+
 - (void)pxWriteValue:(id)value specifier:(PSSpecifier *)specifier {
     NSString *key = [specifier propertyForKey:@"key"];
     if (![key isKindOfClass:NSString.class] || !key.length) return;
