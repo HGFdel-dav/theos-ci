@@ -222,6 +222,8 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
         [specs addObject:TWRowSpecifier(self, @"长按全屏时长", TWKeyArcLongPressDuration, @0.45, nil, PSSliderCell,
                                         nil, nil, @{@"twMin": @0.1, @"twMax": @2.0, @"twStep": @0.05,
                                                     @"twDecimal": @2, @"twUnit": @" 秒"})];
+        [specs addObject:TWLinkRowSpecifier(self, @"运行日志", @"doc.text.magnifyingglass",
+                                            @"TWLogController", nil, @{})];
 
         // ---------- 应用与面板（原版 Swift 页，直连原版控制器） ----------
         [specs addObject:TWGroupSpecifier(@"应用与面板", nil)];

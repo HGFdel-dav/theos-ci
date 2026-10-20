@@ -65,7 +65,10 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     if ([UIImage respondsToSelector:clsSel]) {
         UIImage *img = ((id (*)(id, SEL, id, long, double))objc_msgSend)(
             UIImage.class, clsSel, bundleID, 0, (double)UIScreen.mainScreen.scale);
-        if ([img isKindOfClass:UIImage.class] && img.size.width > 0) return img;
+        if ([img isKindOfClass:UIImage.class] && img.size.width > 0) {
+            TWRuntimeLog(@"[icon] %@ → UIImage 私有接口 OK", bundleID);
+            return img;
+        }
     }
     id proxy = TWIconObject(NSClassFromString(@"LSApplicationProxy"), @"applicationProxyForIdentifier:", bundleID, YES);
     // 0.9.8：变体依次试，别只试一个（不同 iOS 返回的变体不同，试不到就整排变灰块）。

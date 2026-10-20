@@ -20,7 +20,8 @@
     if (self.accessoryView) reserve += 62.0;
     else if (self.accessoryType != UITableViewCellAccessoryNone) reserve += 30.0;
     if (self.showsReorderControl) reserve += 30.0;
-    CGFloat textX = TWGridTextX;
+    // 没有图标的行不要留空的图标列（用户反馈"前面空白一大片"）。
+    CGFloat textX = self.imageView.image ? TWGridTextX : TWGridIconX;
     CGFloat textW = MAX(40.0, w - textX - reserve);
     if (self.detailTextLabel.text.length) {
         // 副标题行：主标题在上、副标题在下，起点同样在 64。

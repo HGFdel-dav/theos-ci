@@ -43,7 +43,7 @@ static inline void TWRuntimeLog(NSString *format, ...) {
             }
             if (!lines) lines = [NSMutableArray array];
             [lines addObject:line];
-            while (lines.count > 80) [lines removeObjectAtIndex:0];
+            while (lines.count > 200) [lines removeObjectAtIndex:0];
             CFPreferencesSetAppValue(CFSTR("TWRuntimeLog"),
                                      (__bridge CFPropertyListRef)[lines copy],
                                      domain);
