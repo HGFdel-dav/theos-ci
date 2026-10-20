@@ -66,6 +66,13 @@ PSSpecifier *TWRowSpecifier(id target,
     //   cellName 参数保留仅为不惊动调用点，内容一律忽略。
     //   值链：所有行接标准 set:/get:；需要特殊取值/写值的行（如 ARC 四角掩码）
     //   用 extras 的 twGet/twSet 指定控制器上的自定义选择子（标准机制）。
+    // 0.9.12：PSSegmentCell 在本机渲染成整行空白（0.9.11 截图实证）。
+    // ScreenCore 原版对这类"多选一"用的是 plist 驱动的 PSStaticTextCell/PSLinkListCell，
+    // 点进去再选。这里改成同款：PSLinkListCell + PSListItemsController，
+    // 值直接显示在行尾，不依赖分段控件。
+    BOOL twIsChoiceRow = (cellType == PSSegmentCell);
+    if (twIsChoiceRow) cellType = PSLinkListCell;
+
     SEL setSel = @selector(setPreferenceValue:specifier:);   // 与各控制器里实现的签名一致
     SEL getSel = @selector(readPreferenceValue:);
     if ([extras[@"twGet"] isKindOfClass:NSString.class] && [extras[@"twGet"] length]) {
@@ -85,6 +92,10 @@ PSSpecifier *TWRowSpecifier(id target,
                                                         cell:cellType
                                                         edit:NULL];
     if (!spec) return nil;
+    if (twIsChoiceRow) {
+        [spec setProperty:@"PSListItemsController" forKey:@"detail"];
+        [spec setProperty:@YES forKey:@"isController"];
+    }
     if (key.length) [spec setProperty:key forKey:@"key"];
     if (defaultValue) [spec setProperty:defaultValue forKey:@"default"];
     // 0.9.0：图标 cell = 动态子类化系统 cell 类。
