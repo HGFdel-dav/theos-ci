@@ -1,6 +1,6 @@
 Package: com.niubiprass.twin
 Name: Twin
-Version: 0.9.22
+Version: 0.9.23
 Architecture: iphoneos-arm64
 Description: 基于 ParallelX 引擎的分屏增强套装：Arc 弧形唤醒、Crane 分身、窗口尺寸记忆，面板重新设计。
 Author: Niubiprass

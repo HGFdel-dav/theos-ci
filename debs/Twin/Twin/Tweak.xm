@@ -19,6 +19,7 @@
 #import "TWSceneHost.h"
 #import "TWPath.h"
 #import "TWRuntimeLog.h"
+#import "TWSceneInject.h"
 
 #import <objc/runtime.h>
 #import <mach-o/dyld.h>
@@ -144,12 +145,13 @@ __attribute__((constructor)) static void TWInitialize(void) {
 
     TWForceEnable();   // 全套功能默认生效，不留"启用"开关
 
-    TWRuntimeLog(@"[tweak] init 0.9.22 jbRoot=%@ prefs=%@ engine=%@",
+    TWRuntimeLog(@"[tweak] init 0.9.23 jbRoot=%@ prefs=%@ engine=%@",
                  TWJBRootPath() ?: @"(nil)", TWPrefsFilePath() ?: @"(nil)", TWEnginePrefsPath() ?: @"(nil)");
 
     _dyld_register_func_for_add_image(TWImageAdded);
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         TWInstallParallelXHook();
+        TWSceneInjectStart();   // App 前台时也能从角落起手（注入 scene 呈现层）
         [[TWArcCoordinator sharedInstance] start];
         TWRememberStart();
         TWContainerExportStart();   // Crane 容器清单导出给面板（跨进程）

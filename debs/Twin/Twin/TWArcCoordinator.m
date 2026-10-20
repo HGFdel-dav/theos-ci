@@ -8,6 +8,7 @@
 #import "TWCraneBridge.h"
 #import "TWPath.h"
 #import "TWRuntimeLog.h"
+#import "TWSceneInject.h"
 #import <AudioToolbox/AudioServices.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
@@ -222,6 +223,12 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
 - (BOOL)prefersStatusBarHidden { return NO; }
 @end
 
+@interface TWArcCoordinator (SceneInject)
+// 在任意 view（App 的 scene 呈现层 / SpringBoard 窗口）上维护四角热区。
+// 只放 66×66 的小视图，物理上不可能遮挡 App 主体内容。
++ (void)ensureCornerViewsInPresentationView:(UIView *)host;
+@end
+
 @interface TWArcCoordinator ()
 - (UIWindowScene *)activeWindowScene;
 - (void)pressReset;
@@ -293,9 +300,11 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
     NSInteger mode = [[TWPrefs shared] integerForKey:TWKeyWakeMode defaultValue:TWWakeModeCorner];
     if (mode == TWWakeModeHandle) {
         [self detachRecognizer];
+        TWSceneInjectSync();   // 边缘手柄模式：把 App 内的角落热区一并撤掉
         return;
     }
     [self attachRecognizer];
+    TWSceneInjectSync();
 }
 
 - (void)detachRecognizer {
@@ -580,6 +589,72 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
             break;
         default: break;
     }
+}
+
+#pragma mark - 角落热区（App 内 / 桌面通用）
+
++ (void)ensureCornerViewsInPresentationView:(UIView *)host {
+    if (![host isKindOfClass:UIView.class]) return;
+    TWPrefs *prefs = [TWPrefs shared];
+    NSInteger mode = [prefs integerForKey:TWKeyWakeMode defaultValue:TWWakeModeCorner];
+    BOOL want = (mode == TWWakeModeCorner) &&
+                [prefs boolForKey:TWKeyEnabled defaultValue:YES] &&
+                [prefs boolForKey:TWKeyArcEnabled defaultValue:YES];
+
+    NSMutableArray<UIView *> *existing = objc_getAssociatedObject(host, "TWSceneHotViews");
+    if (!want) {
+        for (UIView *v in existing) [v removeFromSuperview];
+        objc_setAssociatedObject(host, "TWSceneHotViews", nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return;
+    }
+
+    CGRect bounds = host.bounds;
+    if (CGRectIsEmpty(bounds)) return;
+    // 全部角落都不勾选时不做任何事（避免在 App 上白放四个透明视图）。
+    TWArcHotAreas areas = TWArcComputeHotAreas();
+    if (areas.mask == 0) {
+        for (UIView *v in existing) [v removeFromSuperview];
+        objc_setAssociatedObject(host, "TWSceneHotViews", nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        return;
+    }
+
+    if (!existing) existing = [NSMutableArray array];
+    TWArcCoordinator *coordinator = [TWArcCoordinator sharedInstance];
+
+    for (NSInteger corner = 0; corner < 4; corner++) {
+        BOOL enabled = (areas.mask & ((NSInteger)1 << corner)) != 0;
+        TWArcTriggerView *view = nil;
+        for (UIView *v in existing) {
+            if (v.tag == corner && [v isKindOfClass:TWArcTriggerView.class]) { view = (TWArcTriggerView *)v; break; }
+        }
+        if (!enabled) {
+            if (view) { [view removeFromSuperview]; [existing removeObject:view]; }
+            continue;
+        }
+        if (!view) {
+            view = [[TWArcTriggerView alloc] initWithFrame:CGRectZero];
+            view.tag = corner;
+            view.coordinator = coordinator;
+            view.corner = corner;
+            view.backgroundColor = UIColor.clearColor;
+            view.autoresizingMask = UIViewAutoresizingNone;
+            [host addSubview:view];
+            [existing addObject:view];
+        } else if (view.superview != host) {
+            [host addSubview:view];
+        }
+        // 热区矩形是屏幕坐标；host 可能不是全屏或处于缩放状态，转换一次。
+        CGRect rect = areas.rects[corner];
+        UIView *window = host.window;
+        if (window && host != window) {
+            CGPoint p = [window convertPoint:rect.origin toView:host];
+            CGFloat sx = host.bounds.size.width / MAX(window.bounds.size.width, 1);
+            CGFloat sy = host.bounds.size.height / MAX(window.bounds.size.height, 1);
+            rect = CGRectMake(p.x, p.y, rect.size.width * sx, rect.size.height * sy);
+        }
+        if (!CGRectEqualToRect(view.frame, rect)) view.frame = rect;
+    }
+    objc_setAssociatedObject(host, "TWSceneHotViews", existing, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
 #pragma mark - raw touches（四角小窗口专用，不经过手势识别器）
