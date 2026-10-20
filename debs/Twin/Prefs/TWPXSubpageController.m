@@ -52,6 +52,14 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
     self.title = [self pageTitle];
 }
 
+
+- (NSInteger)tableView:(UITableView *)tableView indentationLevelForRowAtIndexPath:(NSIndexPath *)indexPath {
+    @try {
+        PSSpecifier *sp = [self specifierAtIndexPath:indexPath];
+        return [sp propertyForKey:@"twSymbol"] ? 1 : 0;
+    } @catch (__unused NSException *e) { return 0; }
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];

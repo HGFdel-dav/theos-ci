@@ -81,17 +81,19 @@ static BOOL TWArcBool(id target, NSString *name, BOOL *known) {
     return YES;
 }
 
+// 0.9.9：改成"只有确认锁屏才拒绝"。旧实现里如果 SBLockScreenManager 取不到，
+// TWArcBool 会按 YES 兜底 → 被判成"锁屏中" → 所有手势静默失效，
+// 表现就是"角落怎么拖都没反应"，而且没有任何日志。
 static BOOL TWArcDeviceUnlocked(void) {
     id manager = TWArcObject(NSClassFromString(@"SBLockScreenManager"), @"sharedInstance");
+    if (!manager) return YES;
     BOOL known = NO;
-    if (TWArcBool(manager, @"isLocked", &known) || !known) return NO;
-    // Cover-sheet/UI lock state, when exposed on this OS, is also authoritative.
-    SEL uiLocked = NSSelectorFromString(@"isUILocked");
-    @try {
-        if ([manager respondsToSelector:uiLocked] &&
-            (TWArcBool(manager, @"isUILocked", &known) || !known)) return NO;
-    } @catch (__unused NSException *exception) { return NO; }
-    return YES; // Missing/changed lock APIs fail closed above.
+    BOOL locked = TWArcBool(manager, @"isLocked", &known);
+    if (known && locked) return NO;
+    known = NO;
+    locked = TWArcBool(manager, @"isUILocked", &known);
+    if (known && locked) return NO;
+    return YES;
 }
 
 

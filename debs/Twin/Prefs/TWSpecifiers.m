@@ -646,8 +646,21 @@ void TWDecorateCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier) {
     //（用户原话："图标全部遮住了"）。改成：凡是起点落在图标区（x < 46）且有一定
     // 宽度的子视图，统统右移 38pt 并按同样数值缩短，右边缘保持不变。
     // 已经右移过的（x >= 46）直接跳过，重复调用天然幂等。
-    for (UIView *sub in cell.contentView.subviews) {
-        if (sub == iv) continue;
+    // 0.9.9：按 ParallelX 的做法用「行缩进」给图标让位（它的面板也是靠
+    // indentationLevel 实现的）。系统自己的文本布局会把标题右移，
+    // 不再依赖手动改 frame —— 0.9.8 实测开关/滑块行的标题根本不动。
+    cell.indentationWidth = 38;
+    cell.indentationLevel = 1;
+
+    // 兜底：个别 cell 不吃缩进（标题 label 直接挂在 cell 上），
+    // 那就把落在图标区的子视图整体右移；已经让开（x>=46）的自动跳过。
+    NSMutableArray<UIView *> *candidates = [NSMutableArray arrayWithArray:cell.contentView.subviews];
+    for (UIView *sub in cell.subviews) {
+        if (sub == cell.contentView) continue;
+        [candidates addObject:sub];
+    }
+    for (UIView *sub in candidates) {
+        if (sub == iv || sub == cell.contentView) continue;
         CGRect frame = sub.frame;
         if (frame.size.width < 40 || frame.origin.x >= 46) continue;
         frame.origin.x += 38;

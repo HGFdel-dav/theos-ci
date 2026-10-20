@@ -27,6 +27,7 @@ static inline void TWRuntimeLog(NSString *format, ...) {
         va_end(args);
         NSString *line = [NSString stringWithFormat:@"%@ [%@] %@\n",
                           [NSDate date], NSProcessInfo.processInfo.processName, body ?: @"(null)"];
+        NSLog(@"[Twin] %@", body);
         NSData *data = [line dataUsingEncoding:NSUTF8StringEncoding];
         NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath:path];
         if (handle) {

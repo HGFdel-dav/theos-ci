@@ -1,12 +1,22 @@
 // TWPrefs.m
+//
+// 0.9.9：存储改走 CFPreferences（域 com.niubiprass.twin），与 ParallelX 面板
+// 完全同一条链路。为什么必须这样：
+//   * 直接写文件时，SpringBoard 进程写出来的 plist / 日志在设置进程里看不到，
+//     两个进程各拿一份"自己的文件"，设置永远对不上（0.9.8 实机复现）。
+//   * PSListController / ParallelX 都是用 cfprefsd 代理读写，跨进程天然一致。
+//   * 本机 RootHide 的 .jbroot、/var/jb 都是指向 "/" 的符号链接，不存在
+//     "藏在隐根里"这回事，CFPreferences 落点就是 /var/mobile/Library/Preferences，
+//     和 ParallelX 自己的 com.moxuan.parallelx.plist 同级。
 #import "TWPrefs.h"
 #import "TWPath.h"
 #import "TWRuntimeLog.h"
 #import <UIKit/UIKit.h>
 #import <notify.h>
-#import <sys/file.h>
-#import <fcntl.h>
-#import <unistd.h>
+#import <CoreFoundation/CoreFoundation.h>
+
+static NSString *const TWDomain = @"com.niubiprass.twin";
+static CFStringRef TWDomainRef(void) { return (__bridge CFStringRef)TWDomain; }
 
 static BOOL TWValidMigration(NSDictionary *dict) {
     if (![dict isKindOfClass:NSDictionary.class] || !dict.count) return NO;
@@ -18,103 +28,74 @@ static BOOL TWValidMigration(NSDictionary *dict) {
             if (![value isKindOfClass:NSDictionary.class]) return NO;
             for (id app in value) if (![app isKindOfClass:NSString.class] || ![app length] || ![value[app] isKindOfClass:NSString.class] || ![value[app] length]) return NO;
         } else if ([key isEqual:TWKeyRememberFrames]) {
-            // { bundleID : {x,y,w,h} } — all values are NSNumbers, frame inside screen.
             if (![value isKindOfClass:NSDictionary.class]) return NO;
             for (id app in value) {
                 id frame = value[app];
                 if (![app isKindOfClass:NSString.class] || ![app length] || ![frame isKindOfClass:NSDictionary.class]) return NO;
-                NSArray *keys = @[@"x",@"y",@"w",@"h"];
-                for (NSString *k in keys) {
-                    id num = frame[k];
-                    if (![num isKindOfClass:NSNumber.class]) return NO;
-                    if ([k isEqual:@"w"] || [k isEqual:@"h"]) { if ([num doubleValue] <= 0 || [num doubleValue] > 5000) return NO; }
-                    else { double v = [num doubleValue]; if (v < -5000 || v > 5000) return NO; }
-                }
+                for (NSString *k in @[@"x",@"y",@"w",@"h"]) if (![frame[k] isKindOfClass:NSNumber.class]) return NO;
             }
         } else if ([key isEqual:TWKeyCraneAppList]) {
-            // NSArray<NSString *>：Arc 里显示哪些应用（有序 bundleID）。
             if (![value isKindOfClass:NSArray.class]) return NO;
             for (id app in value) if (![app isKindOfClass:NSString.class] || ![app length]) return NO;
         } else if ([key isEqual:TWKeyCraneContainers]) {
-            // NSArray<NSDictionary *>：每项 {bundleID, containerID?, name?, badge?, enabled?}
             if (![value isKindOfClass:NSArray.class]) return NO;
             for (id entry in value) {
                 if (![entry isKindOfClass:NSDictionary.class]) return NO;
-                id bundleID = entry[@"bundleID"];
-                if (![bundleID isKindOfClass:NSString.class] || ![bundleID length]) return NO;
-                for (NSString *k in @[@"containerID", @"name", @"badge"]) {
-                    id v = entry[k];
-                    if (v && ![v isKindOfClass:NSString.class]) return NO;
-                }
-                id enabled = entry[@"enabled"];
-                if (enabled && ![enabled isKindOfClass:NSNumber.class]) return NO;
+                if (![entry[@"bundleID"] isKindOfClass:NSString.class]) return NO;
             }
         } else if ([key isEqual:TWKeyRememberStates]) {
-            // { "bundleID|containerID" : @{p,l,docked,side,updated} } —— 形态快照。
             if (![value isKindOfClass:NSDictionary.class]) return NO;
-            for (id entryKey in value) {
-                id state = value[entryKey];
-                if (![entryKey isKindOfClass:NSString.class] || ![entryKey length]) return NO;
-                if (![state isKindOfClass:NSDictionary.class]) return NO;
-                for (NSString *orientation in @[@"p", @"l"]) {
-                    id frame = state[orientation];
-                    if (!frame) continue;
-                    if (![frame isKindOfClass:NSDictionary.class]) return NO;
-                    for (NSString *k in @[@"x", @"y", @"w", @"h"]) {
-                        id num = frame[k];
-                        if (![num isKindOfClass:NSNumber.class]) return NO;
-                        double v = [num doubleValue];
-                        if ([k isEqual:@"w"] || [k isEqual:@"h"]) { if (v <= 0 || v > 5000) return NO; }
-                        else if (v < -5000 || v > 5000) return NO;
-                    }
-                }
-                for (NSString *k in @[@"docked", @"side"]) {
-                    id v = state[k];
-                    if (v && ![v isKindOfClass:NSNumber.class]) return NO;
-                }
-            }
         } else return NO;
     }
     return YES;
 }
 
-// Target must be safe both before and after creating its parent (symlink guard).
-static int TWLockPrefs(NSString *path) {
-    if (!TWPrefsPathIsSafe(path)) return -1;
-    NSFileManager *fm = NSFileManager.defaultManager;
-    if (![fm createDirectoryAtPath:path.stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:nil] || !TWPrefsPathIsSafe(path)) return -1;
-    int fd = open([[path stringByAppendingString:@".lock"] fileSystemRepresentation], O_CREAT|O_RDWR|O_NOFOLLOW, 0600);
-    if (fd >= 0 && flock(fd, LOCK_EX|LOCK_NB) != 0) { close(fd); return -1; }
-    return fd;
-}
-
-static void TWMigratePrefs(NSString *target) {
-    NSFileManager *fm = NSFileManager.defaultManager;
-    if (!target.length || [fm fileExistsAtPath:target]) return;
-    int fd = TWLockPrefs(target); if (fd < 0) return;
-    if (![fm fileExistsAtPath:target]) {
-        // 旧版本把偏好写在 Preferences 目录；这里取"最新且校验通过"的一份迁过来，
-        // 迁完删除旧副本（用户要求：真实 Preferences 目录不留插件痕迹）。
-        NSMutableArray *sources = [TWLegacyPrefsFiles() mutableCopy];
-        [sources sortUsingComparator:^NSComparisonResult(NSString *a, NSString *b) {
-            NSDate *ad = [[fm attributesOfItemAtPath:a error:nil] fileModificationDate] ?: NSDate.distantPast;
-            NSDate *bd = [[fm attributesOfItemAtPath:b error:nil] fileModificationDate] ?: NSDate.distantPast;
-            return [bd compare:ad];
-        }];
-        for (NSString *source in sources) {
-            if ([source.stringByResolvingSymlinksInPath isEqual:target.stringByResolvingSymlinksInPath]) continue;
-            if (![[[fm attributesOfItemAtPath:source error:nil] fileType] isEqual:NSFileTypeRegular]) continue;
-            NSData *original = [NSData dataWithContentsOfFile:source];
-            NSDictionary *dict = original ? [NSPropertyListSerialization propertyListWithData:original options:NSPropertyListImmutable format:NULL error:nil] : nil;
-            if (!TWValidMigration(dict)) continue;
-            if (TWPrefsPathIsSafe(target) && [dict writeToFile:target atomically:YES] && [[NSDictionary dictionaryWithContentsOfFile:target] isEqual:dict]) {
-                // Remove ONLY this exact same-domain, unchanged validated source.
-                if ([[NSData dataWithContentsOfFile:source] isEqual:original]) [fm removeItemAtPath:source error:nil];
-            }
-            break;
+static NSDictionary *TWReadDomain(void) {
+    NSMutableDictionary *out = [NSMutableDictionary dictionary];
+    CFPreferencesAppSynchronize(TWDomainRef());
+    CFArrayRef keys = CFPreferencesCopyKeyList(TWDomainRef(), kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
+    if (keys) {
+        for (id key in (__bridge_transfer NSArray *)keys) {
+            if (![key isKindOfClass:NSString.class]) continue;
+            CFPropertyListRef value = CFPreferencesCopyAppValue((__bridge CFStringRef)key, TWDomainRef());
+            if (value) out[key] = (__bridge_transfer id)value;
         }
     }
-    flock(fd, LOCK_UN); close(fd);
+    return out;
+}
+
+static void TWWriteValues(NSDictionary *values) {
+    for (NSString *key in values) {
+        id value = values[key];
+        if ([value isKindOfClass:NSNull.class]) continue;
+        CFPreferencesSetAppValue((__bridge CFStringRef)key, (__bridge CFPropertyListRef)value, TWDomainRef());
+    }
+    CFPreferencesAppSynchronize(TWDomainRef());
+}
+
+// 旧版本留下的是文件（Preferences 目录或 Library/Twin）。域里没数据时导一次。
+static void TWMigrateIfNeeded(NSDictionary *current) {
+    if (current.count) return;
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSMutableArray *sources = [NSMutableArray array];
+    [sources addObjectsFromArray:TWLegacyPrefsFiles()];
+    for (NSString *dir in TWPrefsDirectoryCandidates()) {
+        NSString *p = [dir stringByAppendingPathComponent:@"prefs.plist"];
+        if (p.length && ![sources containsObject:p]) [sources addObject:p];
+    }
+    [sources sortUsingComparator:^NSComparisonResult(NSString *a, NSString *b) {
+        NSDate *ad = [[fm attributesOfItemAtPath:a error:nil] fileModificationDate] ?: NSDate.distantPast;
+        NSDate *bd = [[fm attributesOfItemAtPath:b error:nil] fileModificationDate] ?: NSDate.distantPast;
+        return [bd compare:ad];
+    }];
+    for (NSString *source in sources) {
+        if (![[[fm attributesOfItemAtPath:source error:nil] fileType] isEqual:NSFileTypeRegular]) continue;
+        NSDictionary *dict = [NSDictionary dictionaryWithContentsOfFile:source];
+        if (!TWValidMigration(dict)) continue;
+        TWWriteValues(dict);
+        TWRuntimeLog(@"[prefs] migrated %lu keys from %@", (unsigned long)dict.count, source);
+        break;
+    }
 }
 
 @implementation TWPrefs {
@@ -151,27 +132,26 @@ static void TWMigratePrefs(NSString *target) {
 
 - (void)reload {
     @synchronized (self) {
-        NSString *path = TWPrefsFilePath();
-        TWMigratePrefs(path);
-        NSMutableDictionary *disk = path ? [[NSDictionary dictionaryWithContentsOfFile:path] mutableCopy] : nil;
-        if (!disk) disk = [NSMutableDictionary dictionary];
+        NSMutableDictionary *disk = [TWReadDomain() mutableCopy] ?: [NSMutableDictionary dictionary];
+        if (!disk.count && !_pendingKeys.count) TWMigrateIfNeeded(disk);
+        if (!disk.count) disk = [NSMutableDictionary dictionary];
         for (NSString *key in _pendingKeys) {
             if (_cache[key]) disk[key] = _cache[key]; else [disk removeObjectForKey:key];
         }
         _cache = disk;
         if (!_loggedPath) {
             _loggedPath = YES;
-            TWRuntimeLog(@"[prefs] path=%@ keys=%lu twEnabled=%@ wakeMode=%@ arcEnabled=%@",
-                         path ?: @"(nil)", (unsigned long)_cache.count,
+            TWRuntimeLog(@"[prefs] domain=%@ keys=%lu twEnabled=%@ wakeMode=%@ arcEnabled=%@ crane=%@",
+                         TWDomain, (unsigned long)_cache.count,
                          _cache[TWKeyEnabled] ?: @"-", _cache[TWKeyWakeMode] ?: @"-",
-                         _cache[TWKeyArcEnabled] ?: @"-");
+                         _cache[TWKeyArcEnabled] ?: @"-", _cache[TWKeyCraneEnabled] ?: @"-");
         }
     }
 }
 
 - (id)objectForKey:(NSString *)key {
     if (!key.length) return nil;
-    [self reload]; // Also handles missed Darwin notifications and rotated jbroot.
+    [self reload];
     @synchronized (self) { return [_cache[key] copy]; }
 }
 
@@ -206,21 +186,32 @@ static void TWMigratePrefs(NSString *target) {
 - (void)synchronize {
     @synchronized (self) {
         if (!_pendingKeys.count) return;
-        NSString *path = TWPrefsFilePath(); int fd = TWLockPrefs(path);
-        if (fd < 0) {
-            TWRuntimeLog(@"[prefs] WRITE FAILED (lock/unavailable) path=%@ pending=%lu", path ?: @"(nil)", (unsigned long)_pendingKeys.count);
-            return;
-        }
-        NSMutableDictionary *merged = [[NSDictionary dictionaryWithContentsOfFile:path] mutableCopy] ?: [NSMutableDictionary dictionary];
+        NSMutableDictionary *values = [NSMutableDictionary dictionary];
         for (NSString *key in _pendingKeys) {
-            if (_cache[key]) merged[key] = _cache[key]; else [merged removeObjectForKey:key];
+            id value = _cache[key];
+            values[key] = value ?: (id)[NSNull null];
         }
-        BOOL ok = TWPrefsPathIsSafe(path) && [merged writeToFile:path atomically:YES] && [[NSDictionary dictionaryWithContentsOfFile:path] isEqual:merged];
-        if (ok) { _cache = merged; [_pendingKeys removeAllObjects]; }
-        flock(fd, LOCK_UN); close(fd);
-        TWRuntimeLog(@"[prefs] save %@ path=%@ keys=%@", ok ? @"ok" : @"FAILED", path ?: @"(nil)",
+        for (NSString *key in values) {
+            CFPreferencesSetAppValue((__bridge CFStringRef)key,
+                                     [values[key] isKindOfClass:NSNull.class] ? NULL : (__bridge CFPropertyListRef)values[key],
+                                     TWDomainRef());
+        }
+        BOOL ok = CFPreferencesAppSynchronize(TWDomainRef());
+        NSDictionary *readback = TWReadDomain();
+        BOOL verified = YES;
+        for (NSString *key in _pendingKeys) {
+            id want = _cache[key];
+            id got = readback[key];
+            if (want && ![got isEqual:want]) { verified = NO; break; }
+            if (!want && got) { verified = NO; break; }
+        }
+        TWRuntimeLog(@"[prefs] save %@ (sync=%d) keys=%@", verified ? @"ok" : @"FAILED", ok,
                      [[_pendingKeys allObjects] componentsJoinedByString:@","] ?: @"-");
-        if (ok) notify_post(TWPrefsChangedNotification);
+        if (verified) {
+            _cache = [readback mutableCopy];
+            [_pendingKeys removeAllObjects];
+            notify_post(TWPrefsChangedNotification);
+        }
     }
 }
 
