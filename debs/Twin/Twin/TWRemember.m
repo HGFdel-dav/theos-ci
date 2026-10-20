@@ -218,10 +218,8 @@ static NSString *TWRememberNormalizedContainer(NSString *containerID) {
 // "bundleID|containerID" — the container part is empty for the default container.
 static NSString *TWRememberKeyForEntry(NSString *bundleID, NSString *containerID) {
     if (![bundleID isKindOfClass:NSString.class] || !bundleID.length) return nil;
-    // 0.9.9：用户要求「一个应用一份记忆」——默认容器和分身共用同一份窗口尺寸。
-    // 键里容器部分固定为空；旧数据在读取时按前缀兜底并迁移。
-    (void)containerID;
-    return [NSString stringWithFormat:@"%@%@", bundleID, TWRememberKeySeparator];
+    return [NSString stringWithFormat:@"%@%@%@", bundleID, TWRememberKeySeparator,
+            TWRememberNormalizedContainer(containerID)];
 }
 
 static void TWSplitRememberKey(NSString *key, NSString **bundleID, NSString **containerID) {
@@ -280,19 +278,6 @@ NSDictionary *TWRememberStateForEntry(NSString *bundleID, NSString *containerID)
         if (!all) return nil;
         NSString *key = TWRememberKeyForEntry(bundleID, containerID);
         id raw = key.length ? all[key] : nil;
-        if (![raw isKindOfClass:NSDictionary.class]) {
-            // 旧版按「应用|容器」分开存：挑同一应用里最新的一条兜底。
-            NSString *prefix = [NSString stringWithFormat:@"%@%@", bundleID, TWRememberKeySeparator];
-            NSDate *newest = NSDate.distantPast;
-            for (id candidateKey in all) {
-                if (![candidateKey isKindOfClass:NSString.class] || ![candidateKey hasPrefix:prefix]) continue;
-                id candidate = all[candidateKey];
-                if (![candidate isKindOfClass:NSDictionary.class]) continue;
-                NSDate *stamp = candidate[@"updated"];
-                if (![stamp isKindOfClass:NSDate.class]) stamp = NSDate.distantPast;
-                if ([stamp compare:newest] == NSOrderedDescending) { newest = stamp; raw = candidate; }
-            }
-        }
         if (![raw isKindOfClass:NSDictionary.class]) return nil;
         return TWSanitizedState(bundleID, containerID, raw);
     } @catch (__unused NSException *exception) { return nil; }
@@ -306,13 +291,6 @@ void TWRememberStoreState(NSString *bundleID, NSString *containerID, NSDictionar
         id all = [[TWPrefs shared] objectForKey:TWKeyRememberStates];
         NSMutableDictionary *states = [all isKindOfClass:NSDictionary.class]
             ? [all mutableCopy] : [NSMutableDictionary dictionary];
-        // 迁移：同一应用的旧「容器」键全部清掉，只留按应用的那一份。
-        NSString *legacyPrefix = [NSString stringWithFormat:@"%@%@", bundleID, TWRememberKeySeparator];
-        for (id existingKey in [states.allKeys copy]) {
-            if (![existingKey isKindOfClass:NSString.class]) continue;
-            if ([existingKey isEqual:key]) continue;
-            if ([existingKey hasPrefix:legacyPrefix]) [states removeObjectForKey:existingKey];
-        }
         if (![state isKindOfClass:NSDictionary.class] || ![(NSDictionary *)state count]) {
             // nil / empty snapshot removes this entry (the panel's per-row delete).
             [states removeObjectForKey:key];
@@ -501,13 +479,6 @@ static void TWRememberMigrateLegacyFrames(void) {
         id all = [[TWPrefs shared] objectForKey:TWKeyRememberStates];
         NSMutableDictionary *states = [all isKindOfClass:NSDictionary.class]
             ? [all mutableCopy] : [NSMutableDictionary dictionary];
-        // 迁移：同一应用的旧「容器」键全部清掉，只留按应用的那一份。
-        NSString *legacyPrefix = [NSString stringWithFormat:@"%@%@", bundleID, TWRememberKeySeparator];
-        for (id existingKey in [states.allKeys copy]) {
-            if (![existingKey isKindOfClass:NSString.class]) continue;
-            if ([existingKey isEqual:key]) continue;
-            if ([existingKey hasPrefix:legacyPrefix]) [states removeObjectForKey:existingKey];
-        }
         if (TWBOOLFromValue(states[TWRememberMigratedMarker], NO)) return;
         NSDictionary *legacy = [[TWPrefs shared] objectForKey:TWKeyRememberFrames];
         if ([legacy isKindOfClass:NSDictionary.class]) {
