@@ -5,7 +5,6 @@ cd "$(dirname "$0")"
 
 command -v python3  >/dev/null || { echo '缺 python3'; exit 1; }
 command -v ldid     >/dev/null || { echo '缺 ldid'; exit 1; }
-command -v dpkg-deb >/dev/null || { echo '缺 dpkg-deb'; exit 1; }
 
 rm -rf build stage
 mkdir -p build stage
