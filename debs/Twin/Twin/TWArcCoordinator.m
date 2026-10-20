@@ -276,6 +276,7 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
     objc_setAssociatedObject(self, "TWArcBackupPan", nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     _pan = nil;
     [self cancelCurrentGesture];
+    [[TWArcWindow sharedWindow] hideForGestures];
 }
 
 // 只在屏幕四个角落的一块方形区域里接管触摸：不碰状态栏、不碰 Home 条，
@@ -297,28 +298,19 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
 
 - (void)attachRecognizer {
     NSArray *existingPans = objc_getAssociatedObject(self, "TWArcTriggerPans");
-    TWRuntimeLog(@"[arc] attach called pan=%@ existing=%lu", _pan ? @"yes" : @"no",
-                 (unsigned long)existingPans.count);
-    if (_pan) return;
+    if (_pan && _pan.view) return;
     if (existingPans.count) return;
 
-    NSMutableArray *windows = [NSMutableArray array];
-    for (NSInteger corner = 0; corner < 4; corner++) {
-        TWArcTriggerWindow *w = [self triggerWindowForCorner:corner];
-        if (w) [windows addObject:w];
-    }
-    objc_setAssociatedObject(self, "TWArcTriggerWindows", windows, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-
     UIWindowScene *scene = [self activeWindowScene];
-    UIWindow *sceneWindow = nil;
-    for (UIWindow *w in [UIApplication sharedApplication].windows) {
-        if (w.windowScene == scene && w.bounds.size.width > 200) { sceneWindow = w; break; }
+    UIWindow *reference = nil;
+    if (scene) {
+        for (UIWindow *w in scene.windows) {
+            if (w.bounds.size.width > 200) { reference = w; break; }
+        }
     }
-    if (!sceneWindow) sceneWindow = scene.windows.firstObject;
-    if (!scene) {
-        // SpringBoard 还没建好窗口/场景时，创建出来的 UIWindow 没有场景，
-        // 永远不会显示，也永远收不到触摸——表现就是"角落怎么拖都没反应"。
-        // 这里改成等场景出现再挂，最多等 20 秒。
+    if (!reference) reference = [UIApplication sharedApplication].windows.firstObject;
+    if (!scene || !reference) {
+        // 场景还没建好：建出来的窗口没有场景，永远收不到触摸。
         if (_sceneRetries < 40) {
             _sceneRetries++;
             TWRuntimeLog(@"[arc] no scene yet (retry %ld)", (long)_sceneRetries);
@@ -332,87 +324,43 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
         }
         return;
     }
+
+    // 0.9.13：不再用四块 64×64 的小窗口 + 主窗口备用手势。
+    // 小窗口里的 pan 会被 SpringBoard 自己的图标/系统手势取消（日志里只有 touch 没有 drag），
+    // 主窗口的备用 pan 又会和它互相打架。改成 ScreenCore 的结构：
+    // 一个全屏透明高层窗口，hitTest 只放行四个角落，手势挂在这个窗口的根视图上，
+    // 命中后整条触摸链都由它独占，任何系统手势都抢不走。
+    TWArcWindow *host = [TWArcWindow sharedWindow];
+    if (![host attachToSceneFromWindow:reference]) {
+        TWRuntimeLog(@"[arc] overlay window cannot attach to scene");
+        return;
+    }
     _sceneRetries = 0;
 
-    TWPrefs *prefs = [TWPrefs shared];
     TWArcHotAreas areas = TWArcComputeHotAreas();
-    NSInteger mask = areas.mask;
-
-    // 0.9.9：优先借 ParallelX 自己的手柄窗口来挂角落热区。
-    // 这个窗口是 PX 建好的、在场景里、收得到触摸；比自己 new 一个 UIWindow
-    // 可靠得多（0.9.8 就是自己建的窗口收不到触摸，角落一直拖不动）。
-    if ([[TWPrefs shared] boolForKey:TWKeyArcUsePXPanel defaultValue:YES]) {
-        UIWindow *pxHost = TWArcPXBridgeHostWindow();
-        if (pxHost) {
-            UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
-            pan.delegate = self;
-            pan.maximumNumberOfTouches = 1;
-            pan.cancelsTouchesInView = NO;
-            [pxHost addGestureRecognizer:pan];
-            objc_setAssociatedObject(self, "TWArcTriggerPans", @[pan], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            _pxHostWindow = pxHost;
-            TWRuntimeLog(@"[arc] hot areas attached to PX window %.0fx%.0f level=%.0f",
-                         pxHost.bounds.size.width, pxHost.bounds.size.height, pxHost.windowLevel);
-            return;
-        }
-        TWRuntimeLog(@"[arc] PX handleWindow unavailable, falling back to own windows");
+    NSMutableArray<NSValue *> *rects = [NSMutableArray array];
+    for (NSInteger corner = 0; corner < 4; corner++) {
+        if ((areas.mask & (1 << corner)) == 0) continue;
+        [rects addObject:[NSValue valueWithCGRect:areas.rects[corner]]];
     }
+    [host setCaptureRects:rects];
+    [host showForGestures];
 
-    UIView *firstHost = nil;
-    for (TWArcTriggerWindow *w in windows) {
-        NSInteger corner = [w tag];
-        BOOL enabled = (mask & (1 << corner)) != 0;
-        if (!enabled) { w.hidden = YES; continue; }
-
-        if ([prefs boolForKey:TWKeyArcDebug defaultValue:NO]) {
-            w.rootViewController.view.backgroundColor = [UIColor colorWithRed:1 green:0.2 blue:0.3 alpha:0.28];
-            // 「矩形圆角」只影响可见的调试热区（热区本身是隐形的，圆角没有别的意义）。
-            CGFloat radius = [prefs floatForKey:TWKeyArcRectCorner defaultValue:12];
-            w.rootViewController.view.layer.cornerRadius = MAX(0, MIN(radius, 75));
-            w.rootViewController.view.layer.masksToBounds = YES;
-        } else {
-            w.rootViewController.view.backgroundColor = UIColor.clearColor;
-            w.rootViewController.view.layer.masksToBounds = NO;
-        }
-        w.frame = areas.rects[corner];
-        w.rootViewController.view.frame = w.bounds;
-        if (w.windowScene != scene) w.windowScene = scene;
-        w.hidden = NO;
-        if (!firstHost) firstHost = w.rootViewController.view;
-    }
-
-    // 每个角落各挂一个手势，touch 只可能来自那个角落的小窗口。
-    NSMutableArray *pans = [NSMutableArray array];
-    for (TWArcTriggerWindow *w in windows) {
-        if (w.hidden || !w.rootViewController.view) continue;
-        UIPanGestureRecognizer *pan =
-            [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
-        pan.delegate = self;
-        pan.maximumNumberOfTouches = 1;
-        pan.cancelsTouchesInView = YES;
-        [w.rootViewController.view addGestureRecognizer:pan];
-        [pans addObject:pan];
-        if (!_pan) _pan = pan;   // 兼容旧字段（判空用）
-    }
-
-    // 备用：把同一条手势挂到主窗口上。只在角落热区内成立（见 shouldReceiveTouch），
-    // 且 cancelsTouchesInView=NO，所以热区外的图标点按完全不受影响。
-    // SpringBoard 主窗口不一定有 rootViewController，没有就挂在窗口本身上。
-    UIView *backupHost = sceneWindow.rootViewController.view ?: sceneWindow;
-    if (backupHost) {
-        UIPanGestureRecognizer *backup =
-            [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
-        backup.delegate = self;
-        backup.maximumNumberOfTouches = 1;
-        backup.cancelsTouchesInView = NO;
-        [backupHost addGestureRecognizer:backup];
-        objc_setAssociatedObject(self, "TWArcBackupPan", backup, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        [pans addObject:backup];
-    }
-    objc_setAssociatedObject(self, "TWArcTriggerPans", pans, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    TWRuntimeLog(@"[arc] attach mask=%ld rect=%@ windows=%lu backup=%@ scene=%@",
-                 (long)mask, NSStringFromCGRect(areas.rects[TWCornerBottomRight]),
-                 (unsigned long)windows.count, backupHost ? @"yes" : @"no", scene ? @"yes" : @"no");
+    UIView *container = [host menuContainer];
+    UIPanGestureRecognizer *pan =
+        [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
+    pan.delegate = self;
+    pan.maximumNumberOfTouches = 1;
+    pan.minimumNumberOfTouches = 1;
+    pan.cancelsTouchesInView = NO;
+    [container addGestureRecognizer:pan];
+    _pan = pan;
+    _pxHostWindow = host;
+    objc_setAssociatedObject(self, "TWArcTriggerPans", @[pan], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    TWRuntimeLog(@"[arc] overlay ready level=%.0f mask=%ld rect=%@ size=%@",
+                 host.windowLevel, (long)areas.mask,
+                 NSStringFromCGRect(areas.rects[TWCornerBottomRight]),
+                 NSStringFromCGSize(host.bounds.size));
 }
 
 - (TWArcTriggerWindow *)triggerWindowForCorner:(NSInteger)corner {
@@ -507,6 +455,7 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
         if (strongSelf->_menu.isPresented) return;
         strongSelf->_menu.userInteractionEnabled = NO;
         strongSelf->_menu.hidden = YES;
+        // 窗口本身不隐藏：它是角落手势的宿主，隐藏了就再也收不到触摸。
         [[TWArcWindow sharedWindow] hideMenuContainer];
     });
 }
@@ -533,17 +482,13 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
     switch (pan.state) {
         case UIGestureRecognizerStateBegan:
         case UIGestureRecognizerStateChanged: {
-            // Began has already passed UIKit's threshold; do not replace the origin.
+            // Began 已经过了 UIKit 的判定阈值：手指一动就直接展开菜单，
+            // 不再等额外的 22pt（等太久会被系统手势判成取消）。
             if (!_tracking && !_didPresent) {
-                CGFloat dx = p.x - _startPoint.x, dy = p.y - _startPoint.y;
-                if (hypot(dx, dy) >= 22) {
-                    TWRuntimeLog(@"[arc] drag %.0f,%.0f -> %.0f,%.0f (corner %ld)",
-                                 _startPoint.x, _startPoint.y, p.x, p.y, (long)_startCorner);
-                    // 从角落展开的弧形菜单（ScreenCore 形态）。
-                    // 父视图优先用 PX 的手柄窗口——触摸链路是它验证过的。
-                    [self presentMenuFromPoint:_startPoint corner:_startCorner];
-                    _tracking = _menu.isPresented;
-                }
+                TWRuntimeLog(@"[arc] drag %.0f,%.0f -> %.0f,%.0f (corner %ld) state=%ld",
+                             _startPoint.x, _startPoint.y, p.x, p.y, (long)_startCorner, (long)pan.state);
+                [self presentMenuFromPoint:_startPoint corner:_startCorner];
+                _tracking = _menu.isPresented;
             }
             if (_tracking) {
                 [_menu updateSelectionAtPoint:[pan locationInView:_menu]];
@@ -570,6 +515,7 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
         }
         case UIGestureRecognizerStateCancelled:
         case UIGestureRecognizerStateFailed:
+            TWRuntimeLog(@"[arc] pan ended by system state=%ld", (long)pan.state);
             [self cancelCurrentGesture];
             break;
         default: break;
@@ -607,31 +553,38 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
 
 - (void)presentMenuFromPoint:(CGPoint)point corner:(NSInteger)corner {
     if (_didPresent || !TWArcDeviceUnlocked()) return;
-    // 菜单要挂在真正的场景窗口上（触发窗口只有 64×64，不能当宿主）。
-    UIWindow *reference = nil;
-    for (UIWindow *w in [UIApplication sharedApplication].windows) {
-        if (w.windowScene && w.windowLevel > UIWindowLevelNormal - 1 && w.bounds.size.width > 200) {
-            reference = w; break;
-        }
-    }
-    if (!reference || reference.hidden) return;
 
-    // 层级：自建高层级覆盖窗口（Arc-X 结构），不再塞进 SpringBoard 的普通窗口
-    // （UIWindowLevelNormal = 0，会被状态栏与系统界面压住）。取不到可用场景时
-    // 退回旧宿主，手势不会哑掉。
     TWArcWindow *host = [TWArcWindow sharedWindow];
-    UIView *container = nil;
-    UIWindow *pxHost = _pxHostWindow;
-    if (pxHost && !pxHost.hidden) {
-        // 借 PX 已经挂在场景里的窗口，菜单直接作为它的子视图，
-        // 坐标与屏幕一致，扇形仍以角落为圆心展开。
-        container = pxHost;
-        TWRuntimeLog(@"[arc] menu hosted in PX window");
-    } else if (host && [host attachToSceneFromWindow:reference]) {
-        container = [host menuContainer];
-        [host showMenuContainer];
+    UIWindow *reference = [self activeWindowScene].windows.firstObject;
+    if (![host attachToSceneFromWindow:reference]) {
+        TWRuntimeLog(@"[arc] present: overlay has no scene");
+        return;
     }
-    if (!container) container = reference;
+    [host showForGestures];
+    UIView *container = [host menuContainer];
+    if (!container) { TWRuntimeLog(@"[arc] present: no container"); return; }
+    // 手势坐标是屏幕坐标；经窗口坐标转换到容器坐标系（UIView 没有 fromWindow:）。
+    CGPoint local = point;
+    UIWindow *containerWindow = container.window;
+    if (containerWindow) {
+        CGPoint windowPoint = [containerWindow convertPoint:point fromWindow:nil];
+        local = [container convertPoint:windowPoint fromView:containerWindow];
+    }
+
+    // 优先让 ParallelX 自己弹面板：动画、图标、流畅度都是 PX 本体的。
+    // 只有 PX 不可用（未装 / 入口没拿到）时才退回 Twin 自绘的弧形菜单。
+    NSInteger pxSide = [[TWPrefs shared] integerForKey:TWKeyArcSide defaultValue:0] == 1 ? 1 : 0;
+    if ([[TWPrefs shared] boolForKey:TWKeyArcUsePXPanel defaultValue:YES]) {
+        if (TWArcPXBridgePresent(pxSide)) {
+            _didPresent = YES;
+            TWRuntimeLog(@"[arc] present via PX side=%ld", (long)pxSide);
+            if ([[TWPrefs shared] boolForKey:TWKeyArcSound defaultValue:YES]) {
+                AudioServicesPlaySystemSound(1104);
+            }
+            return;
+        }
+        TWRuntimeLog(@"[arc] PX panel unavailable: %@", TWArcPXBridgeLastResult());
+    }
 
     _didPresent = YES;
     [self pressReset];
@@ -645,23 +598,12 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
     _menu.userInteractionEnabled = YES;
     [container addSubview:_menu];
 
-    // 优先让 ParallelX 自己弹面板：动画、图标、流畅度都是 PX 本体的。
-    // 只有 PX 不可用（未装 / ABI 不符）时才退回 Twin 自绘的弧形菜单。
-    NSInteger pxSide = [[TWPrefs shared] integerForKey:TWKeyArcSide defaultValue:0] == 1 ? 1 : 0;
-    if ([[TWPrefs shared] boolForKey:TWKeyArcUsePXPanel defaultValue:YES] &&
-        TWArcPXBridgePresent(pxSide)) {
-        _didPresent = YES;
-        if ([[TWPrefs shared] boolForKey:TWKeyArcSound defaultValue:YES]) {
-            AudioServicesPlaySystemSound(1104);
-        }
-        return;
-    }
-
     NSArray *entries = [self menuEntries];
     CGFloat radius = [[TWPrefs shared] floatForKey:TWKeyArcRadius defaultValue:150];
-    TWRuntimeLog(@"[arc] present corner=%ld entries=%lu radius=%.0f", (long)corner, (unsigned long)entries.count, radius);
+    TWRuntimeLog(@"[arc] present corner=%ld entries=%lu radius=%.0f anchor=%.0f,%.0f",
+                 (long)corner, (unsigned long)entries.count, radius, local.x, local.y);
     if (!entries.count) { [self cancelCurrentGesture]; return; }
-    [_menu presentFromTriggerPoint:point entries:entries corner:corner radius:radius menuScale:1.0];
+    [_menu presentFromTriggerPoint:local entries:entries corner:corner radius:radius menuScale:1.0];
     if ([[TWPrefs shared] boolForKey:TWKeyArcSound defaultValue:YES]) {
         AudioServicesPlaySystemSound(1104);
     }
@@ -761,11 +703,17 @@ static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
             if (raw[@"enabled"] && ![raw[@"enabled"] boolValue]) continue;
             NSString *bundleID = raw[@"bundleID"];
             if (![bundleID isKindOfClass:[NSString class]] || !bundleID.length) continue;
-            NSString *badge = [raw[@"badge"] isKindOfClass:[NSString class]] ? raw[@"badge"] : @"";
+            // 容器 ID 归一：老版本存过空串，空串不能用（会退回"当前容器"，
+            // 点"默"却开成"分"）。Crane 的默认容器 ID 固定是 DEFAULT。
+            NSString *containerID = [raw[@"containerID"] isKindOfClass:[NSString class]] ? raw[@"containerID"] : @"";
+            if (!containerID.length) containerID = @"DEFAULT";
+            BOOL isDefault = [containerID isEqualToString:@"DEFAULT"];
             NSString *name = ([raw[@"name"] isKindOfClass:[NSString class]] && [raw[@"name"] length]) ? raw[@"name"] : TWArcDisplayName(bundleID);
+            // 角标以容器 ID 为准，不信任历史保存的 badge（0.9.12 把 DEFAULT 存成过"分"）。
+            NSString *badge = isDefault ? @"默" : (([raw[@"badge"] isKindOfClass:[NSString class]] && [raw[@"badge"] length]) ? raw[@"badge"] : @"分");
             [entries addObject:@{@"bundleID": bundleID,
-                                 @"containerID": [raw[@"containerID"] isKindOfClass:[NSString class]] ? raw[@"containerID"] : @"",
-                                 @"title": badge.length ? [NSString stringWithFormat:@"%@ · %@", name, badge] : name,
+                                 @"containerID": containerID,
+                                 @"title": [NSString stringWithFormat:@"%@ · %@", name, badge],
                                  @"badge": badge}];
         }
         if (entries.count) return entries;
@@ -802,7 +750,9 @@ static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
                 if ((NSInteger)entries.count >= limit) break;
                 NSString *containerID = [container[@"containerID"] isKindOfClass:[NSString class]] ? container[@"containerID"] : @"";
                 if (!containerID.length) continue;
-                BOOL isDefault = container[@"isDefault"] ? [container[@"isDefault"] boolValue] : NO;
+                // 导出数据里默认容器的 ID 是 DEFAULT，没有 isDefault 字段。
+                BOOL isDefault = [containerID isEqualToString:@"DEFAULT"] ||
+                                 (container[@"isDefault"] ? [container[@"isDefault"] boolValue] : NO);
                 NSString *containerName = [container[@"name"] isKindOfClass:[NSString class]] ? container[@"name"] : @"";
                 NSString *badge = isDefault ? @"默" : (containerName.length ? containerName : @"分");
                 [entries addObject:@{@"bundleID": bundleID, @"containerID": containerID,

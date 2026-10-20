@@ -21,7 +21,12 @@ NS_ASSUME_NONNULL_BEGIN
 // 只承载菜单的透明容器：空白区域的触摸一律穿透到下层，不劫持系统手势。
 - (nullable UIView *)menuContainer;
 - (void)showMenuContainer;   // 显示（菜单要出现前调用）
-- (void)hideMenuContainer;   // 空闲时整窗隐藏，彻底让出触摸
+- (void)hideMenuContainer;   // 只收起菜单，窗口继续待命接手势
+// 空闲时只在这些矩形（屏幕坐标）里接管触摸，其它地方一律穿透。
+// 传空数组＝回到"整窗都不接触摸"（配合 hideForGestures 使用）。
+- (void)setCaptureRects:(nullable NSArray<NSValue *> *)rects;
+- (void)showForGestures;     // 显示窗口但保持透明待命
+- (void)hideForGestures;     // 真正隐藏窗口（切到 PX 手柄模式时）
 @end
 
 NS_ASSUME_NONNULL_END

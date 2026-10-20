@@ -141,10 +141,13 @@ BOOL TWContainerExportNow(void) {
         if (![item isKindOfClass:NSString.class] || ![item length]) continue;
         NSString *bundleID = item;
         id ids = TWE_Call(@"containerIdentifiersOfApplicationWithIdentifier:", @[bundleID]);
-        NSMutableArray *containers = [NSMutableArray arrayWithObject:@{ @"id": @"", @"name": @"默认" }];
+        // Crane 的默认容器 ID 就是 "DEFAULT"；空字符串不是合法 ID，
+        // 之前导出成 "" 会让面板多出一行假"默认"，真默认反而被标成"分"。
+        NSMutableArray *containers = [NSMutableArray arrayWithObject:@{ @"id": @"DEFAULT", @"name": @"默认" }];
         if ([ids isKindOfClass:NSArray.class]) {
             for (id cid in (NSArray *)ids) {
                 if (![cid isKindOfClass:NSString.class] || ![cid length]) continue;
+                if ([cid isEqualToString:@"DEFAULT"]) continue;
                 id name = TWE_Call(@"displayNameForContainerWithIdentifier:ofApplicationWithIdentifier:shouldUseShortVersion:",
                                    @[cid, bundleID]);
                 NSString *display = ([name isKindOfClass:NSString.class] && [name length]) ? name : cid;

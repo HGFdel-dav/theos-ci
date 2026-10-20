@@ -125,7 +125,7 @@ static id TWCraneCall(NSString *selectorName, NSArray *arguments) {
 
 // Crane 的容器显示名（方法名按已解包的 com.wkk.crane 1.3.17 原样使用）。
 static NSString *TWCraneContainerName(NSString *containerID, NSString *bundleID) {
-    if (!containerID.length) return @"默认";
+    if (!containerID.length || [containerID isEqualToString:@"DEFAULT"]) return @"默认";
     id name = TWCraneCall(@"displayNameForContainerWithIdentifier:ofApplicationWithIdentifier:shouldUseShortVersion:",
                           @[containerID, bundleID]);
     if ([name isKindOfClass:NSString.class] && [name length]) return name;
@@ -225,7 +225,8 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
             NSString *bundleID = item[@"bundleID"];
             NSString *containerID = item[@"containerID"];
             if (![bundleID isKindOfClass:NSString.class]) continue;
-            if (![containerID isKindOfClass:NSString.class]) containerID = @"";
+            if (![containerID isKindOfClass:NSString.class]) containerID = @"DEFAULT";
+            if (!containerID.length) containerID = @"DEFAULT";   // 0.9.12 及以前的空串＝默认容器
             id enabled = item[@"enabled"];
             BOOL on = [enabled respondsToSelector:@selector(boolValue)] ? [enabled boolValue] : YES;
             enabledMap[[NSString stringWithFormat:@"%@|%@", bundleID, containerID]] = @(on);
@@ -234,8 +235,11 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
 
     NSMutableArray<NSDictionary *> *rows = [NSMutableArray array];
     for (NSString *bundleID in TWCraneAppsWithContainers()) {
-        NSMutableArray<NSString *> *ids = [NSMutableArray arrayWithObject:@""];
-        [ids addObjectsFromArray:TWCraneContainerIDsForBundleID(bundleID)];
+        NSMutableArray<NSString *> *ids = [NSMutableArray arrayWithObject:@"DEFAULT"];
+        for (NSString *cid in TWCraneContainerIDsForBundleID(bundleID)) {
+            if (!cid.length || [cid isEqualToString:@"DEFAULT"]) continue;
+            [ids addObject:cid];
+        }
         for (NSString *containerID in ids) {
             NSString *mapKey = [NSString stringWithFormat:@"%@|%@", bundleID, containerID];
             NSNumber *enabled = enabledMap[mapKey];
@@ -258,7 +262,7 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
             @"bundleID": row[@"bundleID"],
             @"containerID": row[@"containerID"] ?: @"",
             @"name": TWPrefsAppName(row[@"bundleID"]),
-            @"badge": [row[@"containerID"] length] ? @"分" : @"默",
+            @"badge": [row[@"containerID"] isEqualToString:@"DEFAULT"] ? @"默" : @"分",
             @"enabled": row[@"enabled"] ?: @YES,
         }];
     }

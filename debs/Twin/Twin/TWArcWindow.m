@@ -16,16 +16,24 @@ static const NSInteger TWArcPriorityCeiling = 2200;
 
 // 只让子视图（菜单）接管触摸：空白区域返回 nil，触摸穿透到下层窗口，
 // 这样状态栏点击、系统手势、前台应用都不受影响。
-@interface TWArcPassthroughView : UIView @end
+@interface TWArcPassthroughView : UIView
+@property (nonatomic, copy, nullable) NSArray<NSValue *> *captureRects;
+@end
 
 @implementation TWArcPassthroughView
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
     if (self.hidden || self.alpha < 0.01 || !self.userInteractionEnabled) return nil;
+    // 菜单已经展开时，优先让菜单本身接收触摸。
     for (UIView *sub in self.subviews.reverseObjectEnumerator) {
         if (sub.hidden || sub.alpha < 0.01) continue;
         CGPoint local = [sub convertPoint:point fromView:self];
         UIView *hit = [sub hitTest:local withEvent:event];
         if (hit) return hit;
+    }
+    // 空闲时只接住四个角落的触摸：手势挂在本视图上，命中后由它独占这条触摸链，
+    // 不会再被 SpringBoard 的图标/系统手势抢走（这正是之前拖不动的原因）。
+    for (NSValue *value in self.captureRects) {
+        if (CGRectContainsPoint(value.CGRectValue, point)) return self;
     }
     return nil;
 }
@@ -106,6 +114,23 @@ static const NSInteger TWArcPriorityCeiling = 2200;
 
 - (UIView *)menuContainer { return self.rootViewController.view; }
 
+- (void)setCaptureRects:(NSArray<NSValue *> *)rects {
+    UIView *root = self.rootViewController.view;
+    if ([root isKindOfClass:TWArcPassthroughView.class]) {
+        ((TWArcPassthroughView *)root).captureRects = rects ?: @[];
+    }
+}
+
+- (void)showForGestures {
+    UIWindowScene *scene = self.windowScene;
+    if (scene) {
+        CGRect bounds = scene.coordinateSpace.bounds;
+        if (!CGRectIsEmpty(bounds)) self.frame = bounds;
+    }
+    [self refreshLevel];
+    self.hidden = NO;
+}
+
 - (void)showMenuContainer {
     UIWindowScene *scene = self.windowScene;
     if (scene) {
@@ -116,6 +141,14 @@ static const NSInteger TWArcPriorityCeiling = 2200;
     self.hidden = NO;
 }
 
-- (void)hideMenuContainer { self.hidden = YES; }
+- (void)hideMenuContainer {
+    // 只把菜单收起，窗口继续留在场景里待命（否则下一次角落触摸永远收不到）。
+    for (UIView *sub in self.rootViewController.view.subviews) sub.hidden = YES;
+}
+
+- (void)hideForGestures {
+    [self setCaptureRects:@[]];
+    self.hidden = YES;
+}
 
 @end
