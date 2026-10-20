@@ -198,6 +198,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 
 @implementation TWArcMenuView {
     UITapGestureRecognizer *_twTap;
+    __weak TWArcItemView *_twHighlighted;
     NSMutableArray<TWArcItemView *> *_items;
     NSArray<NSDictionary *> *_entries;
     CGPoint _triggerPoint;
@@ -454,6 +455,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
         BOOL should = (item == hit);
         if (item.isHighlighted != should) item.highlighted = should;
     }
+    if (hit) _twHighlighted = hit;
     if (newlySelected && [[TWPrefs shared] boolForKey:TWKeyArcHaptic defaultValue:YES]) {
         UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
         [gen impactOccurred];
@@ -462,7 +464,10 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 
 - (NSDictionary *)finishSelectionAtPoint:(CGPoint)point {
     TWArcItemView *item = [self itemAtPoint:point];
-    if (!item) item = [self nearestItemAtPoint:point limit:60.0];
+    if (!item) item = _twHighlighted;                       // 松手那一刻手指一抖也不会丢
+    if (!item) item = [self nearestItemAtPoint:point limit:90.0];
+    TWRuntimeLog(@"[arc] release p=%.0f,%.0f hit=%@", point.x, point.y,
+                 item.entry[@"title"] ?: @"(none)");
     NSDictionary *selected = item.entry;
     item.highlighted = NO;
     [self dismissAnimated:selected != nil];

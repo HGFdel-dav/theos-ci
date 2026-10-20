@@ -23,9 +23,10 @@ static NSString *const kLogDomain = @"com.niubiprass.twin.log";
     self.navigationItem.rightBarButtonItem =
         [[UIBarButtonItem alloc] initWithTitle:@"复制" style:UIBarButtonItemStylePlain
                                         target:self action:@selector(twCopyAll)];
-    self.navigationItem.leftBarButtonItem =
-        [[UIBarButtonItem alloc] initWithTitle:@"刷新" style:UIBarButtonItemStylePlain
-                                        target:self action:@selector(twReload)];
+    // 不占用左上角（那是系统返回键），刷新改成下拉。
+    UIRefreshControl *refresh = [[UIRefreshControl alloc] init];
+    [refresh addTarget:self action:@selector(twReload) forControlEvents:UIControlEventValueChanged];
+    self.refreshControl = refresh;
     [self twReload];
 }
 
@@ -40,6 +41,7 @@ static NSString *const kLogDomain = @"com.niubiprass.twin.log";
         CFRelease(v);
     }
     _lines = [lines isKindOfClass:NSArray.class] ? [lines reverseObjectEnumerator].allObjects : @[];
+    [self.refreshControl endRefreshing];
     [self.tableView reloadData];
 }
 
