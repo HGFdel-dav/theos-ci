@@ -187,6 +187,11 @@ PSSpecifier *TWRowSpecifier(id target,
         }
         [spec setProperty:v forKey:extraKey];
     }
+    // 滑杆行：extras 里的 height（58/44）会让标题和滑杆挤在一起（实机截图），
+    // 在所有 extras 之后强制 78pt，任何调用点都改不掉。
+    if (cellType == PSSliderCell) {
+        [spec setProperty:@78 forKey:@"height"];
+    }
     return spec;
 }
 
@@ -600,14 +605,14 @@ void TWStyleSliderCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier) {
     value.text = [NSString stringWithFormat:@"%.0f%@", slider.value, unit];
     CGFloat h = CGRectGetHeight(cell.bounds);
     if (h < 44) h = 44;
-    CGFloat top = (h >= 66) ? 10 : 2;
+    CGFloat top = (h >= 66) ? 8 : 2;
     title.frame = CGRectMake(16, top, w - 32, 18);
     value.frame = CGRectMake(16, top, w - 32, 18);
 
     CGFloat sliderH = CGRectGetHeight(slider.bounds);
     if (sliderH <= 0 || sliderH > 40) sliderH = 31;
-    // 标题占顶部 18pt，滑杆从 34pt 起；高度不够时把滑杆压到标题下方而不是重叠。
-    CGFloat sliderY = (h >= 66) ? 34 : 24;
+    // 78pt 的行：标题 8~26，滑杆 42~73，31pt 的圆钮顶部在 27 —— 不再压字。
+    CGFloat sliderY = (h >= 66) ? (h - sliderH - 5) : 24;
     if (sliderY + sliderH > h) sliderY = MAX(top + 20, h - sliderH);
     slider.frame = CGRectMake(16, sliderY, MAX(w - 32, 40), sliderH);
 }

@@ -262,9 +262,11 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
 #pragma mark - 子页分发（自己 new，避免跨 bundle 类查找）
 
 - (id)controllerForSpecifier:(PSSpecifier *)specifier {
-    id controller = TWControllerForSpecifier(self, specifier);
-    if (controller) return controller;
-    return TWSuperControllerForSpecifier(self, specifier);
+    // 0.9.18：先让 Preferences 自己按 bundle + detail 建控制器。
+    // 根页就是被系统这样建出来的，能正常显示；我们之前自己 alloc 的子页却是黑的。
+    id stock = TWSuperControllerForSpecifier(self, specifier);
+    if (stock) return stock;
+    return TWControllerForSpecifier(self, specifier);
 }
 
 #pragma mark - hero header
