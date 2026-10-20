@@ -226,10 +226,10 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 
     // ---- 几何：ScreenCore 的 90° 角落扇形 + 多环排布 ----
     TWPrefs *prefs = [TWPrefs shared];
-    CGFloat itemSize = [prefs floatForKey:TWKeyArcIconSize defaultValue:44];
-    if (!isfinite(itemSize) || itemSize < 20) itemSize = 44;
+    CGFloat itemSize = [prefs floatForKey:TWKeyArcIconSize defaultValue:28];
+    if (!isfinite(itemSize) || itemSize < 20) itemSize = 28;
     NSInteger firstRow = [prefs integerForKey:TWKeyArcFirstRowCount defaultValue:5];
-    CGFloat ringGap = [prefs floatForKey:TWKeyArcRingGap defaultValue:10];
+    CGFloat ringGap = [prefs floatForKey:TWKeyArcRingGap defaultValue:0];
 
     // 以下全部对应 ScreenCore 的同名参数。
     CGFloat menuPct = [prefs floatForKey:TWKeyArcMenuScale defaultValue:100];
@@ -240,7 +240,14 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     if (!isfinite(iconBgPct)) iconBgPct = 100;
     CGFloat offX = [prefs floatForKey:TWKeyArcOffsetX defaultValue:0];
     CGFloat offY = [prefs floatForKey:TWKeyArcOffsetY defaultValue:0];
+    BOOL landscapeNow = self.bounds.size.width > self.bounds.size.height;
     radius += [prefs floatForKey:TWKeyArcOffsetDistance defaultValue:0];
+    if (landscapeNow) {
+        radius += [prefs floatForKey:TWKeyArcLandscapeDist defaultValue:0];
+        CGFloat landPct = [prefs floatForKey:TWKeyArcLandscapeScale defaultValue:100];
+        if (isfinite(landPct) && landPct > 10) _menuScale *= MIN(landPct, 400.0) / 100.0;
+    }
+    NSInteger iconShape = [prefs integerForKey:TWKeyArcIconShape defaultValue:0];
 
     CGFloat margin = itemSize * 0.5 + 14;
     _anchor = [TWArcGeometry anchorForCorner:_corner margin:margin bounds:self.bounds];
@@ -295,6 +302,10 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
         if (!icon) icon = [self placeholderImageForEntry:entry];
         TWArcItemView *item = [[TWArcItemView alloc] initWithEntry:entry image:icon size:itemSize];
         [item applyIconScalePercent:iconScalePct backgroundAlphaPercent:iconBgPct];
+        if (iconShape == 1) {
+            item.layer.cornerRadius = itemSize / 2.0;
+            item.imageView.layer.cornerRadius = itemSize / 2.0;
+        }
         item.baseScale = _menuScale;
         CGPoint center = [centers[(NSUInteger)i] CGPointValue];
         item.targetCenter = center;

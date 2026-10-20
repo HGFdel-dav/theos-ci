@@ -91,9 +91,9 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
         [specs addObject:TWRowSpecifier(self, @"对称镜像", TWKeyArcMirror, @NO, nil, PSSwitchCell,
                                         @"arrow.left.and.right.square", nil,
                                         @{@"height": @58, @"twColor": @1})];
-        [specs addObject:TWRowSpecifier(self, @"触发区半径", TWKeyArcCornerSize, @64, nil, PSSliderCell,
+        [specs addObject:TWRowSpecifier(self, @"触发区半径", TWKeyArcCornerSize, @40, nil, PSSliderCell,
                                         @"circle.dashed", nil,
-                                        @{@"height": @74, @"twMin": @24, @"twMax": @300, @"twStep": @2, @"twUnit": @" pt", @"twColor": @2})];
+                                        @{@"height": @74, @"twMin": @1, @"twMax": @300, @"twStep": @2, @"twUnit": @" pt", @"twColor": @2})];
         [specs addObject:TWRowSpecifier(self, @"矩形长度", TWKeyArcRectLength, @40, nil, PSSliderCell,
                                         @"rectangle", nil,
                                         @{@"height": @74, @"twMin": @24, @"twMax": @150, @"twStep": @1, @"twUnit": @" pt", @"twColor": @3})];
@@ -124,7 +124,16 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
         [specs addObject:TWRowSpecifier(self, @"菜单整体缩放", TWKeyArcMenuScale, @100, nil, PSSliderCell,
                                         @"arrow.up.left.and.arrow.down.right.circle", nil,
                                         @{@"height": @74, @"twMin": @50, @"twMax": @150, @"twStep": @5, @"twUnit": @" %", @"twColor": @0})];
-        [specs addObject:TWRowSpecifier(self, @"图标大小", TWKeyArcIconSize, @44, nil, PSSliderCell,
+        [specs addObject:TWRowSpecifier(self, @"横屏菜单缩放", TWKeyArcLandscapeScale, @100, nil, PSSliderCell,
+                                        @"rectangle.landscape.rotate", nil,
+                                        @{@"height": @74, @"twMin": @50, @"twMax": @400, @"twStep": @5, @"twUnit": @" %", @"twColor": @1})];
+        [specs addObject:TWRowSpecifier(self, @"横屏偏移距离", TWKeyArcLandscapeDist, @0, nil, PSSliderCell,
+                                        @"arrow.left.and.right.square", nil,
+                                        @{@"height": @74, @"twMin": @0, @"twMax": @200, @"twStep": @2, @"twUnit": @" pt", @"twColor": @2})];
+        [specs addObject:TWRowSpecifier(self, @"图标形状", TWKeyArcIconShape, @0, nil, PSSegmentCell,
+                                        @"square.on.circle", nil,
+                                        @{@"height": @58, @"twColor": @3, @"twTitles": @[@"圆角方形", @"圆形"]})];
+        [specs addObject:TWRowSpecifier(self, @"图标大小", TWKeyArcIconSize, @28, nil, PSSliderCell,
                                         @"app.badge", nil,
                                         @{@"height": @74, @"twMin": @28, @"twMax": @80, @"twStep": @2, @"twUnit": @" pt", @"twColor": @1})];
         [specs addObject:TWRowSpecifier(self, @"应用图标缩放", TWKeyArcAppIconScale, @70, nil, PSSliderCell,
@@ -138,8 +147,8 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
                                         @{@"height": @74, @"twMin": @2, @"twMax": @8, @"twStep": @1, @"twUnit": @" 个", @"twColor": @4})];
         [specs addObject:TWRowSpecifier(self, @"第一环图标数", TWKeyArcFirstRowCount, @5, nil, PSSliderCell,
                                         @"circle.grid.2x2", nil,
-                                        @{@"height": @74, @"twMin": @3, @"twMax": @9, @"twStep": @1, @"twUnit": @" 个", @"twColor": @5})];
-        [specs addObject:TWRowSpecifier(self, @"环间距", TWKeyArcRingGap, @10, nil, PSSliderCell,
+                                        @{@"height": @74, @"twMin": @4, @"twMax": @7, @"twStep": @1, @"twUnit": @" 个", @"twColor": @5})];
+        [specs addObject:TWRowSpecifier(self, @"环间距", TWKeyArcRingGap, @0, nil, PSSliderCell,
                                         @"arrow.left.and.right", nil,
                                         @{@"height": @74, @"twMin": @0, @"twMax": @40, @"twStep": @1, @"twUnit": @" pt", @"twColor": @0})];
 

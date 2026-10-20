@@ -184,6 +184,9 @@ static inline NSArray<NSString *> *TWLegacyPrefsFiles(void) {
 #define TWKeyArcSelectedIcon    @"TWArcSelectedIconEnabled" // 选中高亮，默认 YES
 #define TWKeyArcBgEnabled       @"TWArcBackgroundEnabled"   // 菜单背景，默认 NO
 #define TWKeyArcBgAlpha         @"TWArcBackgroundAlpha"     // 背景透明度，0.1–1.0，默认 0.3
+#define TWKeyArcIconShape       @"TWArcAppIconShape"       // 0=圆角方形(默认) 1=圆形
+#define TWKeyArcLandscapeDist   @"TWArcLandscapeDistance"  // 横屏偏移距离，0–200，默认 0
+#define TWKeyArcLandscapeScale  @"TWArcLandscapeMenuScale" // 横屏菜单缩放，50–400，默认 100
 #define TWKeyArcDebug           @"TWArcDebugMode"           // 调试模式，默认 NO
 #define TWKeyArcHideCapture     @"TWArcHideFromCapture"     // 截图时隐藏，默认 NO
 #define TWKeyArcSound         @"TWArcSoundEnabled"
