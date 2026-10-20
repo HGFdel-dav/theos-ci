@@ -142,6 +142,12 @@ static void TWOrigWrite(NSString *key, id value) {
             NSString *cell = it[@"cell"] ?: @"";
             NSString *label = localize(it[@"label"]);
 
+            // 原版在滑杆上方放了一条"纯标题"（PSStaticTextCell，无 key、无选项），
+            // 我们的滑杆行本身就有标题，照搬会出现"每个都两行"，所以跳过。
+            if ([cell isEqualToString:@"PSStaticTextCell"] && !it[@"validValues"] &&
+                ![it[@"key"] isKindOfClass:NSString.class]) {
+                continue;
+            }
             if ([cell isEqualToString:@"PSGroupCell"] || [cell isEqualToString:@"PSButtonCell"]) {
                 if (label.length) {
                     profile = [NSMutableDictionary dictionary];
@@ -236,7 +242,10 @@ static void TWOrigWrite(NSString *key, id value) {
         c.slider.minimumValue = min;
         c.slider.maximumValue = max;
         c.slider.value = [TWOrigRead(key, row[@"default"] ?: @(min)) doubleValue];
-        c.valueLabel.text = [NSString stringWithFormat:@"%g", c.slider.value];
+        double v = c.slider.value;
+        c.valueLabel.text = (fabs(v - round(v)) < 0.01)
+            ? [NSString stringWithFormat:@"%.0f", v]
+            : [NSString stringWithFormat:@"%.2f", v];
         c.slider.tag = indexPath.section * 1000 + indexPath.row;
         [c.slider removeTarget:self action:@selector(twSliderChanged:) forControlEvents:UIControlEventValueChanged];
         [c.slider addTarget:self action:@selector(twSliderChanged:) forControlEvents:UIControlEventValueChanged];
@@ -297,7 +306,10 @@ static void TWOrigWrite(NSString *key, id value) {
     TWOrigWrite(row[@"key"], @(slider.value));
     TWOrigSliderCell *cell = (TWOrigSliderCell *)[self.tableView cellForRowAtIndexPath:ip];
     if ([cell isKindOfClass:TWOrigSliderCell.class]) {
-        cell.valueLabel.text = [NSString stringWithFormat:@"%g", slider.value];
+        double sv = slider.value;
+        cell.valueLabel.text = (fabs(sv - round(sv)) < 0.01)
+            ? [NSString stringWithFormat:@"%.0f", sv]
+            : [NSString stringWithFormat:@"%.2f", sv];
     }
 }
 
