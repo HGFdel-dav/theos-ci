@@ -214,14 +214,8 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
         [specs addObject:TWRowSpecifier(self, @"Arc 唤醒", TWKeyArcEnabled, @YES, nil, PSSwitchCell,
                                         @"bolt.horizontal.fill", nil, @{@"height": @46, @"twColor": @6})];
         // 原版 ARC 面板（ScreenCore 的 TriggerSettings，整份搬进来）
-        {
-            PSSpecifier *orig = [PSSpecifier preferenceSpecifierNamed:@"Arc 面板与手势（原版）"
-                                                               target:self set:nil get:nil
-                                                               detail:nil cell:PSLinkCell edit:nil];
-            [orig setProperty:@"com.niubiprass.twin.arcprefs" forKey:@"bundle"];
-            [orig setProperty:@"TriggerSettings" forKey:@"detail"];
-            [specs addObject:orig];
-        }
+        [specs addObject:TWLinkRowSpecifier(self, @"Arc 面板与手势（原版）", @"hand.point.up.left.fill",
+                                            @"TWOrigArcHost", nil, @{})];
         [specs addObject:TWLinkRowSpecifier(self, @"Twin 扩展（图标数/长按时长/震动）", @"wrench.and.screwdriver.fill",
                                             @"TWArcPanelController", nil, @{})];
 
@@ -279,7 +273,41 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
 
 #pragma mark - 子页分发（自己 new，避免跨 bundle 类查找）
 
+// 直接装载原版设置 bundle（TwinArcPrefs.bundle）的主控制器。
+// 不走 Preferences 的 bundle 注册表，避免"行是灰的、点不进去"。
+- (id)twOriginalArcController {
+    NSArray<NSString *> *paths = @[@"/Library/PreferenceBundles/TwinArcPrefs.bundle",
+                                   @"/var/jb/Library/PreferenceBundles/TwinArcPrefs.bundle"];
+    for (NSString *path in paths) {
+        NSBundle *bundle = [NSBundle bundleWithPath:path];
+        if (!bundle || ![bundle load]) continue;
+        Class cls = bundle.principalClass;
+        if (!cls) continue;
+        id controller = nil;
+        SEL sizeSel = NSSelectorFromString(@"initForContentSize:");
+        if ([cls instancesRespondToSelector:sizeSel]) {
+            CGSize size = self.view.bounds.size;
+            if (size.width < 1) size = CGSizeMake(390, 844);
+            controller = ((id (*)(id, SEL, CGSize))objc_msgSend)([cls alloc], sizeSel, size);
+        } else {
+            controller = [[cls alloc] init];
+        }
+        if (!controller) continue;
+        SEL setBundle = NSSelectorFromString(@"setBundle:");
+        if ([controller respondsToSelector:setBundle]) {
+            ((void (*)(id, SEL, id))objc_msgSend)(controller, setBundle, bundle);
+        }
+        return controller;
+    }
+    return nil;
+}
+
 - (id)controllerForSpecifier:(PSSpecifier *)specifier {
+    NSString *detail = [specifier propertyForKey:@"detail"];
+    if ([detail isKindOfClass:NSString.class] && [detail isEqualToString:@"TWOrigArcHost"]) {
+        id controller = [self twOriginalArcController];
+        if (controller) return controller;
+    }
     // 0.9.19：回退 0.9.18 的"stock 优先"。
     // 实机结果：交给 Preferences 建出来的每一页都是黑的（它建的是空壳 PSListController）。
     // 仍然自己 new，至少"Arc 面板与手势"这类页能正常显示。
