@@ -69,7 +69,13 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
             if (h >= 44 && h <= 140) return h;   // 分段/滑杆行需要 58~78pt，46pt 会挤掉控件
         }
     } @catch (__unused NSException *e) {}
-    return [super tableView:tableView heightForRowAtIndexPath:indexPath];
+    
+        @try {
+            PSSpecifier *twSliderSpec = [self specifierAtIndexPath:indexPath];
+            if ([twSliderSpec cellType] == PSSliderCell) return 58.0;
+        } @catch (__unused NSException *e) {}
+
+        return [super tableView:tableView heightForRowAtIndexPath:indexPath];
 }
 
 - (void)viewDidLoad {

@@ -661,9 +661,14 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
             view.corner = corner;
             view.backgroundColor = UIColor.clearColor;
             view.autoresizingMask = UIViewAutoresizingNone;
+            // 热区视图只负责"看得见"和被 pan 判定，绝不自己吃触摸：
+            // 以前它们 userInteractionEnabled=YES，把角落里的图标/按钮点按全吞了
+            // （用户反馈"这个角怎么点都点不到"）。唤醒交给挂在窗口上的 pan。
+            view.userInteractionEnabled = NO;
             [host addSubview:view];
             [existing addObject:view];
         } else if (view.superview != host) {
+            view.userInteractionEnabled = NO;
             [host addSubview:view];
         }
         // 热区矩形是屏幕坐标；host 可能不是全屏或处于缩放状态，转换一次。

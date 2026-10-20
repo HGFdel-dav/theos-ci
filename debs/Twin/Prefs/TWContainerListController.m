@@ -326,7 +326,13 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    return 58;
+    
+        @try {
+            PSSpecifier *twSliderSpec = [self specifierAtIndexPath:indexPath];
+            if ([twSliderSpec cellType] == PSSliderCell) return 58.0;
+        } @catch (__unused NSException *e) {}
+
+        return 58;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {

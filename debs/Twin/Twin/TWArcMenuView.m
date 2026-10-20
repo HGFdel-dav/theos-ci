@@ -148,15 +148,15 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
         if (title.length) {
             _nameLabel = [[UILabel alloc] init];
             _nameLabel.text = title;
-            _nameLabel.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightBold];
+            _nameLabel.font = [UIFont systemFontOfSize:13.5 weight:UIFontWeightSemibold];
             _nameLabel.textColor = UIColor.whiteColor;
             _nameLabel.backgroundColor = [UIColor colorWithWhite:0.09 alpha:0.9];
             _nameLabel.textAlignment = NSTextAlignmentCenter;
             _nameLabel.alpha = 0;
-            CGSize text = [_nameLabel sizeThatFits:CGSizeMake(240, 20)];
-            CGFloat width = MIN(240, text.width + 18);
-            _nameLabel.frame = CGRectMake((size - width) / 2, -26, width, 20);
-            _nameLabel.layer.cornerRadius = 10;
+            CGSize text = [_nameLabel sizeThatFits:CGSizeMake(260, 22)];
+            CGFloat width = MIN(260, text.width + 20);
+            _nameLabel.frame = CGRectMake((size - width) / 2, -28, width, 22);
+            _nameLabel.layer.cornerRadius = 11;
             _nameLabel.clipsToBounds = YES;
             [self addSubview:_nameLabel];
         }

@@ -22,6 +22,7 @@
 #import "TWSpecifiers.h"
 #import "TWPath.h"
 #import "TWPrefs.h"
+#import "TWCraneBridge.h"
 #import "TWArcPanelController.h"
 #import "TWContainerListController.h"
 #import "TWRememberListController.h"
@@ -134,7 +135,13 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
     CGFloat h = [super tableView:tableView heightForRowAtIndexPath:indexPath];
     PSSpecifier *sp = [self specifierAtIndexPath:indexPath];
     TWDiagLog(@"heightForRow sec=%ld row=%ld -> %.1f | %@", (long)indexPath.section, (long)indexPath.row, h, TWDiagSpecSummary(sp));
-    return h;
+    
+        @try {
+            PSSpecifier *twSliderSpec = [self specifierAtIndexPath:indexPath];
+            if ([twSliderSpec cellType] == PSSliderCell) return 58.0;
+        } @catch (__unused NSException *e) {}
+
+        return h;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -187,13 +194,15 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
         // TWForceEnable() 在启动时强制置开（引擎 pluginEnabled + Twin 自身），
         // 面板只留功能项，不让用户先找一个开关。
 
-        // ---------- 分身 ----------
+        // ---------- 分身（没装 Crane 就不显示，免得用户以为要开分身）----------
+        if ([TWCraneBridge isCraneAvailable]) {
         [specs addObject:TWGroupSpecifier(@"分身", nil)];
         [specs addObject:TWRowSpecifier(self, @"分身打开", TWKeyCraneEnabled, @YES, nil, PSSwitchCell,
                                         @"square.on.square", nil, @{@"height": @46, @"twColor": @4})];
         [specs addObject:TWLinkRowSpecifier(self, @"分身应用", @"square.grid.2x2", @"TWContainerListController",
                                             (containerCount ? [NSString stringWithFormat:@"%ld 个", (long)containerCount] : @"未添加"),
                                             @{@"height": @46, @"twColor": @4})];
+        }
         [specs addObject:TWRowSpecifier(self, @"记忆功能", TWKeyRememberSize, @YES, nil, PSSwitchCell,
                                         @"clock.arrow.circlepath", nil, @{@"height": @46, @"twColor": @2})];
         [specs addObject:TWLinkRowSpecifier(self, @"记忆的窗口", @"macwindow", @"TWRememberListController",

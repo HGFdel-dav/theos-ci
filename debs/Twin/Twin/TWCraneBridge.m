@@ -97,6 +97,9 @@ static id TWMsgSendStr(id target, SEL sel, id arg) {
         TWPrefs *prefs=TWPrefs.shared;
         if (![bundleID isKindOfClass:NSString.class] || !bundleID.length) { TWCraneNotice(@"应用标识无效，未启动应用。"); completion(NO); return; }
         if (![prefs boolForKey:TWKeyEnabled defaultValue:YES] || ![prefs boolForKey:TWKeyCraneEnabled defaultValue:YES]) { completion(YES); return; }
+        // 没装 Crane 就当普通应用直接开：以前这里会弹「Crane 未安装…已取消启动」，
+        // 用户开的是普通 App，不该被分身链路拦下来。
+        if (![self isCraneAvailable]) { completion(YES); return; }
         id configured=[prefs craneApps][bundleID];
         if (!configured) { completion(YES); return; }
         if (![configured isKindOfClass:NSString.class] || ![configured length]) { TWCraneNotice(@"Crane 容器配置无效，请重新选择。"); completion(NO); return; }
@@ -115,6 +118,7 @@ static id TWMsgSendStr(id target, SEL sel, id arg) {
         TWPrefs *prefs=TWPrefs.shared;
         if (![bundleID isKindOfClass:NSString.class] || !bundleID.length) { TWCraneNotice(@"应用标识无效，未启动应用。"); completion(NO); return; }
         if (![prefs boolForKey:TWKeyEnabled defaultValue:YES] || ![prefs boolForKey:TWKeyCraneEnabled defaultValue:YES]) { completion(YES); return; }
+        if (![self isCraneAvailable]) { completion(YES); return; }   // 没装 Crane：普通启动
         [self switchBundleID:bundleID toContainer:containerID completion:completion];
     });
 }

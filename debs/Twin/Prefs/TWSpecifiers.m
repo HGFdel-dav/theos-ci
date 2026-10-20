@@ -587,13 +587,35 @@ static void TWDiagInstallUncaughtHandler(void) {
 // 本机 Preferences 的 PSSliderCell 不画标题（cellClass 动态子类也不生效），
 // 所以在 cell 即将显示时直接把标题/数值塞进 cell 自己，并给滑杆让出下半个身位。
 // 不改 cell 类、不覆盖任何私有方法，纯加子视图，最坏情况也只是多一个 UILabel。
+/'
+
+@interface TWSliderProxy : NSObject
+@property (nonatomic, weak) UISlider *slider;
+@property (nonatomic, weak) UILabel *valueLabel;
+@property (nonatomic, copy) NSString *key;
+@property (nonatomic, assign) NSInteger decimals;
+@property (nonatomic, copy) NSString *unit;
+@end
+
+@implementation TWSliderProxy
+- (void)twUpdateLabel {
+    NSString *fmt = self.decimals > 0 ? [NSString stringWithFormat:@"%%.%ldf%%@", (long)self.decimals] : @"%.0f%@";
+    self.valueLabel.text = [NSString stringWithFormat:fmt, self.slider.value, self.unit ?: @""];
+}
+- (void)twChanged {
+    [self twUpdateLabel];
+    if (self.key.length) [[TWPrefs shared] setObject:@(self.slider.value) forKey:self.key];
+}
+- (void)twCommit {
+    [self twChanged];
+    if (self.key.length) [[TWPrefs shared] synchronize];
+}
+@end
+
 void TWStyleSliderCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier) {
     if (![cell isKindOfClass:[UITableViewCell class]] || !specifier) return;
     if ([specifier cellType] != PSSliderCell) return;
 
-    // cellClass 这个属性在本机 PSListController 上没被采用（所以之前的排版总是被
-    // PSSliderCell 自己的 layoutSubviews 覆盖回去）。这里直接把实例的类换成
-    // 无新增 ivar 的滑杆子类，后续每次布局都会走我们的排版。
     Class sliderCls = TWSliderCellClass();
     if (sliderCls && ![cell isKindOfClass:sliderCls]) {
         object_setClass(cell, sliderCls);
@@ -617,63 +639,55 @@ void TWStyleSliderCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier) {
     if (w <= 0) w = CGRectGetWidth(cell.bounds);
 
     if (!title) {
-        title = [[UILabel alloc] initWithFrame:CGRectMake(16, 7, w - 32, 18)];
+        title = [[UILabel alloc] initWithFrame:CGRectZero];
         title.tag = 0x774C4454;
-        title.font = [UIFont systemFontOfSize:15.0];
+        title.font = [UIFont systemFontOfSize:17.0];   // 系统设置行同款字号
         title.textColor = [UIColor labelColor];
         [cell.contentView addSubview:title];
 
-        value = [[UILabel alloc] initWithFrame:CGRectMake(16, 7, w - 32, 18)];
+        value = [[UILabel alloc] initWithFrame:CGRectZero];
         value.tag = 0x774C4455;
-        value.font = [UIFont systemFontOfSize:14.0];
+        value.font = [UIFont systemFontOfSize:15.0];
         value.textColor = [UIColor secondaryLabelColor];
         value.textAlignment = NSTextAlignmentRight;
         [cell.contentView addSubview:value];
+
+        // 圆点调小：默认圆钮在 58pt 行里又大又挤，还容易压到旁边。
+        UIGraphicsImageRenderer *r = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(18, 18)];
+        UIImage *thumb = [r imageWithActions:^(__unused UIGraphicsImageRendererContext *ctx) {
+            [[UIColor whiteColor] setFill];
+            [[UIBezierPath bezierPathWithOvalInRect:CGRectMake(0, 0, 18, 18)] fill];
+        }];
+        [slider setThumbImage:thumb forState:UIControlStateNormal];
+        [slider setThumbImage:thumb forState:UIControlStateHighlighted];
+
+        TWSliderProxy *proxy = [TWSliderProxy new];
+        proxy.slider = slider;
+        proxy.valueLabel = value;
+        objc_setAssociatedObject(cell, "TWSliderProxy", proxy, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [slider addTarget:proxy action:@selector(twChanged) forControlEvents:UIControlEventValueChanged];
+        [slider addTarget:proxy action:@selector(twCommit)
+         forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
     }
 
-    NSString *name = specifier.name ?: @"";
-    title.text = name;
-    NSString *unit = [specifier propertyForKey:@"twUnit"];
-    if (![unit isKindOfClass:NSString.class]) unit = @"";
-    // twDecimal：带小数的行（如 0.45 秒）显示小数位。
-    NSInteger decimals = 0;
+    // 拖动时数值实时更新 + 立刻写偏好（以前要退出页面再进来才生效）。
+    TWSliderProxy *proxy = objc_getAssociatedObject(cell, "TWSliderProxy");
+    proxy.key = [specifier propertyForKey:@"key"];
+    proxy.unit = [specifier propertyForKey:@"twUnit"] ?: @"";
     id dec = [specifier propertyForKey:@"twDecimal"];
-    if ([dec respondsToSelector:@selector(integerValue)]) decimals = [dec integerValue];
-    NSString *fmt = decimals > 0 ? [NSString stringWithFormat:@"%%.%ldf%%@", (long)decimals] : @"%.0f%@";
-    value.text = [NSString stringWithFormat:fmt, slider.value, unit];
+    proxy.decimals = [dec respondsToSelector:@selector(integerValue)] ? [dec integerValue] : 0;
+
+    title.text = specifier.name ?: @"";
+    [proxy twUpdateLabel];
+
     CGFloat h = CGRectGetHeight(cell.bounds);
     if (h < 44) h = 44;
-    CGFloat top = (h >= 66) ? 8 : 2;
-
-    // ── 统一网格（0.9.25）────────────────────────────────────────────
-    // 以前滑杆行标题写 x=16、开关行写 x=64，翻页时左边距一直跳。
-    // 现在所有行：图标列 16（34/44pt）、文字列一律 64、数值距右 16。
-    CGFloat valueW = decimals > 0 ? 92.0 : 72.0;
-    CGFloat textX = TWGridTextX;
-    title.frame = CGRectMake(textX, top, MAX(60.0, w - textX - TWGridRight - valueW - 8.0), 18);
-    value.frame = CGRectMake(w - TWGridRight - valueW, top, valueW, 18);
-
-    TWChipView *chip = [cell.contentView viewWithTag:0x774C4456];
-    if (!chip) {
-        chip = [TWStyle chipWithSymbol:nil fallback:nil];
-        chip.tag = 0x774C4456;
-        [cell.contentView addSubview:chip];
-    }
-    NSString *symbol = [specifier propertyForKey:@"twSymbol"];
-    [chip setSymbolNamed:symbol fallbackText:name];
-    id colorIdx = [specifier propertyForKey:@"twColor"];
-    UIColor *rowColor = [colorIdx respondsToSelector:@selector(integerValue)]
-        ? [TWStyle paletteColorAtIndex:[colorIdx integerValue]]
-        : [TWStyle chipColorForIdentifier:name];
-    [chip setChipColor:rowColor];
-    chip.frame = CGRectMake(TWGridIconX, top - 8.0, 34.0, 34.0);
-
-    CGFloat sliderH = CGRectGetHeight(slider.bounds);
-    if (sliderH <= 0 || sliderH > 40) sliderH = 31;
-    // 74pt 的行：标题 8~26，滑杆 42~69，31pt 的圆钮顶部在 38 —— 不压字。
-    CGFloat sliderY = (h >= 66) ? (h - sliderH - 5) : 24;
-    if (sliderY + sliderH > h) sliderY = MAX(top + 20, h - sliderH);
-    slider.frame = CGRectMake(textX, sliderY, MAX(w - textX - TWGridRight, 40), sliderH);
+    // 系统边距：左右各 16；标题与数值同一行，轨道在下一行。
+    CGFloat valueW = proxy.decimals > 0 ? 84.0 : 64.0;
+    title.frame = CGRectMake(16.0, 8.0, MAX(60.0, w - 32.0 - valueW - 8.0), 21.0);
+    value.frame = CGRectMake(w - 16.0 - valueW, 8.0, valueW, 21.0);
+    CGFloat sliderH = 24.0;
+    slider.frame = CGRectMake(16.0, h - sliderH - 6.0, MAX(60.0, w - 32.0), sliderH);
 }
 
 #pragma mark - 行图标（0.9.7：不依赖 cellClass，直接往标准 cell 里塞）
