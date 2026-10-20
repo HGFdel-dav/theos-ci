@@ -36,9 +36,9 @@ static void TWSaveContainers(NSArray<NSDictionary *> *containers) {
     [[TWPrefs shared] synchronize];
 }
 
-#pragma mark - 应用图标（照抄 ScreenCore 的取法）
+#pragma mark - 应用图标（系统私有接口取图，统一尺寸）
 
-static UIImage *TWAppIcon(NSString *bundleID) {
+static UIImage *TWAppIconRaw(NSString *bundleID) {
     if (!bundleID.length) return nil;
     CGFloat scale = UIScreen.mainScreen.scale;
     // ① ScreenCore 同款：私有 UIImage 方法，Preferences 进程内可用
@@ -64,6 +64,19 @@ static UIImage *TWAppIcon(NSString *bundleID) {
         }
     }
     return nil;
+}
+
+// 统一画进 44×44pt 画布：私有接口返回的图标尺寸不一致，直接塞进
+// UITableViewCell.imageView 会让每行文字左边距不一样——就是"字体和框没对齐"
+// 的观感来源。统一尺寸后所有行文字起点一致。
+static UIImage *TWAppIcon(NSString *bundleID) {
+    UIImage *raw = TWAppIconRaw(bundleID);
+    if (!raw || raw.size.width <= 0) return nil;
+    if (fabs(raw.size.width - 44.0) < 0.5 && fabs(raw.size.height - 44.0) < 0.5) return raw;
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(44.0, 44.0)];
+    return [renderer imageWithActions:^(__unused UIGraphicsImageRendererContext *rendererContext) {
+        [raw drawInRect:CGRectMake(0, 0, 44.0, 44.0)];
+    }];
 }
 
 #pragma mark - Crane 反射（Crane 未装时全部返回空，页面照样能用）

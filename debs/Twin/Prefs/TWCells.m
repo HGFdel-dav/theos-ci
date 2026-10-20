@@ -245,7 +245,12 @@ static const CGFloat kTitleGap = 14.0;
 
 - (NSString *)twValueText:(CGFloat)value {
     NSString *unit = [self.specifier propertyForKey:@"twUnit"];
-    NSString *text = [NSString stringWithFormat:@"%.0f%@", value, [unit isKindOfClass:NSString.class] ? unit : @""];
+    // twDecimal：带小数的行（如 0.45 秒）显示小数位，缺省整数。
+    NSInteger decimals = 0;
+    id dec = [self.specifier propertyForKey:@"twDecimal"];
+    if ([dec respondsToSelector:@selector(integerValue)]) decimals = [dec integerValue];
+    NSString *fmt = decimals > 0 ? [NSString stringWithFormat:@"%%.%ldf%%@", (long)decimals] : @"%.0f%@";
+    NSString *text = [NSString stringWithFormat:fmt, value, [unit isKindOfClass:NSString.class] ? unit : @""];
     if ([self twHasDerivedOffset]) {
         id offset = [self.specifier propertyForKey:@"twDerivedOffset"];
         text = [NSString stringWithFormat:@"%@→%.0f", text, [offset doubleValue] + value];

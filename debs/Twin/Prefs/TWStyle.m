@@ -6,7 +6,7 @@
 - (void)setChipColor:(UIColor *)color {
     UIColor *tint = color ?: TWStyle.accent;
     _chipColor = tint;
-    self.backgroundColor = [tint colorWithAlphaComponent:0.15];
+    self.backgroundColor = [tint colorWithAlphaComponent:0.22];
     _glyphView.tintColor = tint;
     _fallbackLabel.textColor = tint;
 }

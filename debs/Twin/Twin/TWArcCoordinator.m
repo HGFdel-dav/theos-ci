@@ -9,6 +9,7 @@
 #import "TWPath.h"
 #import "TWRuntimeLog.h"
 #import "TWSceneInject.h"
+#import "TWSystemGesture.h"
 #import <AudioToolbox/AudioServices.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
@@ -297,10 +298,12 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
     if (mode == TWWakeModeHandle) {
         [self detachRecognizer];
         TWSceneInjectSync();   // 边缘手柄模式：把 App 内的角落热区一并撤掉
+        TWSystemGestureSync(); // 内部按偏好判断：角落模式关闭时反注册
         return;
     }
     [self attachRecognizer];
     TWSceneInjectSync();
+    TWSystemGestureSync();     // App 内唤醒：系统手势通道（原版同款机制）
 }
 
 - (void)detachRecognizer {
@@ -472,8 +475,11 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)recognizer shouldReceiveTouch:(UITouch *)touch {
     NSArray *pans = objc_getAssociatedObject(self, "TWArcTriggerPans");
+    UIPanGestureRecognizer *sysPan = objc_getAssociatedObject(self, "TWArcSysPan");
     BOOL known = pans.count ? [pans containsObject:recognizer] : (recognizer == _pan);
-    if (!known || !recognizer.view) return NO;
+    if (!known && recognizer != sysPan) return NO;
+    // 系统手势通道的 recognizer 没有 view（注册在显示器上），不要求 view。
+    if (!recognizer.view && recognizer != sysPan) return NO;
     _hasStartPoint = NO;
     [[TWPrefs shared] reload];
     if (![[TWPrefs shared] boolForKey:TWKeyEnabled defaultValue:YES] ||
@@ -498,6 +504,7 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
 - (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)recognizer {
     NSArray *pans = objc_getAssociatedObject(self, "TWArcTriggerPans");
     BOOL known = pans.count ? [pans containsObject:recognizer] : (recognizer == _pan);
+    if (!known && recognizer == objc_getAssociatedObject(self, "TWArcSysPan")) known = YES;
     return known && _hasStartPoint && TWArcDeviceUnlocked() &&
         [[TWPrefs shared] boolForKey:TWKeyEnabled defaultValue:YES] &&
         [[TWPrefs shared] boolForKey:TWKeyArcEnabled defaultValue:YES];
@@ -536,8 +543,11 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
 
 - (void)handlePan:(UIPanGestureRecognizer *)pan {
     NSArray *pans = objc_getAssociatedObject(self, "TWArcTriggerPans");
-    if (pans.count && ![pans containsObject:pan]) return;
-    if (!pans.count && pan != _pan) return;
+    UIPanGestureRecognizer *sysPan = objc_getAssociatedObject(self, "TWArcSysPan");
+    if (pan != sysPan) {
+        if (pans.count && ![pans containsObject:pan]) return;
+        if (!pans.count && pan != _pan) return;
+    }
     if (!_hasStartPoint || !TWArcDeviceUnlocked() ||
         ![[TWPrefs shared] boolForKey:TWKeyEnabled defaultValue:YES] ||
         ![[TWPrefs shared] boolForKey:TWKeyArcEnabled defaultValue:YES]) {
@@ -588,6 +598,12 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
             break;
         default: break;
     }
+}
+
+// 系统手势通道（TWSystemGesture.m 注册，App 前台也能收到触摸）：
+// 与桌面 pan 共用同一套状态机——角落判定、弹菜单、选中、长按全都一样。
+- (void)twSystemGestureChanged:(UIPanGestureRecognizer *)gesture {
+    [self handlePan:gesture];
 }
 
 #pragma mark - 角落热区（App 内 / 桌面通用）
@@ -652,6 +668,10 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
             rect = CGRectMake(p.x, p.y, rect.size.width * sx, rect.size.height * sy);
         }
         if (!CGRectEqualToRect(view.frame, rect)) view.frame = rect;
+        // 调试模式：触发区直接涂橙色，一眼看到热区到底在哪、有多大。
+        BOOL debug = [prefs boolForKey:TWKeyArcDebug defaultValue:NO];
+        UIColor *bg = debug ? [UIColor.systemOrangeColor colorWithAlphaComponent:0.30] : UIColor.clearColor;
+        if (view.backgroundColor != bg) view.backgroundColor = bg;
         // App 可能在布局时又压了自己的视图上来：保持热区在最上层，
         // 否则角落触摸会被 App 的视图吃掉（只剩 66×66，不影响内容显示）。
         if (host.subviews.lastObject != view) [host bringSubviewToFront:view];
@@ -728,7 +748,8 @@ static CGPoint TWArcScreenPointForTouch(UITouch *touch) {
     _longPressActive = NO;
 }
 
-// 长按：停在同一个图标上 0.45 秒算数。面板「长按图标 = 全屏」时，
+// 长按：停在同一个图标上超过设定时长（默认0.45秒，面板可调）算数。
+// 面板「长按图标 = 全屏」时，
 // 松手就以全屏打开（走 PX 的 +externalOpenApplication:）。
 - (void)trackLongPress {
     NSInteger idx = [_menu selectedIndex];
@@ -740,7 +761,11 @@ static CGPoint TWArcScreenPointForTouch(UITouch *touch) {
         return;
     }
     if (idx < 0 || _longPressActive) return;
-    if (now - _pressedSince < 0.45) return;
+    // 长按多久算「强制全屏」由面板说了算（默认 0.45 秒）。
+    CGFloat holdSeconds = [[TWPrefs shared] floatForKey:TWKeyArcLongPressDuration defaultValue:0.45];
+    if (holdSeconds < 0.1) holdSeconds = 0.1;
+    if (holdSeconds > 2.0) holdSeconds = 2.0;
+    if (now - _pressedSince < holdSeconds) return;
     NSInteger mode = [[TWPrefs shared] integerForKey:TWKeyArcLongPressMode defaultValue:0];
     if (mode != 0) return;
     _longPressActive = YES;
@@ -930,12 +955,17 @@ static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
             if ([app isKindOfClass:[NSString class]] && [app length] && ![apps containsObject:app]) [apps addObject:app];
         }
     };
+    // 自选的（在「应用、快捷操作与排序」里加的）永远排最前——加了应用就必须
+    // 能在菜单里看到。图标来源决定剩余位置由谁补：
+    //   最近应用 = 自选在前 + 最近补位；自选应用 = 只显示自选（空了退最近）。
     if (iconSource == 1) {
         addConfigured();
         if (!apps.count) [apps addObjectsFromArray:[self cachedRecentBundleIDs]];
     } else {
-        [apps addObjectsFromArray:[self cachedRecentBundleIDs]];
-        if (!apps.count) addConfigured();
+        addConfigured();
+        for (NSString *bid in [self cachedRecentBundleIDs]) {
+            if (![apps containsObject:bid]) [apps addObject:bid];
+        }
     }
     // 配了分身的应用必须出现在菜单里（放在最前面，方便直接点）。
     for (NSString *bundleID in configuredOrder.reverseObjectEnumerator) {

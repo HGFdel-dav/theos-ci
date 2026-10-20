@@ -62,9 +62,9 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
 
         // ============ 0.5.0：按设计稿②（Arc 面板与手势）重建 ============
 
-        // ---- 唤醒方式（角落 / ParallelX 边缘手柄）----
+        // ---- 唤醒方式（角落 / 边缘手柄）----
         [specs addObject:TWGroupSpecifier(@"唤醒方式",
-            @"二选一：从屏幕角落起手，或用 ParallelX 原版的边缘手柄。")];
+            @"二选一：从屏幕角落起手，或用边缘手柄。")];
         [specs addObject:TWRowSpecifier(self, @"唤醒方式", TWKeyWakeMode, @0, nil, PSSegmentCell,
                                         @"hand.point.up.left.fill", nil,
                                         @{@"height": @58, @"twColor": @6, @"twTitles": @[@"角落", @"边缘手柄"]})];
@@ -176,7 +176,8 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
                                         @{@"height": @74, @"twMin": @0.1, @"twMax": @1.0, @"twStep": @0.05, @"twUnit": @"", @"twColor": @1})];
 
         // ---- 调试 ----
-        [specs addObject:TWGroupSpecifier(@"调试", nil)];
+        [specs addObject:TWGroupSpecifier(@"调试",
+            @"调试模式打开后，屏幕四角的触发区会显示为橙色块，方便确认位置和大小。")];
         [specs addObject:TWRowSpecifier(self, @"调试模式", TWKeyArcDebug, @NO, nil, PSSwitchCell,
                                         @"ant", nil, @{@"height": @58, @"twColor": @5})];
         [specs addObject:TWRowSpecifier(self, @"截图时隐藏", TWKeyArcHideCapture, @NO, nil, PSSwitchCell,
@@ -201,10 +202,14 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
 
         // ---- 反馈与长按 ----
         [specs addObject:TWGroupSpecifier(@"反馈与长按",
-            @"边缘按住向屏内拖动唤出弧形菜单；松手按「打开方式」开窗，长按图标 0.45 秒可强制全屏。")];
+            @"边缘按住向屏内拖动唤出弧形菜单；松手按「打开方式」开窗，长按图标可强制全屏（时长自己调）。")];
         [specs addObject:TWRowSpecifier(self, @"长按图标", TWKeyArcLongPressMode, @0, nil, PSSegmentCell,
                                         @"hand.tap.fill", nil,
                                         @{@"height": @58, @"twColor": @1, @"twTitles": @[@"全屏", @"无"]})];
+        [specs addObject:TWRowSpecifier(self, @"长按全屏时长", TWKeyArcLongPressDuration, @0.45, nil, PSSliderCell,
+                                        @"timer", nil,
+                                        @{@"height": @74, @"twMin": @0.1, @"twMax": @2.0, @"twStep": @0.05,
+                                          @"twDecimal": @2, @"twUnit": @" 秒", @"twColor": @2})];
 
         _specifiers = specs;
     }
