@@ -51,6 +51,23 @@ void TWArcPXBridgeCapture(id entry) {
     gPXEntry = entry;
 }
 
+UIWindow *TWArcPXBridgeHostWindow(void) {
+    id entry = gPXEntry;
+    if (!entry) return nil;
+    // 要能覆盖到角落：挑面积最大且没被隐藏的那个窗口。
+    UIWindow *best = nil;
+    CGFloat bestArea = 0;
+    for (NSString *name in @[@"handleWindow", @"panelWindow", @"searchWindow", @"hostWindow"]) {
+        id value = TWArcPXObject(entry, name.UTF8String);
+        if (![value isKindOfClass:UIWindow.class]) continue;
+        UIWindow *window = (UIWindow *)value;
+        if (window.hidden) continue;
+        CGFloat area = window.bounds.size.width * window.bounds.size.height;
+        if (area > bestArea) { best = window; bestArea = area; }
+    }
+    return best;
+}
+
 BOOL TWArcPXBridgeAvailable(void) {
     return gPXEntry != nil;
 }

@@ -296,6 +296,8 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
 
 - (void)attachRecognizer {
     if (_pan) return;
+    NSArray *existingPans = objc_getAssociatedObject(self, "TWArcTriggerPans");
+    if (existingPans.count) return;
 
     NSMutableArray *windows = [NSMutableArray array];
     for (NSInteger corner = 0; corner < 4; corner++) {
@@ -332,6 +334,25 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
     TWPrefs *prefs = [TWPrefs shared];
     TWArcHotAreas areas = TWArcComputeHotAreas();
     NSInteger mask = areas.mask;
+
+    // 0.9.9：优先借 ParallelX 自己的手柄窗口来挂角落热区。
+    // 这个窗口是 PX 建好的、在场景里、收得到触摸；比自己 new 一个 UIWindow
+    // 可靠得多（0.9.8 就是自己建的窗口收不到触摸，角落一直拖不动）。
+    if ([[TWPrefs shared] boolForKey:TWKeyArcUsePXPanel defaultValue:YES]) {
+        UIWindow *pxHost = TWArcPXBridgeHostWindow();
+        if (pxHost) {
+            UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
+            pan.delegate = self;
+            pan.maximumNumberOfTouches = 1;
+            pan.cancelsTouchesInView = NO;
+            [pxHost addGestureRecognizer:pan];
+            objc_setAssociatedObject(self, "TWArcTriggerPans", @[pan], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            TWRuntimeLog(@"[arc] hot areas attached to PX handleWindow %.0fx%.0f level=%.0f",
+                         pxHost.bounds.size.width, pxHost.bounds.size.height, pxHost.windowLevel);
+            return;
+        }
+        TWRuntimeLog(@"[arc] PX handleWindow unavailable, falling back to own windows");
+    }
 
     UIView *firstHost = nil;
     for (TWArcTriggerWindow *w in windows) {
@@ -509,13 +530,21 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
         case UIGestureRecognizerStateBegan:
         case UIGestureRecognizerStateChanged: {
             // Began has already passed UIKit's threshold; do not replace the origin.
-            if (!_tracking) {
+            if (!_tracking && !_didPresent) {
                 CGFloat dx = p.x - _startPoint.x, dy = p.y - _startPoint.y;
                 if (hypot(dx, dy) >= 22) {
                     TWRuntimeLog(@"[arc] drag %.0f,%.0f -> %.0f,%.0f (corner %ld)",
                                  _startPoint.x, _startPoint.y, p.x, p.y, (long)_startCorner);
-                    [self presentMenuFromPoint:_startPoint corner:_startCorner];
-                    _tracking = _menu.isPresented;
+                    // 角落 → 直接让 ParallelX 弹它自己的面板（动画/图标/手感全是它的）。
+                    if ([[TWPrefs shared] boolForKey:TWKeyArcUsePXPanel defaultValue:YES] && TWArcPXBridgeAvailable()) {
+                        NSInteger side = [[TWPrefs shared] integerForKey:TWKeyArcSide defaultValue:0] == 1 ? 1 : 0;
+                        BOOL ok = TWArcPXBridgePresent(side);
+                        TWRuntimeLog(@"[arc] corner -> PX panel %@ (%@)", ok ? @"ok" : @"fail", TWArcPXBridgeLastResult());
+                        _didPresent = YES;
+                    } else {
+                        [self presentMenuFromPoint:_startPoint corner:_startCorner];
+                        _tracking = _menu.isPresented;
+                    }
                 }
             }
             if (_tracking) {
@@ -616,7 +645,7 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
     // 优先让 ParallelX 自己弹面板：动画、图标、流畅度都是 PX 本体的。
     // 只有 PX 不可用（未装 / ABI 不符）时才退回 Twin 自绘的弧形菜单。
     NSInteger pxSide = [[TWPrefs shared] integerForKey:TWKeyArcSide defaultValue:0] == 1 ? 1 : 0;
-    if ([[TWPrefs shared] boolForKey:TWKeyArcUsePXPanel defaultValue:NO] &&
+    if ([[TWPrefs shared] boolForKey:TWKeyArcUsePXPanel defaultValue:YES] &&
         TWArcPXBridgePresent(pxSide)) {
         _didPresent = YES;
         if ([[TWPrefs shared] boolForKey:TWKeyArcSound defaultValue:YES]) {
