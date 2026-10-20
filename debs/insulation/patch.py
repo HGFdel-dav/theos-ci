@@ -69,17 +69,13 @@ def main():
     with open(tmp, 'wb') as f:
         f.write(repack(data, [slices_by_name['arm64'], slices_by_name['arm64e']]))
     os.rename(tmp, DST)
-    # 写后读回复核
-    with open(DST, 'rb') as f:
-        again = f.read()
-    _, rs = load_again = (None, )
-    rx = [{ 'name': ('arm64e' if ((struct.unpack_from('>IIIII', again, 8+20*j)[1] & 0xFFFFFF) == 2) else 'arm64'),
-            'off': struct.unpack_from('>IIIII', again, 8+20*j)[2],
-            'size': struct.unpack_from('>IIIII', again, 8+20*j)[3]} for j in range(2)]
-    sl = {x['name']: again[x['off']:x['off']+x['size']] for x in rx}
+    # 写后读回复核：重新按路径解析 FAT，再对 8 处逐一核对
+    _, loaded = load(DST)
+    again_by_name = {s['name']: s for s in loaded}
     for arch, off, expect, repl, note in PATCHES:
-        got = struct.unpack_from('<I', sl[arch], off)[0]
-        assert got == repl, f'写后读校验失败 {arch}@{off:#x}: {got:08X}'
+        s = again_by_name[arch]
+        cur = struct.unpack_from('<I', s['raw'], off)[0]
+        assert cur == repl, f'写后读校验失败 {arch}@{off:#x}: {cur:08X} != {repl:08X}'
     print(f'  ✓ 写后读回：8 处修补全部在 {DST}')
 
 if __name__ == '__main__':
