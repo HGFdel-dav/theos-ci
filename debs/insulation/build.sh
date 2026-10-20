@@ -83,7 +83,7 @@ chmod 755 stage/Library/PreferenceBundles/InsulationPrefs.bundle/InsulationPrefs
 
 echo '--- 5. 打包 ---'
 DEB=com.be-huge.insulation_0.1.38.1-fix2_iphoneos-arm64e.deb
-dpkg-deb --root-owner-group --build stage "$DEB"
+python3 mkdeb.py stage "$DEB"
 ls -l "$DEB"
 
 echo '--- 6. 噪声清理 ---'
