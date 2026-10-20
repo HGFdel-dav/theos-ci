@@ -5,6 +5,12 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+// 原版（ScreenCore）ARC 设置：Twin 的 ARC 参数完全读原版这一份设置域，
+// 面板也是原版面板（TwinArcPrefs.bundle）——"抄过来、结合起来"。
+FOUNDATION_EXPORT double TWArcOrigNumber(NSString *key, double fallback);
+FOUNDATION_EXPORT BOOL TWArcOrigBool(NSString *key, BOOL fallback);
+
+
 @interface TWPrefs : NSObject
 + (instancetype)shared;
 // Darwin notification + read-through refresh; retains locally pending keys.
