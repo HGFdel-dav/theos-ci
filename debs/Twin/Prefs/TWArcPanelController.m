@@ -201,10 +201,6 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
         // ---- 反馈与长按 ----
         [specs addObject:TWGroupSpecifier(@"反馈与长按",
             @"边缘按住向屏内拖动唤出弧形菜单；松手按「打开方式」开窗，长按图标 0.45 秒可强制全屏。")];
-        [specs addObject:TWRowSpecifier(self, @"音效", TWKeyArcSound, @YES, nil, PSSwitchCell,
-                                        @"speaker.wave.2.fill", nil, @{@"height": @62, @"twColor": @4})];
-        [specs addObject:TWRowSpecifier(self, @"震动反馈", TWKeyArcHaptic, @YES, nil, PSSwitchCell,
-                                        @"iphone.radiowaves.left.and.right", nil, @{@"height": @62, @"twColor": @2})];
         [specs addObject:TWRowSpecifier(self, @"长按图标", TWKeyArcLongPressMode, @0, nil, PSSegmentCell,
                                         @"hand.tap.fill", nil,
                                         @{@"height": @58, @"twColor": @1, @"twTitles": @[@"全屏", @"无"]})];
