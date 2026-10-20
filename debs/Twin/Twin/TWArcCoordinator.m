@@ -206,6 +206,7 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
     BOOL _didPresent;
     BOOL _started;
     NSInteger _sceneRetries;
+    __weak UIWindow *_pxHostWindow;
     NSInteger _pressedIndex;
     NSTimeInterval _pressedSince;
     BOOL _longPressActive;
@@ -347,7 +348,8 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
             pan.cancelsTouchesInView = NO;
             [pxHost addGestureRecognizer:pan];
             objc_setAssociatedObject(self, "TWArcTriggerPans", @[pan], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            TWRuntimeLog(@"[arc] hot areas attached to PX handleWindow %.0fx%.0f level=%.0f",
+            _pxHostWindow = pxHost;
+            TWRuntimeLog(@"[arc] hot areas attached to PX window %.0fx%.0f level=%.0f",
                          pxHost.bounds.size.width, pxHost.bounds.size.height, pxHost.windowLevel);
             return;
         }
@@ -535,16 +537,10 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
                 if (hypot(dx, dy) >= 22) {
                     TWRuntimeLog(@"[arc] drag %.0f,%.0f -> %.0f,%.0f (corner %ld)",
                                  _startPoint.x, _startPoint.y, p.x, p.y, (long)_startCorner);
-                    // 角落 → 直接让 ParallelX 弹它自己的面板（动画/图标/手感全是它的）。
-                    if ([[TWPrefs shared] boolForKey:TWKeyArcUsePXPanel defaultValue:YES] && TWArcPXBridgeAvailable()) {
-                        NSInteger side = [[TWPrefs shared] integerForKey:TWKeyArcSide defaultValue:0] == 1 ? 1 : 0;
-                        BOOL ok = TWArcPXBridgePresent(side);
-                        TWRuntimeLog(@"[arc] corner -> PX panel %@ (%@)", ok ? @"ok" : @"fail", TWArcPXBridgeLastResult());
-                        _didPresent = YES;
-                    } else {
-                        [self presentMenuFromPoint:_startPoint corner:_startCorner];
-                        _tracking = _menu.isPresented;
-                    }
+                    // 从角落展开的弧形菜单（ScreenCore 形态）。
+                    // 父视图优先用 PX 的手柄窗口——触摸链路是它验证过的。
+                    [self presentMenuFromPoint:_startPoint corner:_startCorner];
+                    _tracking = _menu.isPresented;
                 }
             }
             if (_tracking) {
@@ -623,12 +619,17 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
     // 退回旧宿主，手势不会哑掉。
     TWArcWindow *host = [TWArcWindow sharedWindow];
     UIView *container = nil;
-    if (host && [host attachToSceneFromWindow:reference]) container = [host menuContainer];
-    if (!container) {
-        container = reference;
-    } else {
+    UIWindow *pxHost = _pxHostWindow;
+    if (pxHost && !pxHost.hidden) {
+        // 借 PX 已经挂在场景里的窗口，菜单直接作为它的子视图，
+        // 坐标与屏幕一致，扇形仍以角落为圆心展开。
+        container = pxHost;
+        TWRuntimeLog(@"[arc] menu hosted in PX window");
+    } else if (host && [host attachToSceneFromWindow:reference]) {
+        container = [host menuContainer];
         [host showMenuContainer];
     }
+    if (!container) container = reference;
 
     _didPresent = YES;
     [self pressReset];
