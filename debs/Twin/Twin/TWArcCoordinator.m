@@ -653,6 +653,9 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
             rect = CGRectMake(p.x, p.y, rect.size.width * sx, rect.size.height * sy);
         }
         if (!CGRectEqualToRect(view.frame, rect)) view.frame = rect;
+        // App 可能在布局时又压了自己的视图上来：保持热区在最上层，
+        // 否则角落触摸会被 App 的视图吃掉（只剩 66×66，不影响内容显示）。
+        if (host.subviews.lastObject != view) [host bringSubviewToFront:view];
     }
     objc_setAssociatedObject(host, "TWSceneHotViews", existing, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
