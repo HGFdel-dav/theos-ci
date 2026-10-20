@@ -4,6 +4,7 @@
 #import "TWArcMenuView.h"
 #import "TWArcGeometry.h"
 #import "TWPrefs.h"
+#import "TWRuntimeLog.h"
 
 // ParallelX 的动画数值（从其二进制扫出：0.16 / 0.40 / 0.34 / 0.72）
 static const NSTimeInterval TWPXPresentDuration = 0.16;
