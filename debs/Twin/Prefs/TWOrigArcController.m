@@ -7,13 +7,36 @@
 
 static NSString *const kOrigDomain = @"com.susudear.screencoreprefs";
 
+#import "TWPath.h"
+
 static NSString *TWOrigBundlePath(void) {
-    NSArray<NSString *> *paths = @[@"/Library/PreferenceBundles/TwinArcPrefs.bundle",
-                                   @"/var/jb/Library/PreferenceBundles/TwinArcPrefs.bundle"];
-    for (NSString *p in paths) {
-        if ([[NSFileManager defaultManager] fileExistsAtPath:
-             [p stringByAppendingPathComponent:@"TriggerSettings.plist"]]) return p;
+    NSMutableArray<NSString *> *paths = [NSMutableArray array];
+    // ① 最可靠：TwinPrefs 自己就在 PreferenceBundles 里，隔壁就是它
+    NSString *selfBundle = [NSBundle mainBundle].bundlePath;
+    if (selfBundle.length) {
+        [paths addObject:[[selfBundle stringByDeletingLastPathComponent]
+                          stringByAppendingPathComponent:@"TwinArcPrefs.bundle"]];
     }
+    // ② RootHide / Dopamine 的各种根
+    NSArray<NSString *> *roots = TWJBRootCandidates();
+    if ([roots isKindOfClass:NSArray.class]) {
+        for (NSString *root in roots) {
+            if (!root.length) continue;
+            [paths addObject:[root stringByAppendingPathComponent:@"Library/PreferenceBundles/TwinArcPrefs.bundle"]];
+        }
+    }
+    // ③ 常规路径兜底
+    [paths addObject:@"/Library/PreferenceBundles/TwinArcPrefs.bundle"];
+    [paths addObject:@"/var/jb/Library/PreferenceBundles/TwinArcPrefs.bundle"];
+
+    NSFileManager *fm = NSFileManager.defaultManager;
+    for (NSString *p in paths) {
+        if ([fm fileExistsAtPath:[p stringByAppendingPathComponent:@"TriggerSettings.plist"]]) {
+            TWRuntimeLog(@"[origarc] bundle ← %@", p);
+            return p;
+        }
+    }
+    TWRuntimeLog(@"[origarc] 找不到 TwinArcPrefs.bundle，试过：%@", [paths componentsJoinedByString:@" | "]);
     return nil;
 }
 

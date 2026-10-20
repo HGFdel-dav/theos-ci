@@ -860,7 +860,7 @@ static CGPoint TWArcScreenPointForTouch(UITouch *touch) {
     // 优先让 ParallelX 自己弹面板：动画、图标、流畅度都是 PX 本体的。
     // 只有 PX 不可用（未装 / 入口没拿到）时才退回 Twin 自绘的弧形菜单。
     NSInteger pxSide = [[TWPrefs shared] integerForKey:TWKeyArcSide defaultValue:0] == 1 ? 1 : 0;
-    if ([[TWPrefs shared] boolForKey:TWKeyArcUsePXPanel defaultValue:YES]) {
+    if ([[TWPrefs shared] boolForKey:TWKeyArcUsePXPanel defaultValue:NO]) {
         if (TWArcPXBridgePresent(pxSide)) {
             _didPresent = YES;
             TWRuntimeLog(@"[arc] present via PX side=%ld", (long)pxSide);
