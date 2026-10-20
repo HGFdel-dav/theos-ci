@@ -144,58 +144,23 @@ static void TWSliderLayoutSubviews(id self, SEL _cmd) {
     struct objc_super sup = { self, class_getSuperclass(object_getClass(self)) };
     ((void (*)(struct objc_super *, SEL))objc_msgSendSuper)(&sup, _cmd);
 
-    id spec = nil;
-    @try { spec = [(id)self specifier]; } @catch (NSException *e) { (void)e; spec = nil; }
-
+    // 只负责"每次布局都把滑杆按到下半区"。
+    // 标题/数值由 TWStyleSliderCellIfNeeded 统一添加，这里绝不能再加一遍，
+    // 否则同一个 cell 上会有两套标签叠在一起（0.9.20 实机就是这样）。
     UIView *host = (UIView *)self;
-    UILabel *title = (UILabel *)[host viewWithTag:TWSLIDER_TAG];
-    UILabel *value = (UILabel *)[host viewWithTag:TWSLIDERVAL_TAG];
-
-    if (!title) {
-        title = [[UILabel alloc] initWithFrame:CGRectZero];
-        title.tag = TWSLIDER_TAG;
-        title.font = [UIFont systemFontOfSize:15.0];
-        title.textColor = [UIColor labelColor];
-        title.numberOfLines = 1;
-        [host addSubview:title];
-
-        value = [[UILabel alloc] initWithFrame:CGRectZero];
-        value.tag = TWSLIDERVAL_TAG;
-        value.font = [UIFont systemFontOfSize:14.0];
-        value.textColor = [UIColor secondaryLabelColor];
-        value.textAlignment = NSTextAlignmentRight;
-        [host addSubview:value];
-    }
-
-    NSString *name = nil;
-    @try { name = [spec propertyForKey:@"twTitle"]; } @catch (NSException *e) { (void)e; }
-    if (![name isKindOfClass:NSString.class] || !name.length) {
-        @try { name = [(id)spec name]; } @catch (NSException *e) { (void)e; name = @""; }
-    }
-    title.text = name ?: @"";
-
-    // 数值：读 specifier 的当前值，配 twUnit。
-    NSString *unit = @"";
-    id current = nil;
-    @try {
-        id u = [spec propertyForKey:@"twUnit"];
-        if ([u isKindOfClass:NSString.class]) unit = u;
-        current = [spec propertyForKey:@"twCurrentValue"];
-    } @catch (NSException *e) { (void)e; }
-    // 没有 twCurrentValue 时不要清空——数值是 TWStyleSliderCellIfNeeded 按滑杆当前值写的。
-    if (current) value.text = [NSString stringWithFormat:@"%@%@", current, unit];
-
     CGRect b = host.bounds;
     CGFloat w = CGRectGetWidth(b);
-    title.frame = CGRectMake(16, 8, w - 32, 18);
-    value.frame = CGRectMake(16, 8, w - 32, 18);
-
-    // 把系统滑杆压到下半区，留出标题空间。
+    if (w <= 0) return;
     for (UIView *sub in host.subviews) {
         if ([sub isKindOfClass:[UISlider class]]) {
             CGFloat h = CGRectGetHeight(sub.bounds);
-            if (h <= 0) h = 31;
-            sub.frame = CGRectMake(16, CGRectGetHeight(b) - h - 8, w - 32, h);
+            if (h <= 0 || h > 40) h = 31;
+            // 78pt 行：标题 8~26，滑杆 42~73；31pt 圆钮顶部 27，不压字。
+            CGFloat y = CGRectGetHeight(b) - h - 5;
+            if (y < 26) y = 26;
+            if (sub.frame.origin.y < y - 1 || fabs(sub.frame.size.width - (w - 32)) > 1) {
+                sub.frame = CGRectMake(16, y, w - 32, h);
+            }
             break;
         }
     }
