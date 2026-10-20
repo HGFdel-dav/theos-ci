@@ -160,10 +160,33 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
     return -1;
 }
 
+@interface TWArcCoordinator (TWRawTouch)
+- (void)rawTouchBegan:(UITouch *)touch corner:(NSInteger)corner;
+- (void)rawTouchMoved:(UITouch *)touch;
+- (void)rawTouchEnded:(UITouch *)touch;
+- (void)rawTouchCancelled;
+@end
+
 @interface TWArcTriggerView : UIView
+@property (nonatomic, weak) TWArcCoordinator *coordinator;
+@property (nonatomic) NSInteger corner;
 @end
 
 @implementation TWArcTriggerView
+// 原始触摸事件：窗口层级在手势之前拿到的就是它，
+// 没有 UIGestureRecognizer 的判定/竞争，SpringBoard 的图标手势抢不走。
+- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    [self.coordinator rawTouchBegan:[touches anyObject] corner:self.corner];
+}
+- (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    [self.coordinator rawTouchMoved:[touches anyObject]];
+}
+- (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    [self.coordinator rawTouchEnded:[touches anyObject]];
+}
+- (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    [self.coordinator rawTouchCancelled];
+}
 @end
 
 @interface TWArcTriggerWindow : UIWindow
@@ -310,7 +333,6 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
     }
     if (!reference) reference = [UIApplication sharedApplication].windows.firstObject;
     if (!scene || !reference) {
-        // 场景还没建好：建出来的窗口没有场景，永远收不到触摸。
         if (_sceneRetries < 40) {
             _sceneRetries++;
             TWRuntimeLog(@"[arc] no scene yet (retry %ld)", (long)_sceneRetries);
@@ -324,43 +346,32 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
         }
         return;
     }
-
-    // 0.9.13：不再用四块 64×64 的小窗口 + 主窗口备用手势。
-    // 小窗口里的 pan 会被 SpringBoard 自己的图标/系统手势取消（日志里只有 touch 没有 drag），
-    // 主窗口的备用 pan 又会和它互相打架。改成 ScreenCore 的结构：
-    // 一个全屏透明高层窗口，hitTest 只放行四个角落，手势挂在这个窗口的根视图上，
-    // 命中后整条触摸链都由它独占，任何系统手势都抢不走。
-    TWArcWindow *host = [TWArcWindow sharedWindow];
-    if (![host attachToSceneFromWindow:reference]) {
-        TWRuntimeLog(@"[arc] overlay window cannot attach to scene");
-        return;
-    }
     _sceneRetries = 0;
 
+    // 0.9.15：回到"四角小窗口"，但不再挂 UIGestureRecognizer。
+    // 0.9.14 的全屏透明窗口虽然只放行四角，实际把整块桌面的点击都吃了（用户实诉），
+    // 这种结构不能再留。小窗口只有 66×66，物理上不可能遮挡全屏。
+    // 触摸用 UIView 的 touchesBegan/Moved/Ended 原生处理：窗口拿到的就是最终触摸链，
+    // 不会有 pan 判定、也不会被 SpringBoard 的图标手势取消。
     TWArcHotAreas areas = TWArcComputeHotAreas();
-    NSMutableArray<NSValue *> *rects = [NSMutableArray array];
+    NSMutableArray *windows = [NSMutableArray array];
     for (NSInteger corner = 0; corner < 4; corner++) {
-        if ((areas.mask & (1 << corner)) == 0) continue;
-        [rects addObject:[NSValue valueWithCGRect:areas.rects[corner]]];
+        TWArcTriggerWindow *w = [self triggerWindowForCorner:corner];
+        if (!w) continue;
+        BOOL enabled = (areas.mask & (1 << corner)) != 0;
+        if (!enabled) { w.hidden = YES; continue; }
+        w.frame = areas.rects[corner];
+        w.rootViewController.view.frame = w.bounds;
+        w.rootViewController.view.backgroundColor = UIColor.clearColor;
+        if (w.windowScene != scene) w.windowScene = scene;
+        w.hidden = NO;
+        [windows addObject:w];
     }
-    [host setCaptureRects:rects];
-    [host showForGestures];
-
-    UIView *container = [host menuContainer];
-    UIPanGestureRecognizer *pan =
-        [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
-    pan.delegate = self;
-    pan.maximumNumberOfTouches = 1;
-    pan.minimumNumberOfTouches = 1;
-    pan.cancelsTouchesInView = NO;
-    [container addGestureRecognizer:pan];
-    _pan = pan;
-    _pxHostWindow = host;
-    objc_setAssociatedObject(self, "TWArcTriggerPans", @[pan], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    TWRuntimeLog(@"[arc] overlay ready level=%.0f mask=%ld rect=%@ size=%@",
-                 host.windowLevel, (long)areas.mask,
-                 NSStringFromCGRect(areas.rects[TWCornerBottomRight]),
-                 NSStringFromCGSize(host.bounds.size));
+    objc_setAssociatedObject(self, "TWArcTriggerWindows", windows, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    _pan = nil;
+    TWRuntimeLog(@"[arc] corners ready mask=%ld rect=%@ windows=%lu scene=%@",
+                 (long)areas.mask, NSStringFromCGRect(areas.rects[TWCornerBottomRight]),
+                 (unsigned long)windows.count, scene ? @"yes" : @"no");
 }
 
 - (TWArcTriggerWindow *)triggerWindowForCorner:(NSInteger)corner {
@@ -371,6 +382,11 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
     TWArcTriggerRootController *root = [[TWArcTriggerRootController alloc] init];
     TWArcTriggerWindow *w = [[TWArcTriggerWindow alloc] initWithFrame:CGRectZero];
     w.rootViewController = root;
+    if ([root.view isKindOfClass:TWArcTriggerView.class]) {
+        TWArcTriggerView *v = (TWArcTriggerView *)root.view;
+        v.coordinator = self;
+        v.corner = corner;
+    }
     w.backgroundColor = UIColor.clearColor;
     w.opaque = NO;
     w.windowLevel = UIWindowLevelAlert - 3.0;
@@ -520,6 +536,69 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
             break;
         default: break;
     }
+}
+
+#pragma mark - raw touches（四角小窗口专用，不经过手势识别器）
+
+static CGPoint TWArcScreenPointForTouch(UITouch *touch) {
+    UIWindow *window = touch.window;
+    if (!window) return CGPointZero;
+    return [window convertPoint:[touch locationInView:window] toWindow:nil];
+}
+
+- (void)rawTouchBegan:(UITouch *)touch corner:(NSInteger)corner {
+    if (!touch) return;
+    [[TWPrefs shared] reload];
+    if (![[TWPrefs shared] boolForKey:TWKeyEnabled defaultValue:YES] ||
+        ![[TWPrefs shared] boolForKey:TWKeyArcEnabled defaultValue:YES] ||
+        !TWArcDeviceUnlocked()) return;
+    _startCorner = corner;
+    _startPoint = TWArcScreenPointForTouch(touch);
+    _hasStartPoint = YES;
+    _didPresent = NO;
+    _tracking = NO;
+    [self pressReset];
+    TWRuntimeLog(@"[arc] touch corner=%ld p=%.0f,%.0f", (long)corner, _startPoint.x, _startPoint.y);
+}
+
+- (void)rawTouchMoved:(UITouch *)touch {
+    if (!_hasStartPoint || !touch) return;
+    if (![[TWPrefs shared] boolForKey:TWKeyArcEnabled defaultValue:YES]) { [self cancelCurrentGesture]; return; }
+    CGPoint p = TWArcScreenPointForTouch(touch);
+    if (!_didPresent) {
+        CGFloat dx = p.x - _startPoint.x, dy = p.y - _startPoint.y;
+        if (hypot(dx, dy) >= 3) {
+            TWRuntimeLog(@"[arc] drag %.0f,%.0f -> %.0f,%.0f (corner %ld)",
+                         _startPoint.x, _startPoint.y, p.x, p.y, (long)_startCorner);
+            [self presentMenuFromPoint:_startPoint corner:_startCorner];
+            _tracking = _menu.isPresented;
+        }
+    }
+    if (_tracking) {
+        [_menu updateSelectionAtPoint:[touch locationInView:_menu]];
+        [self trackLongPress];
+    }
+}
+
+- (void)rawTouchEnded:(UITouch *)touch {
+    if (_tracking) {
+        BOOL fullscreen = _longPressActive;
+        NSDictionary *selected = [_menu finishSelectionAtPoint:[touch locationInView:_menu]];
+        if ([selected isKindOfClass:[NSDictionary class]] && TWArcDeviceUnlocked()) {
+            TWRuntimeLog(@"[arc] selected %@%@", selected[@"title"] ?: selected[@"bundleID"],
+                         fullscreen ? @" (长按→全屏)" : @"");
+            [self launchEntry:selected fullscreen:fullscreen];
+        }
+    }
+    [self pressReset];
+    _hasStartPoint = NO;
+    _tracking = NO;
+    _didPresent = NO;
+    [self releaseOverlayWindow];
+}
+
+- (void)rawTouchCancelled {
+    [self cancelCurrentGesture];
 }
 
 - (void)pressReset {

@@ -142,8 +142,9 @@ static const NSInteger TWArcPriorityCeiling = 2200;
 }
 
 - (void)hideMenuContainer {
-    // 只把菜单收起，窗口继续留在场景里待命（否则下一次角落触摸永远收不到）。
-    for (UIView *sub in self.rootViewController.view.subviews) sub.hidden = YES;
+    // 空闲时整窗隐藏：菜单窗口是全屏层级，留着不隐藏就可能把桌面点击吃掉。
+    // 角落手势现在挂在独立的小窗口上，不需要它常驻。
+    self.hidden = YES;
 }
 
 - (void)hideForGestures {
