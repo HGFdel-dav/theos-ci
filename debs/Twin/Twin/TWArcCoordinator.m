@@ -370,27 +370,52 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
     }
     _sceneRetries = 0;
 
-    // 0.9.21：不再建任何热区窗口（它们会压住桌面/边缘的图标，点不动）。
-    // 按 ScreenCore 的做法：手势挂在桌面窗口本身，delegate 只接受"从角落开始"的触摸；
-    // 点按图标时手势不成立，触摸照常交给图标。
+    // 0.9.22：不建任何热区窗口（它们会压住图标），把 pan 挂到"真正承载图标"的窗口上。
+    // 0.9.21 只挂了 reference.rootViewController.view，实机证明那个视图不是图标的祖先，
+    // 手势收不到触摸 → 角落完全没反应。这里给**所有可见窗口**都挂一份：
+    // 图标是窗口的子视图，窗口是它们的祖先，所以一定能收到触摸；
+    // 再靠 delegate 只接受"从角落起手"，其它触摸一律放行。
     for (TWArcTriggerWindow *w in objc_getAssociatedObject(self, "TWArcTriggerWindowList")) {
         if ([w isKindOfClass:UIWindow.class]) w.hidden = YES;
     }
-    UIView *hostView = reference.rootViewController.view ?: reference;
-    UIPanGestureRecognizer *pan =
-        [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
-    pan.delegate = self;
-    pan.maximumNumberOfTouches = 1;
-    pan.minimumNumberOfTouches = 1;
-    pan.cancelsTouchesInView = NO;
-    [hostView addGestureRecognizer:pan];
-    _pan = pan;
-    objc_setAssociatedObject(self, "TWArcTriggerPans", @[pan], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+    NSMutableArray *pans = [NSMutableArray array];
+    NSMutableArray *hosts = [NSMutableArray array];
+    for (UIWindow *window in UIApplication.sharedApplication.windows) {
+        if (![window isKindOfClass:UIWindow.class]) continue;
+        if ([window isKindOfClass:NSClassFromString(@"TWArcTriggerWindow")]) continue;
+        if ([window isKindOfClass:NSClassFromString(@"TWArcWindow")]) continue;
+        if (window.hidden || window.alpha < 0.01 || window.bounds.size.width < 200) continue;
+        UIPanGestureRecognizer *pan =
+            [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
+        pan.delegate = self;
+        pan.maximumNumberOfTouches = 1;
+        pan.minimumNumberOfTouches = 1;
+        // 识别成功才取消底层触摸（从角落拖动＝确实要菜单）；
+        // 轻点图标时 pan 永远不识别，触摸照常交给图标，不会出现"点好几下"。
+        pan.cancelsTouchesInView = YES;
+        [window addGestureRecognizer:pan];
+        [pans addObject:pan];
+        [hosts addObject:[NSString stringWithFormat:@"%@(%.0f)", NSStringFromClass(window.class), window.windowLevel]];
+    }
+    if (!pans.count) {
+        UIView *hostView = reference.rootViewController.view ?: reference;
+        UIPanGestureRecognizer *pan =
+            [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
+        pan.delegate = self;
+        pan.maximumNumberOfTouches = 1;
+        pan.cancelsTouchesInView = YES;
+        [hostView addGestureRecognizer:pan];
+        [pans addObject:pan];
+        [hosts addObject:NSStringFromClass(hostView.class) ?: @"?"];
+    }
+    _pan = pans.firstObject;
+    objc_setAssociatedObject(self, "TWArcTriggerPans", pans, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 
     TWArcHotAreas areas = TWArcComputeHotAreas();
-    TWRuntimeLog(@"[arc] window gesture attached mask=%ld rect=%@ host=%@",
+    TWRuntimeLog(@"[arc] window gesture attached mask=%ld rect=%@ hosts=%@",
                  (long)areas.mask, NSStringFromCGRect(areas.rects[TWCornerBottomRight]),
-                 NSStringFromClass(hostView.class) ?: @"?");
+                 [hosts componentsJoinedByString:@" | "]);
 }
 
 - (TWArcTriggerWindow *)triggerWindowForCorner:(NSInteger)corner {

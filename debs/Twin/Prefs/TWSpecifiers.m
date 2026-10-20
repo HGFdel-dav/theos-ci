@@ -1,5 +1,6 @@
 // TWSpecifiers.m
 #import "TWSpecifiers.h"
+#import "TWChoiceController.h"
 #import "TWPath.h"
 #import <UIKit/UIKit.h>
 #import <dlfcn.h>
@@ -93,8 +94,12 @@ PSSpecifier *TWRowSpecifier(id target,
                                                         edit:NULL];
     if (!spec) return nil;
     if (twIsChoiceRow) {
-        [spec setProperty:@"PSListItemsController" forKey:@"detail"];
+        // 用自绘的 TWChoiceController：它不依赖 Preferences 的 specifier 上下文，
+        // 自建也不会是空表（系统的 PSListItemsController 自建＝全黑）。
+        [spec setProperty:@"TWChoiceController" forKey:@"detail"];
+        [spec setProperty:@"TWChoiceController" forKey:@"twController"];
         [spec setProperty:@YES forKey:@"isController"];
+        [spec setProperty:@YES forKey:@"twChoice"];
     }
     if (key.length) [spec setProperty:key forKey:@"key"];
     if (defaultValue) [spec setProperty:defaultValue forKey:@"default"];
@@ -240,15 +245,23 @@ id TWControllerForSpecifier(PSListController *host, PSSpecifier *specifier) {
     if (![className isKindOfClass:NSString.class] || !className.length) {
         className = [specifier propertyForKey:@"detail"];
     }
+    if ([className isEqualToString:@"TWChoiceController"]) {
+        NSString *key = [specifier propertyForKey:@"key"];
+        NSArray *titles = [specifier propertyForKey:@"titles"];
+        if (![titles isKindOfClass:NSArray.class]) titles = [specifier propertyForKey:@"validTitles"];
+        NSArray *values = [specifier propertyForKey:@"values"];
+        if (![values isKindOfClass:NSArray.class]) values = [specifier propertyForKey:@"validValues"];
+        NSString *title = [specifier propertyForKey:@"twTitle"] ?: specifier.name;
+        if ([titles isKindOfClass:NSArray.class] && titles.count && [key isKindOfClass:NSString.class]) {
+            return [[TWChoiceController alloc] initWithTitle:title
+                                                         key:key
+                                                      titles:titles
+                                                      values:[values isKindOfClass:NSArray.class] ? values : @[]];
+        }
+        return nil;
+    }
     if ([className isKindOfClass:NSString.class] && className.length) {
         Class cls = NSClassFromString(className);
-        // PSListItemsController 必须由 Preferences 带着 specifier 上下文来创建：
-        // 我们自己 alloc/init 出来的实例没有 userInfo，页面就是一片黑（录屏实证：
-        // 从"Arc 面板与手势"点进去的 图标形状 / 长按图标 / 显示哪些应用 全黑）。
-        if (cls) {
-            Class itemsCls = NSClassFromString(@"PSListItemsController");
-            if (itemsCls && (cls == itemsCls || [cls isSubclassOfClass:itemsCls])) return nil;
-        }
         if (cls) {
             // PSListController 的子页必须走 initForContentSize:（Preferences 就是这么建的）。
             // 直接 [[alloc] init] 出来的实例没有建好 table，推入后是一整页黑的（实机现象）。
