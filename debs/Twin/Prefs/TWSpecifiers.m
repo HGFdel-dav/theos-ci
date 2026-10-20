@@ -652,10 +652,20 @@ void TWStyleSliderCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier) {
         [cell.contentView addSubview:value];
 
         // 圆点调小：默认圆钮在 58pt 行里又大又挤，还容易压到旁边。
-        UIGraphicsImageRenderer *r = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(18, 18)];
-        UIImage *thumb = [r imageWithActions:^(__unused UIGraphicsImageRendererContext *ctx) {
+        // 圆点：白底面板上纯白圆点是看不见的（用户截图实证），
+        // 所以画成「白底 + 细描边 + 投影」，深浅色面板都看得清。
+        UIGraphicsImageRenderer *r = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(20, 20)];
+        UIImage *thumb = [r imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
+            CGContextRef c = ctx.CGContext;
+            CGContextSetShadowWithColor(c, CGSizeMake(0, 1), 3.0,
+                                        [UIColor colorWithWhite:0.0 alpha:0.38].CGColor);
+            UIBezierPath *circle = [UIBezierPath bezierPathWithOvalInRect:CGRectMake(2, 2, 16, 16)];
             [[UIColor whiteColor] setFill];
-            [[UIBezierPath bezierPathWithOvalInRect:CGRectMake(0, 0, 18, 18)] fill];
+            [circle fill];
+            CGContextSetShadowWithColor(c, CGSizeZero, 0, NULL);
+            [[UIColor colorWithWhite:0.0 alpha:0.22] setStroke];
+            circle.lineWidth = 0.75;
+            [circle stroke];
         }];
         [slider setThumbImage:thumb forState:UIControlStateNormal];
         [slider setThumbImage:thumb forState:UIControlStateHighlighted];
