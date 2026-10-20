@@ -566,6 +566,14 @@ void TWStyleSliderCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier) {
     if (![cell isKindOfClass:[UITableViewCell class]] || !specifier) return;
     if ([specifier cellType] != PSSliderCell) return;
 
+    // cellClass 这个属性在本机 PSListController 上没被采用（所以之前的排版总是被
+    // PSSliderCell 自己的 layoutSubviews 覆盖回去）。这里直接把实例的类换成
+    // 无新增 ivar 的滑杆子类，后续每次布局都会走我们的排版。
+    Class sliderCls = TWSliderCellClass();
+    if (sliderCls && ![cell isKindOfClass:sliderCls]) {
+        object_setClass(cell, sliderCls);
+    }
+
     UISlider *slider = nil;
     NSMutableArray *queue = [NSMutableArray arrayWithArray:cell.contentView.subviews ?: @[]];
     [queue addObjectsFromArray:cell.subviews ?: @[]];

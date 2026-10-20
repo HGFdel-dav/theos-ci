@@ -182,7 +182,8 @@ static void TWSliderLayoutSubviews(id self, SEL _cmd) {
         if ([u isKindOfClass:NSString.class]) unit = u;
         current = [spec propertyForKey:@"twCurrentValue"];
     } @catch (NSException *e) { (void)e; }
-    value.text = current ? [NSString stringWithFormat:@"%@%@", current, unit] : @"";
+    // 没有 twCurrentValue 时不要清空——数值是 TWStyleSliderCellIfNeeded 按滑杆当前值写的。
+    if (current) value.text = [NSString stringWithFormat:@"%@%@", current, unit];
 
     CGRect b = host.bounds;
     CGFloat w = CGRectGetWidth(b);

@@ -370,31 +370,27 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
     }
     _sceneRetries = 0;
 
-    // 0.9.15：回到"四角小窗口"，但不再挂 UIGestureRecognizer。
-    // 0.9.14 的全屏透明窗口虽然只放行四角，实际把整块桌面的点击都吃了（用户实诉），
-    // 这种结构不能再留。小窗口只有 66×66，物理上不可能遮挡全屏。
-    // 触摸用 UIView 的 touchesBegan/Moved/Ended 原生处理：窗口拿到的就是最终触摸链，
-    // 不会有 pan 判定、也不会被 SpringBoard 的图标手势取消。
-    TWArcHotAreas areas = TWArcComputeHotAreas();
-    NSMutableArray *windows = [NSMutableArray array];
-    for (NSInteger corner = 0; corner < 4; corner++) {
-        TWArcTriggerWindow *w = [self triggerWindowForCorner:corner];
-        if (!w) continue;
-        BOOL enabled = (areas.mask & (1 << corner)) != 0;
-        if (!enabled) { w.hidden = YES; continue; }
-        w.frame = areas.rects[corner];
-        w.rootViewController.view.frame = w.bounds;
-        w.rootViewController.view.backgroundColor = UIColor.clearColor;
-        [w refreshLevel];
-        if (w.windowScene != scene) w.windowScene = scene;
-        w.hidden = NO;
-        [windows addObject:w];
+    // 0.9.21：不再建任何热区窗口（它们会压住桌面/边缘的图标，点不动）。
+    // 按 ScreenCore 的做法：手势挂在桌面窗口本身，delegate 只接受"从角落开始"的触摸；
+    // 点按图标时手势不成立，触摸照常交给图标。
+    for (TWArcTriggerWindow *w in objc_getAssociatedObject(self, "TWArcTriggerWindowList")) {
+        if ([w isKindOfClass:UIWindow.class]) w.hidden = YES;
     }
-    objc_setAssociatedObject(self, "TWArcTriggerWindows", windows, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    _pan = nil;
-    TWRuntimeLog(@"[arc] corners ready mask=%ld rect=%@ windows=%lu scene=%@",
+    UIView *hostView = reference.rootViewController.view ?: reference;
+    UIPanGestureRecognizer *pan =
+        [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
+    pan.delegate = self;
+    pan.maximumNumberOfTouches = 1;
+    pan.minimumNumberOfTouches = 1;
+    pan.cancelsTouchesInView = NO;
+    [hostView addGestureRecognizer:pan];
+    _pan = pan;
+    objc_setAssociatedObject(self, "TWArcTriggerPans", @[pan], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+    TWArcHotAreas areas = TWArcComputeHotAreas();
+    TWRuntimeLog(@"[arc] window gesture attached mask=%ld rect=%@ host=%@",
                  (long)areas.mask, NSStringFromCGRect(areas.rects[TWCornerBottomRight]),
-                 (unsigned long)windows.count, scene ? @"yes" : @"no");
+                 NSStringFromClass(hostView.class) ?: @"?");
 }
 
 - (TWArcTriggerWindow *)triggerWindowForCorner:(NSInteger)corner {

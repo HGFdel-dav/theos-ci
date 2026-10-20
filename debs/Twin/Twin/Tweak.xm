@@ -144,7 +144,7 @@ __attribute__((constructor)) static void TWInitialize(void) {
 
     TWForceEnable();   // 全套功能默认生效，不留"启用"开关
 
-    TWRuntimeLog(@"[tweak] init 0.9.20 jbRoot=%@ prefs=%@ engine=%@",
+    TWRuntimeLog(@"[tweak] init 0.9.21 jbRoot=%@ prefs=%@ engine=%@",
                  TWJBRootPath() ?: @"(nil)", TWPrefsFilePath() ?: @"(nil)", TWEnginePrefsPath() ?: @"(nil)");
 
     _dyld_register_func_for_add_image(TWImageAdded);
