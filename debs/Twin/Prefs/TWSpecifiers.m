@@ -486,6 +486,22 @@ void TWSetArcOrderList(NSArray<NSString *> *list) {
     }
     [[TWPrefs shared] setObject:(clean.count ? clean : nil) forKey:TWKeyCraneAppList];
     [[TWPrefs shared] synchronize];
+    // 同一份清单也写回原版面板（com.moxuan.parallelx 的 applications）：
+    // 这张页以前只写 Twin 自己的键，所以手柄面板从来不受它控制。
+    @try {
+        TWPXPrefs *px = [[TWPXPrefs alloc] init];
+        if ([px available]) {
+            id raw = [px objectForKey:@"applications" defaultValue:nil];
+            NSMutableArray *merged = [NSMutableArray array];
+            if ([raw isKindOfClass:[NSArray class]]) {
+                for (id item in raw) {           // 保留原版的搜索/截图等快捷项
+                    if ([item isKindOfClass:[NSString class]] && [item hasPrefix:@"px."]) [merged addObject:item];
+                }
+            }
+            [merged addObjectsFromArray:clean];
+            [px setObject:merged forKey:@"applications"];
+        }
+    } @catch (__unused NSException *e) { }
 }
 
 #pragma mark - 应用名
@@ -790,3 +806,4 @@ void TWDecorateCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier) {
         sub.frame = frame;
     }
 }
+#import "TWPXPrefs.h"
