@@ -1,5 +1,6 @@
 // TWCraneBridge.m
 #import "TWCraneBridge.h"
+#import "TWRuntimeLog.h"
 #import "TWPrefs.h"
 #import <objc/message.h>
 #import <dlfcn.h>
@@ -155,7 +156,10 @@ static id TWMsgSendStr(id target, SEL sel, id arg) {
                 }
                 NSString *now = [self activeContainerForBundleID:bundleID];
                 BOOL ok = [now isEqualToString:container];
+                TWRuntimeLog(@"[crane] %@ want=%@ before=%@ after=%@ ok=%d",
+                             bundleID, container, current ?: @"?", now ?: @"?", ok);
                 if (!ok) TWCraneNotice(@"Crane 未确认容器，未启动应用。");
+                if (ok) [self terminateRunningInstance:bundleID];
                 completion(ok); return;
             }
 
