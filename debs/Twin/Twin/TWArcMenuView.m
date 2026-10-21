@@ -291,11 +291,15 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 
     // 每环应用数已移除：只用原版「第一环个数」，之后每环按最小夹角自动 +1。
     NSArray<NSNumber *> *ringCounts = @[];
+    // 「菜单缩放」原来只乘图标 transform，布局仍按原尺寸算，缩放后位置就挤在一起。
+    // 正确做法：先按缩放后的图标尺寸算位置，图标本身再套同一比例。
+    CGFloat scaledIcon = iconVisual * _menuScale;
+    CGFloat scaledRadius = _radius * _menuScale;
     NSArray<NSValue *> *centers = [TWArcGeometry centersForCount:count
                                                    firstRowCount:firstRow
                                                       ringCounts:ringCounts
-                                                        iconSize:iconVisual
-                                                           radius:_radius
+                                                        iconSize:scaledIcon
+                                                           radius:scaledRadius
                                                          ringGap:ringGap
                                                           anchor:_anchor
                                                           corner:_corner
@@ -368,7 +372,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
         NSString *bundleID = [entry[@"bundleID"] isKindOfClass:NSString.class] ? entry[@"bundleID"] : nil;
         UIImage *icon = bundleID.length ? TWIconImageForBundleID(bundleID) : nil;
         if (!icon) icon = [self placeholderImageForEntry:entry];
-        TWArcItemView *item = [[TWArcItemView alloc] initWithEntry:entry image:icon size:iconVisual];
+        TWArcItemView *item = [[TWArcItemView alloc] initWithEntry:entry image:icon size:scaledIcon];
         [item applyIconScalePercent:iconScalePct backgroundAlphaPercent:iconBgPct];
         if (iconShape == 1) {
             item.layer.cornerRadius = iconVisual / 2.0;
