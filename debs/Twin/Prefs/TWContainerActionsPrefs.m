@@ -61,15 +61,17 @@ BOOL TWPublishContainerActions(void) {
     NSMutableArray *selection = [NSMutableArray array];
     NSMutableSet *seen = [NSMutableSet set];
     for (id item in TWCPArray([px objectForKey:@"applications" defaultValue:nil])) {
-        if (![item isKindOfClass:NSString.class] || !item.length || [seen containsObject:item]) continue;
-        if (TWCPID(item)) continue;
+        if (![item isKindOfClass:NSString.class]) continue;
+        NSString *identifier = (NSString *)item;
+        if (!identifier.length || [seen containsObject:identifier]) continue;
+        if (TWCPID(identifier)) continue;
         // Only the built-in system actions belong in the menu; URL shortcuts
         // and custom actions are edited on their own pages. Keeping them here
         // pushed the menu to 52 entries (raw px.url.* identifiers) and forced
         // the panel onto a second page.
-        if ([item hasPrefix:@"px.action."] || [(NSArray *)rawOrder containsObject:item]) {
-            [seen addObject:item];
-            [selection addObject:item];
+        if ([identifier hasPrefix:@"px.action."] || [(NSArray *)rawOrder containsObject:identifier]) {
+            [seen addObject:identifier];
+            [selection addObject:identifier];
         }
     }
     for (id raw in (NSArray *)rawOrder) {
