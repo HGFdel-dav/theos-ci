@@ -9,9 +9,10 @@
     NSArray<NSString *> *_titles;
     NSArray *_values;
 }
-- (instancetype)initForContentSize:(CGSize)size { return [super initForContentSize:size]; }
+// Use the working PSListController -init path for this parameterized page;
+// the framework owns initForContentSize: and must not loop through overrides.
 - (instancetype)initWithTitle:(NSString *)title key:(NSString *)key titles:(NSArray<NSString *> *)titles values:(NSArray *)values {
-    if ((self = [self initForContentSize:UIScreen.mainScreen.bounds.size])) {
+    if ((self = [super init])) {
         self.title = title;
         _prefKey = [key copy]; _titles = [titles copy] ?: @[]; _values = [values copy] ?: @[];
         _specifiers = nil;

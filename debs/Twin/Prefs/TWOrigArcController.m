@@ -67,12 +67,9 @@ static void TWOrigWrite(NSString *key, id value) {
 
 @implementation TWOrigArcController
 
+// Inherit the framework's content-size entry; do not redirect -init back to it.
 - (instancetype)init {
-    return [self initForContentSize:UIScreen.mainScreen.bounds.size];
-}
-
-- (instancetype)initForContentSize:(CGSize)size {
-    if ((self = [super initForContentSize:size])) self.title = @"弧形菜单与手势";
+    if ((self = [super init])) self.title = @"弧形菜单与手势";
     return self;
 }
 

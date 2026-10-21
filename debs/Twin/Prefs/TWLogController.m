@@ -10,9 +10,10 @@ static NSString *const kLogDomain = @"com.niubiprass.twin.log";
     NSArray<NSString *> *_lines;
 }
 
-- (instancetype)init { return [self initForContentSize:UIScreen.mainScreen.bounds.size]; }
-- (instancetype)initForContentSize:(CGSize)size {
-    if ((self = [super initForContentSize:size])) self.title = @"运行日志";
+// PSListController owns initForContentSize: and may dispatch back to -init.
+// Keep the normal initializer one-way; inherit the content-size adapter.
+- (instancetype)init {
+    if ((self = [super init])) self.title = @"运行日志";
     return self;
 }
 - (NSArray *)specifiers {

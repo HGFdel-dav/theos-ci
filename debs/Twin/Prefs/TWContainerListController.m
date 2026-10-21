@@ -211,9 +211,8 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
     NSArray<NSDictionary *> *_rows;   // {bundleID, containerID, enabled} 自动发现 + 开关状态
 }
 
-- (instancetype)init { return [self initForContentSize:UIScreen.mainScreen.bounds.size]; }
-- (instancetype)initForContentSize:(CGSize)size {
-    if ((self = [super initForContentSize:size])) self.title = @"分身应用";
+- (instancetype)init {
+    if ((self = [super init])) self.title = @"分身应用";
     return self;
 }
 - (NSArray *)specifiers {
@@ -391,9 +390,8 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
     BOOL _editingOrder;
 }
 
-- (instancetype)init { return [self initForContentSize:UIScreen.mainScreen.bounds.size]; }
-- (instancetype)initForContentSize:(CGSize)size {
-    if ((self = [super initForContentSize:size])) self.title = @"应用、快捷操作与排序";
+- (instancetype)init {
+    if ((self = [super init])) self.title = @"应用、快捷操作与排序";
     return self;
 }
 - (NSArray *)specifiers {

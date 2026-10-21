@@ -6,7 +6,6 @@
 NS_ASSUME_NONNULL_BEGIN
 
 @interface TWLogController : PSListController
-- (instancetype)initForContentSize:(CGSize)size;
 @end
 
 NS_ASSUME_NONNULL_END

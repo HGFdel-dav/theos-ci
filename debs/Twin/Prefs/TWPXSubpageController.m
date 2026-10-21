@@ -34,12 +34,10 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
     } @catch (__unused NSException *e) {}
 }
 
+// PSListController's inherited initForContentSize: reaches this initializer.
+// It must not dispatch back to initForContentSize:.
 - (instancetype)init {
-    return [self initForContentSize:CGSizeZero];
-}
-
-- (instancetype)initForContentSize:(CGSize)size {
-    if ((self = [super initForContentSize:size])) {
+    if ((self = [super init])) {
         _px = [[TWPXPrefs alloc] init];
         [self twSyncTitle];
     }

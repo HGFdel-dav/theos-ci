@@ -13,9 +13,8 @@
 @property(nonatomic, strong) TWPXPrefs *px;
 @end
 @implementation TWSplitSettingsController
-- (instancetype)init { return [self initForContentSize:CGSizeZero]; }
-- (instancetype)initForContentSize:(CGSize)size {
-    if ((self = [super initForContentSize:size])) {
+- (instancetype)init {
+    if ((self = [super init])) {
         self.title = @"分屏设置"; _px = [TWPXPrefs new];
     }
     return self;
@@ -133,9 +132,8 @@
 @implementation TWURLExcludedAppsController {
     TWPXPrefs *_px;
 }
-- (instancetype)init { return [self initForContentSize:UIScreen.mainScreen.bounds.size]; }
-- (instancetype)initForContentSize:(CGSize)size {
-    if ((self = [super initForContentSize:size])) { self.title = @"URL 分屏排除应用"; _px = [TWPXPrefs new]; }
+- (instancetype)init {
+    if ((self = [super init])) { self.title = @"URL 分屏排除应用"; _px = [TWPXPrefs new]; }
     return self;
 }
 - (NSArray *)specifiers {

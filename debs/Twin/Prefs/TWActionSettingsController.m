@@ -48,9 +48,9 @@ static void *TWASCatalog(void) {
 @end
 
 @implementation TWActionSettingsController
-- (instancetype)init { return [self initForContentSize:CGSizeZero]; }
-- (instancetype)initForContentSize:(CGSize)size {
-    if ((self = [super initForContentSize:size])) {
+// The inherited content-size adapter calls -init; keep this path acyclic.
+- (instancetype)init {
+    if ((self = [super init])) {
         _px = [[TWPXPrefs alloc] init];
         self.title = [self twPageTitle];
     }

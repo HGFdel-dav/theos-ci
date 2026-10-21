@@ -5,7 +5,6 @@
 NS_ASSUME_NONNULL_BEGIN
 
 @interface TWOrigArcController : PSListController
-- (instancetype)initForContentSize:(CGSize)size;
 @end
 
 NS_ASSUME_NONNULL_END

@@ -13,7 +13,6 @@ NS_ASSUME_NONNULL_BEGIN
                        values:(NSArray *)values;
 @property (nonatomic, copy, nullable) id (^readValue)(void);
 @property (nonatomic, copy, nullable) void (^writeValue)(id value);
-- (instancetype)initForContentSize:(CGSize)size;
 @end
 
 NS_ASSUME_NONNULL_END
