@@ -242,7 +242,27 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 
     // ---- 几何：ScreenCore 的 90° 角落扇形 + 多环排布 ----
     TWPrefs *prefs = [TWPrefs shared];
-    CGFloat itemSize = TWArcOrigNumber(@"arcIconSize", 28.0);
+    // 图标外观和手柄面板共用一套：优先用面板的 launcherIconSize，
+    // 这样两套菜单的图标大小一致；面板没设置时才用 ARC 自己的值。
+    CGFloat itemSize = 0;
+    @try {
+        Class px = NSClassFromString(@"TWPXPrefs");
+        if (px) {
+            id prefsObj = [[px alloc] init];
+            SEL avail = NSSelectorFromString(@"available");
+            if ([prefsObj respondsToSelector:avail]) {
+                BOOL (*fn)(id, SEL) = (BOOL (*)(id, SEL))objc_msgSend;
+                if (fn(prefsObj, avail)) {
+                    SEL get = NSSelectorFromString(@"floatForKey:defaultValue:");
+                    if ([prefsObj respondsToSelector:get]) {
+                        CGFloat (*gf)(id, SEL, id, CGFloat) = (CGFloat (*)(id, SEL, id, CGFloat))objc_msgSend;
+                        itemSize = gf(prefsObj, get, @"launcherIconSize", 0);
+                    }
+                }
+            }
+        }
+    } @catch (__unused NSException *e) { }
+    if (!isfinite(itemSize) || itemSize < 20) itemSize = TWArcOrigNumber(@"arcIconSize", 28.0);
     if (!isfinite(itemSize) || itemSize < 20) itemSize = 28;
     // 原版的 28 是「图标大小」的下限值，屏幕上实际画出来的图标比这个大得多；
     // 直接拿 28 当直径做出来只有指甲盖大小（实测效果），所以按屏幕尺寸换算。
