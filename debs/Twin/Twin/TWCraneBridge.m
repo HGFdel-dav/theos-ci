@@ -140,14 +140,22 @@ static id TWMsgSendStr(id target, SEL sel, id arg) {
                 completion(NO); return;
             }
             // 已经在目标容器上：直接放行，不做任何切换。
+            NSString *current = nil;
             @try {
-                NSString *current = [self activeContainerForBundleID:bundleID];
+                current = [self activeContainerForBundleID:bundleID];
                 if ([current isEqualToString:container]) { completion(YES); return; }
             } @catch (__unused NSException *e) { /* 继续走显式切换 */ }
 
             // ① 首选：无认证接口（Crane 官方，ScreenCore 同款）。
             SEL plain = NSSelectorFromString(@"setActiveContainerIdentifier:forApplicationWithIdentifier:reloadApplication:");
             if ([manager respondsToSelector:plain]) {
+                // Crane 官方公开的重载入口；不猜测 SBApplication 的 terminate/kill selector。
+                SEL reload = NSSelectorFromString(@"reloadApplicationWithIdentifier:");
+                if (!TWSignature(manager, plain, @encode(void), @[@"@", @"@", [NSString stringWithUTF8String:@encode(BOOL)]]) ||
+                    !TWSignature(manager, reload, @encode(void), @[@"@"])) {
+                    TWCraneNotice(@"Crane 切换或重载接口不兼容，未启动应用。");
+                    completion(NO); return;
+                }
                 @try {
                     ((void (*)(id, SEL, id, id, BOOL))objc_msgSend)(manager, plain, container, bundleID, NO);
                 } @catch (__unused NSException *e) {
@@ -159,7 +167,10 @@ static id TWMsgSendStr(id target, SEL sel, id arg) {
                 TWRuntimeLog(@"[crane] %@ want=%@ before=%@ after=%@ ok=%d",
                              bundleID, container, current ?: @"?", now ?: @"?", ok);
                 if (!ok) TWCraneNotice(@"Crane 未确认容器，未启动应用。");
-                if (ok) [self terminateRunningInstance:bundleID];
+                if (ok) {
+                    ((void (*)(id, SEL, id))objc_msgSend)(manager, reload, bundleID);
+                    TWRuntimeLog(@"[crane] requested Crane reload for %@", bundleID);
+                }
                 completion(ok); return;
             }
 
