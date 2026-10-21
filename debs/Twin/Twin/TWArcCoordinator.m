@@ -1081,7 +1081,10 @@ static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
 
     if (iconSource == 1) limit = NSIntegerMax;   // 同上：自选模式不限个数
 
-    BOOL craneOn = [prefs boolForKey:TWKeyCraneEnabled defaultValue:YES];
+    // 没装分身插件（Crane）时，"分身"条目全是假的：点了还是同一个 App。
+    // 所以只有 Crane 真的可用时才把容器展开成多条。
+    BOOL craneOn = [prefs boolForKey:TWKeyCraneEnabled defaultValue:YES] &&
+                   [TWCraneBridge isCraneAvailable];
     NSMutableArray<NSDictionary *> *entries = [NSMutableArray array];
     for (NSString *bundleID in apps) {
         if ((NSInteger)entries.count >= limit) break;
