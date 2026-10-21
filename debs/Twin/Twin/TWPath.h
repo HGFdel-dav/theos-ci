@@ -167,6 +167,10 @@ static inline NSArray<NSString *> *TWLegacyPrefsFiles(void) {
 #define TWKeyArcRadius        @"TWArcRadius"        // 触发区扇形半径（原版 arcRadius，1–300，默认 40）
 #define TWKeyArcMenuRadius    @"TWArcMenuRadius"    // 菜单展开半径（Twin 自己的，默认 140）
 #define TWKeyArcTriggerSide   @"TWArcTriggerSide"   // 0=右下 1=左下 2=两侧（原版 arcSide）
+#define TWKeyArcRing1         @"TWArcRing1"          // 第一环个数（0=用原版第一环值）
+#define TWKeyArcRing2         @"TWArcRing2"          // 第二环个数（0=自动 +1）
+#define TWKeyArcRing3         @"TWArcRing3"
+#define TWKeyArcRing4         @"TWArcRing4"
 #define TWKeyArcIconSpacing   @"TWArcIconSpacing"   // 图标间距，0–40（原版 arcIconSpacing）
 
 // ── 0.9.7：照抄 ScreenCore TriggerSettings 的全部 arc 参数 ──────────────

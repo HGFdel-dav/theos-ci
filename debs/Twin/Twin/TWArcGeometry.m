@@ -110,6 +110,7 @@ static const CGFloat kTWBottomInset = 28;      // Home 条区不触发
 // 起点/终点各内缩 6°，避免贴边的图标被屏幕裁掉一半。
 + (NSArray<NSValue *> *)centersForCount:(NSInteger)count
                           firstRowCount:(NSInteger)firstRowCount
+                             ringCounts:(NSArray<NSNumber *> *)ringCounts
                                iconSize:(CGFloat)iconSize
                                   radius:(CGFloat)radius
                                 ringGap:(CGFloat)ringGap
@@ -141,7 +142,13 @@ static const CGFloat kTWBottomInset = 28;      // Home 条区不触发
     while (remaining > 0 && ring < 8) {
         // 原版扇形排布：一圈比一圈多一个（第一环 N 个，第二环 N+1，第三环 N+2…），
         // 而不是每环都按同一个最大容量硬塞。
-        NSInteger capacity = (ring == 0) ? first : (first + ring);
+        // 每环个数：由调用方按面板里的「第一/二/三/四环」传入，未设置的环按 +1 递增。
+        NSInteger capacity;
+        if (ring < (NSInteger)ringCounts.count && [ringCounts[ring] integerValue] > 0) {
+            capacity = [ringCounts[ring] integerValue];
+        } else {
+            capacity = (ring == 0) ? first : (first + ring);
+        }
         NSInteger n = MIN(remaining, MAX(capacity, 1));
         for (NSInteger i = 0; i < n; i++) {
             CGFloat t = (n == 1) ? 0.5 : (CGFloat)i / (CGFloat)(n - 1);

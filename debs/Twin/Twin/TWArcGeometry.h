@@ -46,6 +46,7 @@ typedef NS_ENUM(NSInteger, TWCorner) {
 // 几何来自 ScreenCore 2.0.4（起始角 180°、扫描角 90°），排布用等效实现。
 + (NSArray<NSValue *> *)centersForCount:(NSInteger)count
                           firstRowCount:(NSInteger)firstRowCount
+                             ringCounts:(NSArray<NSNumber *> *)ringCounts
                                iconSize:(CGFloat)iconSize
                                   radius:(CGFloat)radius
                                 ringGap:(CGFloat)ringGap

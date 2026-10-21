@@ -125,8 +125,9 @@ static NSInteger TWArcTriggerMask(void) {
     else if (side == 2) mask = ((NSInteger)1 << TWCornerBottomRight) | ((NSInteger)1 << TWCornerBottomLeft);
     else mask = (NSInteger)1 << TWCornerBottomRight;
     if (TWArcOrigBool(@"arcSymmetricMirrorEnabled", NO)) {
-        if (mask & ((NSInteger)1 << TWCornerBottomRight)) mask |= (NSInteger)1 << TWCornerTopRight;
-        if (mask & ((NSInteger)1 << TWCornerBottomLeft)) mask |= (NSInteger)1 << TWCornerTopLeft;
+        // 左右对称：右下↔左下。以前映射到上边两个角，选"右下角"四个角都能划。
+        if (mask & ((NSInteger)1 << TWCornerBottomRight)) mask |= (NSInteger)1 << TWCornerBottomLeft;
+        if (mask & ((NSInteger)1 << TWCornerBottomLeft)) mask |= (NSInteger)1 << TWCornerBottomRight;
     }
     return mask;
 }

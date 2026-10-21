@@ -274,8 +274,15 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
                           _anchor.y + (topSide ? offY : -offY));
     _radius = [TWArcGeometry clampedRadius:radius anchor:_anchor corner:_corner bounds:self.bounds];
 
+    NSArray<NSNumber *> *ringCounts = @[
+        @(TWArcOrigNumber(@"arcFirstRowItemCount", 3.0)),
+        @([[TWPrefs shared] integerForKey:TWKeyArcRing2 defaultValue:0]),
+        @([[TWPrefs shared] integerForKey:TWKeyArcRing3 defaultValue:0]),
+        @([[TWPrefs shared] integerForKey:TWKeyArcRing4 defaultValue:0])
+    ];
     NSArray<NSValue *> *centers = [TWArcGeometry centersForCount:count
                                                    firstRowCount:firstRow
+                                                      ringCounts:ringCounts
                                                         iconSize:iconVisual
                                                            radius:_radius
                                                          ringGap:ringGap

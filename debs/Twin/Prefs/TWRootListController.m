@@ -229,6 +229,8 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
         [specs addObject:TWGroupSpecifier(@"应用与面板", nil)];
         [specs addObject:TWLinkRowSpecifier(self, @"ARC 菜单显示的应用", @"app.badge.checkmark", @"TWArcOrderController",
                                             nil, @{@"height": @46, @"twColor": @7})];
+        [specs addObject:TWLinkRowSpecifier(self, @"应用与快捷操作（ParallelX）", @"square.grid.2x2",
+                                            @"TWPXAppPicker", nil, @{})];
         [specs addObject:TWLinkRowSpecifier(self, @"半圆面板与手柄", @"circle.grid.3x3", @"TWPXSubpageController",
                                             nil, @{@"height": @46, @"twColor": @4, @"twPXPage": @(TWPXPageLauncher)})];
 
@@ -308,8 +310,35 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
     return nil;
 }
 
+// 直接装载 ParallelX 原版的应用选择页（PXAppPickerController）。
+- (id)twPXAppPickerController {
+    NSArray<NSString *> *paths = @[@"/Library/PreferenceBundles/ParallelXPrefs.bundle",
+                                   @"/var/jb/Library/PreferenceBundles/ParallelXPrefs.bundle"];
+    for (NSString *path in paths) {
+        NSBundle *bundle = [NSBundle bundleWithPath:path];
+        if (!bundle || ![bundle load]) continue;
+        Class cls = NSClassFromString(@"PXAppPickerController");
+        if (!cls) continue;
+        id vc = nil;
+        SEL sizeSel = NSSelectorFromString(@"initForContentSize:");
+        if ([cls instancesRespondToSelector:sizeSel]) {
+            CGSize size = self.view.bounds.size;
+            if (size.width < 1) size = CGSizeMake(390, 844);
+            vc = ((id (*)(id, SEL, CGSize))objc_msgSend)([cls alloc], sizeSel, size);
+        } else {
+            vc = [[cls alloc] init];
+        }
+        if (vc) return vc;
+    }
+    return nil;
+}
+
 - (id)controllerForSpecifier:(PSSpecifier *)specifier {
     NSString *detail = [specifier propertyForKey:@"detail"];
+    if ([detail isKindOfClass:NSString.class] && [detail isEqualToString:@"TWPXAppPicker"]) {
+        id picker = [self twPXAppPickerController];
+        if (picker) return picker;
+    }
     if ([detail isKindOfClass:NSString.class] && [detail isEqualToString:@"TWOrigArcHost"]) {
         id controller = [self twOriginalArcController];
         if (controller) return controller;

@@ -1,6 +1,8 @@
 // TWArcWindow.m
 #import "TWArcWindow.h"
 #import "TWPrefs.h"
+#import <objc/message.h>
+#import "TWPrefs.h"
 #import "TWPath.h"
 #import <math.h>
 
@@ -103,6 +105,12 @@ static const NSInteger TWArcPriorityCeiling = 2200;
 }
 
 - (void)refreshLevel {
+    // 录屏过滤：整个覆盖窗口不参与截图/录屏（以前只对菜单视图设了，窗口仍然被录进去）
+    BOOL hideCap = TWArcOrigBool(@"hideArcFromScreenCaptureEnabled", NO);
+    SEL hideSel = NSSelectorFromString(@"_setHideFromCapture:");
+    if ([self respondsToSelector:hideSel]) {
+        @try { ((void (*)(id, SEL, BOOL))objc_msgSend)(self, hideSel, hideCap); } @catch (__unused NSException *e) {}
+    }
     [[TWPrefs shared] reload];
     NSInteger priority = [[TWPrefs shared] integerForKey:TWKeyArcWindowPriority
                                             defaultValue:TWArcPriorityDefault];
