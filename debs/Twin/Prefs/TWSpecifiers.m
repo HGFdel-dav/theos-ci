@@ -664,15 +664,15 @@ void TWStyleSliderCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier) {
     // Adding a second pair produced the duplicated number in the screenshots.
     NSString *wanted = specifier.name ?: @"";
     BOOL systemDrawsTitle = NO;
-    NSMutableArray *queue = [NSMutableArray arrayWithArray:cell.contentView.subviews];
+    NSMutableArray *labelQueue = [NSMutableArray arrayWithArray:cell.contentView.subviews];
     NSInteger scan = 0;
-    while (queue.count && scan++ < 300) {
-        UIView *sub = queue.firstObject; [queue removeObjectAtIndex:0];
+    while (labelQueue.count && scan++ < 300) {
+        UIView *sub = labelQueue.firstObject; [labelQueue removeObjectAtIndex:0];
         if ([sub isKindOfClass:UILabel.class] && sub.tag != 0x774C4454 && sub.tag != 0x774C4455) {
             UILabel *label = (UILabel *)sub;
             if (label.text.length && [label.text isEqualToString:wanted]) { systemDrawsTitle = YES; break; }
         }
-        [queue addObjectsFromArray:sub.subviews];
+        [labelQueue addObjectsFromArray:sub.subviews];
     }
     CGFloat w = CGRectGetWidth(cell.contentView.bounds);
     if (w <= 0) w = CGRectGetWidth(cell.bounds);
