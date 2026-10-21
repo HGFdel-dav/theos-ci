@@ -32,7 +32,7 @@ static PSSpecifier *SXGroup(NSString *title, NSString *footer) {
 
 static PSSpecifier *SXLink(id target, NSString *title, NSString *bundle, NSString *detail) {
     PSSpecifier *s = [PSSpecifier preferenceSpecifierNamed:title target:target
-        set:NULL get:NULL detail:detail cell:PSLinkCell edit:NULL];
+        set:NULL get:NULL detail:Nil cell:PSLinkCell edit:NULL];
     [s setProperty:bundle forKey:@"bundle"];
     [s setProperty:detail forKey:@"detail"];
     [s setProperty:@YES forKey:@"isController"];
