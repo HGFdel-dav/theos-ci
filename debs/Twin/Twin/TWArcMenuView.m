@@ -242,25 +242,15 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 
     // ---- 几何：ScreenCore 的 90° 角落扇形 + 多环排布 ----
     TWPrefs *prefs = [TWPrefs shared];
-    // 图标外观和手柄面板共用一套：优先用面板的 launcherIconSize，
-    // 这样两套菜单的图标大小一致；面板没设置时才用 ARC 自己的值。
+    // 图标外观和手柄面板共用一套：直接读面板偏好的 launcherIconSize。
+    // 不依赖 TwinPrefs 里的类（dylib 里没有那个文件）。
     CGFloat itemSize = 0;
     @try {
-        Class px = NSClassFromString(@"TWPXPrefs");
-        if (px) {
-            id prefsObj = [[px alloc] init];
-            SEL avail = NSSelectorFromString(@"available");
-            if ([prefsObj respondsToSelector:avail]) {
-                BOOL (*fn)(id, SEL) = (BOOL (*)(id, SEL))objc_msgSend;
-                if (fn(prefsObj, avail)) {
-                    SEL get = NSSelectorFromString(@"floatForKey:defaultValue:");
-                    if ([prefsObj respondsToSelector:get]) {
-                        CGFloat (*gf)(id, SEL, id, CGFloat) = (CGFloat (*)(id, SEL, id, CGFloat))objc_msgSend;
-                        itemSize = gf(prefsObj, get, @"launcherIconSize", 0);
-                    }
-                }
-            }
-        }
+        CFPreferencesAppSynchronize(CFSTR("com.moxuan.parallelx"));
+        CFPropertyListRef v = CFPreferencesCopyAppValue(CFSTR("launcherIconSize"),
+                                                        CFSTR("com.moxuan.parallelx"));
+        if (v && CFGetTypeID(v) == CFNumberGetTypeID()) itemSize = [(__bridge NSNumber *)v doubleValue];
+        if (v) CFRelease(v);
     } @catch (__unused NSException *e) { }
     if (!isfinite(itemSize) || itemSize < 20) itemSize = TWArcOrigNumber(@"arcIconSize", 28.0);
     if (!isfinite(itemSize) || itemSize < 20) itemSize = 28;
