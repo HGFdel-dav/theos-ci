@@ -9,6 +9,7 @@ include $(THEOS)/makefiles/common.mk
 
 BUNDLE_NAME = SplitXPrefs
 SplitXPrefs_FILES = Prefs/SplitXRootListController.m
+SplitXPrefs_INSTALL_PATH = /Library/PreferenceBundles
 SplitXPrefs_RESOURCE_FILES = Prefs/Resources/Info.plist Prefs/Resources/icon.png Prefs/Resources/icon@2x.png Prefs/Resources/icon@3x.png
 SplitXPrefs_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-unused-variable -Wno-unused-function -IPrefs
 SplitXPrefs_FRAMEWORKS = UIKit Foundation CoreGraphics
