@@ -1,5 +1,6 @@
 // TWSpecifiers.m
 #import "TWSpecifiers.h"
+#import "TWPXPrefs.h"
 #import "TWChoiceController.h"
 #import "TWPath.h"
 #import "TWStyle.h"
@@ -806,4 +807,3 @@ void TWDecorateCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier) {
         sub.frame = frame;
     }
 }
-#import "TWPXPrefs.h"
