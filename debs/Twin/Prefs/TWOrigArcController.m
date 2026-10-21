@@ -312,7 +312,17 @@ static void TWOrigWrite(NSString *key, id value) {
     NSInteger rowIndex = slider.tag;
     NSIndexPath *ip = [NSIndexPath indexPathForRow:rowIndex % 1000 inSection:rowIndex / 1000];
     NSDictionary *row = [self rowAtIndexPath:ip];
-    TWOrigWrite(row[@"key"], @(slider.value));
+    NSString *key = row[@"key"];
+    TWOrigWrite(key, @(slider.value));
+    // 拖动矩形长/高/圆角时自动切到「矩形」识别区，否则这三项永远不参与计算
+    // （日志实锤：mode=0 扇形，长高滑杆怎么拖热区都是半径值）。
+    if ([key hasPrefix:@"arcRectangle"]) {
+        id current = TWOrigRead(@"arcTriggerRegionMode", @0);
+        if ([current integerValue] != 1) {
+            TWOrigWrite(@"arcTriggerRegionMode", @1);
+            [self.tableView reloadData];
+        }
+    }
     TWOrigSliderCell *cell = (TWOrigSliderCell *)[self.tableView cellForRowAtIndexPath:ip];
     if ([cell isKindOfClass:TWOrigSliderCell.class]) {
         cell.valueLabel.text = [self twFormatValue:slider.value spec:row];
