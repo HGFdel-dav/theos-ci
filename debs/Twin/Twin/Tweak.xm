@@ -122,7 +122,7 @@ static void TWSyncEngineEnabled(void) {
     CFStringRef domain = CFSTR("com.moxuan.parallelx");
     CFPreferencesAppSynchronize(domain);
     CFPropertyListRef previous = CFPreferencesCopyAppValue(CFSTR("pluginEnabled"), domain);
-    BOOL same = previous && CFGetTypeID(previous) == CFBooleanGetTypeID() && CFBooleanGetValue(previous) == enabled;
+    BOOL same = previous && CFGetTypeID(previous) == CFBooleanGetTypeID() && CFBooleanGetValue((CFBooleanRef)previous) == enabled;
     if (previous) CFRelease(previous);
     // Window memory writes this same notification frequently. Never reload the
     // entire engine unless its master state actually changed.
