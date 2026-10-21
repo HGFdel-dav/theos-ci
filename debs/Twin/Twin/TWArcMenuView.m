@@ -210,6 +210,8 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     CAShapeLayer *_bandMask;
     UIView *_dimView;
     CGFloat _menuScale;
+    CGFloat _startAngle;
+    CGFloat _sweepAngle;
     UIView *_itemsContainer;
     NSArray<UIView *> *_rowContainers;
     CGAffineTransform _presentTranslation;
@@ -240,71 +242,57 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     _menuScale = isfinite(menuScale) && menuScale > 0.1 ? MIN(menuScale, 2) : 1;
     NSInteger count = (NSInteger)_entries.count;
 
-    // ---- 几何：ScreenCore 的 90° 角落扇形 + 多环排布 ----
-    TWPrefs *prefs = [TWPrefs shared];
-    // 图标外观和手柄面板共用一套：直接读面板偏好的 launcherIconSize。
-    // 不依赖 TwinPrefs 里的类（dylib 里没有那个文件）。
-    CGFloat itemSize = 0;
-    @try {
-        CFPreferencesAppSynchronize(CFSTR("com.moxuan.parallelx"));
-        CFPropertyListRef v = CFPreferencesCopyAppValue(CFSTR("launcherIconSize"),
-                                                        CFSTR("com.moxuan.parallelx"));
-        if (v && CFGetTypeID(v) == CFNumberGetTypeID()) itemSize = [(__bridge NSNumber *)v doubleValue];
-        if (v) CFRelease(v);
-    } @catch (__unused NSException *e) { }
-    if (!isfinite(itemSize) || itemSize < 20) itemSize = TWArcOrigNumber(@"arcIconSize", 28.0);
-    if (!isfinite(itemSize) || itemSize < 20) itemSize = 28;
-    // 原版的 28 是「图标大小」的下限值，屏幕上实际画出来的图标比这个大得多；
-    // 直接拿 28 当直径做出来只有指甲盖大小（实测效果），所以按屏幕尺寸换算。
-    CGFloat iconVisual = MAX(38.0, itemSize * 1.35);
-    iconVisual = MIN(iconVisual, 96.0);
-    NSInteger firstRow = (NSInteger)TWArcOrigNumber(@"arcFirstRowItemCount", 5.0);
-    if (firstRow < 1) firstRow = 5;
-    CGFloat ringGap = TWArcOrigNumber(@"arcIconSpacing", 0.0);
+    // ARC has its own size/spacing domain; a handle-menu preference must not
+    // silently override arcIconSize. Values are points, not a guessed 1.35 multiplier.
+    CGFloat iconVisual = TWArcOrigNumber(@"arcIconSize", 28);
+    if (!isfinite(iconVisual) || iconVisual < 1) iconVisual = 28;
+    iconVisual = MIN(iconVisual, 80);
+    NSInteger firstRow = (NSInteger)TWArcOrigNumber(@"arcFirstRowItemCount", 5);
+    firstRow = MIN(MAX(firstRow, 1), 20);
+    CGFloat ringGap = TWArcOrigNumber(@"arcIconSpacing", 0);
+    if (!isfinite(ringGap) || ringGap < 0) ringGap = 0;
+    BOOL landscapeNow = CGRectGetWidth(self.bounds) > CGRectGetHeight(self.bounds);
+    NSString *scaleKey = landscapeNow ? @"arcLandscapeMenuScalePercent" : @"arcMenuScalePercent";
+    CGFloat menuPct = TWArcOrigNumber(scaleKey, 100);
+    if (!isfinite(menuPct) || menuPct < 1) menuPct = 100;
+    _menuScale *= MIN(menuPct, landscapeNow ? 400 : 150) / 100;
+    CGFloat iconScalePct = TWArcOrigNumber(@"arcAppIconScalePercent", 70);
+    CGFloat iconBgPct = TWArcOrigNumber(@"arcIconBackgroundAlphaPercent", 100);
+    NSInteger iconShape = (NSInteger)TWArcOrigNumber(@"arcAppIconShape", 0);
+    BOOL leftSide = _corner == TWCornerBottomLeft || _corner == TWCornerTopLeft;
+    BOOL mirrored = TWArcOrigBool(@"arcSymmetricMirrorEnabled", NO);
+    _startAngle = [TWArcGeometry menuStartAngleForCorner:_corner mirrored:mirrored];
+    _sweepAngle = [TWArcGeometry menuSweepAngleForCorner:_corner mirrored:mirrored];
 
-    // 以下全部对应 ScreenCore 的同名参数。
-    CGFloat menuPct = TWArcOrigNumber(@"arcMenuScalePercent", 100.0);
-    if (isfinite(menuPct) && menuPct > 10) _menuScale *= MIN(menuPct, 200.0) / 100.0;
-    CGFloat iconScalePct = TWArcOrigNumber(@"arcAppIconScalePercent", 70.0);
-    if (!isfinite(iconScalePct)) iconScalePct = 70;
-    CGFloat iconBgPct = TWArcOrigNumber(@"arcIconBackgroundAlphaPercent", 100.0);
-    if (!isfinite(iconBgPct)) iconBgPct = 100;
-    CGFloat offX = TWArcOrigNumber(@"arcOffsetX", 0.0);
-    CGFloat offY = TWArcOrigNumber(@"arcOffsetY", 0.0);
-    BOOL landscapeNow = self.bounds.size.width > self.bounds.size.height;
-    radius += TWArcOrigNumber(@"arcPortraitOffsetDistance", 0.0);
-    if (landscapeNow) radius += TWArcOrigNumber(@"arcLandscapeHorizontalOffset", 0.0);
+    CGFloat offX = TWArcOrigNumber(@"arcOffsetX", 0), offY = TWArcOrigNumber(@"arcOffsetY", 0);
+    offX = isfinite(offX) ? MAX(0, offX) : 0;
+    offY = isfinite(offY) ? MAX(0, offY) : 0;
+    // These are translations, not additions to row radius. Portrait is diagonal;
+    // landscape keys describe notch-side / non-notch-side horizontal translation.
+    CGFloat distance = TWArcOrigNumber(landscapeNow ? @"arcLandscapeOffsetDistance" : @"arcPortraitOffsetDistance", 0);
+    if (!isfinite(distance) || distance < 0) distance = 0;
     if (landscapeNow) {
-        radius += TWArcOrigNumber(@"arcLandscapeOffsetDistance", 0.0);
-        CGFloat landPct = TWArcOrigNumber(@"arcLandscapeMenuScalePercent", 100.0);
-        if (isfinite(landPct) && landPct > 10) _menuScale *= MIN(landPct, 400.0) / 100.0;
+        CGFloat notchDistance = TWArcOrigNumber(@"arcLandscapeHorizontalOffset", 0);
+        if (!isfinite(notchDistance) || notchDistance < 0) notchDistance = 0;
+        UIEdgeInsets safe = self.window.safeAreaInsets;
+        BOOL notchOnLeft = safe.left > safe.right;
+        if (fabs(safe.left - safe.right) < 0.5) {
+            // UIKit landscape-left places the device top/notch at the left.
+            notchOnLeft = self.window.windowScene.interfaceOrientation == UIInterfaceOrientationLandscapeLeft;
+        }
+        offX += leftSide == notchOnLeft ? notchDistance : distance;
+    } else {
+        offX += distance / M_SQRT2;
+        offY += distance / M_SQRT2;
     }
-    NSInteger iconShape = (NSInteger)TWArcOrigNumber(@"arcAppIconShape", 0.0);
-
-    CGFloat margin = iconVisual * 0.5 + 14;
-    _anchor = [TWArcGeometry anchorForCorner:_corner margin:margin bounds:self.bounds];
-    BOOL leftSide = (_corner == TWCornerBottomLeft || _corner == TWCornerTopLeft);
-    BOOL topSide = (_corner == TWCornerTopLeft || _corner == TWCornerTopRight);
-    _anchor = CGPointMake(_anchor.x + (leftSide ? offX : -offX),
-                          _anchor.y + (topSide ? offY : -offY));
-    _radius = [TWArcGeometry clampedRadius:radius anchor:_anchor corner:_corner bounds:self.bounds];
-
-    // 每环应用数已移除：只用原版「第一环个数」，之后每环按最小夹角自动 +1。
-    NSArray<NSNumber *> *ringCounts = @[];
-    // 「菜单缩放」原来只乘图标 transform，布局仍按原尺寸算，缩放后位置就挤在一起。
-    // 正确做法：先按缩放后的图标尺寸算位置，图标本身再套同一比例。
+    _anchor = [TWArcGeometry triggerAnchorForCorner:_corner offsetX:offX offsetY:offY bounds:self.bounds];
+    _radius = isfinite(radius) && radius > 0 ? radius : MAX(104, iconVisual * 2 + ringGap);
     CGFloat scaledIcon = iconVisual * _menuScale;
-    CGFloat scaledRadius = _radius * _menuScale;
-    NSArray<NSValue *> *centers = [TWArcGeometry centersForCount:count
-                                                   firstRowCount:firstRow
-                                                      ringCounts:ringCounts
-                                                        iconSize:scaledIcon
-                                                           radius:scaledRadius
-                                                         ringGap:ringGap
-                                                          anchor:_anchor
-                                                          corner:_corner
-                                                          bounds:self.bounds];
-    if (centers.count < (NSUInteger)count) return;
+    _radius *= _menuScale;
+    NSArray<NSValue *> *centers = [TWArcGeometry centersForCount:count firstRowCount:firstRow
+        ringCounts:@[] iconSize:scaledIcon radius:_radius ringGap:ringGap * _menuScale
+        anchor:_anchor startAngle:_startAngle sweepAngle:_sweepAngle bounds:self.bounds];
+    if (centers.count != (NSUInteger)count) return;
 
     if (!_twTap) {
         _twTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(twHandleTap:)];
@@ -312,12 +300,14 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     }
     // dim
     _dimView = [[UIView alloc] initWithFrame:self.bounds];
+    _dimView.userInteractionEnabled = NO;
     _dimView.backgroundColor = [UIColor blackColor];
     _dimView.alpha = 0;
     [self addSubview:_dimView];
 
     // gradient arc band behind the items
     _backgroundBand = [[UIView alloc] initWithFrame:self.bounds];
+    _backgroundBand.userInteractionEnabled = NO;
     _bandGradient = [CAGradientLayer layer];
     _bandGradient.frame = self.bounds;
     _bandGradient.colors = @[(id)[UIColor systemBlueColor].CGColor,
@@ -375,15 +365,15 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
         TWArcItemView *item = [[TWArcItemView alloc] initWithEntry:entry image:icon size:scaledIcon];
         [item applyIconScalePercent:iconScalePct backgroundAlphaPercent:iconBgPct];
         if (iconShape == 1) {
-            item.layer.cornerRadius = iconVisual / 2.0;
-            item.imageView.layer.cornerRadius = iconVisual / 2.0;
+            item.layer.cornerRadius = scaledIcon / 2.0;
+            item.imageView.layer.cornerRadius = CGRectGetWidth(item.imageView.bounds) / 2.0;
         }
-        item.baseScale = _menuScale;
+        item.baseScale = 1; // frame already uses scaledIcon; never apply scale twice
         CGPoint center = [centers[(NSUInteger)i] CGPointValue];
         item.targetCenter = center;
         item.center = center;                                  // 最终位置，不再汇聚到触点
         item.alpha = 1;
-        item.transform = CGAffineTransformMakeScale(_menuScale, _menuScale);
+        item.transform = CGAffineTransformIdentity;
         NSUInteger rowIndex = 0;
         CGFloat best = CGFLOAT_MAX;
         CGFloat distance = hypot(center.x - _anchor.x, center.y - _anchor.y);
@@ -441,11 +431,11 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 
 - (void)updateBandPath {
     if (!_bandMask) return;
-    CGFloat start = [TWArcGeometry startAngleForCorner:_corner];
-    CGFloat sweep = [TWArcGeometry sweepAngle];
+    CGFloat start = _startAngle;
+    CGFloat sweep = _sweepAngle;
     // UIBezierPath 与我们的 UIKit 角度约定一致（0 = 向右，角度增大 = 顺时针）。
     UIBezierPath *path = [UIBezierPath bezierPath];
-    [path addArcWithCenter:_anchor radius:_radius startAngle:start endAngle:start + sweep clockwise:YES];
+    [path addArcWithCenter:_anchor radius:_radius startAngle:start endAngle:start + sweep clockwise:(sweep > 0)];
     _bandMask.path = path.CGPath;
 }
 
@@ -510,7 +500,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     TWArcItemView *hit = nil;
     CGFloat nearest = CGFLOAT_MAX;
     for (TWArcItemView *item in _items) {
-        CGFloat half = CGRectGetWidth(item.bounds) * _menuScale / 2 + 22;
+        CGFloat half = CGRectGetWidth(item.bounds) / 2 + 22;
         CGRect hitRect = CGRectMake(item.targetCenter.x - half, item.targetCenter.y - half, half * 2, half * 2);
         CGFloat distance = hypot(point.x - item.targetCenter.x, point.y - item.targetCenter.y);
         if (CGRectContainsPoint(hitRect, point) && distance < nearest) { hit = item; nearest = distance; }

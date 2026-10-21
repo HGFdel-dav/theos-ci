@@ -4,11 +4,12 @@
 // 点哪个就用哪个容器打开。所以这里管的是 TWKeyCraneContainers（每个容器一条）
 // 与 TWKeyCraneAppList（Arc 里的显示顺序）。
 #import <UIKit/UIKit.h>
+#import <Preferences/PSListController.h>
 
-// 分身应用（容器）：列出/增删应用与容器的对应关系。
-@interface TWContainerListController : UITableViewController
+@interface TWContainerListController : PSListController
+@property (nonatomic, readonly) UITableView *tableView;
 @end
 
-// Arc 图标顺序：拖动排序 TWKeyCraneAppList。
-@interface TWArcOrderController : UITableViewController
+@interface TWArcOrderController : PSListController
+@property (nonatomic, readonly) UITableView *tableView;
 @end

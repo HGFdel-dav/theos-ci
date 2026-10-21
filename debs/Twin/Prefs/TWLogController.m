@@ -10,11 +10,15 @@ static NSString *const kLogDomain = @"com.niubiprass.twin.log";
     NSArray<NSString *> *_lines;
 }
 
-- (instancetype)init {
-    if ((self = [super initWithStyle:UITableViewStyleInsetGrouped])) {
-        self.title = @"运行日志";
-    }
+- (instancetype)init { return [self initForContentSize:UIScreen.mainScreen.bounds.size]; }
+- (instancetype)initForContentSize:(CGSize)size {
+    if ((self = [super initForContentSize:size])) self.title = @"运行日志";
     return self;
+}
+- (UITableView *)tableView { return self.table; }
+- (NSArray *)specifiers {
+    if (!_specifiers) _specifiers = [NSMutableArray array];
+    return _specifiers;
 }
 
 - (void)viewDidLoad {
@@ -26,7 +30,7 @@ static NSString *const kLogDomain = @"com.niubiprass.twin.log";
     // 不占用左上角（那是系统返回键），刷新改成下拉。
     UIRefreshControl *refresh = [[UIRefreshControl alloc] init];
     [refresh addTarget:self action:@selector(twReload) forControlEvents:UIControlEventValueChanged];
-    self.refreshControl = refresh;
+    self.tableView.refreshControl = refresh;
     [self twReload];
 }
 
@@ -41,7 +45,7 @@ static NSString *const kLogDomain = @"com.niubiprass.twin.log";
         CFRelease(v);
     }
     _lines = [lines isKindOfClass:NSArray.class] ? [lines reverseObjectEnumerator].allObjects : @[];
-    [self.refreshControl endRefreshing];
+    [self.tableView.refreshControl endRefreshing];
     [self.tableView reloadData];
 }
 

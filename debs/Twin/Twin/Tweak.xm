@@ -21,6 +21,9 @@
 #import "TWRuntimeLog.h"
 #import "TWSceneInject.h"
 #import "TWSystemGesture.h"
+#import "TWContainerActions.h"
+#import "TWSplitFeatures.h"
+#import "TWURLRouting.h"
 
 #import <objc/runtime.h>
 #import <mach-o/dyld.h>
@@ -53,7 +56,7 @@ static void TWActivated(id target, SEL selector, id bundleID) {
         return;
     }
     // Master switch off, or the app has no Crane mapping: pass straight through.
-    if (!TWCraneEnabled() || ![TWPrefs.shared craneApps][bundleID]) {
+    if (TWContainerActionLaunchIsPrepared(bundleID) || !TWCraneEnabled() || ![TWPrefs.shared craneApps][bundleID]) {
         TWCallOriginalActivated(target, selector, bundleID);
         return;
     }
@@ -84,12 +87,15 @@ static void TWInstallParallelXHook(void) {
 static void TWImageAdded(const struct mach_header *header, intptr_t slide) {
     // dyld callbacks must not resolve ObjC classes while the loader is locked.
     dispatch_async(dispatch_get_main_queue(), ^{
+        TWURLRoutingStart();
+        TWSplitFeaturesStart();
+        TWContainerActionsStart();
         TWInstallParallelXHook();   // ParallelX may be loaded after SpringBoard
         TWRememberStart();          // window memory needs PXPanelEntry as well
     });
 }
 
-#pragma mark - 装完即全开
+#pragma mark - 主开关联动
 
 // 引擎偏好 com.moxuan.parallelx.plist 的落点：优先用现成文件，没有就用当前 jbroot 的标准路径。
 static NSString *TWEnginePrefsPath(void) {
@@ -110,30 +116,32 @@ static NSString *TWEnginePrefsPath(void) {
     return [root stringByAppendingPathComponent:@"var/mobile/Library/Preferences/com.moxuan.parallelx.plist"];
 }
 
-// 分屏引擎总开关 pluginEnabled 与 Twin 自身总开关：启动时强制置开。
-// 目的很直接——装上就有全部功能，不用先去面板里找开关；
-// 同时把旧版本可能留下的关闭值覆盖掉，避免"装了却什么都不动"。
-static void TWForceEnable(void) {
-    TWPrefs *prefs = TWPrefs.shared;
-    if (![prefs boolForKey:TWKeyEnabled defaultValue:YES]) {
-        [prefs setObject:@YES forKey:TWKeyEnabled];
-    }
-    [prefs synchronize];
+// 主开关使用原引擎 pluginEnabled，保留其它偏好。
+static void TWSyncEngineEnabled(void) {
+    BOOL enabled = TWTwinEnabled();
+    CFStringRef domain = CFSTR("com.moxuan.parallelx");
+    CFPreferencesAppSynchronize(domain);
+    CFPropertyListRef previous = CFPreferencesCopyAppValue(CFSTR("pluginEnabled"), domain);
+    BOOL same = previous && CFGetTypeID(previous) == CFBooleanGetTypeID() && CFBooleanGetValue(previous) == enabled;
+    if (previous) CFRelease(previous);
+    // Window memory writes this same notification frequently. Never reload the
+    // entire engine unless its master state actually changed.
+    if (same) return;
+    CFPreferencesSetAppValue(CFSTR("pluginEnabled"), enabled ? kCFBooleanTrue : kCFBooleanFalse, domain);
+    CFPreferencesAppSynchronize(domain);
+    for (NSString *name in @[@"com.moxuan.parallelx.capture-updated", @"com.moxuan.parallelx.handle-updated", @"com.moxuan.parallelx.dock-updated"])
+        CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), (__bridge CFStringRef)name, NULL, NULL, YES);
+}
 
-    NSString *path = TWEnginePrefsPath();
-    if (!path.length) return;
-    NSDictionary *disk = [NSDictionary dictionaryWithContentsOfFile:path];
-    if ([disk[@"pluginEnabled"] boolValue]) return;   // 已经是开的，别多写一次
-
-    NSMutableDictionary *dict = [disk mutableCopy] ?: [NSMutableDictionary dictionary];
-    dict[@"pluginEnabled"] = @YES;
-    [NSFileManager.defaultManager createDirectoryAtPath:path.stringByDeletingLastPathComponent
-                            withIntermediateDirectories:YES attributes:nil error:nil];
-    if ([dict writeToFile:path atomically:YES]) {
-        CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
-                                             CFSTR("com.moxuan.parallelx.capture-updated"),
-                                             NULL, NULL, YES);
-    }
+static void TWMasterChanged(CFNotificationCenterRef center, void *observer, CFStringRef name,
+                            const void *object, CFDictionaryRef userInfo) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [[TWPrefs shared] reload];
+        TWSyncEngineEnabled();
+        [[TWArcCoordinator sharedInstance] refreshEnabledState];
+        TWSystemGestureSync();
+        TWSceneInjectSync();
+    });
 }
 
 #pragma mark - entry point
@@ -144,13 +152,19 @@ __attribute__((constructor)) static void TWInitialize(void) {
     NSString *bundleID = [NSBundle mainBundle].bundleIdentifier;
     if (![bundleID isEqualToString:@"com.apple.springboard"]) return;
 
-    TWForceEnable();   // 全套功能默认生效，不留"启用"开关
+    TWSyncEngineEnabled();
+    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, TWMasterChanged,
+                                     CFSTR(TWPrefsChangedNotification), NULL,
+                                     CFNotificationSuspensionBehaviorDeliverImmediately);
 
     TWRuntimeLog(@"[tweak] init 0.9.34 jbRoot=%@ prefs=%@ engine=%@",
                  TWJBRootPath() ?: @"(nil)", TWPrefsFilePath() ?: @"(nil)", TWEnginePrefsPath() ?: @"(nil)");
 
     _dyld_register_func_for_add_image(TWImageAdded);
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        TWURLRoutingStart();
+        TWSplitFeaturesStart();
+        TWContainerActionsStart();
         TWInstallParallelXHook();
         TWSceneInjectStart();   // App 前台时也能从角落起手（注入 scene 呈现层）
         TWSystemGestureStart(); // App 内唤醒的正路：注册进系统手势通道（原版同款）

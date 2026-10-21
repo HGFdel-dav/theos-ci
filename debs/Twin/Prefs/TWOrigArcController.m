@@ -1,6 +1,6 @@
 // TWOrigArcController.m
 // 原版「触发设置」页：直接读 TwinArcPrefs.bundle 里的 TriggerSettings.plist，
-// 自己画表格（和 We 其他能正常显示的页同一套做法），读写落在原版设置域。
+// 使用 PSListController / PSSpecifier 的原生值链，读写落在原版设置域。
 #import "TWOrigArcController.h"
 #import <CoreFoundation/CoreFoundation.h>
 #import "TWRuntimeLog.h"
@@ -60,300 +60,151 @@ static void TWOrigWrite(NSString *key, id value) {
                                          NULL, NULL, YES);
 }
 
-#pragma mark - 滑杆单元格
+#import <Preferences/PSSpecifier.h>
+#import "TWStyle.h"
+#import <math.h>
 
-@interface TWOrigSliderCell : UITableViewCell
-@property (nonatomic, strong) UILabel *titleLabel2;
-@property (nonatomic, strong) UILabel *valueLabel;
-@property (nonatomic, strong) UISlider *slider;
-@end
-
-@implementation TWOrigSliderCell
-- (instancetype)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)reuseIdentifier {
-    if ((self = [super initWithStyle:style reuseIdentifier:reuseIdentifier])) {
-        _titleLabel2 = [[UILabel alloc] init];
-        _titleLabel2.font = [UIFont systemFontOfSize:17];
-        [self.contentView addSubview:_titleLabel2];
-
-        _valueLabel = [[UILabel alloc] init];
-        _valueLabel.font = [UIFont systemFontOfSize:15];
-        _valueLabel.textColor = [UIColor secondaryLabelColor];
-        _valueLabel.textAlignment = NSTextAlignmentRight;
-        [self.contentView addSubview:_valueLabel];
-
-        _slider = [[UISlider alloc] init];
-        [self.contentView addSubview:_slider];
-        self.selectionStyle = UITableViewCellSelectionStyleNone;
-    }
-    return self;
-}
-- (void)layoutSubviews {
-    [super layoutSubviews];
-    CGFloat w = CGRectGetWidth(self.contentView.bounds);
-    CGFloat h = CGRectGetHeight(self.contentView.bounds);
-    _titleLabel2.frame = CGRectMake(16, 6, w - 32 - 70, 21);
-    _valueLabel.frame = CGRectMake(w - 16 - 70, 6, 70, 21);
-    _slider.frame = CGRectMake(16, h - 30, w - 32, 24);
-}
-@end
-
-#pragma mark - 页面
-
-@implementation TWOrigArcController {
-    NSArray<NSDictionary *> *_sections;
-    NSArray *_flatRows;
-}
+@implementation TWOrigArcController
 
 - (instancetype)init {
-    if ((self = [super initWithStyle:UITableViewStyleInsetGrouped])) {
-        self.title = @"弧形菜单与手势";
-    }
+    return [self initForContentSize:UIScreen.mainScreen.bounds.size];
+}
+
+- (instancetype)initForContentSize:(CGSize)size {
+    if ((self = [super initForContentSize:size])) self.title = @"弧形菜单与手势";
     return self;
 }
 
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
-    [self twLoad];
 }
 
-- (void)twLoad {
-    NSMutableArray *sections = [NSMutableArray array];
+- (NSArray *)specifiers {
+    if (_specifiers) return _specifiers;
     NSString *path = TWOrigBundlePath();
-    NSMutableArray *all = [NSMutableArray array];
+    NSDictionary *root = path ? [NSDictionary dictionaryWithContentsOfFile:
+        [path stringByAppendingPathComponent:@"TriggerSettings.plist"]] : nil;
+    NSDictionary *strings = path ? [NSDictionary dictionaryWithContentsOfFile:
+        [path stringByAppendingPathComponent:@"zh-Hans.lproj/TriggerSettings.strings"]] : nil;
+    NSString *(^localize)(id) = ^NSString *(id key) {
+        if (![key isKindOfClass:NSString.class]) return @"";
+        NSString *value = strings[key];
+        return [value isKindOfClass:NSString.class] ? value : key;
+    };
+    NSMutableArray *specs = [NSMutableArray array];
+    for (id raw in root[@"items"]) {
+        if (![raw isKindOfClass:NSDictionary.class]) continue;
+        NSDictionary *row = raw;
+        NSString *cell = row[@"cell"], *label = localize(row[@"label"]);
+        if ([cell isEqualToString:@"PSStaticTextCell"] && !row[@"validValues"]) continue;
+        if ([cell isEqualToString:@"PSGroupCell"] || [cell isEqualToString:@"PSButtonCell"]) {
+            PSSpecifier *group = [PSSpecifier groupSpecifierWithName:label];
+            if (row[@"footerText"]) [group setProperty:localize(row[@"footerText"]) forKey:@"footerText"];
+            [specs addObject:group];
+            continue;
+        }
+        NSString *key = row[@"key"];
+        if (![key isKindOfClass:NSString.class] || !key.length) continue;
+        BOOL choice = [row[@"validValues"] isKindOfClass:NSArray.class];
+        PSCellType type = choice ? PSLinkCell : [cell isEqualToString:@"PSSwitchCell"] ? PSSwitchCell :
+            [cell isEqualToString:@"PSSliderCell"] ? PSSliderCell : PSStaticTextCell;
+        PSSpecifier *spec = [PSSpecifier preferenceSpecifierNamed:label target:self
+            set:@selector(setPreferenceValue:specifier:) get:@selector(readPreferenceValue:)
+            detail:nil cell:type edit:NULL];
+        for (NSString *property in @[@"key", @"default", @"min", @"max", @"showValue", @"scLegacyPreferenceKey"])
+            if (row[property]) [spec setProperty:row[property] forKey:property];
+        [spec setProperty:kOrigDomain forKey:@"defaults"];
+        if (type == PSSliderCell) [spec setProperty:@78 forKey:@"height"];
+        if (choice) {
+            NSMutableArray *titles = [NSMutableArray array];
+            for (id title in row[@"validTitles"]) [titles addObject:localize(title)];
+            [spec setProperty:titles forKey:@"validTitles"];
+            [spec setProperty:row[@"validValues"] forKey:@"validValues"];
+            [spec setProperty:@YES forKey:@"twOrigChoice"];
+        }
+        [specs addObject:spec];
+    }
+    if (!specs.count) {
+        PSSpecifier *group = [PSSpecifier groupSpecifierWithName:@"触发设置"];
+        [group setProperty:@"未找到触发设置文件，请检查 Twin 安装。" forKey:@"footerText"];
+        [specs addObject:group];
+    }
+    _specifiers = specs;
+    return _specifiers;
+}
 
-    NSMutableDictionary *profile = nil;
+- (id)readPreferenceValue:(PSSpecifier *)specifier {
+    NSString *key = [specifier propertyForKey:@"key"];
+    id value = TWOrigRead(key, nil);
+    if (!value) value = TWOrigRead([specifier propertyForKey:@"scLegacyPreferenceKey"], nil);
+    return value ?: [specifier propertyForKey:@"default"] ?: @0;
+}
 
-    if (path) {
-        NSString *plistPath = [path stringByAppendingPathComponent:@"TriggerSettings.plist"];
-        NSDictionary *root = [NSDictionary dictionaryWithContentsOfFile:plistPath];
-        NSArray *items = [root isKindOfClass:NSDictionary.class] ? root[@"items"] : nil;
-
-        NSDictionary *strings = [NSDictionary dictionaryWithContentsOfFile:
-                                 [path stringByAppendingPathComponent:@"zh-Hans.lproj/TriggerSettings.strings"]];
-
-        NSString *(^localize)(NSString *) = ^NSString *(NSString *key) {
-            if (![key isKindOfClass:NSString.class] || !key.length) return @"";
-            id hit = strings[key];
-            return [hit isKindOfClass:NSString.class] ? hit : key;
-        };
-
-        for (NSDictionary *it in items) {
-            if (![it isKindOfClass:NSDictionary.class]) continue;
-            NSString *cell = it[@"cell"] ?: @"";
-            NSString *label = localize(it[@"label"]);
-
-            // 原版在滑杆上方放了一条"纯标题"（PSStaticTextCell，无 key、无选项），
-            // 我们的滑杆行本身就有标题，照搬会出现"每个都两行"，所以跳过。
-            // 原版在滑杆上方放的是"纯标题"静态行（带 arcRadiusTitle 之类的假 key），
-            // 我们的滑杆行本身带标题，照搬就是"每项两行"，所以一律跳过。
-            if ([cell isEqualToString:@"PSStaticTextCell"] && !it[@"validValues"]) {
-                continue;
+- (void)setPreferenceValue:(id)value specifier:(PSSpecifier *)specifier {
+    NSString *key = [specifier propertyForKey:@"key"];
+    if ([value isKindOfClass:NSNumber.class] && !isfinite([value doubleValue])) return;
+    TWOrigWrite(key, value);
+    // Keep the previous rectangle-slider fix; only refresh the choice row,
+    // not the actively dragged slider (which would interrupt its touch chain).
+    if ([key isEqualToString:@"arcRectangleLength"] || [key isEqualToString:@"arcRectangleHeight"] ||
+        [key isEqualToString:@"arcRectangleCornerRadius"]) {
+        if ([TWOrigRead(@"arcTriggerRegionMode", @0) integerValue] != 1) {
+            TWOrigWrite(@"arcTriggerRegionMode", @1);
+            for (PSSpecifier *spec in self.specifiers) {
+                if ([[spec propertyForKey:@"key"] isEqualToString:@"arcTriggerRegionMode"])
+                    [self reloadSpecifier:spec animated:NO];
             }
-            if ([cell isEqualToString:@"PSGroupCell"] || [cell isEqualToString:@"PSButtonCell"]) {
-                if (label.length) {
-                    profile = [NSMutableDictionary dictionary];
-                    profile[@"title"] = label;
-                    profile[@"rows"] = [NSMutableArray array];
-                    if (it[@"footerText"]) profile[@"footer"] = localize(it[@"footerText"]);
-                    [sections addObject:profile];
-                }
-                continue;
-            }
-            if (!profile) {
-                profile = [NSMutableDictionary dictionary];
-                profile[@"title"] = @"";
-                profile[@"rows"] = [NSMutableArray array];
-                [sections addObject:profile];
-            }
-            NSMutableDictionary *row = [NSMutableDictionary dictionary];
-            row[@"cell"] = cell;
-            row[@"label"] = label;
-            if (it[@"key"]) row[@"key"] = it[@"key"];
-            if (it[@"default"]) row[@"default"] = it[@"default"];
-            if (it[@"min"]) row[@"min"] = it[@"min"];
-            if (it[@"max"]) row[@"max"] = it[@"max"];
-            if (it[@"validValues"]) row[@"validValues"] = it[@"validValues"];
-            if (it[@"validTitles"]) {
-                NSMutableArray *titles = [NSMutableArray array];
-                for (NSString *t in it[@"validTitles"]) [titles addObject:localize(t)];
-                row[@"validTitles"] = titles;
-            }
-            [profile[@"rows"] addObject:row];
-            [all addObject:row];
         }
     }
-
-    if (!sections.count) {
-        // 找不到原版文件时给出明确提示，而不是一片空白。
-        NSMutableDictionary *fallback = [NSMutableDictionary dictionary];
-        fallback[@"title"] = @"触发设置";
-        fallback[@"rows"] = [@[@{@"cell": @"PSSwitchCell", @"label": @"未找到原版设置文件", @"key": @"", @"default": @NO}] mutableCopy];
-        fallback[@"footer"] = [NSString stringWithFormat:@"查找路径：%@", path ?: @"(都不存在)"];
-        [sections addObject:fallback];
-    }
-    TWRuntimeLog(@"[origarc] bundle=%@ sections=%lu rows=%lu",
-                 path ?: @"(nil)", (unsigned long)sections.count, (unsigned long)all.count);
-    // 「每环应用数」整组已删除：环容量只按原版第一环个数自动递增。
-    _sections = sections;
-    _flatRows = all;
-    [self.tableView reloadData];
-}
-
-#pragma mark - 表格
-
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return (NSInteger)_sections.count; }
-
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    NSArray *rows = _sections[(NSUInteger)section][@"rows"];
-    return (NSInteger)rows.count;
-}
-
-- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    NSString *t = _sections[(NSUInteger)section][@"title"];
-    return t.length ? t : nil;
-}
-
-- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-    return _sections[(NSUInteger)section][@"footer"];
-}
-
-- (NSDictionary *)rowAtIndexPath:(NSIndexPath *)indexPath {
-    NSArray *rows = _sections[(NSUInteger)indexPath.section][@"rows"];
-    if (indexPath.row >= (NSInteger)rows.count) return nil;
-    return rows[(NSUInteger)indexPath.row];
-}
-
-- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    NSDictionary *row = [self rowAtIndexPath:indexPath];
-    return [row[@"cell"] isEqualToString:@"PSSliderCell"] ? 58.0 : 44.0;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    NSDictionary *row = [self rowAtIndexPath:indexPath];
-    NSString *cell = row[@"cell"] ?: @"";
-    NSString *key = row[@"key"];
-    NSString *label = row[@"label"] ?: @"";
-
-    if ([cell isEqualToString:@"PSSliderCell"]) {
-        TWOrigSliderCell *c = [tableView dequeueReusableCellWithIdentifier:@"slider"];
-        if (!c) c = [[TWOrigSliderCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"slider"];
-        c.titleLabel2.text = label;
-        CGFloat min = [row[@"min"] doubleValue];
-        CGFloat max = [row[@"max"] doubleValue];
-        if (max <= min) max = min + 100;
-        c.slider.minimumValue = min;
-        c.slider.maximumValue = max;
-        c.slider.value = [TWOrigRead(key, row[@"default"] ?: @(min)) doubleValue];
-        double v = c.slider.value;
-        c.valueLabel.text = [self twFormatValue:v spec:row];
-        c.slider.tag = indexPath.section * 1000 + indexPath.row;
-        [c.slider removeTarget:self action:@selector(twSliderChanged:) forControlEvents:UIControlEventValueChanged];
-        [c.slider addTarget:self action:@selector(twSliderChanged:) forControlEvents:UIControlEventValueChanged];
-        [c.slider addTarget:self action:@selector(twSliderEnded:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside];
-        return c;
+    UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];
+    PSSpecifier *spec = [self specifierAtIndexPath:indexPath];
+    if ([[spec propertyForKey:@"twOrigChoice"] boolValue]) {
+        NSArray *values = [spec propertyForKey:@"validValues"], *titles = [spec propertyForKey:@"validTitles"];
+        NSUInteger index = [values indexOfObject:[self readPreferenceValue:spec]];
+        cell.detailTextLabel.text = index < titles.count ? titles[index] : @"";
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     }
-
-    UITableViewCell *c = [tableView dequeueReusableCellWithIdentifier:@"plain"];
-    if (!c) c = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:@"plain"];
-    c.textLabel.text = label;
-    c.detailTextLabel.text = nil;
-    c.accessoryView = nil;
-    c.accessoryType = UITableViewCellAccessoryNone;
-    c.selectionStyle = UITableViewCellSelectionStyleNone;
-
-    if ([cell isEqualToString:@"PSSwitchCell"]) {
-        UISwitch *sw = [[UISwitch alloc] init];
-        sw.on = [TWOrigRead(key, row[@"default"] ?: @NO) boolValue];
-        sw.tag = indexPath.section * 1000 + indexPath.row;
-        [sw addTarget:self action:@selector(twSwitchChanged:) forControlEvents:UIControlEventValueChanged];
-        c.accessoryView = sw;
-        return c;
-    }
-
-    if (row[@"validValues"]) {
-        NSArray *values = row[@"validValues"];
-        NSArray *titles = row[@"validTitles"];
-        id current = TWOrigRead(key, row[@"default"] ?: @0);
-        NSInteger idx = [values indexOfObject:current];
-        if (idx == NSNotFound && values.count) {
-            for (NSUInteger i = 0; i < values.count; i++) {
-                if ([values[i] integerValue] == [current integerValue]) { idx = (NSInteger)i; break; }
-            }
-        }
-        NSString *title = (idx != NSNotFound && idx < (NSInteger)titles.count) ? titles[(NSUInteger)idx] : @"";
-        c.detailTextLabel.text = title;
-        c.textLabel.text = label;
-        c.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
-        c.selectionStyle = UITableViewCellSelectionStyleDefault;
-        return c;
-    }
-
-    c.detailTextLabel.text = @"";
-    return c;
+    return cell;
 }
 
-// 大范围（pt）取整显示，小范围（比例/阻尼）保留两位。
-- (NSString *)twFormatValue:(double)v spec:(NSDictionary *)row {
-    double lo = [row[@"min"] doubleValue];
-    double hi = [row[@"max"] doubleValue];
-    BOOL small = (hi - lo) <= 5.0;
-    return small ? [NSString stringWithFormat:@"%.2f", v] : [NSString stringWithFormat:@"%.0f", v];
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    PSSpecifier *spec = [self specifierAtIndexPath:indexPath];
+    if ([spec cellType] == PSSliderCell) return 78;
+    return [super tableView:tableView heightForRowAtIndexPath:indexPath];
 }
 
-- (void)twSwitchChanged:(UISwitch *)sw {
-    NSInteger rowIndex = sw.tag;
-    NSIndexPath *ip = [NSIndexPath indexPathForRow:rowIndex % 1000 inSection:rowIndex / 1000];
-    NSDictionary *row = [self rowAtIndexPath:ip];
-    TWOrigWrite(row[@"key"], @(sw.isOn));
-}
-
-- (void)twSliderChanged:(UISlider *)slider {
-    NSInteger rowIndex = slider.tag;
-    NSIndexPath *ip = [NSIndexPath indexPathForRow:rowIndex % 1000 inSection:rowIndex / 1000];
-    NSDictionary *row = [self rowAtIndexPath:ip];
-    NSString *key = row[@"key"];
-    TWOrigWrite(key, @(slider.value));
-    // 拖动矩形长/高/圆角时自动切到「矩形」识别区，否则这三项永远不参与计算
-    // （日志实锤：mode=0 扇形，长高滑杆怎么拖热区都是半径值）。
-    if ([key hasPrefix:@"arcRectangle"]) {
-        id current = TWOrigRead(@"arcTriggerRegionMode", @0);
-        if ([current integerValue] != 1) {
-            TWOrigWrite(@"arcTriggerRegionMode", @1);
-            [self.tableView reloadData];
-        }
-    }
-    TWOrigSliderCell *cell = (TWOrigSliderCell *)[self.tableView cellForRowAtIndexPath:ip];
-    if ([cell isKindOfClass:TWOrigSliderCell.class]) {
-        cell.valueLabel.text = [self twFormatValue:slider.value spec:row];
-    }
-}
-
-- (void)twSliderEnded:(UISlider *)slider {
-    [self twSliderChanged:slider];
+- (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)cell
+forRowAtIndexPath:(NSIndexPath *)indexPath {
+    TWStyleSliderCellIfNeeded(cell, [self specifierAtIndexPath:indexPath]);
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    PSSpecifier *spec = [self specifierAtIndexPath:indexPath];
+    if (![[spec propertyForKey:@"twOrigChoice"] boolValue]) {
+        [super tableView:tableView didSelectRowAtIndexPath:indexPath];
+        return;
+    }
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    NSDictionary *row = [self rowAtIndexPath:indexPath];
-    NSArray *values = row[@"validValues"];
-    NSArray *titles = row[@"validTitles"];
-    if (!values.count || !titles.count) return;
-
-    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:row[@"label"]
-                                                                  message:nil
-                                                           preferredStyle:UIAlertControllerStyleActionSheet];
-    id current = TWOrigRead(row[@"key"], row[@"default"] ?: @0);
-    for (NSUInteger i = 0; i < values.count && i < titles.count; i++) {
+    NSArray *values = [spec propertyForKey:@"validValues"], *titles = [spec propertyForKey:@"validTitles"];
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:spec.name message:nil
+        preferredStyle:UIAlertControllerStyleActionSheet];
+    id current = [self readPreferenceValue:spec];
+    for (NSUInteger i = 0; i < MIN(values.count, titles.count); i++) {
         id value = values[i];
-        BOOL selected = ([value integerValue] == [current integerValue]);
-        NSString *title = selected ? [NSString stringWithFormat:@"✓ %@", titles[i]] : titles[i];
-        [sheet addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *a) {
-            TWOrigWrite(row[@"key"], value);
-            [self.tableView reloadData];
+        NSString *title = [current isEqual:value] ? [@"✓ " stringByAppendingString:titles[i]] : titles[i];
+        [sheet addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
+            [self setPreferenceValue:value specifier:spec];
+            [self reloadSpecifier:spec animated:NO];
         }]];
     }
     [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    UIPopoverPresentationController *popover = sheet.popoverPresentationController;
+    popover.sourceView = tableView;
+    popover.sourceRect = [tableView rectForRowAtIndexPath:indexPath];
     [self presentViewController:sheet animated:YES completion:nil];
 }
 @end

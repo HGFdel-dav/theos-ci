@@ -88,8 +88,8 @@ NSString *TWLocalizedNameForBundleID(NSString *bundleID) {
     NSString *bundleID = entry[@"id"];
     NSString *appName = entry[@"name"];
     NSString *current = [[TWPrefs shared] craneApps][bundleID];
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"%@ 的 Crane 容器", appName]
-                                                                   message:@"输入该应用的 Crane 容器 ID（在 Crane 设置中查看）。留空并保存将移除此应用。"
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"%@ 的分身容器", appName]
+                                                                   message:@"输入该应用的分身容器 ID（在分身设置中查看）。留空并保存将移除此应用。"
                                                             preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) {
         tf.placeholder = @"容器 ID";
@@ -159,7 +159,7 @@ NSString *TWLocalizedNameForBundleID(NSString *bundleID) {
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-    return @"点击应用可修改容器 ID；左滑删除。容器 ID 可在 Crane 的设置中查看。";
+    return @"点击应用可修改容器 ID；左滑删除。容器 ID 可在分身设置中查看。";
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -178,8 +178,8 @@ NSString *TWLocalizedNameForBundleID(NSString *bundleID) {
     NSString *bundleID = _bundleIDs[(NSUInteger)indexPath.row];
     NSString *appName = TWLocalizedNameForBundleID(bundleID);
     NSString *current = [[TWPrefs shared] craneApps][bundleID];
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"%@ 的 Crane 容器", appName]
-                                                                   message:@"输入该应用的 Crane 容器 ID。留空并保存将移除此应用。"
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"%@ 的分身容器", appName]
+                                                                   message:@"输入该应用的分身容器 ID。留空并保存将移除此应用。"
                                                             preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *tf) {
         tf.placeholder = @"容器 ID";

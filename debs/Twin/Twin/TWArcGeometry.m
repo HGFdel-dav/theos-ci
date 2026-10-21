@@ -11,6 +11,64 @@ static const CGFloat kTWBottomInset = 28;      // Home 条区不触发
 
 @implementation TWArcGeometry
 
+// Trigger anchor verified against SCArcTriggerAnchorPoint (sc_geom.s).
++ (CGPoint)triggerAnchorForCorner:(NSInteger)corner offsetX:(CGFloat)x offsetY:(CGFloat)y bounds:(CGRect)bounds {
+    x = isfinite(x) ? MIN(MAX(x, 0), CGRectGetWidth(bounds)) : 0;
+    y = isfinite(y) ? MIN(MAX(y, 0), CGRectGetHeight(bounds)) : 0;
+    BOOL left = corner == TWCornerBottomLeft || corner == TWCornerTopLeft;
+    BOOL top = corner == TWCornerTopLeft || corner == TWCornerTopRight;
+    return CGPointMake(left ? CGRectGetMinX(bounds) + x : CGRectGetMaxX(bounds) - x,
+                       top ? CGRectGetMinY(bounds) + y : CGRectGetMaxY(bounds) - y);
+}
+
++ (UIBezierPath *)triggerPathForCorner:(NSInteger)corner mode:(NSInteger)mode radius:(CGFloat)radius
+                              length:(CGFloat)length height:(CGFloat)height cornerRadius:(CGFloat)cornerRadius
+                             offsetX:(CGFloat)x offsetY:(CGFloat)y bounds:(CGRect)bounds {
+    UIBezierPath *path = [UIBezierPath bezierPath];
+    if (CGRectIsEmpty(bounds) || CGRectIsNull(bounds) || CGRectIsInfinite(bounds)) return path;
+    CGPoint anchor = [self triggerAnchorForCorner:corner offsetX:x offsetY:y bounds:bounds];
+    BOOL left = corner == TWCornerBottomLeft || corner == TWCornerTopLeft;
+    BOOL top = corner == TWCornerTopLeft || corner == TWCornerTopRight;
+    CGFloat sx = left ? 1 : -1, sy = top ? 1 : -1;
+    if (mode == 1) {
+        length = isfinite(length) && length >= 1 ? length : 40;
+        height = isfinite(height) && height >= 1 ? height : 40;
+        CGFloat w = MIN(length, left ? CGRectGetMaxX(bounds) - anchor.x : anchor.x - CGRectGetMinX(bounds));
+        CGFloat h = MIN(height, top ? CGRectGetMaxY(bounds) - anchor.y : anchor.y - CGRectGetMinY(bounds));
+        if (w <= 0 || h <= 0) return path;
+        CGFloat r = isfinite(cornerRadius) && cornerRadius >= 0 ? MIN(cornerRadius, MIN(w, h)) : MIN(12, MIN(w, h));
+        // Local bottom-left path: only the inward corner is rounded, as in sc_sector.s.
+        [path moveToPoint:CGPointZero];
+        [path addLineToPoint:CGPointMake(w, 0)];
+        [path addLineToPoint:CGPointMake(w, h - r)];
+        if (r > 0) [path addArcWithCenter:CGPointMake(w - r, h - r) radius:r startAngle:0 endAngle:M_PI_2 clockwise:YES];
+        [path addLineToPoint:CGPointMake(0, h)];
+        [path closePath];
+        CGAffineTransform transform = CGAffineTransformMake(sx, 0, 0, sy, anchor.x, anchor.y);
+        [path applyTransform:transform];
+    } else {
+        radius = isfinite(radius) && radius >= 1 ? radius : 40;
+        CGFloat start = [self startAngleForCorner:corner];
+        [path moveToPoint:anchor];
+        [path addArcWithCenter:anchor radius:radius startAngle:start endAngle:start + M_PI_2 clockwise:YES];
+        [path closePath];
+    }
+    return path;
+}
+
++ (CGFloat)menuStartAngleForCorner:(NSInteger)corner mirrored:(BOOL)mirrored {
+    // arm64 constants at 0x73f90/0x73f98: right=180°, left=-90°.
+    // Mirror reverses left-side entry order without enabling another trigger side.
+    if (mirrored && corner == TWCornerBottomLeft) return 0;
+    if (mirrored && corner == TWCornerTopLeft) return M_PI_2;
+    return [self startAngleForCorner:corner];
+}
+
++ (CGFloat)menuSweepAngleForCorner:(NSInteger)corner mirrored:(BOOL)mirrored {
+    BOOL left = corner == TWCornerBottomLeft || corner == TWCornerTopLeft;
+    return mirrored && left ? -kTWSweepAngle : kTWSweepAngle;
+}
+
 + (CGFloat)sweepAngle { return kTWSweepAngle; }
 
 + (CGFloat)startAngleForCorner:(NSInteger)corner {
@@ -117,6 +175,15 @@ static const CGFloat kTWBottomInset = 28;      // Home 条区不触发
                                  anchor:(CGPoint)anchor
                                  corner:(NSInteger)corner
                                  bounds:(CGRect)bounds {
+    return [self centersForCount:count firstRowCount:firstRowCount ringCounts:ringCounts iconSize:iconSize
+                         radius:radius ringGap:ringGap anchor:anchor
+                     startAngle:[self startAngleForCorner:corner] sweepAngle:kTWSweepAngle bounds:bounds];
+}
+
++ (NSArray<NSValue *> *)centersForCount:(NSInteger)count firstRowCount:(NSInteger)firstRowCount
+                             ringCounts:(NSArray<NSNumber *> *)ringCounts iconSize:(CGFloat)iconSize
+                                 radius:(CGFloat)radius ringGap:(CGFloat)ringGap anchor:(CGPoint)anchor
+                             startAngle:(CGFloat)startAngle sweepAngle:(CGFloat)sweepAngle bounds:(CGRect)bounds {
     NSMutableArray<NSValue *> *centers = [NSMutableArray array];
     if (count <= 0) return centers;
     if (!isfinite(iconSize) || iconSize <= 0) iconSize = 44;
@@ -124,22 +191,14 @@ static const CGFloat kTWBottomInset = 28;      // Home 条区不触发
     if (!isfinite(ringGap) || ringGap < 0) ringGap = 10;
     NSInteger first = firstRowCount > 0 ? MIN(firstRowCount, count) : MIN((NSInteger)5, count);
 
-    CGFloat start = [self startAngleForCorner:corner];
-    CGFloat inset = 6.0 * M_PI / 180.0;
-    CGFloat a0 = start + inset;
-    CGFloat a1 = start + kTWSweepAngle - inset;
-    if (a1 <= a0) { a0 = start; a1 = start + kTWSweepAngle; }
-
-    // 每环容量：第一环按设置，之后按最小夹角推。
-    CGFloat minStep = 36.0 * M_PI / 180.0;
-    NSInteger perRing = MAX((NSInteger)floor((a1 - a0) / minStep) + 1, 1);
-
+    CGFloat start = isfinite(startAngle) ? startAngle : M_PI;
+    CGFloat sweep = isfinite(sweepAngle) && fabs(sweepAngle) > 0.001 ? sweepAngle : kTWSweepAngle;
     NSInteger remaining = count;
     NSInteger ring = 0;
     CGFloat rowRadius = radius;
     CGFloat stepOut = iconSize + ringGap;
 
-    while (remaining > 0 && ring < 8) {
+    while (remaining > 0) {
         // 原版扇形排布：一圈比一圈多一个（第一环 N 个，第二环 N+1，第三环 N+2…），
         // 而不是每环都按同一个最大容量硬塞。
         // 每环个数：由调用方按面板里的「第一/二/三/四环」传入，未设置的环按 +1 递增。
@@ -150,6 +209,12 @@ static const CGFloat kTWBottomInset = 28;      // Home 条区不触发
             capacity = (ring == 0) ? first : (first + ring);
         }
         NSInteger n = MIN(remaining, MAX(capacity, 1));
+        // Edge-angle inset follows icon extent / row radius, rather than a fixed 6°.
+        CGFloat inset = asin(MIN(1.0, iconSize * 0.5 / MAX(rowRadius, 1)));
+        inset = MIN(inset, fabs(sweep) * 0.5);
+        CGFloat direction = sweep < 0 ? -1 : 1;
+        CGFloat a0 = start + direction * inset;
+        CGFloat a1 = start + sweep - direction * inset;
         for (NSInteger i = 0; i < n; i++) {
             CGFloat t = (n == 1) ? 0.5 : (CGFloat)i / (CGFloat)(n - 1);
             CGFloat angle = a0 + (a1 - a0) * t;
@@ -157,8 +222,10 @@ static const CGFloat kTWBottomInset = 28;      // Home 条区不触发
                                     anchor.y + rowRadius * sin(angle));
             // 夹进屏幕（留半个图标的内边距），保证不被裁。
             CGFloat half = iconSize * 0.5 + 2;
-            p.x = MIN(MAX(p.x, half), CGRectGetWidth(bounds) - half);
-            p.y = MIN(MAX(p.y, half), CGRectGetHeight(bounds) - half);
+            CGFloat minX = CGRectGetMinX(bounds) + half, maxX = CGRectGetMaxX(bounds) - half;
+            CGFloat minY = CGRectGetMinY(bounds) + half, maxY = CGRectGetMaxY(bounds) - half;
+            p.x = maxX >= minX ? MIN(MAX(p.x, minX), maxX) : CGRectGetMidX(bounds);
+            p.y = maxY >= minY ? MIN(MAX(p.y, minY), maxY) : CGRectGetMidY(bounds);
             [centers addObject:[NSValue valueWithCGPoint:p]];
         }
         remaining -= n;

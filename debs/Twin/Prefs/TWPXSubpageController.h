@@ -20,5 +20,6 @@ typedef NS_ENUM(NSInteger, TWPXPageType) {
 };
 
 @interface TWPXSubpageController : PSListController
+- (instancetype)initForContentSize:(CGSize)size;
 @property (nonatomic, assign) TWPXPageType pageType;
 @end

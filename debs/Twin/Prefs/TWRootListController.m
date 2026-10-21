@@ -29,11 +29,14 @@
 #import "TWRememberListController.h"
 #import "TWPXSubpageController.h"
 #import "TWPXPrefs.h"
+#import "TWActionSettingsController.h"
+#import "TWSplitSettingsController.h"
+#import "TWContainerActionsPrefs.h"
 
 #import <sys/utsname.h>
 #import <objc/message.h>
 
-static NSString *const kTWVersion = @"0.9.12";
+static NSString *const kTWVersion = @"0.9.38";
 
 // 唤醒方式：0 = Arc 角落唤醒（默认），1 = ParallelX 边缘手柄。
 typedef NS_ENUM(NSInteger, TWWakeModeValue) {
@@ -191,9 +194,9 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
         // 功能一条不少；后四页读的正是同一个 bundle 里的 plist。
         NSString *const PX = @"ParallelXPrefs";
 
-        // 0.9.1：没有「启用」开关。装完即全套生效——总开关由 Tweak.xm 的
-        // TWForceEnable() 在启动时强制置开（引擎 pluginEnabled + Twin 自身），
-        // 面板只留功能项，不让用户先找一个开关。
+        [specs addObject:TWGroupSpecifier(@"Twin", @"关闭后停止菜单、分身、分屏与记忆，保留全部配置。")];
+        [specs addObject:TWRowSpecifier(self, @"插件总开关", TWKeyEnabled, @YES, nil, PSSwitchCell,
+                                        @"power", nil, @{@"height": @46, @"twColor": @2})];
 
         // ---------- 分身（没装 Crane 就不显示，免得用户以为要开分身）----------
         if ([TWCraneBridge isCraneAvailable]) {
@@ -206,9 +209,8 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
         }
         [specs addObject:TWRowSpecifier(self, @"记忆功能", TWKeyRememberSize, @YES, nil, PSSwitchCell,
                                         @"clock.arrow.circlepath", nil, @{@"height": @46, @"twColor": @2})];
-        [specs addObject:TWLinkRowSpecifier(self, @"记忆的窗口", @"macwindow", @"TWRememberListController",
-                                            (memoryCount ? [NSString stringWithFormat:@"%ld 个", (long)memoryCount] : @"暂无"),
-                                            @{@"height": @46, @"twColor": @2})];
+        [specs addObject:TWButtonRowSpecifier(self, @"重置记忆大小及位置", @"twConfirmResetMemory:",
+                                              @"arrow.counterclockwise", YES, @{@"height": @46, @"twColor": @2})];
 
         // ---------- Arc 面板 ----------
         [specs addObject:TWGroupSpecifier(@"Arc 面板", nil)];
@@ -235,6 +237,8 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
 
         // ---------- 窗口与交互 ----------
         [specs addObject:TWGroupSpecifier(@"窗口与交互", nil)];
+        [specs addObject:TWLinkRowSpecifier(self, @"分屏设置", @"rectangle.split.2x1", @"TWSplitSettingsController",
+                                            nil, @{@"height": @46, @"twColor": @8})];
         [specs addObject:TWLinkRowSpecifier(self, @"分屏窗口与角落小窗", @"rectangle.on.rectangle", @"TWPXSubpageController",
                                             nil, @{@"height": @46, @"twColor": @0, @"twPXPage": @(TWPXPageWindow)})];
         [specs addObject:TWLinkRowSpecifier(self, @"手势区域", @"hand.draw", @"TWPXSubpageController",
@@ -244,6 +248,8 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
 
         // ---------- 外部打开与系统 ----------
         [specs addObject:TWGroupSpecifier(@"外部打开与系统", nil)];
+        [specs addObject:TWLinkRowSpecifier(self, @"系统控制与快捷操作", @"gearshape.2", @"TWActionSettingsController",
+                                            nil, @{@"height": @46, @"twColor": @11})];
         [specs addObject:TWLinkRowSpecifier(self, @"通知与 URL 跳转", @"arrow.up.forward.app", @"TWPXSubpageController",
                                             nil, @{@"height": @46, @"twColor": @5, @"twPXPage": @(TWPXPageExternal)})];
         [specs addObject:TWLinkRowSpecifier(self, @"锁屏、截图与录屏", @"lock", @"TWPXSubpageController",
@@ -371,15 +377,15 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
     CGFloat width = self.table.bounds.size.width;
     if (width <= 1.0) width = self.view.bounds.size.width;
     if (width <= 1.0) width = [UIScreen mainScreen].bounds.size.width;
-    if (_hero && fabs(_heroWidth - width) < 0.5) return;
+    BOOL enabled = [[TWPrefs shared] boolForKey:TWKeyEnabled defaultValue:YES];
+    if (_hero && fabs(_heroWidth - width) < 0.5 && _hero.tag == (enabled ? 1 : 2)) return;
     _heroWidth = width;
-    // 0.9.1：总开关已取消，装上就是全开，头图不再显示可切换的状态。
-    BOOL enabled = YES;
     _hero = [TWStyle heroHeaderWithTitle:@"Twin"
                                subtitle:@"分屏增强套装 · 独立运行"
                              statusText:(enabled ? @"已启用" : @"已停用")
                                 enabled:enabled
                                   width:width];
+    _hero.tag = enabled ? 1 : 2;
     self.table.tableHeaderView = _hero;
 }
 
@@ -435,6 +441,12 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
     if ([key isKindOfClass:NSString.class] && [key hasPrefix:@"TW"]) {
         [[TWPrefs shared] setObject:value forKey:key];
         [[TWPrefs shared] synchronize];
+        if ([key isEqualToString:TWKeyCraneEnabled]) TWPublishContainerActions();
+        if ([key isEqualToString:TWKeyEnabled]) {
+            TWPXPrefs *px = [[TWPXPrefs alloc] init];
+            [px setObject:@([value boolValue]) forKey:@"pluginEnabled"];
+            [self twRefreshHero];
+        }
         return;
     }
     [super setPreferenceValue:value specifier:specifier];
@@ -442,7 +454,7 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
 
 #pragma mark - row actions
 
-- (void)twConfirmResetMemory {
+- (void)twConfirmResetMemory:(PSSpecifier *)specifier {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"重置记忆大小及位置"
                                                                    message:@"所有应用（含各自容器）的窗口形态记忆都会被清空，下次打开应用将使用默认窗口。"
                                                             preferredStyle:UIAlertControllerStyleAlert];
@@ -461,7 +473,8 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
     NSString *action = [spec propertyForKey:@"twAction"];
     if ([action isKindOfClass:NSString.class] && action.length) {
         [tableView deselectRowAtIndexPath:indexPath animated:YES];
-        if ([action isEqualToString:@"resetMemory"]) [self twConfirmResetMemory];
+        if ([action isEqualToString:@"resetMemory"] || [action isEqualToString:@"twConfirmResetMemory:"])
+            [self twConfirmResetMemory:spec];
         return;
     }
     [super tableView:tableView didSelectRowAtIndexPath:indexPath];

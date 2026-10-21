@@ -1,6 +1,7 @@
 // TWSpecifiers.m
 #import "TWSpecifiers.h"
 #import "TWPXPrefs.h"
+#import "TWContainerActionsPrefs.h"
 #import "TWChoiceController.h"
 #import "TWPath.h"
 #import "TWStyle.h"
@@ -255,10 +256,23 @@ id TWControllerForSpecifier(PSListController *host, PSSpecifier *specifier) {
         if (![values isKindOfClass:NSArray.class]) values = [specifier propertyForKey:@"validValues"];
         NSString *title = [specifier propertyForKey:@"twTitle"] ?: specifier.name;
         if ([titles isKindOfClass:NSArray.class] && titles.count && [key isKindOfClass:NSString.class]) {
-            return [[TWChoiceController alloc] initWithTitle:title
-                                                         key:key
-                                                      titles:titles
-                                                      values:[values isKindOfClass:NSArray.class] ? values : @[]];
+            TWChoiceController *choice = [[TWChoiceController alloc] initWithTitle:title key:key titles:titles
+                values:[values isKindOfClass:NSArray.class] ? values : @[]];
+            // Preserve the original specifier target/value chain, including PX's domain.
+            __weak PSListController *weakHost = host;
+            choice.readValue = ^id {
+                PSListController *owner = weakHost;
+                if (!owner) return [specifier propertyForKey:@"default"];
+                SEL get = NSSelectorFromString([specifier propertyForKey:@"twGet"] ?: @"readPreferenceValue:");
+                if (![owner respondsToSelector:get]) return [specifier propertyForKey:@"default"];
+                return ((id (*)(id, SEL, id))objc_msgSend)(owner, get, specifier);
+            };
+            choice.writeValue = ^(id value) {
+                PSListController *owner = weakHost;
+                SEL set = NSSelectorFromString([specifier propertyForKey:@"twSet"] ?: @"setPreferenceValue:specifier:");
+                if ([owner respondsToSelector:set]) ((void (*)(id, SEL, id, id))objc_msgSend)(owner, set, value, specifier);
+            };
+            return choice;
         }
         return nil;
     }
@@ -466,7 +480,7 @@ NSArray<NSString *> *TWArcOrderList(void) {
             if ([item isKindOfClass:NSString.class] && [item length] && ![order containsObject:item]) [order addObject:item];
         }
     }
-    if (order.count) return order;
+    if ([raw isKindOfClass:NSArray.class]) return order;
     // 还没排过顺序：用分身数据（保持稳定顺序）兜底，让用户直接能拖。
     NSMutableArray<NSString *> *seed = [NSMutableArray array];
     for (NSDictionary *entry in TWCraneContainers()) {
@@ -485,24 +499,9 @@ void TWSetArcOrderList(NSArray<NSString *> *list) {
     for (id item in list) {
         if ([item isKindOfClass:NSString.class] && [item length] && ![clean containsObject:item]) [clean addObject:item];
     }
-    [[TWPrefs shared] setObject:(clean.count ? clean : nil) forKey:TWKeyCraneAppList];
+    [[TWPrefs shared] setObject:clean forKey:TWKeyCraneAppList];
     [[TWPrefs shared] synchronize];
-    // 同一份清单也写回原版面板（com.moxuan.parallelx 的 applications）：
-    // 这张页以前只写 Twin 自己的键，所以手柄面板从来不受它控制。
-    @try {
-        TWPXPrefs *px = [[TWPXPrefs alloc] init];
-        if ([px available]) {
-            id raw = [px objectForKey:@"applications" defaultValue:nil];
-            NSMutableArray *merged = [NSMutableArray array];
-            if ([raw isKindOfClass:[NSArray class]]) {
-                for (id item in raw) {           // 保留原版的搜索/截图等快捷项
-                    if ([item isKindOfClass:[NSString class]] && [item hasPrefix:@"px."]) [merged addObject:item];
-                }
-            }
-            [merged addObjectsFromArray:clean];
-            [px setObject:merged forKey:@"applications"];
-        }
-    } @catch (__unused NSException *e) { }
+    TWPublishContainerActions();
 }
 
 #pragma mark - 应用名

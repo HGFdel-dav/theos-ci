@@ -2,7 +2,7 @@
 #import "TWArcWindow.h"
 #import "TWPrefs.h"
 #import <objc/message.h>
-#import "TWPrefs.h"
+#import "TWArcMenuView.h"
 #import "TWPath.h"
 #import <math.h>
 

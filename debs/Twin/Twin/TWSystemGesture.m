@@ -58,20 +58,23 @@ void TWSystemGestureSync(void) {
                 [[TWPrefs shared] boolForKey:TWKeyEnabled defaultValue:YES] &&
                 [[TWPrefs shared] boolForKey:TWKeyArcEnabled defaultValue:YES];
     if (!want) {
+        gTWSystemPan.enabled = NO; // also disables a registration we cannot remove
+        BOOL removed = !gTWSystemRegistered;
         if (gTWSystemRegistered && gTWGestureManager && gTWSystemPan) {
             SEL rmSel = NSSelectorFromString(@"removeGestureRecognizer:fromDisplayWithIdentity:");
             if ([gTWGestureManager respondsToSelector:rmSel]) {
                 @try {
                     ((void (*)(id, SEL, id, id))objc_msgSend)(gTWGestureManager, rmSel,
                                                               gTWSystemPan, gTWDisplayIdentity);
+                    removed = YES;
                 } @catch (__unused NSException *e) { }
             }
-            TWRuntimeLog(@"[sysgest] 已反注册（唤醒方式/总开关关闭）");
+            TWRuntimeLog(@"[sysgest] 关闭手势 removed=%d", removed);
         }
-        gTWSystemRegistered = NO;
+        if (removed) gTWSystemRegistered = NO;
         return;
     }
-    if (gTWSystemRegistered) return;
+    if (gTWSystemRegistered) { gTWSystemPan.enabled = YES; return; }
 
     Class mgrCls = NSClassFromString(@"_UISystemGestureManager");
     id manager = TWSGCallNoArg((id)mgrCls, @"sharedInstance");
@@ -98,6 +101,7 @@ void TWSystemGestureSync(void) {
         objc_setAssociatedObject(coordinator, "TWArcSysPan", gTWSystemPan,
                                  OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
+    gTWSystemPan.enabled = YES;
     @try {
         ((void (*)(id, SEL, id, id))objc_msgSend)(manager, addSel, gTWSystemPan, identity);
         gTWGestureManager = manager;

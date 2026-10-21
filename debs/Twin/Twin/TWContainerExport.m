@@ -1,5 +1,6 @@
 // TWContainerExport.m
 #import "TWContainerExport.h"
+#import "TWPrefs.h"
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
@@ -114,6 +115,7 @@ static void TWELog(NSString *fmt, ...) {
 }
 
 BOOL TWContainerExportNow(void) {
+    if (![TWPrefs.shared boolForKey:TWKeyEnabled defaultValue:YES]) return NO;
     Class cls = TWE_CraneManager();
     if (!cls) {
         TWELog(@"CraneManager 不存在（Crane 未加载或类名不匹配）");

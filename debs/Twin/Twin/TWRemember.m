@@ -598,11 +598,9 @@ static CGRect TWWideTargetForState(NSDictionary *state, CGRect screen) {
 
 static BOOL TWRememberScopeAllows(NSString *bundleID) {
     if (!bundleID.length) return NO;
-    TWPrefs *prefs = TWPrefs.shared;
-    // 记忆范围：0=全部（默认），1=只记自选应用（Arc 里配置的那份清单）。
-    if ([prefs integerForKey:TWKeyRememberAppsScope defaultValue:0] == 0) return YES;
-    id list = [prefs objectForKey:TWKeyCraneAppList];
-    return [list isKindOfClass:[NSArray class]] && [(NSArray *)list containsObject:bundleID];
+    // One switch governs capture and restore; old scope/restore flags must not
+    // silently override the simplified UI after an upgrade.
+    return bundleID.length > 0;
 }
 
 static void TWApplyRememberedFrame(NSObject *entry) {
@@ -611,8 +609,6 @@ static void TWApplyRememberedFrame(NSObject *entry) {
     UIWindow *window = TWPanelWindowOf(entry);
     NSString *bundleID = TWBundleIDOfEntry(entry);
     if (!window || !bundleID.length) return;
-    // 「自动恢复到上次尺寸」总开关；关掉后只记录、不主动改窗口。
-    if (![[TWPrefs shared] boolForKey:TWKeyRememberAutoRestore defaultValue:YES]) return;
     if (!TWRememberScopeAllows(bundleID)) return;
     NSDictionary *state = TWRememberStateForEntry(bundleID, TWContainerIDOfEntry(entry));
     if (!state) return;

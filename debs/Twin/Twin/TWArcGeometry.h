@@ -13,6 +13,17 @@ typedef NS_ENUM(NSInteger, TWCorner) {
 };
 
 @interface TWArcGeometry : NSObject
+// Shared trigger geometry. Offsets are inward from the actual bounds edges;
+// drawing, gesture hit testing and debug overlays use exactly the same path.
++ (CGPoint)triggerAnchorForCorner:(NSInteger)corner offsetX:(CGFloat)x offsetY:(CGFloat)y bounds:(CGRect)bounds;
++ (UIBezierPath *)triggerPathForCorner:(NSInteger)corner mode:(NSInteger)mode radius:(CGFloat)radius
+                              length:(CGFloat)length height:(CGFloat)height cornerRadius:(CGFloat)cornerRadius
+                             offsetX:(CGFloat)x offsetY:(CGFloat)y bounds:(CGRect)bounds;
+
+// Signed sweep preserves ordering: mirror changes the left menu, never the trigger mask.
++ (CGFloat)menuStartAngleForCorner:(NSInteger)corner mirrored:(BOOL)mirrored;
++ (CGFloat)menuSweepAngleForCorner:(NSInteger)corner mirrored:(BOOL)mirrored;
+
 // 命中哪个角落（cornersMask 位掩码 = 1<<TWCorner*），未命中返回 -1。
 // bounds 为屏幕尺寸；statusZone 为顶部状态栏/底部 Home 条保留高度。
 + (NSInteger)cornerAtPoint:(CGPoint)point corners:(NSInteger)cornersMask size:(CGFloat)size bounds:(CGRect)bounds;
@@ -53,6 +64,12 @@ typedef NS_ENUM(NSInteger, TWCorner) {
                                  anchor:(CGPoint)anchor
                                  corner:(NSInteger)corner
                                  bounds:(CGRect)bounds;
+
+// Explicit signed angles (radians), shared with background-band drawing.
++ (NSArray<NSValue *> *)centersForCount:(NSInteger)count firstRowCount:(NSInteger)firstRowCount
+                             ringCounts:(NSArray<NSNumber *> *)ringCounts iconSize:(CGFloat)iconSize
+                                 radius:(CGFloat)radius ringGap:(CGFloat)ringGap anchor:(CGPoint)anchor
+                             startAngle:(CGFloat)startAngle sweepAngle:(CGFloat)sweepAngle bounds:(CGRect)bounds;
 
 // 在给定几何下算出实际使用的半径上限（不越出屏幕）。
 + (CGFloat)clampedRadius:(CGFloat)radius anchor:(CGPoint)anchor corner:(NSInteger)corner bounds:(CGRect)bounds;

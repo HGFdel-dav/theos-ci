@@ -16,6 +16,7 @@
 #import "TWStyle.h"
 #import "TWPXPrefs.h"
 #import "TWPath.h"
+#import <CoreFoundation/CoreFoundation.h>
 
 static NSString *const kPXPassFooter = @"改完立即生效，不需要重启。";
 
@@ -34,17 +35,36 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
 }
 
 - (instancetype)init {
-    if ((self = [super init])) {
+    return [self initForContentSize:CGSizeZero];
+}
+
+- (instancetype)initForContentSize:(CGSize)size {
+    if ((self = [super initForContentSize:size])) {
         _px = [[TWPXPrefs alloc] init];
         [self twSyncTitle];
     }
     return self;
 }
 
-// 页面类型设置后同步标题（controllerForSpecifier: 里 new 完才 setPageType:）。
+// 真实键为 launcherSide；launcherSideMode 是 Swift 成员，不是偏好键。
+// 原设置 0x37588/0x3759c 和运行时 0x23150/0x23254：0 左、1 右、2 两侧，默认 1。
+// 只兼容误写的别名；已有真实键永远优先，写成功才清理别名。
+- (void)twMigrateLauncherSideAlias {
+    id real = [_px objectForKey:@"launcherSide" defaultValue:nil];
+    id alias = [_px objectForKey:@"launcherSideMode" defaultValue:nil];
+    if (!real && [alias isKindOfClass:NSNumber.class]) {
+        NSInteger mode = MAX(0, MIN(2, [alias integerValue]));
+        if ([_px setObject:@(mode) forKey:@"launcherSide"])
+            [_px setObject:nil forKey:@"launcherSideMode"];
+    }
+}
+
+// Preferences 可能在设置 pageType 前已请求过 specifiers。
 - (void)setPageType:(TWPXPageType)pageType {
     _pageType = pageType;
+    _specifiers = nil;
     [self twSyncTitle];
+    if (self.isViewLoaded) [self reloadSpecifiers];
 }
 
 - (void)twSyncTitle {
@@ -113,6 +133,7 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
 #pragma mark - specifiers
 
 - (NSArray *)specifiers {
+    if (!_px) _px = [[TWPXPrefs alloc] init]; // 防止父类初始化期间提前取行
     if (!_specifiers) {
         NSMutableArray *specs = [NSMutableArray array];
 
@@ -235,9 +256,10 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
 
 // 「半圆面板与手柄」——原生重画，不再依赖 ParallelX 的 Swift 控制器。
 - (void)buildLauncherPage:(NSMutableArray *)specs {
-    [specs addObject:TWGroupSpecifier(@"面板", kPXPassFooter)];
+    [self twMigrateLauncherSideAlias];
+    [specs addObject:TWGroupSpecifier(@"面板", @"左侧或右侧固定手柄位置；两侧模式允许从左右边缘呼出，手柄跟随最近呼出侧。")];
     [specs addObject:[self pxSegment:@"面板启用侧" key:@"launcherSide"
-                                 def:@2 titles:@[@"左侧", @"右侧", @"两侧"]
+                                 def:@1 titles:@[@"左侧", @"右侧", @"两侧"]
                               symbol:@"circle.lefthalf.filled" color:@4]];
     [specs addObject:[self pxSlider:@"面板距边缘" key:@"launcherEdgeInset" def:@12 min:@0 max:@60
                              symbol:@"arrow.left.and.right" color:@0]];
@@ -327,7 +349,7 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
 
 - (void)pxExport:(PSSpecifier *)specifier {
     NSString *dir = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
-    NSString *path = [dir stringByAppendingPathComponent:@"ParallelX-Backup.plist"];
+    NSString *path = [dir stringByAppendingPathComponent:@"Twin-Backup.plist"];
     NSDictionary *all = [_px allValues];
     BOOL ok = [(all ?: @{}) writeToFile:path atomically:YES];
     [self twToast:ok ? [@"已导出到 " stringByAppendingString:path] : @"导出失败"];
@@ -335,7 +357,7 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
 
 - (void)pxImport:(PSSpecifier *)specifier {
     NSString *dir = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
-    NSString *path = [dir stringByAppendingPathComponent:@"ParallelX-Backup.plist"];
+    NSString *path = [dir stringByAppendingPathComponent:@"Twin-Backup.plist"];
     NSDictionary *all = [NSDictionary dictionaryWithContentsOfFile:path];
     if (![all isKindOfClass:NSDictionary.class]) { [self twToast:@"没有找到备份文件"]; return; }
     for (NSString *k in all) [_px setObject:all[k] forKey:k];
@@ -397,8 +419,17 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
                         [[specifier propertyForKey:@"twMax"] doubleValue] != floor([[specifier propertyForKey:@"twMax"] doubleValue]));
         value = isFloat ? @(v) : @((NSInteger)llround(v));
     }
-    [_px setObject:value forKey:key];
-    TWDiagLog(@"PX pass-through write key=%@ value=%@ ok", key, value);
+    BOOL ok = [_px setObject:value forKey:key];
+    if (ok) {
+        NSString *notification = nil;
+        if ([key hasPrefix:@"launcher"] || [key hasPrefix:@"handle"])
+            notification = @"com.moxuan.parallelx.handle-updated";
+        else if ([key hasPrefix:@"dock"])
+            notification = @"com.moxuan.parallelx.dock-updated";
+        if (notification) CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+            (__bridge CFStringRef)notification, NULL, NULL, YES);
+    }
+    TWDiagLog(@"PX pass-through write key=%@ value=%@ sync=%d", key, value, ok);
 }
 
 #pragma mark - 子页分发

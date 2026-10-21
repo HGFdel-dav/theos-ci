@@ -116,121 +116,43 @@ typedef struct {
     NSInteger mask;
 } TWArcHotAreas;
 
-// 原版的「弧形方向」：0=右下 1=左下 2=两侧（arcSide）。镜像再补上边两个。
+// ARC 唤醒方向属于 ScreenCore 配置域；launcherSide 是 PX 手柄侧边键，二者不可混用。
+// arcSide: 0=右下，1=左下，2=两侧（原版触发设置页枚举）。
 static NSInteger TWArcTriggerMask(void) {
-    TWPrefs *prefs = TWPrefs.shared;
-    NSInteger side = (NSInteger)TWArcOrigNumber(@"arcSide", 0.0);
-    NSInteger mask = 0;
-    if (side == 1) mask = (NSInteger)1 << TWCornerBottomLeft;
-    else if (side == 2) mask = ((NSInteger)1 << TWCornerBottomRight) | ((NSInteger)1 << TWCornerBottomLeft);
-    else mask = (NSInteger)1 << TWCornerBottomRight;
-    if (TWArcOrigBool(@"arcSymmetricMirrorEnabled", NO)) {
-        // 左右对称：右下↔左下。以前映射到上边两个角，选"右下角"四个角都能划。
-        if (mask & ((NSInteger)1 << TWCornerBottomRight)) mask |= (NSInteger)1 << TWCornerBottomLeft;
-        if (mask & ((NSInteger)1 << TWCornerBottomLeft)) mask |= (NSInteger)1 << TWCornerBottomRight;
-    }
-    return mask;
+    NSInteger side = (NSInteger)TWArcOrigNumber(@"arcSide", 0);
+    if (side == 1) return (NSInteger)1 << TWCornerBottomLeft;
+    if (side == 2) return ((NSInteger)1 << TWCornerBottomLeft) | ((NSInteger)1 << TWCornerBottomRight);
+    return (NSInteger)1 << TWCornerBottomRight;
 }
 
-// 触发区几何（照原版 TriggerSettings 的语义）：
-//   扇形 = 以该角的角点为圆心、半径 arcRadius 的四分之一圆；
-//   矩形 = 长 arcRectangleLength × 高 arcRectangleHeight；
-//   位置 = 该角 + 偏移（arcOffsetX/Y 往屏内推），所以这块区域是可以移动的。
+static UIBezierPath *TWArcRegionPath(NSInteger corner, CGRect bounds) {
+    return [TWArcGeometry triggerPathForCorner:corner
+        mode:(NSInteger)TWArcOrigNumber(@"arcTriggerRegionMode", 0)
+        radius:TWArcOrigNumber(@"arcRadius", 40)
+        length:TWArcOrigNumber(@"arcRectangleLength", 40)
+        height:TWArcOrigNumber(@"arcRectangleHeight", 40)
+        cornerRadius:TWArcOrigNumber(@"arcRectangleCornerRadius", 12)
+        offsetX:TWArcOrigNumber(@"arcOffsetX", 0) offsetY:TWArcOrigNumber(@"arcOffsetY", 0)
+        bounds:bounds];
+}
+
 static TWArcHotAreas TWArcComputeHotAreas(void) {
     TWArcHotAreas out;
     memset(&out, 0, sizeof(out));
-    TWPrefs *prefs = TWPrefs.shared;
     CGRect screen = UIScreen.mainScreen.bounds;
-    CGFloat W = CGRectGetWidth(screen), H = CGRectGetHeight(screen);
-    NSInteger mask = TWArcTriggerMask();
-    NSInteger mode = (NSInteger)TWArcOrigNumber(@"arcTriggerRegionMode", 0.0);
-    CGFloat offX = TWArcOrigNumber(@"arcOffsetX", 0.0);
-    CGFloat offY = TWArcOrigNumber(@"arcOffsetY", 0.0);
-    CGFloat w = 40, h = 40;
-    if (mode == 1) {
-        w = MAX(1.0, TWArcOrigNumber(@"arcRectangleLength", 40.0));
-        h = MAX(1.0, TWArcOrigNumber(@"arcRectangleHeight", 40.0));
-    } else {
-        w = h = MAX(1.0, TWArcOrigNumber(@"arcRadius", 40.0));
-    }
+    out.mask = TWArcTriggerMask();
     for (NSInteger corner = 0; corner < 4; corner++) {
-        if (!(mask & ((NSInteger)1 << corner))) continue;
-        BOOL leftSide = (corner == TWCornerBottomLeft || corner == TWCornerTopLeft);
-        BOOL topSide  = (corner == TWCornerTopLeft || corner == TWCornerTopRight);
-        CGFloat x = leftSide ? offX : W - w - offX;
-        CGFloat y = topSide ? 28.0 + offY : H - 28.0 - h - offY;
-        x = MAX(0, MIN(x, W - w));
-        y = MAX(0, MIN(y, H - h));
-        out.rects[corner] = CGRectMake(x, y, w, h);
+        if (!(out.mask & ((NSInteger)1 << corner))) continue;
+        CGRect rect = CGRectIntersection(TWArcRegionPath(corner, screen).bounds, screen);
+        out.rects[corner] = CGRectIsNull(rect) ? CGRectZero : rect;
     }
-    out.mask = mask;
     return out;
 }
 
-// 触发区形状（照原版路径实现）：矩形模式下，只有朝向屏幕内侧的那个角是圆的，
-// 其余三个角保持直角；圆角半径取 min(设置值, 宽, 高)。显示与命中共用这条路径。
-static UIBezierPath *TWArcTriggerPath(CGRect r, NSInteger corner, CGFloat radius) {
-    CGFloat w = CGRectGetWidth(r), h = CGRectGetHeight(r);
-    CGFloat rad = MAX(0.0, MIN(radius, MIN(w, h)));
-    CGPoint tl = CGPointMake(CGRectGetMinX(r), CGRectGetMinY(r));
-    CGPoint tr = CGPointMake(CGRectGetMaxX(r), CGRectGetMinY(r));
-    CGPoint br = CGPointMake(CGRectGetMaxX(r), CGRectGetMaxY(r));
-    CGPoint bl = CGPointMake(CGRectGetMinX(r), CGRectGetMaxY(r));
-    UIBezierPath *p = [UIBezierPath bezierPath];
-    if (rad <= 0.5) {                       // 圆角为 0：普通矩形
-        [p moveToPoint:tl]; [p addLineToPoint:tr]; [p addLineToPoint:br]; [p addLineToPoint:bl]; [p closePath];
-        return p;
-    }
-    switch (corner) {
-        case TWCornerBottomLeft:            // 左下热区：圆右上角
-            [p moveToPoint:tl];
-            [p addLineToPoint:CGPointMake(tr.x - rad, tr.y)];
-            [p addArcWithCenter:CGPointMake(tr.x - rad, tr.y + rad) radius:rad
-                      startAngle:-M_PI_2 endAngle:0 clockwise:YES];
-            [p addLineToPoint:br]; [p addLineToPoint:bl]; [p closePath];
-            break;
-        case TWCornerTopLeft:               // 左上热区：圆右下角
-            [p moveToPoint:tl]; [p addLineToPoint:tr];
-            [p addLineToPoint:CGPointMake(br.x, br.y - rad)];
-            [p addArcWithCenter:CGPointMake(br.x - rad, br.y - rad) radius:rad
-                      startAngle:0 endAngle:M_PI_2 clockwise:YES];
-            [p addLineToPoint:bl]; [p closePath];
-            break;
-        case TWCornerTopRight:              // 右上热区：圆左下角
-            [p moveToPoint:tl]; [p addLineToPoint:tr]; [p addLineToPoint:br];
-            [p addLineToPoint:CGPointMake(bl.x + rad, bl.y)];
-            [p addArcWithCenter:CGPointMake(bl.x + rad, bl.y - rad) radius:rad
-                      startAngle:M_PI_2 endAngle:M_PI clockwise:YES];
-            [p closePath];
-            break;
-        default:                            // 右下热区：圆左上角
-            [p moveToPoint:CGPointMake(tl.x, tl.y + rad)];
-            [p addArcWithCenter:CGPointMake(tl.x + rad, tl.y + rad) radius:rad
-                      startAngle:M_PI endAngle:M_PI * 1.5 clockwise:YES];
-            [p addLineToPoint:tr]; [p addLineToPoint:br]; [p addLineToPoint:bl]; [p closePath];
-            break;
-    }
-    return p;
-}
-
-// 点命中：扇形按圆判、矩形按同一条路径判（不是外接矩形）。
 static BOOL TWArcPointInRegion(CGPoint point, CGRect rect, NSInteger corner) {
-    TWPrefs *prefs = TWPrefs.shared;
-    NSInteger mode = (NSInteger)TWArcOrigNumber(@"arcTriggerRegionMode", 0.0);
-    if (mode == 1) {
-        CGFloat radius = TWArcOrigNumber(@"arcRectangleCornerRadius", 12.0);
-        return [TWArcTriggerPath(rect, corner, radius) containsPoint:point];
-    }
-    CGPoint anchor;
-    switch (corner) {
-        case TWCornerBottomRight: anchor = CGPointMake(CGRectGetMaxX(rect), CGRectGetMaxY(rect)); break;
-        case TWCornerBottomLeft:  anchor = CGPointMake(CGRectGetMinX(rect), CGRectGetMaxY(rect)); break;
-        case TWCornerTopLeft:     anchor = CGPointMake(CGRectGetMinX(rect), CGRectGetMinY(rect)); break;
-        default:                  anchor = CGPointMake(CGRectGetMaxX(rect), CGRectGetMinY(rect)); break;
-    }
-    CGFloat dx = point.x - anchor.x, dy = point.y - anchor.y;
-    CGFloat r = CGRectGetWidth(rect);
-    return (dx * dx + dy * dy) <= (r * r);
+    // Reject the other three quadrants too: a circle-distance test alone did not.
+    if (!CGRectContainsPoint(rect, point)) return NO;
+    return [TWArcRegionPath(corner, UIScreen.mainScreen.bounds) containsPoint:point];
 }
 
 static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
@@ -247,6 +169,14 @@ static NSInteger TWArcCornerAtScreenPoint(CGPoint point) {
 - (void)rawTouchMoved:(UITouch *)touch;
 - (void)rawTouchEnded:(UITouch *)touch;
 - (void)rawTouchCancelled;
+@end
+
+// Debug overlays have no raw-touch forwarding or recognizers, even if another
+// caller accidentally toggles userInteractionEnabled.
+@interface TWArcDebugView : UIView @end
+@implementation TWArcDebugView
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event { return nil; }
+- (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event { return NO; }
 @end
 
 @interface TWArcTriggerView : UIView
@@ -406,7 +336,9 @@ static void TWArcMigrateRadiusKeys(void) {
 //   1 = ParallelX 原生边缘手柄 —— Twin 完全不接管手势，原版手柄照旧
 - (void)applyWakeMode {
     NSInteger mode = [[TWPrefs shared] integerForKey:TWKeyWakeMode defaultValue:TWWakeModeCorner];
-    if (mode == TWWakeModeHandle) {
+    if (mode == TWWakeModeHandle || !TWArcDeviceUnlocked() ||
+        ![[TWPrefs shared] boolForKey:TWKeyEnabled defaultValue:YES] ||
+        ![[TWPrefs shared] boolForKey:TWKeyArcEnabled defaultValue:YES]) {
         [self detachRecognizer];
         TWSceneInjectSync();   // 边缘手柄模式：把 App 内的角落热区一并撤掉
         TWSystemGestureSync(); // 内部按偏好判断：角落模式关闭时反注册
@@ -588,7 +520,7 @@ static void TWArcMigrateRadiusKeys(void) {
     lastSymmetric = symmetric;
     for (NSInteger c = 0; c < 4; c++) lastRects[c] = areas.rects[c];
     [self detachRecognizer];
-    [self attachRecognizer];
+    [self applyWakeMode];
 }
 
 // 热区：四个角落各一块 size×size，随面板里的「触发区」设置变化。
@@ -620,7 +552,8 @@ static void TWArcMigrateRadiusKeys(void) {
     if (!recognizer.view && recognizer != sysPan) return NO;
     _hasStartPoint = NO;
     [[TWPrefs shared] reload];
-    if (![[TWPrefs shared] boolForKey:TWKeyEnabled defaultValue:YES] ||
+    if ([[TWPrefs shared] integerForKey:TWKeyWakeMode defaultValue:TWWakeModeCorner] != TWWakeModeCorner ||
+        ![[TWPrefs shared] boolForKey:TWKeyEnabled defaultValue:YES] ||
         ![[TWPrefs shared] boolForKey:TWKeyArcEnabled defaultValue:YES] ||
         !TWArcDeviceUnlocked()) return NO;
     // 统一用屏幕坐标判定：小窗口的气手和主窗口的备用手势走同一套热区。
@@ -750,97 +683,47 @@ static void TWArcMigrateRadiusKeys(void) {
 
 + (void)ensureCornerViewsInPresentationView:(UIView *)host {
     if (![host isKindOfClass:UIView.class]) return;
-    TWPrefs *prefs = [TWPrefs shared];
-    NSInteger mode = [prefs integerForKey:TWKeyWakeMode defaultValue:TWWakeModeCorner];
-    BOOL want = (mode == TWWakeModeCorner) &&
-                [prefs boolForKey:TWKeyEnabled defaultValue:YES] &&
-                [prefs boolForKey:TWKeyArcEnabled defaultValue:YES];
-
+    TWPrefs *prefs = TWPrefs.shared;
     NSMutableArray<UIView *> *existing = objc_getAssociatedObject(host, "TWSceneHotViews");
-    if (!want) {
-        for (UIView *v in existing) [v removeFromSuperview];
-        objc_setAssociatedObject(host, "TWSceneHotViews", nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        return;
-    }
-
-    CGRect bounds = host.bounds;
-    if (CGRectIsEmpty(bounds)) return;
-    // 全部角落都不勾选时不做任何事（避免在 App 上白放四个透明视图）。
-    TWArcHotAreas areas = TWArcComputeHotAreas();
-    if (areas.mask == 0) {
-        for (UIView *v in existing) [v removeFromSuperview];
-        objc_setAssociatedObject(host, "TWSceneHotViews", nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        return;
-    }
-
-    if (!existing) existing = [NSMutableArray array];
-    TWArcCoordinator *coordinator = [TWArcCoordinator sharedInstance];
-
+    BOOL debug = [prefs boolForKey:TWKeyArcDebug defaultValue:NO] || TWArcOrigBool(@"debugMode", NO);
+    BOOL want = debug && TWArcDeviceUnlocked() &&
+        [prefs integerForKey:TWKeyWakeMode defaultValue:TWWakeModeCorner] == TWWakeModeCorner &&
+        [prefs boolForKey:TWKeyEnabled defaultValue:YES] &&
+        [prefs boolForKey:TWKeyArcEnabled defaultValue:YES];
+    // Remove legacy trigger views too; debug must never install a touch target.
+    for (UIView *view in existing) [view removeFromSuperview];
+    objc_setAssociatedObject(host, "TWSceneHotViews", nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (!want || CGRectIsEmpty(host.bounds)) return;
+    UIWindow *window = host.window;
+    if (!window) return;
+    NSMutableArray<UIView *> *views = [NSMutableArray array];
+    CGRect screen = UIScreen.mainScreen.bounds;
+    NSInteger mask = TWArcTriggerMask();
+    // Map the actual screen-space path by three affine basis points. Unlike a
+    // bounds-size ratio, this handles translated/scaled/rotated presentation hosts.
+    CGPoint (^convert)(CGPoint) = ^CGPoint(CGPoint point) {
+        CGPoint wp = [window convertPoint:point fromWindow:nil];
+        return [host convertPoint:wp fromView:window];
+    };
+    CGPoint o = convert(CGPointZero), x = convert(CGPointMake(1, 0)), y = convert(CGPointMake(0, 1));
+    CGAffineTransform transform = CGAffineTransformMake(x.x-o.x, x.y-o.y, y.x-o.x, y.y-o.y, o.x, o.y);
     for (NSInteger corner = 0; corner < 4; corner++) {
-        BOOL enabled = (areas.mask & ((NSInteger)1 << corner)) != 0;
-        TWArcTriggerView *view = nil;
-        for (UIView *v in existing) {
-            if (v.tag == corner && [v isKindOfClass:TWArcTriggerView.class]) { view = (TWArcTriggerView *)v; break; }
-        }
-        if (!enabled) {
-            if (view) { [view removeFromSuperview]; [existing removeObject:view]; }
-            continue;
-        }
-        if (!view) {
-            view = [[TWArcTriggerView alloc] initWithFrame:CGRectZero];
-            view.tag = corner;
-            view.coordinator = coordinator;
-            view.corner = corner;
-            view.backgroundColor = UIColor.clearColor;
-            view.autoresizingMask = UIViewAutoresizingNone;
-            // 热区视图只负责"看得见"和被 pan 判定，绝不自己吃触摸：
-            // 以前它们 userInteractionEnabled=YES，把角落里的图标/按钮点按全吞了
-            // （用户反馈"这个角怎么点都点不到"）。唤醒交给挂在窗口上的 pan。
-            view.userInteractionEnabled = NO;
-            [host addSubview:view];
-            [existing addObject:view];
-        } else if (view.superview != host) {
-            view.userInteractionEnabled = NO;
-            [host addSubview:view];
-        }
-        // 热区矩形是屏幕坐标；host 可能不是全屏或处于缩放状态，转换一次。
-        CGRect rect = areas.rects[corner];
-        UIView *window = host.window;
-        if (window && host != window) {
-            CGPoint p = [window convertPoint:rect.origin toView:host];
-            CGFloat sx = host.bounds.size.width / MAX(window.bounds.size.width, 1);
-            CGFloat sy = host.bounds.size.height / MAX(window.bounds.size.height, 1);
-            rect = CGRectMake(p.x, p.y, rect.size.width * sx, rect.size.height * sy);
-        }
-        if (!CGRectEqualToRect(view.frame, rect)) view.frame = rect;
-        // 调试模式：触发区直接涂橙色，一眼看到热区到底在哪、有多大。
-        // 调试显示同时认两个开关：Twin 自己的键 + 原版设置页里的 debugMode
-        // （原版页写在 ScreenCore 的域里，之前引擎只看 Twin 的键 → 打开没反应）。
-        BOOL debug = [prefs boolForKey:TWKeyArcDebug defaultValue:NO] ||
-                     TWArcOrigBool(@"debugMode", NO);
-        UIColor *bg = debug ? [UIColor.systemOrangeColor colorWithAlphaComponent:0.30] : UIColor.clearColor;
-        if (view.backgroundColor != bg) view.backgroundColor = bg;
-        // 调试块按真实热区路径裁剪：圆角/形状与命中完全一致，
-        // 不再是一个和实际触发边界不符的普通矩形。
-        if (debug) {
-            CGFloat radius = TWArcOrigNumber(@"arcRectangleCornerRadius", 12.0);
-            UIBezierPath *path = TWArcTriggerPath(CGRectMake(0, 0, rect.size.width, rect.size.height),
-                                                  corner, radius);
-            CAShapeLayer *mask = (CAShapeLayer *)view.layer.mask;
-            if (![mask isKindOfClass:CAShapeLayer.class]) {
-                mask = [CAShapeLayer layer];
-                view.layer.mask = mask;
-            }
-            mask.path = path.CGPath;
-            mask.frame = view.bounds;
-        } else if (view.layer.mask) {
-            view.layer.mask = nil;
-        }
-        // App 可能在布局时又压了自己的视图上来：保持热区在最上层，
-        // 否则角落触摸会被 App 的视图吃掉（只剩 66×66，不影响内容显示）。
-        if (host.subviews.lastObject != view) [host bringSubviewToFront:view];
+        if (!(mask & ((NSInteger)1 << corner))) continue;
+        UIBezierPath *path = TWArcRegionPath(corner, screen);
+        [path applyTransform:transform];
+        TWArcDebugView *view = [[TWArcDebugView alloc] initWithFrame:host.bounds];
+        view.bounds = host.bounds;
+        view.userInteractionEnabled = NO;
+        view.accessibilityElementsHidden = YES;
+        view.backgroundColor = UIColor.clearColor;
+        CAShapeLayer *shape = [CAShapeLayer layer];
+        shape.path = path.CGPath;
+        shape.fillColor = [UIColor.systemOrangeColor colorWithAlphaComponent:0.30].CGColor;
+        [view.layer addSublayer:shape];
+        [host addSubview:view];
+        [views addObject:view];
     }
-    objc_setAssociatedObject(host, "TWSceneHotViews", existing, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(host, "TWSceneHotViews", views, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
 #pragma mark - raw touches（四角小窗口专用，不经过手势识别器）
@@ -979,7 +862,7 @@ static CGPoint TWArcScreenPointForTouch(UITouch *touch) {
 
     // 优先让 ParallelX 自己弹面板：动画、图标、流畅度都是 PX 本体的。
     // 只有 PX 不可用（未装 / 入口没拿到）时才退回 Twin 自绘的弧形菜单。
-    NSInteger pxSide = [[TWPrefs shared] integerForKey:TWKeyArcSide defaultValue:0] == 1 ? 1 : 0;
+    NSInteger pxSide = corner == TWCornerBottomLeft ? 1 : 0;
     if ([[TWPrefs shared] boolForKey:TWKeyArcUsePXPanel defaultValue:NO]) {
         if (TWArcPXBridgePresent(pxSide)) {
             _didPresent = YES;
@@ -1011,14 +894,13 @@ static CGPoint TWArcScreenPointForTouch(UITouch *touch) {
     [container addSubview:_menu];
 
     NSArray *entries = [self menuEntries];
-    // 原版没有"菜单半径"这个设置：半径由图标大小 + 间距推出来（照原版几何）。
-    CGFloat iconSize = TWArcOrigNumber(@"arcIconSize", 28.0);
-    CGFloat iconSpacing = TWArcOrigNumber(@"arcIconSpacing", 0.0);
-    CGFloat iconVisual = MIN(MAX(38.0, iconSize * 1.35), 96.0);   // 与菜单内的换算一致
-    // 起始半径吃进「半径」滑杆：以前这里写死 2.4 倍图标 + 60，半径怎么拖都不动。
-    CGFloat arcRadius = TWArcOrigNumber(@"arcRadius", 40.0);
-    if (!isfinite(arcRadius) || arcRadius < 1) arcRadius = 40;
-    CGFloat radius = MAX(80.0, iconVisual * 1.8 + arcRadius + iconSpacing + 40.0);
+    // arcRadius is a trigger metric, not an extra menu-radius term.
+    // Actual icon size and menu scale are resolved together by TWArcMenuView.
+    CGFloat iconSize = TWArcOrigNumber(@"arcIconSize", 28);
+    if (!isfinite(iconSize) || iconSize < 1) iconSize = 28;
+    CGFloat spacing = TWArcOrigNumber(@"arcIconSpacing", 0);
+    if (!isfinite(spacing) || spacing < 0) spacing = 0;
+    CGFloat radius = MAX(104, 2 * iconSize + spacing);
     TWRuntimeLog(@"[arc] present corner=%ld entries=%lu radius=%.0f anchor=%.0f,%.0f",
                  (long)corner, (unsigned long)entries.count, radius, local.x, local.y);
     if (!entries.count) { [self cancelCurrentGesture]; return; }
@@ -1128,12 +1010,11 @@ static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
             NSString *containerID = [raw[@"containerID"] isKindOfClass:[NSString class]] ? raw[@"containerID"] : @"";
             if (!containerID.length) containerID = @"DEFAULT";   // 老数据里的空串＝默认容器
             BOOL enabled = raw[@"enabled"] ? [raw[@"enabled"] boolValue] : YES;
-            if (!enabled) continue;
             if (!containerRows[bundleID]) {
                 containerRows[bundleID] = [NSMutableArray array];
                 [configuredOrder addObject:bundleID];
             }
-            [containerRows[bundleID] addObject:@{@"containerID": containerID}];
+            if (enabled) [containerRows[bundleID] addObject:@{@"containerID": containerID}];
         }
     }
 
@@ -1159,10 +1040,10 @@ static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
             if (![apps containsObject:bid]) [apps addObject:bid];
         }
     }
-    // 配了分身的应用必须出现在菜单里（放在最前面）。自选模式下按你排的顺序来，不插队。
-    for (NSString *bundleID in configuredOrder.reverseObjectEnumerator) {
-        [apps removeObject:bundleID];
-        [apps insertObject:bundleID atIndex:0];   // 配了分身的应用必须出现在菜单里
+    // Explicitly empty selection remains empty. Container configuration is not
+    // permission to reinsert an app the user just removed from the shared list.
+    if (![configuredApps isKindOfClass:NSArray.class]) {
+        for (NSString *bid in configuredOrder) if (![apps containsObject:bid]) [apps addObject:bid];
     }
 
     if (iconSource == 1) limit = NSIntegerMax;   // 同上：自选模式不限个数
@@ -1184,7 +1065,7 @@ static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
         NSMutableArray<NSDictionary *> *rows = nil;
         if (craneOn) {
             rows = containerRows[bundleID];
-            if (rows.count < 2) rows = nil;
+            if (rows && !rows.count) continue; // all configured containers disabled
         }
         if (rows.count) {
             for (NSDictionary *row in rows) {

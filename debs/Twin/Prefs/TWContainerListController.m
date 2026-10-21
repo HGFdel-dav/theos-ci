@@ -12,6 +12,8 @@
 #import "TWStyle.h"
 #import "TWPath.h"
 #import "TWPrefs.h"
+#import "TWAppCatalog.h"
+#import "TWContainerActionsPrefs.h"
 #import <objc/message.h>
 #import <dlfcn.h>
 
@@ -33,8 +35,9 @@ static void TWSaveContainers(NSArray<NSDictionary *> *containers) {
         entry[@"enabled"] = [item[@"enabled"] respondsToSelector:@selector(boolValue)] ? @([item[@"enabled"] boolValue]) : @YES;
         [clean addObject:entry];
     }
-    [[TWPrefs shared] setObject:(clean.count ? clean : nil) forKey:TWKeyCraneContainers];
+    [[TWPrefs shared] setObject:clean forKey:TWKeyCraneContainers];
     [[TWPrefs shared] synchronize];
+    TWPublishContainerActions();
 }
 
 #pragma mark - 应用图标（系统私有接口取图，统一尺寸）
@@ -208,11 +211,15 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
     NSArray<NSDictionary *> *_rows;   // {bundleID, containerID, enabled} 自动发现 + 开关状态
 }
 
-- (instancetype)init {
-    if ((self = [super initWithStyle:UITableViewStyleInsetGrouped])) {
-        self.title = @"分身应用";
-    }
+- (instancetype)init { return [self initForContentSize:UIScreen.mainScreen.bounds.size]; }
+- (instancetype)initForContentSize:(CGSize)size {
+    if ((self = [super initForContentSize:size])) self.title = @"分身应用";
     return self;
+}
+- (UITableView *)tableView { return self.table; }
+- (NSArray *)specifiers {
+    if (!_specifiers) _specifiers = [NSMutableArray array];
+    return _specifiers;
 }
 
 - (void)viewDidLoad {
@@ -220,7 +227,7 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
     self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
     UIRefreshControl *refresh = [[UIRefreshControl alloc] init];
     [refresh addTarget:self action:@selector(reloadContainers) forControlEvents:UIControlEventValueChanged];
-    self.refreshControl = refresh;
+    self.tableView.refreshControl = refresh;
     [self reloadContainers];
 }
 
@@ -265,7 +272,7 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
         }
     }
     _rows = rows;
-    [self.refreshControl endRefreshing];
+    [self.tableView.refreshControl endRefreshing];
     [self.tableView reloadData];
 }
 
@@ -299,6 +306,7 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
 - (void)masterSwitchToggled:(UISwitch *)sw {
     [[TWPrefs shared] setBool:sw.isOn forKey:TWKeyCraneEnabled];
     [[TWPrefs shared] synchronize];
+    TWPublishContainerActions();
 }
 
 #pragma mark - table
@@ -311,7 +319,7 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    return section == 1 ? @"CRANE 分身" : nil;
+    return section == 1 ? @"分身容器" : nil;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
@@ -384,11 +392,15 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
     BOOL _editingOrder;
 }
 
-- (instancetype)init {
-    if ((self = [super initWithStyle:UITableViewStyleInsetGrouped])) {
-        self.title = @"应用、快捷操作与排序";
-    }
+- (instancetype)init { return [self initForContentSize:UIScreen.mainScreen.bounds.size]; }
+- (instancetype)initForContentSize:(CGSize)size {
+    if ((self = [super initForContentSize:size])) self.title = @"应用、快捷操作与排序";
     return self;
+}
+- (UITableView *)tableView { return self.table; }
+- (NSArray *)specifiers {
+    if (!_specifiers) _specifiers = [NSMutableArray array];
+    return _specifiers;
 }
 
 - (void)viewDidLoad {
@@ -409,36 +421,15 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
 - (void)toggleEditing {
     _editingOrder = !_editingOrder;
     [self setEditing:_editingOrder animated:YES];
+    [self.tableView setEditing:_editingOrder animated:YES];
     self.navigationItem.rightBarButtonItem.title = _editingOrder ? @"完成" : @"排序";
     [self.tableView reloadData];
 }
 
 - (void)reloadApps {
     _selected = [NSMutableArray arrayWithArray:TWArcOrderList() ?: @[]];
-    NSMutableArray<NSString *> *all = [NSMutableArray array];
-    @try {
-        Class ws = NSClassFromString(@"LSApplicationWorkspace");
-        SEL sel = NSSelectorFromString(@"defaultWorkspace");
-        if (ws && [ws respondsToSelector:sel]) {
-            id (*getWS)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
-            id workspace = getWS(ws, sel);
-            SEL allSel = NSSelectorFromString(@"allInstalledApplications");
-            if (workspace && [workspace respondsToSelector:allSel]) {
-                id (*getAll)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
-                NSArray *proxies = getAll(workspace, allSel);
-                for (id proxy in proxies) {
-                    SEL idSel = NSSelectorFromString(@"applicationIdentifier");
-                    if (![proxy respondsToSelector:idSel]) continue;
-                    id (*getId)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
-                    NSString *bid = getId(proxy, idSel);
-                    if ([bid isKindOfClass:NSString.class] && bid.length && ![bid hasPrefix:@"com.apple."]) {
-                        [all addObject:bid];
-                    }
-                }
-            }
-        }
-    } @catch (__unused NSException *e) {}
-    _allApps = [all sortedArrayUsingSelector:@selector(localizedStandardCompare:)];
+    _allApps = TWInstalledAppIdentifiers();
+    self.tableView.allowsSelectionDuringEditing = YES;
     [self.tableView reloadData];
 }
 
@@ -492,8 +483,24 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
     [self.tableView reloadData];
 }
 
+- (UITableViewCellEditingStyle)tableView:(UITableView *)tableView editingStyleForRowAtIndexPath:(NSIndexPath *)indexPath {
+    // Selection tap removes/adds entries; native delete controls duplicated that action without a handler.
+    return UITableViewCellEditingStyleNone;
+}
+
+- (BOOL)tableView:(UITableView *)tableView shouldIndentWhileEditingRowAtIndexPath:(NSIndexPath *)indexPath { return NO; }
+
+- (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
+    return indexPath.section == 0;
+}
+
 - (BOOL)tableView:(UITableView *)tableView canMoveRowAtIndexPath:(NSIndexPath *)indexPath {
     return indexPath.section == 0;
+}
+
+- (NSIndexPath *)tableView:(UITableView *)tableView targetIndexPathForMoveFromRowAtIndexPath:(NSIndexPath *)source toProposedIndexPath:(NSIndexPath *)destination {
+    if (destination.section != 0) return [NSIndexPath indexPathForRow:MAX((NSInteger)_selected.count - 1, 0) inSection:0];
+    return destination;
 }
 
 - (void)tableView:(UITableView *)tableView moveRowAtIndexPath:(NSIndexPath *)sourceIndexPath

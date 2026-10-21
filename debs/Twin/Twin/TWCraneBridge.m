@@ -103,7 +103,7 @@ static id TWMsgSendStr(id target, SEL sel, id arg) {
         if (![self isCraneAvailable]) { completion(YES); return; }
         id configured=[prefs craneApps][bundleID];
         if (!configured) { completion(YES); return; }
-        if (![configured isKindOfClass:NSString.class] || ![configured length]) { TWCraneNotice(@"Crane 容器配置无效，请重新选择。"); completion(NO); return; }
+        if (![configured isKindOfClass:NSString.class] || ![configured length]) { TWCraneNotice(@"分身容器配置无效，请重新选择。"); completion(NO); return; }
         [self switchBundleID:bundleID toContainer:[configured copy] completion:completion];
     });
 }
@@ -136,7 +136,7 @@ static id TWMsgSendStr(id target, SEL sel, id arg) {
         @try {
             id manager = [self sharedManager];
             if (!manager || ![self isApplicationSupportedByCrane:bundleID]) {
-                TWCraneNotice(@"Crane 未安装或该应用不受支持，已取消启动。");
+                TWCraneNotice(@"分身组件未安装或该应用不受支持，已取消启动。");
                 completion(NO); return;
             }
             // 已经在目标容器上：直接放行，不做任何切换。
@@ -153,20 +153,20 @@ static id TWMsgSendStr(id target, SEL sel, id arg) {
                 SEL reload = NSSelectorFromString(@"reloadApplicationWithIdentifier:");
                 if (!TWSignature(manager, plain, @encode(void), @[@"@", @"@", [NSString stringWithUTF8String:@encode(BOOL)]]) ||
                     !TWSignature(manager, reload, @encode(void), @[@"@"])) {
-                    TWCraneNotice(@"Crane 切换或重载接口不兼容，未启动应用。");
+                    TWCraneNotice(@"分身切换或重载接口不兼容，未启动应用。");
                     completion(NO); return;
                 }
                 @try {
                     ((void (*)(id, SEL, id, id, BOOL))objc_msgSend)(manager, plain, container, bundleID, NO);
                 } @catch (__unused NSException *e) {
-                    TWCraneNotice(@"Crane 切换发生异常，未启动应用。");
+                    TWCraneNotice(@"分身切换发生异常，未启动应用。");
                     completion(NO); return;
                 }
                 NSString *now = [self activeContainerForBundleID:bundleID];
                 BOOL ok = [now isEqualToString:container];
                 TWRuntimeLog(@"[crane] %@ want=%@ before=%@ after=%@ ok=%d",
                              bundleID, container, current ?: @"?", now ?: @"?", ok);
-                if (!ok) TWCraneNotice(@"Crane 未确认容器，未启动应用。");
+                if (!ok) TWCraneNotice(@"分身组件未确认容器，未启动应用。");
                 if (ok) {
                     // Crane 的重载会把应用重新拉起；如果紧接着让面板去开分屏，
                     // 会和这次重载抢同一个 App，结果变成全屏。这里等它落定再继续。
@@ -184,7 +184,7 @@ static id TWMsgSendStr(id target, SEL sel, id arg) {
             SEL active = NSSelectorFromString(@"activeContainerIdentifierForApplicationWithIdentifier:");
             if (!TWSignature(manager, bio, @encode(void), @[@"@", @"@", @"@?"]) ||
                 !TWSignature(manager, active, @encode(id), @[@"@"])) {
-                TWCraneNotice(@"Crane 接口不兼容，为避免打开错误容器，已取消启动。");
+                TWCraneNotice(@"分身接口不兼容，为避免打开错误容器，已取消启动。");
                 completion(NO); return;
             }
             TWCraneSwitching = YES;
@@ -195,7 +195,7 @@ static id TWMsgSendStr(id target, SEL sel, id arg) {
                 completion(success);
             };
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 45 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-                if (!finished) finish(NO, @"Crane 45 秒内未确认容器，已取消启动。");
+                if (!finished) finish(NO, @"分身组件 45 秒内未确认容器，已取消启动。");
             });
             void (^callback)(BOOL) = ^(BOOL success) {
                 dispatch_async(dispatch_get_main_queue(), ^{
@@ -206,9 +206,9 @@ static id TWMsgSendStr(id target, SEL sel, id arg) {
                 });
             };
             @try { ((void (*)(id, SEL, id, id, void (^)(BOOL)))objc_msgSend)(manager, bio, container, bundleID, callback); }
-            @catch (__unused NSException *e) { finish(NO, @"Crane 切换发生异常，未启动应用。"); }
+            @catch (__unused NSException *e) { finish(NO, @"分身切换发生异常，未启动应用。"); }
         } @catch (__unused NSException *e) {
-            TWCraneNotice(@"Crane 初始化异常，未启动应用。");
+            TWCraneNotice(@"分身初始化异常，未启动应用。");
             completion(NO);
         }
     });
