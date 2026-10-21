@@ -216,20 +216,18 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
         // 原版触发设置页（TriggerSettings.plist 原样渲染）
         [specs addObject:TWLinkRowSpecifier(self, @"弧形菜单与手势", @"hand.point.up.left.fill",
                                             @"TWOrigArcController", nil, @{})];
-        // Twin 新增的两项直接放主页，不再单开子页
-        [specs addObject:TWRowSpecifier(self, @"菜单图标数", TWKeyArcItemCount, @6, nil, PSSliderCell,
-                                        nil, nil, @{@"twMin": @2, @"twMax": @12, @"twStep": @1, @"twUnit": @" 个"})];
+        // 只剩长按一项；个数完全按你选的应用数量
         [specs addObject:TWRowSpecifier(self, @"长按全屏时长", TWKeyArcLongPressDuration, @0.45, nil, PSSliderCell,
                                         nil, nil, @{@"twMin": @0.1, @"twMax": @2.0, @"twStep": @0.05,
                                                     @"twDecimal": @2, @"twUnit": @" 秒"})];
-        [specs addObject:TWRowSpecifier(self, @"显示哪些应用", TWKeyArcIconSource, @0, nil, PSSegmentCell,
-                                        nil, nil, @{@"twTitles": @[@"最近应用", @"自选应用"]})];
+        // 菜单永远按你在「ARC 菜单显示的应用」里选的那份显示；
+        // 一个都没选时才用"最近应用"兜底，所以不再需要"显示哪些应用"这个开关。
         [specs addObject:TWLinkRowSpecifier(self, @"运行日志", @"doc.text.magnifyingglass",
                                             @"TWLogController", nil, @{})];
 
         // ---------- 应用与面板（原版 Swift 页，直连原版控制器） ----------
         [specs addObject:TWGroupSpecifier(@"应用与面板", nil)];
-        [specs addObject:TWLinkRowSpecifier(self, @"应用、快捷操作与排序", @"app.badge.checkmark", @"TWArcOrderController",
+        [specs addObject:TWLinkRowSpecifier(self, @"ARC 菜单显示的应用", @"app.badge.checkmark", @"TWArcOrderController",
                                             nil, @{@"height": @46, @"twColor": @7})];
         [specs addObject:TWLinkRowSpecifier(self, @"半圆面板与手柄", @"circle.grid.3x3", @"TWPXSubpageController",
                                             nil, @{@"height": @46, @"twColor": @4, @"twPXPage": @(TWPXPageLauncher)})];

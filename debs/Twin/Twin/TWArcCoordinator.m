@@ -746,7 +746,10 @@ static void TWArcMigrateRadiusKeys(void) {
         }
         if (!CGRectEqualToRect(view.frame, rect)) view.frame = rect;
         // 调试模式：触发区直接涂橙色，一眼看到热区到底在哪、有多大。
-        BOOL debug = [prefs boolForKey:TWKeyArcDebug defaultValue:NO];
+        // 调试显示同时认两个开关：Twin 自己的键 + 原版设置页里的 debugMode
+        // （原版页写在 ScreenCore 的域里，之前引擎只看 Twin 的键 → 打开没反应）。
+        BOOL debug = [prefs boolForKey:TWKeyArcDebug defaultValue:NO] ||
+                     TWArcOrigBool(@"debugMode", NO);
         UIColor *bg = debug ? [UIColor.systemOrangeColor colorWithAlphaComponent:0.30] : UIColor.clearColor;
         if (view.backgroundColor != bg) view.backgroundColor = bg;
         // App 可能在布局时又压了自己的视图上来：保持热区在最上层，
@@ -1021,7 +1024,9 @@ static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
 // 优先用面板里配置过的容器清单；没配置就现场问 Crane 要容器；再不行退回"最近使用应用"。
 - (NSArray<NSDictionary *> *)menuEntries {
     TWPrefs *prefs = [TWPrefs shared];
-    NSInteger limit = MAX(2, MIN(8, [prefs integerForKey:TWKeyArcItemCount defaultValue:6]));
+    // 自选应用模式：不设任何上限，你选几个就显示几个。
+    // 「菜单图标数」只在"最近应用"模式下有意义（控制自动列出的数量）。
+    NSInteger limit = NSIntegerMax;   // 选了就全显示；没选才用最近应用兜底
 
     // 面板里配置的「一个容器一个图标」：按应用分组，作为该应用的图标展开规则。
     // 之前这里直接 return，导致配了分身之后弧菜单里只剩分身、别的应用全消失。
@@ -1046,7 +1051,7 @@ static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
     }
 
     // 应用清单：面板「显示哪些应用」＝最近使用 / 自选；空的一边自动兜底。
-    NSInteger iconSource = [prefs integerForKey:TWKeyArcIconSource defaultValue:0];
+    NSInteger iconSource = 1;   // 永远"自选优先"，空了自动兜底最近应用
     NSMutableArray<NSString *> *apps = [NSMutableArray array];
     NSArray *configuredApps = [prefs objectForKey:TWKeyCraneAppList];
     void (^addConfigured)(void) = ^{
@@ -1067,11 +1072,13 @@ static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
             if (![apps containsObject:bid]) [apps addObject:bid];
         }
     }
-    // 配了分身的应用必须出现在菜单里（放在最前面，方便直接点）。
-    for (NSString *bundleID in configuredOrder.reverseObjectEnumerator) {
+    // 配了分身的应用必须出现在菜单里（放在最前面）。自选模式下按你排的顺序来，不插队。
+    if (iconSource != 1) for (NSString *bundleID in configuredOrder.reverseObjectEnumerator) {
         [apps removeObject:bundleID];
         [apps insertObject:bundleID atIndex:0];
     }
+
+    if (iconSource == 1) limit = NSIntegerMax;   // 同上：自选模式不限个数
 
     BOOL craneOn = [prefs boolForKey:TWKeyCraneEnabled defaultValue:YES];
     NSMutableArray<NSDictionary *> *entries = [NSMutableArray array];
@@ -1079,7 +1086,8 @@ static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
         if ((NSInteger)entries.count >= limit) break;
         NSString *name = TWArcDisplayName(bundleID);
 
-        NSMutableArray<NSDictionary *> *rows = craneOn ? containerRows[bundleID] : nil;
+        // 自选应用模式：一个应用就一个图标，不再按容器拆成「默/分」两条
+        NSMutableArray<NSDictionary *> *rows = (craneOn && iconSource != 1) ? containerRows[bundleID] : nil;
         if (rows.count) {
             for (NSDictionary *row in rows) {
                 if ((NSInteger)entries.count >= limit) break;
