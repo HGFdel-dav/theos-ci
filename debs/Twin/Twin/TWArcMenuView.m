@@ -210,6 +210,9 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     CAShapeLayer *_bandMask;
     UIView *_dimView;
     CGFloat _menuScale;
+    UIView *_itemsContainer;
+    NSArray<UIView *> *_rowContainers;
+    CGAffineTransform _presentTranslation;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -245,9 +248,8 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     // 直接拿 28 当直径做出来只有指甲盖大小（实测效果），所以按屏幕尺寸换算。
     CGFloat iconVisual = MAX(38.0, itemSize * 1.35);
     iconVisual = MIN(iconVisual, 96.0);
-    NSInteger firstRow = [[TWPrefs shared] integerForKey:TWKeyArcRing1 defaultValue:0];
-    if (firstRow <= 0) firstRow = (NSInteger)TWArcOrigNumber(@"arcFirstRowItemCount", 3.0);
-    if (firstRow < 1) firstRow = 3;
+    NSInteger firstRow = (NSInteger)TWArcOrigNumber(@"arcFirstRowItemCount", 5.0);
+    if (firstRow < 1) firstRow = 5;
     CGFloat ringGap = TWArcOrigNumber(@"arcIconSpacing", 0.0);
 
     // 以下全部对应 ScreenCore 的同名参数。
@@ -276,12 +278,8 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
                           _anchor.y + (topSide ? offY : -offY));
     _radius = [TWArcGeometry clampedRadius:radius anchor:_anchor corner:_corner bounds:self.bounds];
 
-    NSArray<NSNumber *> *ringCounts = @[
-        @(TWArcOrigNumber(@"arcFirstRowItemCount", 3.0)),
-        @([[TWPrefs shared] integerForKey:TWKeyArcRing2 defaultValue:0]),
-        @([[TWPrefs shared] integerForKey:TWKeyArcRing3 defaultValue:0]),
-        @([[TWPrefs shared] integerForKey:TWKeyArcRing4 defaultValue:0])
-    ];
+    // 每环应用数已移除：只用原版「第一环个数」，之后每环按最小夹角自动 +1。
+    NSArray<NSNumber *> *ringCounts = @[];
     NSArray<NSValue *> *centers = [TWArcGeometry centersForCount:count
                                                    firstRowCount:firstRow
                                                       ringCounts:ringCounts
@@ -324,6 +322,35 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     _backgroundBand.alpha = (isfinite(bgAlpha) && bgAlpha > 0) ? MIN(bgAlpha, 1.0) : 0.3;
     [self addSubview:_backgroundBand];
 
+    // ---- 布局：先把图标摆到最终位置，再做入场动画（原版顺序）----
+    CGFloat slide = MIN(self.bounds.size.width, self.bounds.size.height);
+    if (!isfinite(slide) || slide < 1) slide = 300;
+    CGAffineTransform entry = CGAffineTransformMakeTranslation(leftSide ? -slide : slide,
+                                                               (point.y > CGRectGetMidY(self.bounds)) ? slide : -slide);
+    UIView *itemsContainer = [[UIView alloc] initWithFrame:self.bounds];
+    itemsContainer.userInteractionEnabled = YES;
+    itemsContainer.backgroundColor = UIColor.clearColor;
+    [self addSubview:itemsContainer];
+
+    // 按离圆心的半径分行：同一环一起动，环与环之间只差弹簧参数，没有逐个图标的延迟。
+    NSMutableArray<NSNumber *> *rowRadii = [NSMutableArray array];
+    for (NSInteger i = 0; i < count; i++) {
+        CGPoint c = [centers[(NSUInteger)i] CGPointValue];
+        CGFloat r = hypot(c.x - _anchor.x, c.y - _anchor.y);
+        BOOL known = NO;
+        for (NSNumber *v in rowRadii) if (fabs(v.doubleValue - r) < 1.5) { known = YES; break; }
+        if (!known) [rowRadii addObject:@(r)];
+    }
+    [rowRadii sortUsingSelector:@selector(compare:)];
+    NSMutableArray<UIView *> *rowViews = [NSMutableArray array];
+    for (NSUInteger r = 0; r < rowRadii.count; r++) {
+        UIView *row = [[UIView alloc] initWithFrame:self.bounds];
+        row.userInteractionEnabled = YES;
+        row.backgroundColor = UIColor.clearColor;
+        [itemsContainer addSubview:row];
+        [rowViews addObject:row];
+    }
+
     // items
     for (NSInteger i = 0; i < count; i++) {
         NSDictionary *entry = _entries[i];
@@ -339,39 +366,58 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
         item.baseScale = _menuScale;
         CGPoint center = [centers[(NSUInteger)i] CGPointValue];
         item.targetCenter = center;
-        item.center = _triggerPoint;
-        item.alpha = 0;
-        item.transform = CGAffineTransformMakeScale(0.2, 0.2);
-        [self addSubview:item];
+        item.center = center;                                  // 最终位置，不再汇聚到触点
+        item.alpha = 1;
+        item.transform = CGAffineTransformMakeScale(_menuScale, _menuScale);
+        NSUInteger rowIndex = 0;
+        CGFloat best = CGFLOAT_MAX;
+        CGFloat distance = hypot(center.x - _anchor.x, center.y - _anchor.y);
+        for (NSUInteger r = 0; r < rowRadii.count; r++) {
+            CGFloat delta = fabs(rowRadii[r].doubleValue - distance);
+            if (delta < best) { best = delta; rowIndex = r; }
+        }
+        [rowViews[rowIndex] addSubview:item];
         [_items addObject:item];
     }
     [self updateBandPath];
+    _itemsContainer = itemsContainer;
+    _rowContainers = rowViews;
+    _presentTranslation = entry;
 
-    // ---- 动画：ParallelX 的数值（0.16 展开 / 0.34 单图标 / 阻尼 0.72）----
+    // ---- 入场：整体或每环平移 + 总容器淡入；全部同时启动 ----
     _dimView.alpha = 0.001;
     [UIView animateWithDuration:TWPXPresentDuration animations:^{ self->_dimView.alpha = 0.18; }];
 
-    BOOL springOn = TWArcOrigBool(@"arcSpringAnimationEnabled", NO);
-    CGFloat damping = TWArcOrigNumber(@"arcSpringDamping", 0.68);
-    if (!isfinite(damping) || damping <= 0 || damping > 1) damping = 0.68;
     CGFloat bgFinal = _backgroundBand.hidden ? 0 : _backgroundBand.alpha;
-    NSTimeInterval baseDelay = 0.02;
-    [_items enumerateObjectsUsingBlock:^(TWArcItemView *item, NSUInteger idx, BOOL *stop) {
-        NSTimeInterval delay = baseDelay * (double)idx;
-        void (^anim)(void) = ^{
-            item.alpha = 1;
-            item.center = item.targetCenter;
-            item.transform = CGAffineTransformMakeScale(self->_menuScale, self->_menuScale);
-            self->_backgroundBand.alpha = bgFinal;
-        };
+    _backgroundBand.alpha = 0;
+    [UIView animateWithDuration:TWPXPresentDuration delay:0
+                        options:UIViewAnimationOptionAllowUserInteraction | UIViewAnimationOptionBeginFromCurrentState
+                     animations:^{ self->_backgroundBand.alpha = bgFinal; } completion:nil];
+
+    [UIView performWithoutAnimation:^{
+        itemsContainer.alpha = 0;
+        for (UIView *row in rowViews) row.transform = entry;
+    }];
+    [UIView animateWithDuration:TWPXPresentDuration delay:0
+                        options:UIViewAnimationOptionAllowUserInteraction | UIViewAnimationOptionBeginFromCurrentState
+                     animations:^{ itemsContainer.alpha = 1; } completion:nil];
+
+    BOOL springOn = TWArcOrigBool(@"arcSpringAnimationEnabled", NO);
+    CGFloat baseDamping = TWArcOrigNumber(@"arcSpringDamping", 0.68);
+    if (!isfinite(baseDamping) || baseDamping <= 0 || baseDamping > 1) baseDamping = 0.68;
+    NSUInteger rowCount = rowViews.count;
+    [rowViews enumerateObjectsUsingBlock:^(UIView *row, NSUInteger i, BOOL *stop) {
+        CGFloat t = rowCount >= 2 ? (CGFloat)i / (CGFloat)(rowCount - 1) : 1.0;
+        void (^anim)(void) = ^{ row.transform = CGAffineTransformIdentity; };
         if (springOn) {
-            [UIView animateWithDuration:TWPXItemDuration delay:delay
-                 usingSpringWithDamping:damping initialSpringVelocity:0
-                                options:UIViewAnimationOptionCurveEaseOut
+            [UIView animateWithDuration:0.34 + 0.12 * t delay:0
+                 usingSpringWithDamping:MIN(1.0, baseDamping + 0.20 * (1.0 - t))
+                  initialSpringVelocity:0.55 + 0.25 * t
+                                options:UIViewAnimationOptionAllowUserInteraction | UIViewAnimationOptionBeginFromCurrentState
                              animations:anim completion:nil];
         } else {
-            [UIView animateWithDuration:TWPXItemDuration delay:delay
-                                options:UIViewAnimationOptionCurveEaseOut
+            [UIView animateWithDuration:TWPXPresentDuration delay:0
+                                options:UIViewAnimationOptionAllowUserInteraction | UIViewAnimationOptionBeginFromCurrentState
                              animations:anim completion:nil];
         }
     }];
@@ -492,17 +538,21 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
         NSArray<TWArcItemView *> *dismissedItems = [_items copy];
         UIView *dismissedBand = _backgroundBand;
         UIView *dismissedDim = _dimView;
+        UIView *dismissedContainer = _itemsContainer;
+        NSArray<UIView *> *dismissedRows = _rowContainers;
+        CGAffineTransform back = _presentTranslation;
         [_items removeAllObjects];
         _entries = nil;
         _backgroundBand = nil;
         _bandGradient = nil;
         _bandMask = nil;
         _dimView = nil;
-        [UIView animateWithDuration:TWPXDismissDuration delay:0 options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionCurveEaseIn animations:^{
-            for (TWArcItemView *item in dismissedItems) {
-                item.alpha = 0;
-                item.transform = CGAffineTransformMakeScale(0.4, 0.4);
-            }
+        _itemsContainer = nil;
+        _rowContainers = nil;
+        [UIView animateWithDuration:TWPXDismissDuration delay:0 options:UIViewAnimationOptionBeginFromCurrentState animations:^{
+            for (TWArcItemView *item in dismissedItems) item.alpha = 0;
+            for (UIView *row in dismissedRows) row.transform = back;   // 原路退回，不缩小
+            dismissedContainer.alpha = 0;
             dismissedBand.alpha = 0;
             dismissedDim.alpha = 0;
         } completion:^(BOOL finished) {
@@ -521,6 +571,8 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     _bandGradient = nil;
     _bandMask = nil;
     _dimView = nil;
+    _itemsContainer = nil;
+    _rowContainers = nil;
 }
 
 @end

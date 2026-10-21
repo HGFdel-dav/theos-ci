@@ -67,7 +67,19 @@ static id TWObjIvar(id obj, const char *name) {
         }
         free(list);
     }
-    if (!ivar) return nil;
+    if (!ivar) {
+        // Swift 类的成员是 mangled 名，按裸名查 ivar 一定失败。
+        // 但 @objc 属性的取值方法仍然叫裸名，这里补一条方法调用兜底。
+        @try {
+            SEL sel = NSSelectorFromString([NSString stringWithUTF8String:name]);
+            if (sel && [obj respondsToSelector:sel]) {
+                id (*fn)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
+                id value = fn(obj, sel);
+                if ([value isKindOfClass:NSObject.class]) return value;
+            }
+        } @catch (__unused NSException *e) { }
+        return nil;
+    }
     const char *type = ivar_getTypeEncoding(ivar);
     if (!type || type[0] != '@') return nil; // object ivars only (object_getIvar)
     id value = object_getIvar(obj, ivar);
@@ -722,11 +734,14 @@ void TWRememberStart(void) {
     // can already show them. The migration itself is marker-guarded/idempotent.
     TWRememberMigrateLegacyFrames();
     Class cls = objc_getClass("PXPanelEntry");
-    TWRuntimeLog(@"[remember] start cls=%@ ivar=%d", cls ? @"PXPanelEntry" : @"(nil)",
-                 cls ? (class_getInstanceVariable(cls, "hostedBundleID") != NULL) : 0);
-    if (!cls) return; // ParallelX not installed: window memory is simply inactive
-    // Verify the class is the entry we expect (has the ivars we read).
-    if (class_getInstanceVariable(cls, "hostedBundleID") == NULL) return;
+    // Swift 类的成员是 mangled 名（$s9ParallelX12PXPanelEntryC14hostedBundleID…），
+    // class_getInstanceVariable 用裸名查不到 —— 之前就在这里 return，钩子从来没装上，
+    // 所以"记忆功能"看起来完全没效果。改成按属性/取值方法判断。
+    BOOL hasKey = cls && ([cls instancesRespondToSelector:NSSelectorFromString(@"hostedBundleID")] ||
+                          class_getInstanceVariable(cls, "hostedBundleID") != NULL);
+    TWRuntimeLog(@"[remember] start cls=%@ key=%d", cls ? @"PXPanelEntry" : @"(nil)", hasKey);
+    if (!cls) return; // 原版窗口类不在：窗口记忆保持不启用
+    if (!hasKey) return;
     BOOL ok = YES;
     ok &= TWInstallMethod(cls, NO, sel_registerName("applyResizePreview"), (IMP)replApplyResizePreview, (IMP *)&origApplyResizePreview, "v");
     ok &= TWInstallMethod(cls, NO, sel_registerName("moveHost:"), (IMP)replMoveHost, (IMP *)&origMoveHost, "v");

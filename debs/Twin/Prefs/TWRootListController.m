@@ -229,7 +229,7 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
         [specs addObject:TWGroupSpecifier(@"应用与面板", nil)];
         [specs addObject:TWLinkRowSpecifier(self, @"ARC 菜单显示的应用", @"app.badge.checkmark", @"TWArcOrderController",
                                             nil, @{@"height": @46, @"twColor": @7})];
-        [specs addObject:TWLinkRowSpecifier(self, @"应用与快捷操作（ParallelX）", @"square.grid.2x2",
+        [specs addObject:TWLinkRowSpecifier(self, @"应用与快捷操作", @"square.grid.2x2",
                                             @"TWPXAppPicker", nil, @{})];
         [specs addObject:TWLinkRowSpecifier(self, @"半圆面板与手柄", @"circle.grid.3x3", @"TWPXSubpageController",
                                             nil, @{@"height": @46, @"twColor": @4, @"twPXPage": @(TWPXPageLauncher)})];
@@ -336,6 +336,20 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
 - (id)controllerForSpecifier:(PSSpecifier *)specifier {
     NSString *detail = [specifier propertyForKey:@"detail"];
     if ([detail isKindOfClass:NSString.class] && [detail isEqualToString:@"TWPXAppPicker"]) {
+        // 原版的应用选择控制器直接 alloc 出来是一整页空白（实机截图确认），
+        // 它依赖原版自己的宿主页环境。这里改用 Twin 自己的应用清单页，
+        // 至少应用选择、排序是能用的，不再点进空白。
+        Class orderClass = NSClassFromString(@"TWArcOrderController");
+        if (orderClass) {
+            id order = [[orderClass alloc] init];
+            if ([order isKindOfClass:UIViewController.class]) {
+                if (![(UIViewController *)order title]) {
+                    @try { [(UIViewController *)order setTitle:specifier.name]; } @catch (__unused NSException *e) { }
+                }
+                TWRuntimeLog(@"[panel] TWPXAppPicker → TWArcOrderController");
+                return order;
+            }
+        }
         id picker = [self twPXAppPickerController];
         if (picker) return picker;
     }

@@ -194,17 +194,7 @@ static void TWOrigWrite(NSString *key, id value) {
     }
     TWRuntimeLog(@"[origarc] bundle=%@ sections=%lu rows=%lu",
                  path ?: @"(nil)", (unsigned long)sections.count, (unsigned long)all.count);
-    // 追加 Twin 自己的「每环应用数」：填 0 表示自动 +1
-    NSMutableDictionary *rings = [NSMutableDictionary dictionary];
-    rings[@"title"] = @"每环应用数";
-    rings[@"footer"] = @"第一环填 3、第二环填 4、第三环填 5，就是扇形一圈比一圈多。填 0 = 自动 +1。";
-    rings[@"rows"] = [@[
-        @{@"cell": @"PSSliderCell", @"label": @"第一环", @"key": @"TWArcRing1", @"min": @0, @"max": @12, @"default": @3},
-        @{@"cell": @"PSSliderCell", @"label": @"第二环", @"key": @"TWArcRing2", @"min": @0, @"max": @16, @"default": @4},
-        @{@"cell": @"PSSliderCell", @"label": @"第三环", @"key": @"TWArcRing3", @"min": @0, @"max": @20, @"default": @5},
-        @{@"cell": @"PSSliderCell", @"label": @"第四环", @"key": @"TWArcRing4", @"min": @0, @"max": @24, @"default": @0}
-    ] mutableCopy];
-    [sections addObject:rings];
+    // 「每环应用数」整组已删除：环容量只按原版第一环个数自动递增。
     _sections = sections;
     _flatRows = all;
     [self.tableView reloadData];

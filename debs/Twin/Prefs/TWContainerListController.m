@@ -318,11 +318,11 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
     if (section == 0) return nil;
     if (!_rows.count) {
         if (![NSFileManager.defaultManager fileExistsAtPath:@"/var/mobile/Library/Twin/crane-containers.plist"]) {
-            return @"Twin 后台还没导出容器清单（Crane 未加载或导出失败）。\n请确认 Crane 已安装并运行，然后下拉刷新重试。\n诊断日志：/var/mobile/Library/Twin/export.log";
+            return @"Twin 后台还没导出容器清单（分身功能未加载或导出失败）。\n请确认分身功能可用，然后下拉刷新重试。\n诊断日志：/var/mobile/Library/Twin/export.log";
         }
-        return @"没有发现容器。先在 Crane 里给应用建好容器，再回来下拉刷新。";
+        return @"没有发现容器。先给应用建好分身容器，再回来下拉刷新。";
     }
-    return @"「应用名 - 容器名」：开关控制它是否出现在 Twin 的弧形菜单里。\n容器 ID 可在 Crane 设置中查看。\n\n⚠️ 认证取消或容器核验不符时不会打开应用。";
+    return @"「应用名 - 容器名」：开关控制它是否出现在 Twin 的弧形菜单里。\n容器标识可在分身设置中查看。\n\n⚠️ 认证取消或容器核验不符时不会打开应用。";
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {

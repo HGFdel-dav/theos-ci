@@ -167,11 +167,60 @@ static TWArcHotAreas TWArcComputeHotAreas(void) {
     return out;
 }
 
-// 点命中：扇形按圆判、矩形按框判。
+// 触发区形状（照原版路径实现）：矩形模式下，只有朝向屏幕内侧的那个角是圆的，
+// 其余三个角保持直角；圆角半径取 min(设置值, 宽, 高)。显示与命中共用这条路径。
+static UIBezierPath *TWArcTriggerPath(CGRect r, NSInteger corner, CGFloat radius) {
+    CGFloat w = CGRectGetWidth(r), h = CGRectGetHeight(r);
+    CGFloat rad = MAX(0.0, MIN(radius, MIN(w, h)));
+    CGPoint tl = CGPointMake(CGRectGetMinX(r), CGRectGetMinY(r));
+    CGPoint tr = CGPointMake(CGRectGetMaxX(r), CGRectGetMinY(r));
+    CGPoint br = CGPointMake(CGRectGetMaxX(r), CGRectGetMaxY(r));
+    CGPoint bl = CGPointMake(CGRectGetMinX(r), CGRectGetMaxY(r));
+    UIBezierPath *p = [UIBezierPath bezierPath];
+    if (rad <= 0.5) {                       // 圆角为 0：普通矩形
+        [p moveToPoint:tl]; [p addLineToPoint:tr]; [p addLineToPoint:br]; [p addLineToPoint:bl]; [p closePath];
+        return p;
+    }
+    switch (corner) {
+        case TWCornerBottomLeft:            // 左下热区：圆右上角
+            [p moveToPoint:tl];
+            [p addLineToPoint:CGPointMake(tr.x - rad, tr.y)];
+            [p addArcWithCenter:CGPointMake(tr.x - rad, tr.y + rad) radius:rad
+                      startAngle:-M_PI_2 endAngle:0 clockwise:YES];
+            [p addLineToPoint:br]; [p addLineToPoint:bl]; [p closePath];
+            break;
+        case TWCornerTopLeft:               // 左上热区：圆右下角
+            [p moveToPoint:tl]; [p addLineToPoint:tr];
+            [p addLineToPoint:CGPointMake(br.x, br.y - rad)];
+            [p addArcWithCenter:CGPointMake(br.x - rad, br.y - rad) radius:rad
+                      startAngle:0 endAngle:M_PI_2 clockwise:YES];
+            [p addLineToPoint:bl]; [p closePath];
+            break;
+        case TWCornerTopRight:              // 右上热区：圆左下角
+            [p moveToPoint:tl]; [p addLineToPoint:tr]; [p addLineToPoint:br];
+            [p addLineToPoint:CGPointMake(bl.x + rad, bl.y)];
+            [p addArcWithCenter:CGPointMake(bl.x + rad, bl.y - rad) radius:rad
+                      startAngle:M_PI_2 endAngle:M_PI clockwise:YES];
+            [p closePath];
+            break;
+        default:                            // 右下热区：圆左上角
+            [p moveToPoint:CGPointMake(tl.x, tl.y + rad)];
+            [p addArcWithCenter:CGPointMake(tl.x + rad, tl.y + rad) radius:rad
+                      startAngle:M_PI endAngle:M_PI * 1.5 clockwise:YES];
+            [p addLineToPoint:tr]; [p addLineToPoint:br]; [p addLineToPoint:bl]; [p closePath];
+            break;
+    }
+    return p;
+}
+
+// 点命中：扇形按圆判、矩形按同一条路径判（不是外接矩形）。
 static BOOL TWArcPointInRegion(CGPoint point, CGRect rect, NSInteger corner) {
     TWPrefs *prefs = TWPrefs.shared;
     NSInteger mode = (NSInteger)TWArcOrigNumber(@"arcTriggerRegionMode", 0.0);
-    if (mode == 1) return CGRectContainsPoint(rect, point);
+    if (mode == 1) {
+        CGFloat radius = TWArcOrigNumber(@"arcRectangleCornerRadius", 12.0);
+        return [TWArcTriggerPath(rect, corner, radius) containsPoint:point];
+    }
     CGPoint anchor;
     switch (corner) {
         case TWCornerBottomRight: anchor = CGPointMake(CGRectGetMaxX(rect), CGRectGetMaxY(rect)); break;
@@ -516,10 +565,23 @@ static void TWArcMigrateRadiusKeys(void) {
     // 手势被反复拆装，菜单自然"调了不管用"。
     TWArcHotAreas areas = TWArcComputeHotAreas();
     static NSInteger lastMask = -1;
-    static CGRect lastRect = {{0,0},{0,0}};
-    if (areas.mask == lastMask && CGRectEqualToRect(areas.rects[TWCornerBottomRight], lastRect)) return;
+    static CGRect lastRects[4];
+    static NSInteger lastMode = -1;
+    static CGFloat lastCorner = -1;
+    static BOOL lastSymmetric = NO;
+    NSInteger mode = (NSInteger)TWArcOrigNumber(@"arcTriggerRegionMode", 0.0);
+    CGFloat radius = TWArcOrigNumber(@"arcRectangleCornerRadius", 12.0);
+    BOOL symmetric = TWArcOrigBool(@"arcSymmetricMirrorEnabled", NO);
+    BOOL same = (areas.mask == lastMask && mode == lastMode &&
+                 fabs(radius - lastCorner) < 0.01 && symmetric == lastSymmetric);
+    for (NSInteger c = 0; c < 4 && same; c++)
+        if (!CGRectEqualToRect(areas.rects[c], lastRects[c])) same = NO;
+    if (same) return;
     lastMask = areas.mask;
-    lastRect = areas.rects[TWCornerBottomRight];
+    lastMode = mode;
+    lastCorner = radius;
+    lastSymmetric = symmetric;
+    for (NSInteger c = 0; c < 4; c++) lastRects[c] = areas.rects[c];
     [self detachRecognizer];
     [self attachRecognizer];
 }
@@ -753,6 +815,22 @@ static void TWArcMigrateRadiusKeys(void) {
                      TWArcOrigBool(@"debugMode", NO);
         UIColor *bg = debug ? [UIColor.systemOrangeColor colorWithAlphaComponent:0.30] : UIColor.clearColor;
         if (view.backgroundColor != bg) view.backgroundColor = bg;
+        // 调试块按真实热区路径裁剪：圆角/形状与命中完全一致，
+        // 不再是一个和实际触发边界不符的普通矩形。
+        if (debug) {
+            CGFloat radius = TWArcOrigNumber(@"arcRectangleCornerRadius", 12.0);
+            UIBezierPath *path = TWArcTriggerPath(CGRectMake(0, 0, rect.size.width, rect.size.height),
+                                                  corner, radius);
+            CAShapeLayer *mask = (CAShapeLayer *)view.layer.mask;
+            if (![mask isKindOfClass:CAShapeLayer.class]) {
+                mask = [CAShapeLayer layer];
+                view.layer.mask = mask;
+            }
+            mask.path = path.CGPath;
+            mask.frame = view.bounds;
+        } else if (view.layer.mask) {
+            view.layer.mask = nil;
+        }
         // App 可能在布局时又压了自己的视图上来：保持热区在最上层，
         // 否则角落触摸会被 App 的视图吃掉（只剩 66×66，不影响内容显示）。
         if (host.subviews.lastObject != view) [host bringSubviewToFront:view];
@@ -1074,9 +1152,9 @@ static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
         }
     }
     // 配了分身的应用必须出现在菜单里（放在最前面）。自选模式下按你排的顺序来，不插队。
-    if (iconSource != 1) for (NSString *bundleID in configuredOrder.reverseObjectEnumerator) {
+    for (NSString *bundleID in configuredOrder.reverseObjectEnumerator) {
         [apps removeObject:bundleID];
-        [apps insertObject:bundleID atIndex:0];
+        [apps insertObject:bundleID atIndex:0];   // 配了分身的应用必须出现在菜单里
     }
 
     if (iconSource == 1) limit = NSIntegerMax;   // 同上：自选模式不限个数
@@ -1090,8 +1168,15 @@ static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
         if ((NSInteger)entries.count >= limit) break;
         NSString *name = TWArcDisplayName(bundleID);
 
-        // 自选应用模式：一个应用就一个图标，不再按容器拆成「默/分」两条
-        NSMutableArray<NSDictionary *> *rows = (craneOn && iconSource != 1) ? containerRows[bundleID] : nil;
+        // 配过分身的应用：一个容器一条，默认容器排最前（之前这里用 iconSource != 1
+        // 判断，而 iconSource 恒为 1，导致分身永远不展开，只剩一个图标）。
+        // 面板没配置时直接问 Crane 的容器缓存：有分身才多条，只有默认容器的仍是单图标。
+        NSMutableArray<NSDictionary *> *rows = nil;
+        if (craneOn) {
+            rows = containerRows[bundleID];
+            if (!rows.count) rows = [TWArcCachedContainers(bundleID) mutableCopy];
+            if (rows.count < 2) rows = nil;
+        }
         if (rows.count) {
             for (NSDictionary *row in rows) {
                 if ((NSInteger)entries.count >= limit) break;
@@ -1313,6 +1398,16 @@ static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
         NSArray *recent = [self recentBundleIDs];
         TWArcStoreApps(recent);
         for (NSString *app in recent) if (![apps containsObject:app]) [apps addObject:app];
+    }
+    // 有分身的应用优先预热：Crane 一次就能列出"带非默认容器"的应用，
+    // 这样第一次弹菜单也能看到分身图标，而不是等缓存慢慢补齐。
+    if ([TWCraneBridge isCraneAvailable]) {
+        NSArray<NSString *> *cloned = [TWCraneBridge applicationsWithNonDefaultContainers];
+        for (NSString *app in cloned) if (![apps containsObject:app]) [apps insertObject:app atIndex:0];
+        TWRuntimeLog(@"[crane] prefetch available=1 cloned=%lu apps=%lu",
+                     (unsigned long)cloned.count, (unsigned long)apps.count);
+    } else {
+        TWRuntimeLog(@"[crane] prefetch available=0");
     }
     NSArray *cached = TWArcCachedApps();
     if (!apps.count && cached.count) [apps addObjectsFromArray:cached];

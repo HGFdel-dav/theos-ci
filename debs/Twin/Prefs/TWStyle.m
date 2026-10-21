@@ -240,7 +240,7 @@ static UIColor *TWAdaptive(CGFloat lr, CGFloat lg, CGFloat lb, CGFloat dr, CGFlo
     [card addSubview:subtitleLabel];
 
     // feature pills
-    NSArray *features = @[@"Arc 弧形唤醒", @"Crane 分身", @"窗口记忆"];
+    NSArray *features = @[@"Arc 弧形唤醒", @"分身", @"窗口记忆"];
     CGFloat x = 18.0;
     for (NSString *feature in features) {
         CGFloat textWidth = [feature sizeWithAttributes:@{NSFontAttributeName: [UIFont systemFontOfSize:10.5 weight:UIFontWeightSemibold]}].width;
