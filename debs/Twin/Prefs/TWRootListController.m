@@ -228,8 +228,6 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
 
         // ---------- 应用与面板（原版 Swift 页，直连原版控制器） ----------
         [specs addObject:TWGroupSpecifier(@"应用与面板", nil)];
-        [specs addObject:TWLinkRowSpecifier(self, @"ARC 菜单显示的应用", @"app.badge.checkmark", @"TWArcOrderController",
-                                            nil, @{@"height": @46, @"twColor": @7})];
         [specs addObject:TWLinkRowSpecifier(self, @"应用与快捷操作", @"square.grid.2x2",
                                             @"TWPXAppPicker", nil, @{})];
         [specs addObject:TWLinkRowSpecifier(self, @"半圆面板与手柄", @"circle.grid.3x3", @"TWPXSubpageController",
