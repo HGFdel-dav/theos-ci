@@ -36,9 +36,9 @@ static NSString *const kLogDomain = @"com.niubiprass.twin.log";
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"复制" style:UIBarButtonItemStylePlain target:self action:@selector(twCopyAll)];
     UIRefreshControl *refresh = [UIRefreshControl new];
     [refresh addTarget:self action:@selector(twReload) forControlEvents:UIControlEventValueChanged];
-    self.tableView.refreshControl = refresh;
+    self.table.refreshControl = refresh;
 }
-- (void)twReload { _specifiers = nil; [self reloadSpecifiers]; [self.tableView.refreshControl endRefreshing]; }
+- (void)twReload { _specifiers = nil; [self reloadSpecifiers]; [self.table.refreshControl endRefreshing]; }
 - (void)twCopyAll {
     UIPasteboard.generalPasteboard.string = [_lines componentsJoinedByString:@"\n"];
     UIAlertController *a = [UIAlertController alertControllerWithTitle:@"已复制" message:@"日志已复制到剪贴板。" preferredStyle:UIAlertControllerStyleAlert];

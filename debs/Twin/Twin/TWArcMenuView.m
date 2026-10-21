@@ -113,12 +113,21 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 - (instancetype)initWithEntry:(NSDictionary *)entry image:(UIImage *)image size:(CGFloat)size {
     if ((self = [super initWithFrame:CGRectMake(0, 0, size, size)])) {
         _entry = [entry copy];
-        // Circular tile: the side panel draws the same round icons.
+        // Glass circle, matching the side panel: translucent blur, thin bright
+        // rim and an inset app icon instead of a flat dark plate.
         CGFloat radius = size * 0.5;
         self.layer.cornerRadius = radius;
-        self.backgroundColor = [UIColor colorWithWhite:0.12 alpha:0.55];
-        self.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.25].CGColor;
+        self.backgroundColor = [UIColor clearColor];
+        self.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.35].CGColor;
         self.layer.borderWidth = 1.0;
+        self.clipsToBounds = YES;
+        UIVisualEffectView *glass = [[UIVisualEffectView alloc] initWithEffect:
+            [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialDark]];
+        glass.frame = self.bounds;
+        glass.userInteractionEnabled = NO;
+        glass.layer.cornerRadius = radius;
+        glass.clipsToBounds = YES;
+        [self insertSubview:glass atIndex:0];
         _glowView = [[UIView alloc] initWithFrame:self.bounds];
         _glowView.backgroundColor = [UIColor clearColor];
         _glowView.layer.borderColor = [UIColor systemBlueColor].CGColor;
@@ -134,23 +143,29 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
         _imageView.clipsToBounds = YES;
         [self addSubview:_imageView];
 
-        // 角标：区分同一个应用的哪个容器（默 / 分 / 名）
+        // Container badge stays (it is the only way to tell 默/分 apart), but
+        // small, translucent and rim-lit instead of a large flat pill.
         NSString *badge = [entry[@"badge"] isKindOfClass:NSString.class] ? entry[@"badge"] : nil;
         if (badge.length) {
-            CGFloat badgeHeight = MAX(13.0, size * 0.36);
+            CGFloat bh = MAX(10.0, size * 0.25);
             _badgeLabel = [[UILabel alloc] init];
             _badgeLabel.text = badge;
-            _badgeLabel.font = [UIFont systemFontOfSize:MAX(9.0, badgeHeight * 0.64) weight:UIFontWeightHeavy];
-            _badgeLabel.textColor = UIColor.whiteColor;
+            _badgeLabel.font = [UIFont systemFontOfSize:MAX(7.5, bh * 0.62) weight:UIFontWeightSemibold];
+            _badgeLabel.textColor = [UIColor colorWithWhite:1 alpha:0.96];
             _badgeLabel.textAlignment = NSTextAlignmentCenter;
-            _badgeLabel.backgroundColor = [badge isEqualToString:@"默"] ? [UIColor systemGrayColor] : [UIColor systemPinkColor];
-            CGSize text = [_badgeLabel sizeThatFits:CGSizeMake(size * 2, badgeHeight)];
-            CGFloat width = MAX(badgeHeight, text.width + badgeHeight * 0.6);
-            _badgeLabel.frame = CGRectMake((size - width) / 2, size - badgeHeight * 0.75, width, badgeHeight);
-            _badgeLabel.layer.cornerRadius = badgeHeight / 2;
-            _badgeLabel.layer.borderWidth = 1.5;
-            _badgeLabel.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.9].CGColor;
+            _badgeLabel.backgroundColor = [UIColor colorWithWhite:0.08 alpha:0.62];
+            CGSize text = [_badgeLabel sizeThatFits:CGSizeMake(size, bh)];
+            CGFloat bw = MAX(bh, text.width + bh * 0.55);
+            _badgeLabel.frame = CGRectMake((size - bw) / 2, size - bh * 0.82, bw, bh);
+            _badgeLabel.layer.cornerRadius = bh / 2;
+            _badgeLabel.layer.cornerCurve = kCACornerCurveContinuous;
+            _badgeLabel.layer.borderWidth = 0.5;
+            _badgeLabel.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.38].CGColor;
             _badgeLabel.clipsToBounds = YES;
+            _badgeLabel.layer.shadowColor = UIColor.blackColor.CGColor;
+            _badgeLabel.layer.shadowOpacity = 0.35;
+            _badgeLabel.layer.shadowRadius = 2;
+            _badgeLabel.layer.shadowOffset = CGSizeMake(0, 1);
             [self addSubview:_badgeLabel];
         }
 
@@ -269,7 +284,14 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
         offX += distance / M_SQRT2;
         offY += distance / M_SQRT2;
     }
+    // Positive value pushes the fan anchor outside the screen, which pulls the
+    // icons towards the edge (the old panel had no such control).
+    CGFloat edgeInset = TWArcOrigNumber(@"arcMenuEdgeInset", 0);
+    if (!isfinite(edgeInset)) edgeInset = 0;
+    edgeInset = MIN(MAX(edgeInset, 0), 160);
     _anchor = [TWArcGeometry triggerAnchorForCorner:_corner offsetX:offX offsetY:offY bounds:self.bounds];
+    _anchor.x += leftSide ? -edgeInset : edgeInset;
+    _anchor.y += (_corner == TWCornerTopLeft || _corner == TWCornerTopRight) ? -edgeInset : edgeInset;
     _radius = isfinite(radius) && radius > 0 ? radius : MAX(104, iconVisual * 2 + ringGap);
     CGFloat scaledIcon = iconVisual * _menuScale;
     _radius *= _menuScale;
@@ -289,28 +311,9 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     _dimView.alpha = 0;
     [self addSubview:_dimView];
 
-    // gradient arc band behind the items
-    _backgroundBand = [[UIView alloc] initWithFrame:self.bounds];
-    _backgroundBand.userInteractionEnabled = NO;
-    _bandGradient = [CAGradientLayer layer];
-    _bandGradient.frame = self.bounds;
-    _bandGradient.colors = @[(id)[UIColor systemBlueColor].CGColor,
-                             (id)[UIColor cyanColor].CGColor];
-    _bandGradient.startPoint = CGPointMake(_corner == TWCornerBottomLeft || _corner == TWCornerTopLeft ? 1 : 0,
-                                           _corner == TWCornerTopLeft || _corner == TWCornerTopRight ? 1 : 0);
-    _bandGradient.endPoint = CGPointMake(0.5, 0.5);
-    _bandMask = [CAShapeLayer layer];
-    _bandMask.strokeColor = UIColor.whiteColor.CGColor;
-    _bandMask.fillColor = UIColor.clearColor.CGColor;
-    _bandMask.lineWidth = (iconVisual + 16) * _menuScale;
-    _bandMask.lineCap = kCALineCapRound;
-    _bandGradient.mask = _bandMask;
-    [_backgroundBand.layer addSublayer:_bandGradient];
-    _backgroundBand.hidden = !TWArcOrigBool(@"arcBackgroundEnabled", NO);
-    CGFloat bgAlpha = TWArcOrigNumber(@"arcBackgroundAlpha", 0.3);
-    _backgroundBand.alpha = (isfinite(bgAlpha) && bgAlpha > 0) ? MIN(bgAlpha, 1.0) : 0.3;
-    [self addSubview:_backgroundBand];
-
+    // No background band: the side panel has none, and this layer was the
+    // green/teal blob visible behind the icons. Keep the ivars unused rather
+    // than drawing a second visual language.
     // ---- 布局：先把图标摆到最终位置，再做入场动画（原版顺序）----
     CGFloat slide = MIN(self.bounds.size.width, self.bounds.size.height);
     if (!isfinite(slide) || slide < 1) slide = 300;
@@ -368,7 +371,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
         [rowViews[rowIndex] addSubview:item];
         [_items addObject:item];
     }
-    [self updateBandPath];
+
     _itemsContainer = itemsContainer;
     _rowContainers = rowViews;
     _presentTranslation = entry;
@@ -376,12 +379,6 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     // ---- 入场：整体或每环平移 + 总容器淡入；全部同时启动 ----
     _dimView.alpha = 0.001;
     [UIView animateWithDuration:TWPXPresentDuration animations:^{ self->_dimView.alpha = 0.18; }];
-
-    CGFloat bgFinal = _backgroundBand.hidden ? 0 : _backgroundBand.alpha;
-    _backgroundBand.alpha = 0;
-    [UIView animateWithDuration:TWPXPresentDuration delay:0
-                        options:UIViewAnimationOptionAllowUserInteraction | UIViewAnimationOptionBeginFromCurrentState
-                     animations:^{ self->_backgroundBand.alpha = bgFinal; } completion:nil];
 
     [UIView performWithoutAnimation:^{
         itemsContainer.alpha = 0;
@@ -413,7 +410,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     _presented = YES;
 }
 
-- (void)updateBandPath {
+- (void)updateBandPath { return;
     if (!_bandMask) return;
     CGFloat start = _startAngle;
     CGFloat sweep = _sweepAngle;

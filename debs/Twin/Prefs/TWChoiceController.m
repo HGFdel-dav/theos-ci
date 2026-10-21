@@ -57,7 +57,7 @@
     id value = _values[(NSUInteger)row];
     if (self.writeValue) self.writeValue(value);
     else { [[TWPrefs shared] setObject:value forKey:_prefKey]; [[TWPrefs shared] synchronize]; }
-    [self.tableView reloadData];
+    [self.table reloadData];
     [self.navigationController popViewControllerAnimated:YES];
 }
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {

@@ -265,13 +265,13 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
     self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
     UIRefreshControl *refresh = [UIRefreshControl new];
     [refresh addTarget:self action:@selector(reloadContainers) forControlEvents:UIControlEventValueChanged];
-    self.tableView.refreshControl = refresh;
+    self.table.refreshControl = refresh;
 }
 - (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self reloadContainers]; }
 - (void)reloadContainers {
     _specifiers = nil;
     [self reloadSpecifiers];
-    [self.tableView.refreshControl endRefreshing];
+    [self.table.refreshControl endRefreshing];
 }
 - (id)readPreferenceValue:(PSSpecifier *)sp {
     NSDictionary *row = [sp propertyForKey:@"twContainer"];
@@ -335,7 +335,7 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
-    self.tableView.allowsSelectionDuringEditing = YES;
+    self.table.allowsSelectionDuringEditing = YES;
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"排序" style:UIBarButtonItemStylePlain target:self action:@selector(toggleEditing)];
 }
 - (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self reloadApps]; }
@@ -346,7 +346,7 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
 }
 - (void)toggleEditing {
     _editingOrder = !_editingOrder;
-    [self.tableView setEditing:_editingOrder animated:YES];
+    [self.table setEditing:_editingOrder animated:YES];
     self.navigationItem.rightBarButtonItem.title = _editingOrder ? @"完成" : @"排序";
 }
 - (void)toggleApplication:(PSSpecifier *)sp {

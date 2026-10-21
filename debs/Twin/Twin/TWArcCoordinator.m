@@ -894,13 +894,11 @@ static CGPoint TWArcScreenPointForTouch(UITouch *touch) {
     [container addSubview:_menu];
 
     NSArray *entries = [self menuEntries];
-    // arcRadius is a trigger metric, not an extra menu-radius term.
-    // Actual icon size and menu scale are resolved together by TWArcMenuView.
-    CGFloat iconSize = TWArcOrigNumber(@"arcIconSize", 28);
-    if (!isfinite(iconSize) || iconSize < 1) iconSize = 28;
-    CGFloat spacing = TWArcOrigNumber(@"arcIconSpacing", 0);
-    if (!isfinite(spacing) || spacing < 0) spacing = 0;
-    CGFloat radius = MAX(104, 2 * iconSize + spacing);
+    // The trigger radius also sets how far the fan sits from the edge/size:
+    // previously it was ignored here, so the menu appeared pinned in place.
+    CGFloat arcRadius = TWArcOrigNumber(@"arcRadius", 40);
+    if (!isfinite(arcRadius) || arcRadius < 1) arcRadius = 40;
+    CGFloat radius = MAX(104, 2 * iconSize + spacing + arcRadius);
     TWRuntimeLog(@"[arc] present corner=%ld entries=%lu radius=%.0f anchor=%.0f,%.0f",
                  (long)corner, (unsigned long)entries.count, radius, local.x, local.y);
     if (!entries.count) { [self cancelCurrentGesture]; return; }
@@ -1128,8 +1126,24 @@ static NSString *TWArcActionTitle(NSString *identifier) {
 - (void)launchEntry:(NSDictionary *)entry fullscreen:(BOOL)fullscreen {
     NSString *actionID = [entry[@"actionID"] isKindOfClass:NSString.class] ? entry[@"actionID"] : @"";
     if (actionID.length) {
-        // Same engine call the side panel uses for quick actions.
-        if (TWArcDeviceUnlocked()) [self performParallelXLaunch:actionID selector:@"applicationActivated:"];
+        // The side panel runs quick actions through PXSceneBridge
+        // -performConfiguredAction: (B24@0:8@16). applicationActivated: only
+        // launches apps, which is why these icons did nothing here.
+        if (!TWArcDeviceUnlocked()) return;
+        @try {
+            Class bridgeClass = NSClassFromString(@"PXSceneBridge");
+            SEL sharedSel = NSSelectorFromString(@"sharedBridge");
+            id bridge = [bridgeClass respondsToSelector:sharedSel]
+                ? ((id (*)(id, SEL))objc_msgSend)(bridgeClass, sharedSel) : nil;
+            SEL perform = NSSelectorFromString(@"performConfiguredAction:");
+            NSMethodSignature *sig = [bridge methodSignatureForSelector:perform];
+            if (sig.numberOfArguments == 3 && strcmp(sig.methodReturnType, @encode(BOOL)) == 0 &&
+                strcmp([sig getArgumentTypeAtIndex:2], @encode(id)) == 0) {
+                ((BOOL (*)(id, SEL, id))objc_msgSend)(bridge, perform, actionID);
+                return;
+            }
+        } @catch (__unused NSException *e) {}
+        [self performParallelXLaunch:actionID selector:@"applicationActivated:"];
         return;
     }
     NSString *bundleID = entry[@"bundleID"];

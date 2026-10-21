@@ -104,6 +104,8 @@ static void TWOrigWrite(NSString *key, id value) {
         }
         NSString *key = row[@"key"];
         if (![key isKindOfClass:NSString.class] || !key.length) continue;
+        // No background layer is drawn anymore; hide its now-dead controls.
+        if ([key isEqualToString:@"arcBackgroundEnabled"] || [key isEqualToString:@"arcBackgroundAlpha"]) continue;
         BOOL choice = [row[@"validValues"] isKindOfClass:NSArray.class];
         PSCellType type = choice ? PSLinkCell : [cell isEqualToString:@"PSSwitchCell"] ? PSSwitchCell :
             [cell isEqualToString:@"PSSliderCell"] ? PSSliderCell : PSStaticTextCell;
@@ -113,7 +115,7 @@ static void TWOrigWrite(NSString *key, id value) {
         for (NSString *property in @[@"key", @"default", @"min", @"max", @"showValue", @"scLegacyPreferenceKey"])
             if (row[property]) [spec setProperty:row[property] forKey:property];
         [spec setProperty:kOrigDomain forKey:@"defaults"];
-        if (type == PSSliderCell) [spec setProperty:@78 forKey:@"height"];
+        if (type == PSSliderCell) [spec setProperty:@64 forKey:@"height"];
         if (choice) {
             NSMutableArray *titles = [NSMutableArray array];
             for (id title in row[@"validTitles"]) [titles addObject:localize(title)];
@@ -123,6 +125,16 @@ static void TWOrigWrite(NSString *key, id value) {
         }
         [specs addObject:spec];
     }
+    PSSpecifier *edge = [PSSpecifier preferenceSpecifierNamed:@"菜单贴边距离"
+        target:self set:@selector(setPreferenceValue:specifier:) get:@selector(readPreferenceValue:)
+        detail:nil cell:PSSliderCell edit:NULL];
+    [edge setProperty:@"arcMenuEdgeInset" forKey:@"key"];
+    [edge setProperty:@0 forKey:@"default"];
+    [edge setProperty:@0 forKey:@"min"];
+    [edge setProperty:@160 forKey:@"max"];
+    [edge setProperty:@YES forKey:@"showValue"];
+    [edge setProperty:@64 forKey:@"height"];
+    [specs addObject:edge];
     if (!specs.count) {
         PSSpecifier *group = [PSSpecifier groupSpecifierWithName:@"触发设置"];
         [group setProperty:@"未找到触发设置文件，请检查 Twin 安装。" forKey:@"footerText"];
@@ -171,7 +183,7 @@ static void TWOrigWrite(NSString *key, id value) {
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
     PSSpecifier *spec = [self specifierAtIndexPath:indexPath];
-    if ([spec cellType] == PSSliderCell) return 78;
+    if ([spec cellType] == PSSliderCell) return 64;
     return [super tableView:tableView heightForRowAtIndexPath:indexPath];
 }
 

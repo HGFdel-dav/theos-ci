@@ -115,7 +115,7 @@ PSSpecifier *TWRowSpecifier(id target,
     // 滑杆行：系统默认 44pt 放不下"标题 + 滑杆"，会叠在一起（实机截图）。
     // 统一给它 78pt，TWStyleSliderCellIfNeeded 再按这个高度排版。
     if (cellType == PSSliderCell && ![spec propertyForKey:@"height"]) {
-        [spec setProperty:@78 forKey:@"height"];
+        [spec setProperty:@64 forKey:@"height"];
     }
     if (symbol.length) {
         [spec setProperty:symbol forKey:@"twSymbol"];
@@ -198,7 +198,7 @@ PSSpecifier *TWRowSpecifier(id target,
     // 滑杆行：extras 里的 height（58/44）会让标题和滑杆挤在一起（实机截图），
     // 在所有 extras 之后强制 78pt，任何调用点都改不掉。
     if (cellType == PSSliderCell) {
-        [spec setProperty:@78 forKey:@"height"];
+        [spec setProperty:@64 forKey:@"height"];
     }
     return spec;
 }
@@ -662,11 +662,17 @@ void TWStyleSliderCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier) {
     UILabel *value = [cell.contentView viewWithTag:0x774C4455];
     // This iOS build already renders the title and the numeric value itself.
     // Adding a second pair produced the duplicated number in the screenshots.
+    NSString *wanted = specifier.name ?: @"";
     BOOL systemDrawsTitle = NO;
-    for (UIView *sub in cell.contentView.subviews) {
-        if (![sub isKindOfClass:UILabel.class] || sub.tag == 0x774C4454 || sub.tag == 0x774C4455) continue;
-        UILabel *label = (UILabel *)sub;
-        if (label.text.length && [label.text isEqualToString:(specifier.name ?: @"")]) { systemDrawsTitle = YES; break; }
+    NSMutableArray *queue = [NSMutableArray arrayWithArray:cell.contentView.subviews];
+    NSInteger scan = 0;
+    while (queue.count && scan++ < 300) {
+        UIView *sub = queue.firstObject; [queue removeObjectAtIndex:0];
+        if ([sub isKindOfClass:UILabel.class] && sub.tag != 0x774C4454 && sub.tag != 0x774C4455) {
+            UILabel *label = (UILabel *)sub;
+            if (label.text.length && [label.text isEqualToString:wanted]) { systemDrawsTitle = YES; break; }
+        }
+        [queue addObjectsFromArray:sub.subviews];
     }
     CGFloat w = CGRectGetWidth(cell.contentView.bounds);
     if (w <= 0) w = CGRectGetWidth(cell.bounds);
@@ -736,6 +742,7 @@ void TWStyleSliderCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier) {
 
     CGFloat h = CGRectGetHeight(cell.bounds);
     if (h < 44) h = 44;
+    // Height is owned by the specifier/heightForRow (64pt), never mutated here.
     // 系统边距：左右各 16；标题与数值同一行，轨道在下一行。
     CGFloat valueW = proxy.decimals > 0 ? 84.0 : 64.0;
     title.frame = CGRectMake(16.0, 8.0, MAX(60.0, w - 32.0 - valueW - 8.0), 21.0);
@@ -791,7 +798,10 @@ static UIImage *TWDecoIcon(NSString *symbol, NSInteger colorIdx) {
 void TWDecorateCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier) {
     if (![cell isKindOfClass:[UITableViewCell class]] || !specifier) return;
     NSString *symbol = [specifier propertyForKey:@"twSymbol"];
-    if (![symbol isKindOfClass:NSString.class] || !symbol.length) return;
+    if (![symbol isKindOfClass:NSString.class] || !symbol.length) {
+        cell.indentationLevel = 0;
+        return;
+    }
 
     id colorObj = [specifier propertyForKey:@"twColor"];
     NSInteger colorIdx = [colorObj isKindOfClass:NSNumber.class] ? [colorObj integerValue] : 0;
@@ -816,21 +826,9 @@ void TWDecorateCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier) {
     // 0.9.9：按 ParallelX 的做法用「行缩进」给图标让位（它的面板也是靠
     // indentationLevel 实现的）。系统自己的文本布局会把标题右移，
     // 不再依赖手动改 frame —— 0.9.8 实测开关/滑块行的标题根本不动。
-    // No row-wide indentation: it left a blank gutter on every row.
+    // Indent only icon rows: a row-wide indent left a blank gutter, while no
+    // indent at all made the icon cover the first character.
+    cell.indentationWidth = 44;
+    cell.indentationLevel = 1;
 
-    // 兜底：个别 cell 不吃缩进（标题 label 直接挂在 cell 上），
-    // 那就把落在图标区的子视图整体右移；已经让开（x>=46）的自动跳过。
-    NSMutableArray<UIView *> *candidates = [NSMutableArray arrayWithArray:cell.contentView.subviews];
-    for (UIView *sub in cell.subviews) {
-        if (sub == cell.contentView) continue;
-        [candidates addObject:sub];
-    }
-    for (UIView *sub in candidates) {
-        if (sub == iv || sub == cell.contentView) continue;
-        CGRect frame = sub.frame;
-        if (frame.size.width < 40 || frame.origin.x >= 46) continue;
-        frame.origin.x += 38;
-        frame.size.width = MAX(40, frame.size.width - 38);
-        sub.frame = frame;
-    }
 }
