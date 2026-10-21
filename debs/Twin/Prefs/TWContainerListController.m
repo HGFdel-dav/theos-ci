@@ -216,7 +216,6 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
     if ((self = [super initForContentSize:size])) self.title = @"分身应用";
     return self;
 }
-- (UITableView *)tableView { return self.table; }
 - (NSArray *)specifiers {
     if (!_specifiers) _specifiers = [NSMutableArray array];
     return _specifiers;
@@ -397,7 +396,6 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
     if ((self = [super initForContentSize:size])) self.title = @"应用、快捷操作与排序";
     return self;
 }
-- (UITableView *)tableView { return self.table; }
 - (NSArray *)specifiers {
     if (!_specifiers) _specifiers = [NSMutableArray array];
     return _specifiers;

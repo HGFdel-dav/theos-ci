@@ -15,7 +15,6 @@ static NSString *const kLogDomain = @"com.niubiprass.twin.log";
     if ((self = [super initForContentSize:size])) self.title = @"运行日志";
     return self;
 }
-- (UITableView *)tableView { return self.table; }
 - (NSArray *)specifiers {
     if (!_specifiers) _specifiers = [NSMutableArray array];
     return _specifiers;

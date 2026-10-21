@@ -6,7 +6,6 @@
 NS_ASSUME_NONNULL_BEGIN
 
 @interface TWLogController : PSListController
-@property (nonatomic, readonly) UITableView *tableView;
 - (instancetype)initForContentSize:(CGSize)size;
 @end
 

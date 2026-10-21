@@ -7,9 +7,7 @@
 #import <Preferences/PSListController.h>
 
 @interface TWContainerListController : PSListController
-@property (nonatomic, readonly) UITableView *tableView;
 @end
 
 @interface TWArcOrderController : PSListController
-@property (nonatomic, readonly) UITableView *tableView;
 @end
