@@ -264,16 +264,17 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
     [specs addObject:[self pxSlider:@"环间距" key:@"launcherRingGap" def:@10 min:@0 max:@40
                              symbol:@"circle.dashed" color:@5]];
 
-    [specs addObject:TWGroupSpecifier(@"每环应用数", @"设为 0 关闭该环，不删除已选应用与排序。")];
-    [specs addObject:[self pxSlider:@"第一环" key:@"launcherRing1" def:@5 min:@0 max:@9
+    [specs addObject:TWGroupSpecifier(@"每环应用数",
+        @"只需设定第一环的个数，之后每环比上一环多 1 个，半径同步外扩；中心不会被撑空，图标多时自动排到外环。")];
+    [specs addObject:[self pxSlider:@"第一环个数" key:@"launcherRing1" def:@5 min:@0 max:@6
                              symbol:@"1.circle" color:@1]];
-    [specs addObject:[self pxSlider:@"第二环" key:@"launcherRing2" def:@6 min:@0 max:@12
-                             symbol:@"2.circle" color:@1]];
-    [specs addObject:[self pxSlider:@"第三环" key:@"launcherRing3" def:@6 min:@0 max:@12
-                             symbol:@"3.circle" color:@1]];
-    [specs addObject:[self pxSlider:@"第四环" key:@"launcherRing4" def:@0 min:@0 max:@12
-                             symbol:@"4.circle" color:@1]];
-
+    for (NSInteger ring = 2; ring <= 4; ring++) {
+        NSString *title = [NSString stringWithFormat:@"第%ld环", (long)ring];
+        NSString *key = [NSString stringWithFormat:@"launcherRing%ld", (long)ring];
+        NSInteger first = [_px integerForKey:@"launcherRing1" defaultValue:5];
+        [specs addObject:TWRowSpecifier(self, title, key, @(first + ring - 1), nil, PSStaticTextCell,
+                                        nil, nil, @{@"height": @44, @"twAutoRing": @YES})];
+    }
     [specs addObject:TWGroupSpecifier(@"手柄", kPXPassFooter)];
     [specs addObject:[self pxSlider:@"手柄宽度" key:@"handleWidth" def:@14 min:@6 max:@30
                              symbol:@"arrow.left.and.right" color:@3]];
@@ -379,6 +380,16 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
 }
 
 #pragma mark - 值链（读写 ParallelX 真实 plist）
+
+- (void)pxSyncProgressiveRings {
+    // Ring N always holds one more icon than ring N-1.
+    NSInteger first = [_px integerForKey:@"launcherRing1" defaultValue:5];
+    for (NSInteger ring = 2; ring <= 4; ring++) {
+        NSString *key = [NSString stringWithFormat:@"launcherRing%ld", (long)ring];
+        NSInteger want = first + ring - 1;
+        if ([_px integerForKey:key defaultValue:0] != want) [_px setObject:@(want) forKey:key];
+    }
+}
 
 - (id)pxReadValue:(PSSpecifier *)specifier {
     NSString *key = [specifier propertyForKey:@"key"];

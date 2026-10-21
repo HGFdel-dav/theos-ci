@@ -1110,8 +1110,7 @@ static NSString *TWArcActionTitle(NSString *identifier) {
         id list = raw ? CFBridgingRelease(raw) : nil;
         if ([list isKindOfClass:NSArray.class]) {
             for (id item in list) {
-                if (![item isKindOfClass:NSString.class] || ![item hasPrefix:@"px."]) continue;
-                if ([item hasPrefix:@"px.custom.twin-container."]) continue;
+                if (![item isKindOfClass:NSString.class] || ![item hasPrefix:@"px.action."]) continue;
                 [entries addObject:@{@"actionID":item, @"title":TWArcActionTitle(item), @"badge":@""}];
             }
         }
@@ -1143,8 +1142,20 @@ static NSString *TWArcActionTitle(NSString *identifier) {
             NSMethodSignature *sig = [bridge methodSignatureForSelector:perform];
             if (sig.numberOfArguments == 3 && strcmp(sig.methodReturnType, @encode(BOOL)) == 0 &&
                 strcmp([sig getArgumentTypeAtIndex:2], @encode(id)) == 0) {
-                ((BOOL (*)(id, SEL, id))objc_msgSend)(bridge, perform, actionID);
-                return;
+                // The picker stores custom actions as records; built-ins are
+                // plain identifiers. Try the record first, then the identifier.
+                NSDictionary *record = nil;
+                CFStringRef domain = CFSTR("com.moxuan.parallelx");
+                CFPreferencesAppSynchronize(domain);
+                CFPropertyListRef actions = CFPreferencesCopyAppValue(CFSTR("customActions"), domain);
+                id list = actions ? CFBridgingRelease(actions) : nil;
+                if ([list isKindOfClass:NSArray.class]) for (id item in list)
+                    if ([item isKindOfClass:NSDictionary.class] && [item[@"id"] isEqual:actionID]) { record = item; break; }
+                BOOL done = NO;
+                if (record) done = ((BOOL (*)(id, SEL, id))objc_msgSend)(bridge, perform, record);
+                if (!done) done = ((BOOL (*)(id, SEL, id))objc_msgSend)(bridge, perform, actionID);
+                TWRuntimeLog(@"[action] %@ via performConfiguredAction: record=%d id=%d", actionID, record != nil, done);
+                if (done) return;
             }
         } @catch (__unused NSException *e) {}
         [self performParallelXLaunch:actionID selector:@"applicationActivated:"];

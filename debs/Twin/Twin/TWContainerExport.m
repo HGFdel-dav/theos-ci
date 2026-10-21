@@ -172,7 +172,17 @@ BOOL TWContainerExportNow(void) {
     return ok;
 }
 
+static void TWExportRequested(CFNotificationCenterRef center, void *observer, CFStringRef name,
+                              const void *object, CFDictionaryRef userInfo) {
+    // The settings app asks for a fresh list whenever the container page opens,
+    // so a container created a moment ago shows up immediately.
+    TWContainerExportNow();
+}
+
 void TWContainerExportStart(void) {
+    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, TWExportRequested,
+                                    CFSTR("com.niubiprass.twin/export-request"), NULL,
+                                    CFNotificationSuspensionBehaviorDeliverImmediately);
     // Crane 可能比 Twin 晚加载，也可能在运行中才建容器：
     // 轮询导出（2 秒后开始，每 4 秒一次，最多 15 次），成功即停。
     __block NSInteger attempts = 0;

@@ -115,7 +115,7 @@ static void TWOrigWrite(NSString *key, id value) {
         for (NSString *property in @[@"key", @"default", @"min", @"max", @"showValue", @"scLegacyPreferenceKey"])
             if (row[property]) [spec setProperty:row[property] forKey:property];
         [spec setProperty:kOrigDomain forKey:@"defaults"];
-        if (type == PSSliderCell) [spec setProperty:@64 forKey:@"height"];
+        if (type == PSSliderCell) [spec setProperty:@84 forKey:@"height"];
         if (choice) {
             NSMutableArray *titles = [NSMutableArray array];
             for (id title in row[@"validTitles"]) [titles addObject:localize(title)];
@@ -133,7 +133,7 @@ static void TWOrigWrite(NSString *key, id value) {
     [edge setProperty:@0 forKey:@"min"];
     [edge setProperty:@160 forKey:@"max"];
     [edge setProperty:@YES forKey:@"showValue"];
-    [edge setProperty:@64 forKey:@"height"];
+    [edge setProperty:@84 forKey:@"height"];
     [specs addObject:edge];
     if (!specs.count) {
         PSSpecifier *group = [PSSpecifier groupSpecifierWithName:@"触发设置"];
@@ -183,7 +183,7 @@ static void TWOrigWrite(NSString *key, id value) {
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
     PSSpecifier *spec = [self specifierAtIndexPath:indexPath];
-    if ([spec cellType] == PSSliderCell) return 64;
+    if ([spec cellType] == PSSliderCell) return 84;
     return [super tableView:tableView heightForRowAtIndexPath:indexPath];
 }
 

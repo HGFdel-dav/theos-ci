@@ -267,7 +267,16 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
     [refresh addTarget:self action:@selector(reloadContainers) forControlEvents:UIControlEventValueChanged];
     self.table.refreshControl = refresh;
 }
-- (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self reloadContainers]; }
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    // Ask SpringBoard to re-export the container list, then read it again.
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+        CFSTR("com.niubiprass.twin/export-request"), NULL, NULL, YES);
+    [self reloadContainers];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [self reloadContainers];
+    });
+}
 - (void)reloadContainers {
     _specifiers = nil;
     [self reloadSpecifiers];
@@ -313,7 +322,9 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
         if (!_selected) _selected = [NSMutableArray arrayWithArray:TWArcOrderList() ?: @[]];
         if (!_allApps) _allApps = TWInstalledAppIdentifiers();
         NSMutableArray *rows = [NSMutableArray array];
-        [rows addObject:TWGroupSpecifier(@"已选择（按顺序显示）", @"点应用移除，进入排序后拖动右侧手柄。不卸载应用；扇形与半圆菜单共用清单。")];
+        [rows addObject:TWGroupSpecifier(@"已选择（按顺序显示）",
+        [NSString stringWithFormat:@"共 %lu 个。半圆面板每页最多 26 个（4 环逐环递增），超出部分会翻到第二页；扇形菜单不受限。不卸载应用。",
+         (unsigned long)_selected.count])];
         for (NSString *bid in _selected) {
             PSSpecifier *sp = TWButtonRowSpecifier(self, TWPrefsAppName(bid), @"toggleApplication:", nil, NO,
                 @{@"twBundleID":bid, @"twSelected":@YES, @"height":@50});

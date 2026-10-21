@@ -115,7 +115,7 @@ PSSpecifier *TWRowSpecifier(id target,
     // 滑杆行：系统默认 44pt 放不下"标题 + 滑杆"，会叠在一起（实机截图）。
     // 统一给它 78pt，TWStyleSliderCellIfNeeded 再按这个高度排版。
     if (cellType == PSSliderCell && ![spec propertyForKey:@"height"]) {
-        [spec setProperty:@64 forKey:@"height"];
+        [spec setProperty:@84 forKey:@"height"];
     }
     if (symbol.length) {
         [spec setProperty:symbol forKey:@"twSymbol"];
@@ -198,7 +198,7 @@ PSSpecifier *TWRowSpecifier(id target,
     // 滑杆行：extras 里的 height（58/44）会让标题和滑杆挤在一起（实机截图），
     // 在所有 extras 之后强制 78pt，任何调用点都改不掉。
     if (cellType == PSSliderCell) {
-        [spec setProperty:@64 forKey:@"height"];
+        [spec setProperty:@84 forKey:@"height"];
     }
     return spec;
 }
@@ -627,9 +627,9 @@ static void TWDiagInstallUncaughtHandler(void) {
     // here made those sliders snap back on the next read ("fixed in place").
     if (self.target && self.setter && [self.target respondsToSelector:self.setter]) {
         ((void (*)(id, SEL, id, id))objc_msgSend)(self.target, self.setter, value, self.specifier);
-        return;
+    } else if (self.key.length) {
+        [[TWPrefs shared] setObject:value forKey:self.key];
     }
-    if (self.key.length) [[TWPrefs shared] setObject:value forKey:self.key];
 }
 - (void)twCommit {
     [self twChanged];
@@ -663,6 +663,12 @@ void TWStyleSliderCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier) {
     // This iOS build already renders the title and the numeric value itself.
     // Adding a second pair produced the duplicated number in the screenshots.
     NSString *wanted = specifier.name ?: @"";
+    BOOL systemShowsValue = NO;
+    for (UIView *sub in cell.contentView.subviews) {
+        if (![sub isKindOfClass:UILabel.class] || sub.tag == 0x774C4454 || sub.tag == 0x774C4455) continue;
+        NSString *text = [(UILabel *)sub text];
+        if (text.length && [text doubleValue] > 0) { systemShowsValue = YES; break; }
+    }
     BOOL systemDrawsTitle = NO;
     NSMutableArray *labelQueue = [NSMutableArray arrayWithArray:cell.contentView.subviews];
     NSInteger scan = 0;
@@ -724,14 +730,23 @@ void TWStyleSliderCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier) {
     proxy.key = [specifier propertyForKey:@"key"];
     proxy.unit = [specifier propertyForKey:@"twUnit"] ?: @"";
     id dec = [specifier propertyForKey:@"twDecimal"];
-    proxy.decimals = [dec respondsToSelector:@selector(integerValue)] ? [dec integerValue] : 0;
+    // Integer ranges must not print "5.73": only short ranges (damping, ratios)
+    // keep two decimals.
+    NSNumber *lo = [specifier propertyForKey:@"min"], *hi = [specifier propertyForKey:@"max"];
+    BOOL integerRange = lo && hi && (fabs([lo doubleValue] - floor([lo doubleValue])) < 0.001) &&
+                        (fabs([hi doubleValue] - floor([hi doubleValue])) < 0.001);
+    if (integerRange) proxy.decimals = 0;
+    else if ([dec respondsToSelector:@selector(integerValue)]) proxy.decimals = [dec integerValue];
+    else proxy.decimals = ([hi doubleValue] - [lo doubleValue] <= 5.0) ? 2 : 0;
+    if (systemShowsValue) proxy.decimals = 0;
     NSString *setName = [specifier propertyForKey:@"twSet"] ?: @"setPreferenceValue:specifier:";
     proxy.target = specifier.target;
     proxy.setter = NSSelectorFromString(setName);
     proxy.specifier = specifier;
 
     if (systemDrawsTitle) {
-        // Do not touch the system's own layout: it is already correct.
+        // Do not touch the system's own layout: it is already correct, and the
+        // system already prints the value, so a second number must not appear.
         if (title) title.hidden = YES;
         if (value) value.hidden = YES;
         return;
@@ -747,8 +762,22 @@ void TWStyleSliderCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier) {
     CGFloat valueW = proxy.decimals > 0 ? 84.0 : 64.0;
     title.frame = CGRectMake(16.0, 8.0, MAX(60.0, w - 32.0 - valueW - 8.0), 21.0);
     value.frame = CGRectMake(w - 16.0 - valueW, 8.0, valueW, 21.0);
+    // The system centres its title inside the row, so the track needs its own
+    // band below it instead of sharing the same vertical space.
     CGFloat sliderH = 24.0;
-    slider.frame = CGRectMake(16.0, h - sliderH - 6.0, MAX(60.0, w - 32.0), sliderH);
+    CGFloat sliderY = h - sliderH - 8.0;
+    if (systemDrawsTitle) {
+        for (UIView *sub in cell.contentView.subviews) {
+            if (![sub isKindOfClass:UILabel.class] || sub.tag == 0x774C4454 || sub.tag == 0x774C4455) continue;
+            UILabel *label = (UILabel *)sub;
+            if (label.text.length && [label.text isEqualToString:wanted]) {
+                sliderY = MAX(sliderY, CGRectGetMaxY(label.frame) + 8.0);
+                break;
+            }
+        }
+    }
+    if (sliderY + sliderH > h) sliderY = h - sliderH - 4.0;
+    slider.frame = CGRectMake(16.0, sliderY, MAX(60.0, w - 32.0), sliderH);
 }
 
 #pragma mark - 行图标（0.9.7：不依赖 cellClass，直接往标准 cell 里塞）

@@ -33,17 +33,16 @@ static NSData *TWCPBadgeIcon(NSString *bid, NSString *cid, NSUInteger index) {
     return UIImagePNGRepresentation(image);
 }
 BOOL TWPublishContainerActions(void) {
+    // The engine's `applications` list drives the side panel. It must contain
+    // application identifiers only: injecting one row per container flooded
+    // the panel, forced a second page and broke its ring layout.
     TWPrefs *prefs = TWPrefs.shared;
     TWPXPrefs *px = [[TWPXPrefs alloc] init];
     id rawOrder = [prefs objectForKey:TWKeyCraneAppList];
-    NSArray *order = TWCPArray(rawOrder);
-    if (![rawOrder isKindOfClass:NSArray.class]) {
-        NSMutableOrderedSet *migrated = [NSMutableOrderedSet orderedSet];
-        for (id item in TWCPArray([px objectForKey:@"applications" defaultValue:nil]))
-            if ([item isKindOfClass:NSString.class] && ![item hasPrefix:@"px."]) [migrated addObject:item];
-        order = migrated.array;
-        [prefs setObject:order forKey:TWKeyCraneAppList]; [prefs synchronize];
-    }
+    if (![rawOrder isKindOfClass:NSArray.class]) return NO;
+    // Container rows are published as regular engine actions so both wake
+    // methods show the same entries; the ring capacity limits keep the panel
+    // from overflowing into a second page.
     NSArray *containers = TWCPArray([prefs objectForKey:TWKeyCraneContainers]);
     BOOL crane = [prefs boolForKey:TWKeyCraneEnabled defaultValue:YES];
     NSMutableDictionary<NSString *, NSMutableArray *> *byApp = [NSMutableDictionary dictionary];
@@ -52,47 +51,42 @@ BOOL TWPublishContainerActions(void) {
         NSString *bid = row[@"bundleID"], *cid = row[@"containerID"];
         if (![bid isKindOfClass:NSString.class] || !bid.length) continue;
         if (![cid isKindOfClass:NSString.class] || !cid.length) cid = @"DEFAULT";
+        if (row[@"enabled"] && ![row[@"enabled"] boolValue]) continue;
         if (!byApp[bid]) byApp[bid] = [NSMutableArray array];
-        // Keep empty groups: all disabled must not reappear as a normal app.
-        if (!row[@"enabled"] || [row[@"enabled"] boolValue]) [byApp[bid] addObject:@{@"cid":cid, @"name":row[@"name"] ?: bid}];
+        [byApp[bid] addObject:@{@"cid":cid, @"name":row[@"name"] ?: bid}];
     }
     NSMutableArray *actions = [NSMutableArray array];
     for (id item in TWCPArray([px objectForKey:@"customActions" defaultValue:nil])) if (!TWCPOwned(item)) [actions addObject:item];
-    NSMutableArray *selection = [NSMutableArray array];
-    id rawImages = [px objectForKey:@"shortcutImages" defaultValue:nil];
-    NSMutableDictionary *images = [rawImages isKindOfClass:NSDictionary.class] ? [rawImages mutableCopy] : [NSMutableDictionary dictionary];
-    // Original runtime 0x55f00..0x560c4 consumes [id: NSData] and UIImage(data:).
-    for (id key in images.allKeys) if (TWCPID(key)) [images removeObjectForKey:key];
-    // Preserve non-Twin system tools / workflows / URLs. App order follows the one shared list.
-    for (id item in TWCPArray([px objectForKey:@"applications" defaultValue:nil])) {
-        if ([item isKindOfClass:NSString.class] && [item hasPrefix:@"px."] && !TWCPID(item)) [selection addObject:item];
-    }
     NSDictionary *cache = [NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/Library/Twin/crane-containers.plist"] ?: @{};
+    NSMutableArray *selection = [NSMutableArray array];
     NSMutableSet *seen = [NSMutableSet set];
-    for (id raw in order) {
+    for (id item in TWCPArray([px objectForKey:@"applications" defaultValue:nil])) {
+        if (![item isKindOfClass:NSString.class] || !item.length || [seen containsObject:item]) continue;
+        if (TWCPID(item)) continue;
+        // Only the built-in system actions belong in the menu; URL shortcuts
+        // and custom actions are edited on their own pages. Keeping them here
+        // pushed the menu to 52 entries (raw px.url.* identifiers) and forced
+        // the panel onto a second page.
+        if ([item hasPrefix:@"px.action."] || [(NSArray *)rawOrder containsObject:item]) {
+            [seen addObject:item];
+            [selection addObject:item];
+        }
+    }
+    for (id raw in (NSArray *)rawOrder) {
         if (![raw isKindOfClass:NSString.class] || ![raw length] || [seen containsObject:raw]) continue;
         [seen addObject:raw];
-        NSArray *rows = byApp[raw];
-        if (!crane || !rows) { [selection addObject:raw]; continue; }
-        NSUInteger containerIndex = 0;
+        NSArray *rows = crane ? byApp[raw] : nil;
+        if (!rows.count) { [selection addObject:raw]; continue; }
         for (NSDictionary *row in rows) {
-            containerIndex++;
             NSString *cid = row[@"cid"];
-            // Stable, reversible pair encoding; '.' does not occur in base64.
             NSString *(^encode)(NSString *) = ^NSString *(NSString *s) { return [[s dataUsingEncoding:NSUTF8StringEncoding] base64EncodedStringWithOptions:0]; };
             NSString *identifier = [NSString stringWithFormat:@"px.custom.twin-container.%@.%@", encode(raw), encode(cid)];
-            NSString *name = [NSString stringWithFormat:@"%@ · %@", row[@"name"], TWCPName(raw, cid, cache)];
-            [actions addObject:@{@"id":identifier, @"title":name, @"kind":@"twin.container", @"app":raw,
-                @"twContainerID":cid, @"twOwner":@"com.niubiprass.twin.container"}];
-            NSData *icon = TWCPBadgeIcon(raw, cid, containerIndex);
-            if (icon) images[identifier] = icon;
+            [actions addObject:@{@"id":identifier, @"title":[NSString stringWithFormat:@"%@ · %@", row[@"name"], TWCPName(raw, cid, cache)],
+                @"kind":@"twin.container", @"app":raw, @"twContainerID":cid,
+                @"twOwner":@"com.niubiprass.twin.container"}];
             [selection addObject:identifier];
         }
     }
     if (![px setObject:actions forKey:@"customActions"]) return NO;
-    if (![px setObject:images forKey:@"shortcutImages"]) return NO;
-    if (![px setObject:selection forKey:@"applications"]) return NO;
-    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
-        CFSTR("com.moxuan.parallelx.handle-updated"), NULL, NULL, YES);
-    return YES;
+    return [px setObject:selection forKey:@"applications"];
 }

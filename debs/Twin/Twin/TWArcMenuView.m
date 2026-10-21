@@ -87,6 +87,38 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     return nil;
 }
 
+// Average colour of the app icon, so the container badge matches it instead of
+// using a fixed grey/pink pill.
+static UIColor *TWDominantColor(UIImage *image) {
+    if (![image isKindOfClass:UIImage.class]) return [UIColor colorWithWhite:0.18 alpha:0.7];
+    CGImageRef cg = image.CGImage;
+    if (!cg) return [UIColor colorWithWhite:0.18 alpha:0.7];
+    size_t w = CGImageGetWidth(cg), h = CGImageGetHeight(cg);
+    if (!w || !h) return [UIColor colorWithWhite:0.18 alpha:0.7];
+    size_t total = w * h;
+    size_t step = total > 4096 ? total / 4096 : 1;
+    uint8_t *data = (uint8_t *)calloc(total * 4, 1);
+    if (!data) return [UIColor colorWithWhite:0.18 alpha:0.7];
+    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+    CGContextRef ctx = CGBitmapContextCreate(data, w, h, 8, w * 4, space, kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+    CGColorSpaceRelease(space);
+    if (!ctx) { free(data); return [UIColor colorWithWhite:0.18 alpha:0.7]; }
+    CGContextDrawImage(ctx, CGRectMake(0, 0, w, h), cg);
+    CGContextRelease(ctx);
+    double r = 0, g = 0, b = 0, weight = 0;
+    for (size_t i = 0; i < total; i += step) {
+        uint8_t a = data[i * 4 + 3];
+        if (a < 128) continue;
+        double lum = 0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2];
+        if (lum > 238) continue;
+        r += data[i * 4] * a; g += data[i * 4 + 1] * a; b += data[i * 4 + 2] * a; weight += a;
+    }
+    free(data);
+    if (weight <= 0) return [UIColor colorWithWhite:0.18 alpha:0.7];
+    UIColor *base = [UIColor colorWithRed:r / weight / 255.0 green:g / weight / 255.0 blue:b / weight / 255.0 alpha:1];
+    return [base colorWithAlphaComponent:0.92];
+}
+
 #pragma mark - item view
 
 @interface TWArcItemView : UIView
@@ -153,7 +185,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
             _badgeLabel.font = [UIFont systemFontOfSize:MAX(7.5, bh * 0.62) weight:UIFontWeightSemibold];
             _badgeLabel.textColor = [UIColor colorWithWhite:1 alpha:0.96];
             _badgeLabel.textAlignment = NSTextAlignmentCenter;
-            _badgeLabel.backgroundColor = [UIColor colorWithWhite:0.08 alpha:0.62];
+            _badgeLabel.backgroundColor = TWDominantColor(image);
             CGSize text = [_badgeLabel sizeThatFits:CGSizeMake(size, bh)];
             CGFloat bw = MAX(bh, text.width + bh * 0.55);
             _badgeLabel.frame = CGRectMake((size - bw) / 2, size - bh * 0.82, bw, bh);
@@ -178,7 +210,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 - (void)setHighlighted:(BOOL)highlighted {
     _highlighted = highlighted;
     BOOL glowOn = TWArcOrigBool(@"arcSelectedIconEnabled", YES);
-    CGFloat scale = (self.baseScale > 0 ? self.baseScale : 1) * ((highlighted && glowOn) ? 1.18 : 1);
+    CGFloat scale = (self.baseScale > 0 ? self.baseScale : 1) * ((highlighted && glowOn) ? 1.34 : 1);
     CGFloat glowAlpha = (highlighted && glowOn) ? 1.0 : 0.0;
     [UIView animateWithDuration:0.12 delay:0 options:UIViewAnimationOptionBeginFromCurrentState animations:^{
         self.transform = CGAffineTransformMakeScale(scale, scale);
@@ -295,8 +327,11 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     _radius = isfinite(radius) && radius > 0 ? radius : MAX(104, iconVisual * 2 + ringGap);
     CGFloat scaledIcon = iconVisual * _menuScale;
     _radius *= _menuScale;
+    // Rings grow by one icon each: ring 1 = firstRow, ring 2 = firstRow+1 ...
+    NSMutableArray<NSNumber *> *ringCounts = [NSMutableArray array];
+    for (NSInteger i = 0; i < 4; i++) [ringCounts addObject:@(firstRow + (NSInteger)i)];
     NSArray<NSValue *> *centers = [TWArcGeometry centersForCount:count firstRowCount:firstRow
-        ringCounts:@[] iconSize:scaledIcon radius:_radius ringGap:ringGap * _menuScale
+        ringCounts:ringCounts iconSize:scaledIcon radius:_radius ringGap:ringGap * _menuScale
         anchor:_anchor startAngle:_startAngle sweepAngle:_sweepAngle bounds:self.bounds];
     if (centers.count != (NSUInteger)count) return;
 

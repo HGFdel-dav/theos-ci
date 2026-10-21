@@ -40,7 +40,7 @@
     [s setProperty:key forKey:@"key"]; [s setProperty:@(minimum) forKey:@"min"];
     [s setProperty:@(maximum) forKey:@"max"]; [s setProperty:@(fallback) forKey:@"default"];
     [s setProperty:@YES forKey:@"showValue"];
-    [s setProperty:@64 forKey:@"height"];
+    [s setProperty:@84 forKey:@"height"];
     return s;
 }
 - (NSArray *)specifiers {
