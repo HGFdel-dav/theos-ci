@@ -28,6 +28,7 @@
 #import <math.h>
 #import <string.h>
 #import "TWRemember.h"
+#import "TWRuntimeLog.h"
 #import "TWArcPXBridge.h"
 #import "TWPrefs.h"
 #import "TWCraneBridge.h"
@@ -721,12 +722,15 @@ void TWRememberStart(void) {
     // can already show them. The migration itself is marker-guarded/idempotent.
     TWRememberMigrateLegacyFrames();
     Class cls = objc_getClass("PXPanelEntry");
+    TWRuntimeLog(@"[remember] start cls=%@ ivar=%d", cls ? @"PXPanelEntry" : @"(nil)",
+                 cls ? (class_getInstanceVariable(cls, "hostedBundleID") != NULL) : 0);
     if (!cls) return; // ParallelX not installed: window memory is simply inactive
     // Verify the class is the entry we expect (has the ivars we read).
     if (class_getInstanceVariable(cls, "hostedBundleID") == NULL) return;
     BOOL ok = YES;
     ok &= TWInstallMethod(cls, NO, sel_registerName("applyResizePreview"), (IMP)replApplyResizePreview, (IMP *)&origApplyResizePreview, "v");
     ok &= TWInstallMethod(cls, NO, sel_registerName("moveHost:"), (IMP)replMoveHost, (IMP *)&origMoveHost, "v");
+    TWRuntimeLog(@"[remember] hooks installed=%d", ok);
     ok &= TWInstallMethod(cls, NO, sel_registerName("closeTapped"), (IMP)replCloseTapped, (IMP *)&origCloseTapped, "v");
     ok &= TWInstallMethod(cls, NO, sel_registerName("init"), (IMP)replInit, (IMP *)&origInit, "@");
     if (ok) started = YES;

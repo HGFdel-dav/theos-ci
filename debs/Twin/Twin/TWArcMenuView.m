@@ -245,7 +245,9 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     // 直接拿 28 当直径做出来只有指甲盖大小（实测效果），所以按屏幕尺寸换算。
     CGFloat iconVisual = MAX(38.0, itemSize * 1.35);
     iconVisual = MIN(iconVisual, 96.0);
-    NSInteger firstRow = (NSInteger)TWArcOrigNumber(@"arcFirstRowItemCount", 5.0);
+    NSInteger firstRow = [[TWPrefs shared] integerForKey:TWKeyArcRing1 defaultValue:0];
+    if (firstRow <= 0) firstRow = (NSInteger)TWArcOrigNumber(@"arcFirstRowItemCount", 3.0);
+    if (firstRow < 1) firstRow = 3;
     CGFloat ringGap = TWArcOrigNumber(@"arcIconSpacing", 0.0);
 
     // 以下全部对应 ScreenCore 的同名参数。
