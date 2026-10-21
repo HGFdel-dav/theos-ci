@@ -263,6 +263,7 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     CGFloat offY = TWArcOrigNumber(@"arcOffsetY", 0.0);
     BOOL landscapeNow = self.bounds.size.width > self.bounds.size.height;
     radius += TWArcOrigNumber(@"arcPortraitOffsetDistance", 0.0);
+    if (landscapeNow) radius += TWArcOrigNumber(@"arcLandscapeHorizontalOffset", 0.0);
     if (landscapeNow) {
         radius += TWArcOrigNumber(@"arcLandscapeOffsetDistance", 0.0);
         CGFloat landPct = TWArcOrigNumber(@"arcLandscapeMenuScalePercent", 100.0);

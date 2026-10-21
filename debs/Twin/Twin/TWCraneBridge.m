@@ -168,8 +168,13 @@ static id TWMsgSendStr(id target, SEL sel, id arg) {
                              bundleID, container, current ?: @"?", now ?: @"?", ok);
                 if (!ok) TWCraneNotice(@"Crane 未确认容器，未启动应用。");
                 if (ok) {
+                    // Crane 的重载会把应用重新拉起；如果紧接着让面板去开分屏，
+                    // 会和这次重载抢同一个 App，结果变成全屏。这里等它落定再继续。
                     ((void (*)(id, SEL, id))objc_msgSend)(manager, reload, bundleID);
-                    TWRuntimeLog(@"[crane] requested Crane reload for %@", bundleID);
+                    TWRuntimeLog(@"[crane] reload %@, wait 0.5s before open", bundleID);
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+                                   dispatch_get_main_queue(), ^{ completion(YES); });
+                    return;
                 }
                 completion(ok); return;
             }

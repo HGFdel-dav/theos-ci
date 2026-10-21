@@ -577,6 +577,11 @@ static void TWArcMigrateRadiusKeys(void) {
     for (NSInteger c = 0; c < 4 && same; c++)
         if (!CGRectEqualToRect(areas.rects[c], lastRects[c])) same = NO;
     if (same) return;
+    TWRuntimeLog(@"[arc] hot mode=%ld mask=%ld rect=%.0fx%.0f corner=%.0f area=%@",
+                 (long)mode, (long)areas.mask,
+                 (double)CGRectGetWidth(areas.rects[TWCornerBottomRight]),
+                 (double)CGRectGetHeight(areas.rects[TWCornerBottomRight]),
+                 (double)radius, NSStringFromCGRect(areas.rects[TWCornerBottomRight]));
     lastMask = areas.mask;
     lastMode = mode;
     lastCorner = radius;
@@ -1010,7 +1015,10 @@ static CGPoint TWArcScreenPointForTouch(UITouch *touch) {
     CGFloat iconSize = TWArcOrigNumber(@"arcIconSize", 28.0);
     CGFloat iconSpacing = TWArcOrigNumber(@"arcIconSpacing", 0.0);
     CGFloat iconVisual = MIN(MAX(38.0, iconSize * 1.35), 96.0);   // 与菜单内的换算一致
-    CGFloat radius = MAX(120.0, iconVisual * 2.4 + iconSpacing + 60.0);
+    // 起始半径吃进「半径」滑杆：以前这里写死 2.4 倍图标 + 60，半径怎么拖都不动。
+    CGFloat arcRadius = TWArcOrigNumber(@"arcRadius", 40.0);
+    if (!isfinite(arcRadius) || arcRadius < 1) arcRadius = 40;
+    CGFloat radius = MAX(80.0, iconVisual * 1.8 + arcRadius + iconSpacing + 40.0);
     TWRuntimeLog(@"[arc] present corner=%ld entries=%lu radius=%.0f anchor=%.0f,%.0f",
                  (long)corner, (unsigned long)entries.count, radius, local.x, local.y);
     if (!entries.count) { [self cancelCurrentGesture]; return; }
@@ -1171,10 +1179,11 @@ static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
         // 配过分身的应用：一个容器一条，默认容器排最前（之前这里用 iconSource != 1
         // 判断，而 iconSource 恒为 1，导致分身永远不展开，只剩一个图标）。
         // 面板没配置时直接问 Crane 的容器缓存：有分身才多条，只有默认容器的仍是单图标。
+        // 只用面板「分身应用」里明确开启的容器；不再自动把缓存里的容器全展开
+        // （那会让应用清单里只选了一个 QQ，菜单里却冒出两个 QQ）。
         NSMutableArray<NSDictionary *> *rows = nil;
         if (craneOn) {
             rows = containerRows[bundleID];
-            if (!rows.count) rows = [TWArcCachedContainers(bundleID) mutableCopy];
             if (rows.count < 2) rows = nil;
         }
         if (rows.count) {
