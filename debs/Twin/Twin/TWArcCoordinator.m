@@ -896,6 +896,10 @@ static CGPoint TWArcScreenPointForTouch(UITouch *touch) {
     NSArray *entries = [self menuEntries];
     // The trigger radius also sets how far the fan sits from the edge/size:
     // previously it was ignored here, so the menu appeared pinned in place.
+    CGFloat iconSize = TWArcOrigNumber(@"arcIconSize", 28);
+    if (!isfinite(iconSize) || iconSize < 1) iconSize = 28;
+    CGFloat spacing = TWArcOrigNumber(@"arcIconSpacing", 0);
+    if (!isfinite(spacing) || spacing < 0) spacing = 0;
     CGFloat arcRadius = TWArcOrigNumber(@"arcRadius", 40);
     if (!isfinite(arcRadius) || arcRadius < 1) arcRadius = 40;
     CGFloat radius = MAX(104, 2 * iconSize + spacing + arcRadius);
