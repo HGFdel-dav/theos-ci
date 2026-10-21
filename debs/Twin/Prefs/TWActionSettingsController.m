@@ -102,8 +102,20 @@ static void *TWASCatalog(void) {
         @[@"亮度", @"px.action.brightness"], @[@"应用搜索", @"px.action.search"]
     ];
 }
+- (NSString *)twCatalogKey {
+    return [self isKindOfClass:TWWorkflowActionsController.class] ? @"TWCatalogWorkflows" : @"TWCatalogAppActions";
+}
+- (void)twLoadCachedCatalog {
+    if (self.catalog.count) return;
+    id cached = [TWPrefs.shared objectForKey:[self twCatalogKey]];
+    if ([cached isKindOfClass:NSArray.class] && [cached count]) {
+        self.catalog = cached;
+        self.catalogStatus = [NSString stringWithFormat:@"已保存 %lu 项（上次读取的目录）。", (unsigned long)[cached count]];
+    }
+}
 - (NSArray *)specifiers {
     if (!self.px) self.px = [[TWPXPrefs alloc] init];
+    [self twLoadCachedCatalog];
     if (_specifiers) return _specifiers;
     NSMutableArray *rows = [NSMutableArray array];
     if ([self isKindOfClass:TWSystemToolsController.class]) {
@@ -172,6 +184,15 @@ static void *TWASCatalog(void) {
             owner.catalog = TWASArray(items);
             owner.catalogLoading = NO;
             owner.catalogStatus = owner.catalog.count ? @"仅列出原有目录返回的条目。" : @"没有可用项目，或系统权限不允许读取。可先打开相应应用再回来刷新。";
+            if (owner.catalog.count) {
+                // Persist only a successful refresh: exiting and re-entering must
+                // not fall back to an empty page.
+                [TWPrefs.shared setObject:owner.catalog forKey:[owner twCatalogKey]];
+                [TWPrefs.shared synchronize];
+            } else if ([TWPrefs.shared objectForKey:[owner twCatalogKey]]) {
+                owner.catalogStatus = @"本次读取为空，保留上次保存的目录。";
+                owner.catalog = [TWPrefs.shared objectForKey:[owner twCatalogKey]];
+            }
             [owner twInvalidate];
         });
     };

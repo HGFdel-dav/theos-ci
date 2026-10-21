@@ -36,7 +36,7 @@
 #import <sys/utsname.h>
 #import <objc/message.h>
 
-static NSString *const kTWVersion = @"0.9.39";
+static NSString *const kTWVersion = @"0.9.40";
 
 // 唤醒方式：0 = Arc 角落唤醒（默认），1 = ParallelX 边缘手柄。
 typedef NS_ENUM(NSInteger, TWWakeModeValue) {
@@ -393,10 +393,8 @@ static NSString *TWDiagSpecSummary(PSSpecifier *sp) {
 
 
 - (NSInteger)tableView:(UITableView *)tableView indentationLevelForRowAtIndexPath:(NSIndexPath *)indexPath {
-    @try {
-        PSSpecifier *sp = [self specifierAtIndexPath:indexPath];
-        return [sp propertyForKey:@"twSymbol"] ? 1 : 0;
-    } @catch (__unused NSException *e) { return 0; }
+    // Icons are drawn in their own column; a system indent only added a blank gutter.
+    return 0;
 }
 
 - (void)viewDidLoad {

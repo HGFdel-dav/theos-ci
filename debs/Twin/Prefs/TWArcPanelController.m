@@ -96,10 +96,8 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
 
 
 - (NSInteger)tableView:(UITableView *)tableView indentationLevelForRowAtIndexPath:(NSIndexPath *)indexPath {
-    @try {
-        PSSpecifier *sp = [self specifierAtIndexPath:indexPath];
-        return [sp propertyForKey:@"twSymbol"] ? 1 : 0;
-    } @catch (__unused NSException *e) { return 0; }
+    // Icons are drawn in their own column; a system indent only added a blank gutter.
+    return 0;
 }
 
 

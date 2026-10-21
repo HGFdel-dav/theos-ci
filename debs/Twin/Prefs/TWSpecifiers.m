@@ -606,6 +606,9 @@ static void TWDiagInstallUncaughtHandler(void) {
 
 @interface TWSliderProxy : NSObject
 @property (nonatomic, weak) UISlider *slider;
+@property (nonatomic, weak) id target;
+@property (nonatomic, assign) SEL setter;
+@property (nonatomic, weak) PSSpecifier *specifier;
 @property (nonatomic, weak) UILabel *valueLabel;
 @property (nonatomic, copy) NSString *key;
 @property (nonatomic, assign) NSInteger decimals;
@@ -619,7 +622,14 @@ static void TWDiagInstallUncaughtHandler(void) {
 }
 - (void)twChanged {
     [self twUpdateLabel];
-    if (self.key.length) [[TWPrefs shared] setObject:@(self.slider.value) forKey:self.key];
+    NSNumber *value = @(self.slider.value);
+    // Pages backed by the window engine expose twGet/twSet. Writing TWPrefs
+    // here made those sliders snap back on the next read ("fixed in place").
+    if (self.target && self.setter && [self.target respondsToSelector:self.setter]) {
+        ((void (*)(id, SEL, id, id))objc_msgSend)(self.target, self.setter, value, self.specifier);
+        return;
+    }
+    if (self.key.length) [[TWPrefs shared] setObject:value forKey:self.key];
 }
 - (void)twCommit {
     [self twChanged];
@@ -650,10 +660,18 @@ void TWStyleSliderCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier) {
 
     UILabel *title = [cell.contentView viewWithTag:0x774C4454];
     UILabel *value = [cell.contentView viewWithTag:0x774C4455];
+    // This iOS build already renders the title and the numeric value itself.
+    // Adding a second pair produced the duplicated number in the screenshots.
+    BOOL systemDrawsTitle = NO;
+    for (UIView *sub in cell.contentView.subviews) {
+        if (![sub isKindOfClass:UILabel.class] || sub.tag == 0x774C4454 || sub.tag == 0x774C4455) continue;
+        UILabel *label = (UILabel *)sub;
+        if (label.text.length && [label.text isEqualToString:(specifier.name ?: @"")]) { systemDrawsTitle = YES; break; }
+    }
     CGFloat w = CGRectGetWidth(cell.contentView.bounds);
     if (w <= 0) w = CGRectGetWidth(cell.bounds);
 
-    if (!title) {
+    if (!title && !systemDrawsTitle) {
         title = [[UILabel alloc] initWithFrame:CGRectZero];
         title.tag = 0x774C4454;
         title.font = [UIFont systemFontOfSize:17.0];   // 系统设置行同款字号
@@ -701,7 +719,18 @@ void TWStyleSliderCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier) {
     proxy.unit = [specifier propertyForKey:@"twUnit"] ?: @"";
     id dec = [specifier propertyForKey:@"twDecimal"];
     proxy.decimals = [dec respondsToSelector:@selector(integerValue)] ? [dec integerValue] : 0;
+    NSString *setName = [specifier propertyForKey:@"twSet"] ?: @"setPreferenceValue:specifier:";
+    proxy.target = specifier.target;
+    proxy.setter = NSSelectorFromString(setName);
+    proxy.specifier = specifier;
 
+    if (systemDrawsTitle) {
+        // Do not touch the system's own layout: it is already correct.
+        if (title) title.hidden = YES;
+        if (value) value.hidden = YES;
+        return;
+    }
+    title.hidden = NO; value.hidden = NO;
     title.text = specifier.name ?: @"";
     [proxy twUpdateLabel];
 
@@ -787,8 +816,7 @@ void TWDecorateCellIfNeeded(UITableViewCell *cell, PSSpecifier *specifier) {
     // 0.9.9：按 ParallelX 的做法用「行缩进」给图标让位（它的面板也是靠
     // indentationLevel 实现的）。系统自己的文本布局会把标题右移，
     // 不再依赖手动改 frame —— 0.9.8 实测开关/滑块行的标题根本不动。
-    cell.indentationWidth = 38;
-    cell.indentationLevel = 1;
+    // No row-wide indentation: it left a blank gutter on every row.
 
     // 兜底：个别 cell 不吃缩进（标题 label 直接挂在 cell 上），
     // 那就把落在图标区的子视图整体右移；已经让开（x>=46）的自动跳过。

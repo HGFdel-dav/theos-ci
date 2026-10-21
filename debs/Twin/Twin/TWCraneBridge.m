@@ -120,6 +120,10 @@ static id TWMsgSendStr(id target, SEL sel, id arg) {
         if (![bundleID isKindOfClass:NSString.class] || !bundleID.length) { TWCraneNotice(@"应用标识无效，未启动应用。"); completion(NO); return; }
         if (![prefs boolForKey:TWKeyEnabled defaultValue:YES] || ![prefs boolForKey:TWKeyCraneEnabled defaultValue:YES]) { completion(YES); return; }
         if (![self isCraneAvailable]) { completion(YES); return; }   // 没装 Crane：普通启动
+        // Already on the default container: this is a plain launch, never a
+        // Crane switch (non-Crane apps must not show a cancel notice).
+        if ([containerID isEqualToString:@"DEFAULT"]) { completion(YES); return; }
+        if (![self isApplicationSupportedByCrane:bundleID]) { completion(YES); return; }
         [self switchBundleID:bundleID toContainer:containerID completion:completion];
     });
 }

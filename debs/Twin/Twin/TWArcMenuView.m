@@ -113,11 +113,12 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 - (instancetype)initWithEntry:(NSDictionary *)entry image:(UIImage *)image size:(CGFloat)size {
     if ((self = [super initWithFrame:CGRectMake(0, 0, size, size)])) {
         _entry = [entry copy];
-        CGFloat radius = size * 0.26;
+        // Circular tile: the side panel draws the same round icons.
+        CGFloat radius = size * 0.5;
         self.layer.cornerRadius = radius;
         self.backgroundColor = [UIColor colorWithWhite:0.12 alpha:0.55];
         self.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.25].CGColor;
-        self.layer.borderWidth = 0.5;
+        self.layer.borderWidth = 1.0;
         _glowView = [[UIView alloc] initWithFrame:self.bounds];
         _glowView.backgroundColor = [UIColor clearColor];
         _glowView.layer.borderColor = [UIColor systemBlueColor].CGColor;
@@ -153,24 +154,8 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
             [self addSubview:_badgeLabel];
         }
 
-        // 名字气泡：高亮时浮在图标上方
-        NSString *title = [entry[@"title"] isKindOfClass:NSString.class] ? entry[@"title"] : nil;
-        if (!title.length) title = [entry[@"bundleID"] isKindOfClass:NSString.class] ? entry[@"bundleID"] : @"";
-        if (title.length) {
-            _nameLabel = [[UILabel alloc] init];
-            _nameLabel.text = title;
-            _nameLabel.font = [UIFont systemFontOfSize:13.5 weight:UIFontWeightSemibold];
-            _nameLabel.textColor = UIColor.whiteColor;
-            _nameLabel.backgroundColor = [UIColor colorWithWhite:0.09 alpha:0.9];
-            _nameLabel.textAlignment = NSTextAlignmentCenter;
-            _nameLabel.alpha = 0;
-            CGSize text = [_nameLabel sizeThatFits:CGSizeMake(260, 22)];
-            CGFloat width = MIN(260, text.width + 20);
-            _nameLabel.frame = CGRectMake((size - width) / 2, -28, width, 22);
-            _nameLabel.layer.cornerRadius = 11;
-            _nameLabel.clipsToBounds = YES;
-            [self addSubview:_nameLabel];
-        }
+        // Match the side panel: icons only, no floating application-name bubble.
+
     }
     return self;
 }
@@ -183,7 +168,6 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
     [UIView animateWithDuration:0.12 delay:0 options:UIViewAnimationOptionBeginFromCurrentState animations:^{
         self.transform = CGAffineTransformMakeScale(scale, scale);
         self.glowView.alpha = glowAlpha;
-        self.nameLabel.alpha = highlighted ? 1.0 : 0.0;
     } completion:nil];
 }
 @end
@@ -443,6 +427,16 @@ static UIImage *TWIconImageForBundleID(NSString *bundleID) {
 // 改成带首字的彩色圆角块，一眼能认。
 - (UIImage *)placeholderImageForEntry:(NSDictionary *)entry {
     NSString *title = [entry[@"title"] isKindOfClass:NSString.class] ? entry[@"title"] : nil;
+    NSString *action = [entry[@"actionID"] isKindOfClass:NSString.class] ? entry[@"actionID"] : nil;
+    if (action.length) {
+        NSDictionary *symbols = @{@"px.action.dark":@"moon.fill", @"px.action.record":@"record.circle",
+            @"px.action.rotation":@"lock.rotation", @"px.action.window":@"rectangle.on.rectangle",
+            @"px.action.screenshot":@"camera.viewfinder", @"px.action.recent":@"clock.arrow.circlepath",
+            @"px.action.brightness":@"sun.max.fill", @"px.action.search":@"magnifyingglass",
+            @"px.action.kayoko":@"doc.on.clipboard", @"px.action.restart":@"arrow.clockwise"};
+        UIImage *glyph = [UIImage systemImageNamed:symbols[action] ?: @"bolt.fill"];
+        if (glyph) return [glyph imageWithTintColor:UIColor.whiteColor renderingMode:UIImageRenderingModeAlwaysOriginal];
+    }
     if (!title.length) title = [entry[@"bundleID"] isKindOfClass:NSString.class] ? entry[@"bundleID"] : @"?";
     NSString *letter = title.length ? [title substringToIndex:1] : @"?";
     CGSize size = CGSizeMake(96, 96);

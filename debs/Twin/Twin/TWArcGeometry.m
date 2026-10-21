@@ -209,6 +209,15 @@ static const CGFloat kTWBottomInset = 28;      // Home 条区不触发
             capacity = (ring == 0) ? first : (first + ring);
         }
         NSInteger n = MIN(remaining, MAX(capacity, 1));
+        // The same "图标间隙" value also sets the minimum centre-to-centre chord
+        // inside a ring. Without this, only the ring-to-ring distance changed:
+        // the inner ring stayed cramped while outer rings looked scattered.
+        CGFloat chord = MAX(1.0, iconSize + ringGap);
+        CGFloat minStep = 2.0 * asin(MIN(1.0, chord / MAX(2.0 * rowRadius, 1.0)));
+        if (minStep > 0.001) {
+            NSInteger fits = (NSInteger)floor(fabs(sweep) / minStep) + 1;
+            n = MIN(n, MAX(fits, 1));
+        }
         // Edge-angle inset follows icon extent / row radius, rather than a fixed 6°.
         CGFloat inset = asin(MIN(1.0, iconSize * 0.5 / MAX(rowRadius, 1)));
         inset = MIN(inset, fabs(sweep) * 0.5);

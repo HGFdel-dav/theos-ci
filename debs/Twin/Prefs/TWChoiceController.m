@@ -21,9 +21,12 @@
 }
 - (NSArray *)specifiers {
     if (!_specifiers) {
-        NSMutableArray *rows = [NSMutableArray array];
-        for (NSString *title in _titles) {
-            PSSpecifier *s = [PSSpecifier preferenceSpecifierNamed:title target:self set:NULL get:NULL detail:Nil cell:PSStaticTextCell edit:NULL];
+        NSMutableArray *rows = [NSMutableArray arrayWithObject:[PSSpecifier groupSpecifierWithName:@""]];
+        for (NSUInteger i = 0; i < _titles.count; i++) {
+            NSString *title = _titles[i];
+            PSSpecifier *s = [PSSpecifier preferenceSpecifierNamed:title target:self set:NULL get:NULL detail:Nil cell:PSButtonCell edit:NULL];
+            [s setProperty:@(i) forKey:@"twChoiceIndex"];
+            [s setButtonAction:@selector(twSelectChoice:)];
             [rows addObject:s];
         }
         _specifiers = rows;
@@ -41,17 +44,24 @@
 }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];
-    cell.accessoryType = indexPath.row == [self currentIndex] ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
+    PSSpecifier *sp = [self specifierAtIndexPath:indexPath];
+    cell.textLabel.textColor = UIColor.labelColor;
+    cell.userInteractionEnabled = YES;
+    cell.accessoryType = [[sp propertyForKey:@"twChoiceIndex"] integerValue] == [self currentIndex] ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
     return cell;
 }
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    if (indexPath.row < 0 || indexPath.row >= (NSInteger)_values.count) return;
-    id value = _values[(NSUInteger)indexPath.row];
+- (void)twSelectChoice:(PSSpecifier *)sp {
+    NSInteger row = [[sp propertyForKey:@"twChoiceIndex"] integerValue];
+    if (row < 0 || row >= (NSInteger)_values.count) return;
+    id value = _values[(NSUInteger)row];
     if (self.writeValue) self.writeValue(value);
     else { [[TWPrefs shared] setObject:value forKey:_prefKey]; [[TWPrefs shared] synchronize]; }
-    [tableView reloadData];
+    [self.tableView reloadData];
     [self.navigationController popViewControllerAnimated:YES];
+}
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    [self twSelectChoice:[self specifierAtIndexPath:indexPath]];
 }
 @end

@@ -1,88 +1,60 @@
-// TWLogController.m
-// 运行日志：读 com.niubiprass.twin.log 域里的环形缓冲（最近 200 条），
-// 设置里直接看，点右上角「复制」可以整段发给开发者。
 #import "TWLogController.h"
+#import "TWSpecifiers.h"
 #import <CoreFoundation/CoreFoundation.h>
-
 static NSString *const kLogDomain = @"com.niubiprass.twin.log";
-
 @implementation TWLogController {
     NSArray<NSString *> *_lines;
 }
-
-// PSListController owns initForContentSize: and may dispatch back to -init.
-// Keep the normal initializer one-way; inherit the content-size adapter.
 - (instancetype)init {
     if ((self = [super init])) self.title = @"运行日志";
     return self;
 }
+- (void)twReadLines {
+    CFPreferencesAppSynchronize((__bridge CFStringRef)kLogDomain);
+    CFPropertyListRef raw = CFPreferencesCopyAppValue(CFSTR("TWRuntimeLog"), (__bridge CFStringRef)kLogDomain);
+    id value = raw ? CFBridgingRelease(raw) : nil;
+    NSMutableArray *clean = [NSMutableArray array];
+    if ([value isKindOfClass:NSArray.class]) for (id item in value) if ([item isKindOfClass:NSString.class]) [clean addObject:item];
+    _lines = clean.reverseObjectEnumerator.allObjects;
+}
 - (NSArray *)specifiers {
-    if (!_specifiers) _specifiers = [NSMutableArray array];
+    if (!_specifiers) {
+        [self twReadLines];
+        NSMutableArray *rows = [NSMutableArray arrayWithObject:TWGroupSpecifier(@"运行日志", @"最近 200 条，最新在上。下拉刷新，右上角复制。")];
+        for (NSString *line in _lines) {
+            PSSpecifier *sp = [PSSpecifier preferenceSpecifierNamed:line target:self set:NULL get:NULL detail:Nil cell:PSStaticTextCell edit:NULL];
+            [rows addObject:sp];
+        }
+        if (!_lines.count) [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"还没有日志" target:self set:NULL get:NULL detail:Nil cell:PSStaticTextCell edit:NULL]];
+        _specifiers = rows;
+    }
     return _specifiers;
 }
-
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
-    self.navigationItem.rightBarButtonItem =
-        [[UIBarButtonItem alloc] initWithTitle:@"复制" style:UIBarButtonItemStylePlain
-                                        target:self action:@selector(twCopyAll)];
-    // 不占用左上角（那是系统返回键），刷新改成下拉。
-    UIRefreshControl *refresh = [[UIRefreshControl alloc] init];
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"复制" style:UIBarButtonItemStylePlain target:self action:@selector(twCopyAll)];
+    UIRefreshControl *refresh = [UIRefreshControl new];
     [refresh addTarget:self action:@selector(twReload) forControlEvents:UIControlEventValueChanged];
     self.tableView.refreshControl = refresh;
-    [self twReload];
 }
-
-- (void)twReload {
-    CFPreferencesAppSynchronize((__bridge CFStringRef)kLogDomain);
-    CFPropertyListRef v = CFPreferencesCopyAppValue(CFSTR("TWRuntimeLog"),
-                                                    (__bridge CFStringRef)kLogDomain);
-    NSArray *lines = nil;
-    if (v && CFGetTypeID(v) == CFArrayGetTypeID()) {
-        lines = (__bridge_transfer NSArray *)v;
-    } else if (v) {
-        CFRelease(v);
-    }
-    _lines = [lines isKindOfClass:NSArray.class] ? [lines reverseObjectEnumerator].allObjects : @[];
-    [self.tableView.refreshControl endRefreshing];
-    [self.tableView reloadData];
-}
-
+- (void)twReload { _specifiers = nil; [self reloadSpecifiers]; [self.tableView.refreshControl endRefreshing]; }
 - (void)twCopyAll {
-    NSString *all = [_lines componentsJoinedByString:@"\n"];
-    if (!all.length) all = @"(还没有日志)";
-    UIPasteboard.generalPasteboard.string = all;
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"已复制"
-                                                                  message:@"日志已复制到剪贴板，直接粘贴发给我就行。"
-                                                           preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
+    UIPasteboard.generalPasteboard.string = [_lines componentsJoinedByString:@"\n"];
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"已复制" message:@"日志已复制到剪贴板。" preferredStyle:UIAlertControllerStyleAlert];
+    [a addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:a animated:YES completion:nil];
 }
-
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 1; }
-
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return MAX((NSInteger)_lines.count, 1);
-}
-
-- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-    return @"最近 200 条。反序显示（最新的在最上面）。设置项改动、手势命中、菜单弹出、图标取图结果都会记在这里。";
-}
-
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"log"];
-    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"log"];
+    UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];
     cell.textLabel.numberOfLines = 0;
     cell.textLabel.font = [UIFont monospacedSystemFontOfSize:11 weight:UIFontWeightRegular];
-    cell.textLabel.textColor = UIColor.labelColor;
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
-    if (!_lines.count) {
-        cell.textLabel.text = @"(还没有日志)";
-        cell.textLabel.font = [UIFont systemFontOfSize:15];
-    } else {
-        cell.textLabel.text = _lines[(NSUInteger)indexPath.row];
-    }
     return cell;
+}
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    NSString *text = [self specifierAtIndexPath:indexPath].name ?: @"";
+    CGRect box = [text boundingRectWithSize:CGSizeMake(MAX(80, tableView.bounds.size.width - 64), 1000) options:NSStringDrawingUsesLineFragmentOrigin attributes:@{NSFontAttributeName:[UIFont monospacedSystemFontOfSize:11 weight:UIFontWeightRegular]} context:nil];
+    return MAX(44, ceil(box.size.height) + 24);
 }
 @end

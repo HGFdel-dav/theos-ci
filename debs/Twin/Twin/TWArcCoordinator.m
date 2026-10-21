@@ -988,6 +988,15 @@ static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
     });
 }
 
+static NSString *TWArcActionTitle(NSString *identifier) {
+    NSDictionary *names = @{@"px.action.dark":@"深色模式", @"px.action.record":@"屏幕录制",
+        @"px.action.rotation":@"旋转锁定", @"px.action.window":@"当前应用分屏",
+        @"px.action.screenshot":@"截屏", @"px.action.recent":@"最近应用",
+        @"px.action.brightness":@"亮度", @"px.action.search":@"应用搜索",
+        @"px.action.kayoko":@"剪贴板", @"px.action.restart":@"重新启动"};
+    return names[identifier] ?: [identifier stringByReplacingOccurrencesOfString:@"px.action." withString:@""];
+}
+
 #pragma mark - 菜单条目（一个容器 = 一个图标）
 
 // 优先用面板里配置过的容器清单；没配置就现场问 Crane 要容器；再不行退回"最近使用应用"。
@@ -1089,6 +1098,22 @@ static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
                              @"title": name,
                              @"badge": @""}];
     }
+    // The side panel lists built-in quick actions (px.action.*) from the same
+    // `applications` array. Mirror them here so both wake methods show the
+    // same items; launching goes through the engine's verified entry point.
+    @try {
+        CFStringRef domain = CFSTR("com.moxuan.parallelx");
+        CFPreferencesAppSynchronize(domain);
+        CFPropertyListRef raw = CFPreferencesCopyAppValue(CFSTR("applications"), domain);
+        id list = raw ? CFBridgingRelease(raw) : nil;
+        if ([list isKindOfClass:NSArray.class]) {
+            for (id item in list) {
+                if (![item isKindOfClass:NSString.class] || ![item hasPrefix:@"px."]) continue;
+                if ([item hasPrefix:@"px.custom.twin-container."]) continue;
+                [entries addObject:@{@"actionID":item, @"title":TWArcActionTitle(item), @"badge":@""}];
+            }
+        }
+    } @catch (__unused NSException *e) {}
     return entries;
 }
 
@@ -1101,6 +1126,12 @@ static void TWArcSchedulePrefetch(NSArray<NSString *> *apps) {
 }
 
 - (void)launchEntry:(NSDictionary *)entry fullscreen:(BOOL)fullscreen {
+    NSString *actionID = [entry[@"actionID"] isKindOfClass:NSString.class] ? entry[@"actionID"] : @"";
+    if (actionID.length) {
+        // Same engine call the side panel uses for quick actions.
+        if (TWArcDeviceUnlocked()) [self performParallelXLaunch:actionID selector:@"applicationActivated:"];
+        return;
+    }
     NSString *bundleID = entry[@"bundleID"];
     if (![bundleID isKindOfClass:[NSString class]] || !bundleID.length || !TWArcDeviceUnlocked()) return;
     NSString *containerID = [entry[@"containerID"] isKindOfClass:[NSString class]] ? entry[@"containerID"] : @"";

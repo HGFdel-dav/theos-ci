@@ -208,304 +208,179 @@ static NSArray<NSString *> *TWCraneContainerIDsForBundleID(NSString *bundleID) {
 #pragma mark - 分身应用（容器）
 
 @implementation TWContainerListController {
-    NSArray<NSDictionary *> *_rows;   // {bundleID, containerID, enabled} 自动发现 + 开关状态
+    NSArray<NSDictionary *> *_rows;
 }
-
 - (instancetype)init {
     if ((self = [super init])) self.title = @"分身应用";
     return self;
 }
-- (NSArray *)specifiers {
-    if (!_specifiers) _specifiers = [NSMutableArray array];
-    return _specifiers;
-}
-
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
-    UIRefreshControl *refresh = [[UIRefreshControl alloc] init];
-    [refresh addTarget:self action:@selector(reloadContainers) forControlEvents:UIControlEventValueChanged];
-    self.tableView.refreshControl = refresh;
-    [self reloadContainers];
-}
-
-- (void)viewWillAppear:(BOOL)animated {
-    [super viewWillAppear:animated];
-    [self reloadContainers];
-}
-
-- (void)reloadContainers {
-    // 旧数据：用户已有的开关状态（同一键，兼容 0.5.x 存储格式）
-    NSDictionary *saved = [[TWPrefs shared] objectForKey:TWKeyCraneContainers];
-    NSMutableDictionary<NSString *, NSNumber *> *enabledMap = [NSMutableDictionary dictionary];
-    if ([saved isKindOfClass:NSArray.class]) {
-        for (id item in (NSArray *)saved) {
-            if (![item isKindOfClass:NSDictionary.class]) continue;
-            NSString *bundleID = item[@"bundleID"];
-            NSString *containerID = item[@"containerID"];
-            if (![bundleID isKindOfClass:NSString.class]) continue;
-            if (![containerID isKindOfClass:NSString.class]) containerID = @"DEFAULT";
-            if (!containerID.length) containerID = @"DEFAULT";   // 0.9.12 及以前的空串＝默认容器
-            id enabled = item[@"enabled"];
-            BOOL on = [enabled respondsToSelector:@selector(boolValue)] ? [enabled boolValue] : YES;
-            enabledMap[[NSString stringWithFormat:@"%@|%@", bundleID, containerID]] = @(on);
-        }
+// Use real group/row specifiers, as in the original container controller.
+// Overriding table section counts while returning an empty _specifiers made
+// PSListController's inherited header-height lookup index an empty group list.
+- (void)twLoadContainerRows {
+    id raw = [TWPrefs.shared objectForKey:TWKeyCraneContainers];
+    NSMutableDictionary *enabled = [NSMutableDictionary dictionary];
+    if ([raw isKindOfClass:NSArray.class]) for (id item in raw) {
+        if (![item isKindOfClass:NSDictionary.class]) continue;
+        NSString *bid = item[@"bundleID"], *cid = item[@"containerID"];
+        if (![bid isKindOfClass:NSString.class] || !bid.length) continue;
+        if (![cid isKindOfClass:NSString.class] || !cid.length) cid = @"DEFAULT";
+        enabled[[NSString stringWithFormat:@"%@|%@", bid, cid]] = @(!item[@"enabled"] || [item[@"enabled"] boolValue]);
     }
-
-    NSMutableArray<NSDictionary *> *rows = [NSMutableArray array];
-    for (NSString *bundleID in TWCraneAppsWithContainers()) {
-        NSMutableArray<NSString *> *ids = [NSMutableArray arrayWithObject:@"DEFAULT"];
-        for (NSString *cid in TWCraneContainerIDsForBundleID(bundleID)) {
-            if (!cid.length || [cid isEqualToString:@"DEFAULT"]) continue;
-            [ids addObject:cid];
-        }
-        for (NSString *containerID in ids) {
-            NSString *mapKey = [NSString stringWithFormat:@"%@|%@", bundleID, containerID];
-            NSNumber *enabled = enabledMap[mapKey];
-            [rows addObject:@{
-                @"bundleID": bundleID,
-                @"containerID": containerID,
-                @"enabled": enabled ?: @YES,   // 新发现默认开（与 ScreenCore 一致）
-            }];
+    NSMutableArray *rows = [NSMutableArray array];
+    for (NSString *bid in TWCraneAppsWithContainers()) {
+        NSMutableOrderedSet *ids = [NSMutableOrderedSet orderedSetWithArray:@[@"DEFAULT"]];
+        for (NSString *cid in TWCraneContainerIDsForBundleID(bid)) if (cid.length) [ids addObject:cid];
+        for (NSString *cid in ids) {
+            NSString *key = [NSString stringWithFormat:@"%@|%@", bid, cid];
+            [rows addObject:@{@"bundleID":bid, @"containerID":cid, @"enabled":enabled[key] ?: @YES}];
         }
     }
     _rows = rows;
-    [self.tableView.refreshControl endRefreshing];
-    [self.tableView reloadData];
 }
-
-- (void)persistRows {
-    NSMutableArray<NSDictionary *> *saved = [NSMutableArray array];
-    for (NSDictionary *row in _rows) {
-        [saved addObject:@{
-            @"bundleID": row[@"bundleID"],
-            @"containerID": row[@"containerID"] ?: @"",
-            @"name": TWPrefsAppName(row[@"bundleID"]),
-            @"badge": [row[@"containerID"] isEqualToString:@"DEFAULT"] ? @"默" : @"分",
-            @"enabled": row[@"enabled"] ?: @YES,
-        }];
-    }
-    TWSaveContainers(saved);
-}
-
-- (void)switchToggled:(UISwitch *)sw {
-    NSInteger idx = sw.tag;
-    if (idx < 0 || idx >= (NSInteger)_rows.count) return;
-    NSMutableArray *updated = [_rows mutableCopy];
-    NSMutableDictionary *row = [updated[(NSUInteger)idx] mutableCopy];
-    row[@"enabled"] = @(sw.isOn);
-    updated[(NSUInteger)idx] = row;
-    _rows = updated;
-    [self persistRows];
-}
-
-#pragma mark - 开关行（分身打开）
-
-- (void)masterSwitchToggled:(UISwitch *)sw {
-    [[TWPrefs shared] setBool:sw.isOn forKey:TWKeyCraneEnabled];
-    [[TWPrefs shared] synchronize];
-    TWPublishContainerActions();
-}
-
-#pragma mark - table
-
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 2; }
-
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    if (section == 0) return 1;
-    return _rows.count ? (NSInteger)_rows.count : 1;
-}
-
-- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    return section == 1 ? @"分身容器" : nil;
-}
-
-- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-    if (section == 0) return nil;
-    if (!_rows.count) {
-        if (![NSFileManager.defaultManager fileExistsAtPath:@"/var/mobile/Library/Twin/crane-containers.plist"]) {
-            return @"Twin 后台还没导出容器清单（分身功能未加载或导出失败）。\n请确认分身功能可用，然后下拉刷新重试。\n诊断日志：/var/mobile/Library/Twin/export.log";
+- (NSArray *)specifiers {
+    if (!_specifiers) {
+        [self twLoadContainerRows];
+        NSMutableArray *specs = [NSMutableArray array];
+        [specs addObject:TWGroupSpecifier(nil, nil)];
+        [specs addObject:TWRowSpecifier(self, @"分身打开", TWKeyCraneEnabled, @YES, nil, PSSwitchCell, nil, nil, @{@"height":@50})];
+        NSString *footer = _rows.count ? @"只开启需要显示的容器；普通应用不会进入容器切换。两种唤醒共用相同容器条目。" : @"没有发现分身容器，可下拉刷新。原有配置不会因空扫描结果被删除。";
+        [specs addObject:TWGroupSpecifier(@"分身容器", footer)];
+        for (NSDictionary *row in _rows) {
+            NSString *bid = row[@"bundleID"], *cid = row[@"containerID"];
+            NSString *title = [NSString stringWithFormat:@"%@ · %@", TWPrefsAppName(bid), TWCraneContainerName(cid, bid)];
+            PSSpecifier *sp = TWRowSpecifier(self, title, nil, row[@"enabled"], nil, PSSwitchCell, nil, nil,
+                @{@"height":@58, @"twContainer":row});
+            UIImage *icon = TWAppIcon(bid);
+            if (icon) [sp setProperty:icon forKey:@"iconImage"];
+            [specs addObject:sp];
         }
-        return @"没有发现容器。先给应用建好分身容器，再回来下拉刷新。";
+        if (!_rows.count) [specs addObject:[PSSpecifier preferenceSpecifierNamed:@"暂无可加入的容器" target:self set:NULL get:NULL detail:Nil cell:PSStaticTextCell edit:NULL]];
+        _specifiers = specs;
     }
-    return @"「应用名 - 容器名」：开关控制它是否出现在 Twin 的弧形菜单里。\n容器标识可在分身设置中查看。\n\n⚠️ 认证取消或容器核验不符时不会打开应用。";
+    return _specifiers;
 }
-
-- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    
-
-        return 58;
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
+    UIRefreshControl *refresh = [UIRefreshControl new];
+    [refresh addTarget:self action:@selector(reloadContainers) forControlEvents:UIControlEventValueChanged];
+    self.tableView.refreshControl = refresh;
 }
-
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (indexPath.section == 0) {
-        UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"master"];
-        cell.textLabel.text = @"分身打开";
-        cell.selectionStyle = UITableViewCellSelectionStyleNone;
-        UISwitch *sw = [[UISwitch alloc] init];
-        sw.on = [[TWPrefs shared] boolForKey:TWKeyCraneEnabled defaultValue:YES];
-        [sw addTarget:self action:@selector(masterSwitchToggled:) forControlEvents:UIControlEventValueChanged];
-        cell.accessoryView = sw;
-        return cell;
+- (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self reloadContainers]; }
+- (void)reloadContainers {
+    _specifiers = nil;
+    [self reloadSpecifiers];
+    [self.tableView.refreshControl endRefreshing];
+}
+- (id)readPreferenceValue:(PSSpecifier *)sp {
+    NSDictionary *row = [sp propertyForKey:@"twContainer"];
+    if (!row) return @([TWPrefs.shared boolForKey:TWKeyCraneEnabled defaultValue:YES]);
+    return row[@"enabled"] ?: @YES;
+}
+- (void)setPreferenceValue:(id)value specifier:(PSSpecifier *)sp {
+    NSDictionary *row = [sp propertyForKey:@"twContainer"];
+    if (!row) {
+        [TWPrefs.shared setBool:[value boolValue] forKey:TWKeyCraneEnabled];
+        [TWPrefs.shared synchronize]; TWPublishContainerActions(); return;
     }
-
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"crane"];
-    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"crane"];
-    cell.imageView.image = nil;
-    cell.textLabel.text = nil;
-    cell.accessoryView = nil;
-    cell.selectionStyle = UITableViewCellSelectionStyleNone;
-
-    if (!_rows.count) {
-        cell.textLabel.text = @"暂无可加入的应用";
-        cell.textLabel.textColor = UIColor.secondaryLabelColor;
-        cell.accessoryType = UITableViewCellAccessoryNone;
-        return cell;
+    NSMutableArray *updated = [NSMutableArray array];
+    for (NSDictionary *old in _rows) {
+        NSMutableDictionary *copy = [old mutableCopy];
+        if ([old[@"bundleID"] isEqual:row[@"bundleID"]] && [old[@"containerID"] isEqual:row[@"containerID"]]) copy[@"enabled"] = @([value boolValue]);
+        copy[@"name"] = TWPrefsAppName(copy[@"bundleID"]);
+        [updated addObject:copy];
     }
-
-    NSDictionary *row = _rows[(NSUInteger)indexPath.row];
-    NSString *bundleID = row[@"bundleID"];
-    NSString *containerID = row[@"containerID"] ?: @"";
-    NSString *appName = TWPrefsAppName(bundleID);
-    NSString *containerName = TWCraneContainerName(containerID, bundleID);
-    // ScreenCore 同款行：应用图标 + 应用名 - 容器名 + 开关
-    cell.imageView.image = TWAppIcon(bundleID);
-    cell.textLabel.text = [NSString stringWithFormat:@"%@ - %@", appName, containerName];
-    cell.textLabel.textColor = UIColor.labelColor;
-    UISwitch *sw = [[UISwitch alloc] init];
-    sw.on = [row[@"enabled"] boolValue];
-    sw.tag = indexPath.row;
-    [sw addTarget:self action:@selector(switchToggled:) forControlEvents:UIControlEventValueChanged];
-    cell.accessoryView = sw;
-    return cell;
+    _rows = updated;
+    TWSaveContainers(updated);
+    NSMutableDictionary *copy = [row mutableCopy]; copy[@"enabled"] = @([value boolValue]);
+    [sp setProperty:copy forKey:@"twContainer"];
 }
-
 @end
 
-#pragma mark - Arc 图标顺序（应用、快捷操作与排序）
 
 @implementation TWArcOrderController {
-    NSMutableArray<NSString *> *_selected;   // 已选，按顺序
-    NSArray<NSString *> *_allApps;           // 全部已安装
+    NSMutableArray<NSString *> *_selected;
+    NSArray<NSString *> *_allApps;
     BOOL _editingOrder;
 }
-
 - (instancetype)init {
     if ((self = [super init])) self.title = @"应用、快捷操作与排序";
     return self;
 }
 - (NSArray *)specifiers {
-    if (!_specifiers) _specifiers = [NSMutableArray array];
+    if (!_specifiers) {
+        if (!_selected) _selected = [NSMutableArray arrayWithArray:TWArcOrderList() ?: @[]];
+        if (!_allApps) _allApps = TWInstalledAppIdentifiers();
+        NSMutableArray *rows = [NSMutableArray array];
+        [rows addObject:TWGroupSpecifier(@"已选择（按顺序显示）", @"点应用移除，进入排序后拖动右侧手柄。不卸载应用；扇形与半圆菜单共用清单。")];
+        for (NSString *bid in _selected) {
+            PSSpecifier *sp = TWButtonRowSpecifier(self, TWPrefsAppName(bid), @"toggleApplication:", nil, NO,
+                @{@"twBundleID":bid, @"twSelected":@YES, @"height":@50});
+            UIImage *icon = TWAppIcon(bid); if (icon) [sp setProperty:icon forKey:@"iconImage"];
+            [rows addObject:sp];
+        }
+        [rows addObject:TWGroupSpecifier(@"更多应用", nil)];
+        for (NSString *bid in _allApps) {
+            if ([_selected containsObject:bid]) continue;
+            PSSpecifier *sp = TWButtonRowSpecifier(self, TWPrefsAppName(bid), @"toggleApplication:", nil, NO,
+                @{@"twBundleID":bid, @"twSelected":@NO, @"height":@50});
+            UIImage *icon = TWAppIcon(bid); if (icon) [sp setProperty:icon forKey:@"iconImage"];
+            [rows addObject:sp];
+        }
+        _specifiers = rows;
+    }
     return _specifiers;
 }
-
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
-    // 左侧不设自定义按钮，保留系统返回。
-    self.navigationItem.rightBarButtonItem =
-        [[UIBarButtonItem alloc] initWithTitle:@"排序" style:UIBarButtonItemStylePlain
-                                        target:self action:@selector(toggleEditing)];
-    [self reloadApps];
+    self.tableView.allowsSelectionDuringEditing = YES;
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"排序" style:UIBarButtonItemStylePlain target:self action:@selector(toggleEditing)];
 }
-
-- (void)viewWillAppear:(BOOL)animated {
-    [super viewWillAppear:animated];
-    [self reloadApps];
-}
-
-- (void)toggleEditing {
-    _editingOrder = !_editingOrder;
-    [self setEditing:_editingOrder animated:YES];
-    [self.tableView setEditing:_editingOrder animated:YES];
-    self.navigationItem.rightBarButtonItem.title = _editingOrder ? @"完成" : @"排序";
-    [self.tableView reloadData];
-}
-
+- (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [self reloadApps]; }
 - (void)reloadApps {
     _selected = [NSMutableArray arrayWithArray:TWArcOrderList() ?: @[]];
-    _allApps = TWInstalledAppIdentifiers();
-    self.tableView.allowsSelectionDuringEditing = YES;
-    [self.tableView reloadData];
+    _allApps = TWInstalledAppIdentifiers(); _specifiers = nil;
+    [self reloadSpecifiers];
 }
-
-// 第二段：未选的剩余应用
-- (NSArray<NSString *> *)unselectedApps {
-    NSMutableArray *rest = [NSMutableArray array];
-    for (NSString *bid in _allApps) if (![_selected containsObject:bid]) [rest addObject:bid];
-    return rest;
+- (void)toggleEditing {
+    _editingOrder = !_editingOrder;
+    [self.tableView setEditing:_editingOrder animated:YES];
+    self.navigationItem.rightBarButtonItem.title = _editingOrder ? @"完成" : @"排序";
 }
-
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 2; }
-
-- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    return section == 0 ? @"已选择（按顺序显示）" : @"更多应用";
+- (void)toggleApplication:(PSSpecifier *)sp {
+    NSString *bid = [sp propertyForKey:@"twBundleID"];
+    if (![bid isKindOfClass:NSString.class] || !bid.length) return;
+    if ([_selected containsObject:bid]) [_selected removeObject:bid]; else [_selected addObject:bid];
+    TWSetArcOrderList(_selected); _specifiers = nil; [self reloadSpecifiers];
 }
-
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return section == 0 ? (NSInteger)_selected.count : (NSInteger)self.unselectedApps.count;
-}
-
-- (NSString *)bundleIDAtIndexPath:(NSIndexPath *)indexPath {
-    if (indexPath.section == 0) return _selected[(NSUInteger)indexPath.row];
-    return self.unselectedApps[(NSUInteger)indexPath.row];
-}
-
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    static NSString *cellID = @"TWArcOrderCell";
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellID];
-    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellID];
-    NSString *bundleID = [self bundleIDAtIndexPath:indexPath];
-    cell.imageView.image = TWAppIcon(bundleID);
-    cell.textLabel.text = TWPrefsAppName(bundleID);
-    cell.textLabel.textColor = UIColor.labelColor;
-    cell.showsReorderControl = (indexPath.section == 0);
-    cell.accessoryType = UITableViewCellAccessoryNone;
-    if (indexPath.section == 0) {
-        cell.textLabel.text = [NSString stringWithFormat:@"%ld. %@", (long)indexPath.row + 1, TWPrefsAppName(bundleID)];
-    }
-    return cell;
-}
-
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    NSString *bundleID = [self bundleIDAtIndexPath:indexPath];
-    if (indexPath.section == 0) {
-        [_selected removeObject:bundleID];
-    } else {
-        [_selected addObject:bundleID];
-    }
-    TWSetArcOrderList(_selected);
-    [self.tableView reloadData];
+    PSSpecifier *sp = [self specifierAtIndexPath:indexPath];
+    if ([sp propertyForKey:@"twBundleID"]) [self toggleApplication:sp];
+    else [super tableView:tableView didSelectRowAtIndexPath:indexPath];
 }
-
-- (UITableViewCellEditingStyle)tableView:(UITableView *)tableView editingStyleForRowAtIndexPath:(NSIndexPath *)indexPath {
-    // Selection tap removes/adds entries; native delete controls duplicated that action without a handler.
-    return UITableViewCellEditingStyleNone;
-}
-
-- (BOOL)tableView:(UITableView *)tableView shouldIndentWhileEditingRowAtIndexPath:(NSIndexPath *)indexPath { return NO; }
-
 - (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
-    return indexPath.section == 0;
+    return [[[self specifierAtIndexPath:indexPath] propertyForKey:@"twSelected"] boolValue];
 }
-
 - (BOOL)tableView:(UITableView *)tableView canMoveRowAtIndexPath:(NSIndexPath *)indexPath {
-    return indexPath.section == 0;
+    return [[[self specifierAtIndexPath:indexPath] propertyForKey:@"twSelected"] boolValue];
 }
-
+- (UITableViewCellEditingStyle)tableView:(UITableView *)tableView editingStyleForRowAtIndexPath:(NSIndexPath *)indexPath { return UITableViewCellEditingStyleNone; }
+- (BOOL)tableView:(UITableView *)tableView shouldIndentWhileEditingRowAtIndexPath:(NSIndexPath *)indexPath { return NO; }
 - (NSIndexPath *)tableView:(UITableView *)tableView targetIndexPathForMoveFromRowAtIndexPath:(NSIndexPath *)source toProposedIndexPath:(NSIndexPath *)destination {
-    if (destination.section != 0) return [NSIndexPath indexPathForRow:MAX((NSInteger)_selected.count - 1, 0) inSection:0];
+    if (destination.section != 0) return [NSIndexPath indexPathForRow:MAX(0, (NSInteger)_selected.count - 1) inSection:0];
     return destination;
 }
-
-- (void)tableView:(UITableView *)tableView moveRowAtIndexPath:(NSIndexPath *)sourceIndexPath
-      toIndexPath:(NSIndexPath *)destinationIndexPath {
-    if (sourceIndexPath.section != 0 || destinationIndexPath.section != 0) return;
-    NSString *item = _selected[(NSUInteger)sourceIndexPath.row];
-    [_selected removeObjectAtIndex:(NSUInteger)sourceIndexPath.row];
-    [_selected insertObject:item atIndex:(NSUInteger)destinationIndexPath.row];
+- (void)tableView:(UITableView *)tableView moveRowAtIndexPath:(NSIndexPath *)source toIndexPath:(NSIndexPath *)destination {
+    if (source.section != 0 || destination.section != 0 || source.row < 0 || destination.row < 0 || source.row >= (NSInteger)_selected.count || destination.row >= (NSInteger)_selected.count) return;
+    NSString *bid = _selected[(NSUInteger)source.row];
+    [_selected removeObjectAtIndex:(NSUInteger)source.row]; [_selected insertObject:bid atIndex:(NSUInteger)destination.row];
     TWSetArcOrderList(_selected);
+    // Rebuild the specifier order too: the next inherited header or row lookup
+    // must see the same ordering as UITableView's committed move.
+    _specifiers = nil;
+    dispatch_async(dispatch_get_main_queue(), ^{ [self reloadSpecifiers]; });
 }
-
 @end
