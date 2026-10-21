@@ -139,7 +139,9 @@ static const CGFloat kTWBottomInset = 28;      // Home 条区不触发
     CGFloat stepOut = iconSize + ringGap;
 
     while (remaining > 0 && ring < 8) {
-        NSInteger capacity = (ring == 0) ? first : perRing;
+        // 原版扇形排布：一圈比一圈多一个（第一环 N 个，第二环 N+1，第三环 N+2…），
+        // 而不是每环都按同一个最大容量硬塞。
+        NSInteger capacity = (ring == 0) ? first : (first + ring);
         NSInteger n = MIN(remaining, MAX(capacity, 1));
         for (NSInteger i = 0; i < n; i++) {
             CGFloat t = (n == 1) ? 0.5 : (CGFloat)i / (CGFloat)(n - 1);
