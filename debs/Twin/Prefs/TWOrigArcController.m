@@ -2,6 +2,7 @@
 // 原版「触发设置」页：直接读 TwinArcPrefs.bundle 里的 TriggerSettings.plist，
 // 使用 PSListController / PSSpecifier 的原生值链，读写落在原版设置域。
 #import "TWOrigArcController.h"
+#import "TWSpecifiers.h"
 #import <CoreFoundation/CoreFoundation.h>
 #import "TWRuntimeLog.h"
 
