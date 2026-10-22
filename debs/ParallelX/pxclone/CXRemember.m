@@ -8,6 +8,7 @@
 #import "CXPrefs.h"
 #import "CXCraneBridge.h"
 #import "CXLog.h"
+#import "CXArcWake.h"
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
@@ -187,6 +188,7 @@ static void CXScheduleCapture(id entry) {
 }
 
 static void CXResizeHostHook(id self, SEL _cmd, id gesture) {
+    CXLog(@"[remember] resizeHost called");
     if (CXOrigResizeHost) CXOrigResizeHost(self, _cmd, gesture);
     CXScheduleCapture(self);
 }
@@ -218,7 +220,7 @@ void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
     for (int i = 1; i <= 2; i++) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.9 * i * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
-            id entry = CXRememberEntry ?: CXFindPanelEntry();
+            id entry = CXRememberEntry ?: CXArcWakeEntry() ?: CXFindPanelEntry();
             if (!entry) { CXLog(@"[remember] 找不到 PXPanelEntry，跳过恢复"); return; }
             CXApplySize(entry, bundleID, containerID);
         });

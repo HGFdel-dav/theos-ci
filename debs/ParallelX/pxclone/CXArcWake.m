@@ -140,48 +140,26 @@ static UIView *CXFindHandleView(void) {
 
 @end
 
-// 专用窗口：全屏，但只有四个角落的 72x72 区域接收触摸，其余 hitTest 返回 nil 直接穿透
-@interface CXArcWindow : UIWindow
-@end
-
-@implementation CXArcWindow
-- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
-    CGRect b = self.bounds;
-    CGFloat w = 72;
-    BOOL inCorner = (point.x < w && point.y > b.size.height - w) ||
-                    (point.x > b.size.width - w && point.y > b.size.height - w);
-    if (!inCorner) return nil;
-    return [super hitTest:point withEvent:event];
-}
-@end
-
 static CXArcWakeGesture *CXArcGesture;
-static CXArcWindow *CXArcWin;
+
+id CXArcWakeEntry(void) { return CXFindPanelEntry(); }
 
 void CXArcWakeInstall(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
         if (CXArcGesture) return;
-        UIWindow *host = nil;
-        for (UIWindow *window in UIApplication.sharedApplication.windows)
-            if (!window.hidden && window.windowScene) { host = window; break; }
-        if (!host) { CXLog(@"[arc] 没有 windowScene"); return; }
-
-        CXArcWindow *win = [[CXArcWindow alloc] initWithWindowScene:host.windowScene];
-        win.frame = UIScreen.mainScreen.bounds;
-        win.windowLevel = UIWindowLevelAlert + 100;
-        win.backgroundColor = UIColor.clearColor;
-        win.hidden = NO;
-        UIViewController *root = [UIViewController new];
-        root.view.backgroundColor = UIColor.clearColor;
-        win.rootViewController = root;
-        [win makeKeyAndVisible];
-        // 让原来的 key window 继续当 key（避免键盘/焦点异常）
-        [host makeKeyWindow];
-
-        CXArcWakeGesture *g = [CXArcWakeGesture new];
-        [root.view addGestureRecognizer:g];
-        CXArcGesture = g;
-        CXArcWin = win;
-        CXLog(@"[arc] 手势已安装 extWindow level=%.0f", win.windowLevel);
+        // 不建覆盖窗口（会吞掉角落点击）；挂到现有窗口上，只观察不拦截
+        int attached = 0;
+        for (UIWindow *window in UIApplication.sharedApplication.windows) {
+            if (window.hidden || !window.windowScene) continue;
+            CXArcWakeGesture *g = [CXArcWakeGesture new];
+            g.cancelsTouchesInView = NO;
+            g.delaysTouchesBegan = NO;
+            g.delaysTouchesEnded = NO;
+            [window addGestureRecognizer:g];
+            attached++;
+        }
+        id entry = CXFindPanelEntry();
+        CXArcGesture = [CXArcWakeGesture new];   // 只作已安装标记
+        CXLog(@"[arc] 手势已安装到 %d 个窗口（不拦截触摸）", attached);
     });
 }

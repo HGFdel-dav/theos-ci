@@ -141,19 +141,29 @@ static UIImage *CXBadgedIcon(NSString *bundleID, BOOL isDefault) {
     id imagesRaw = CXPXRead(@"shortcutImages");
     if ([imagesRaw isKindOfClass:NSDictionary.class]) [images addEntriesFromDictionary:imagesRaw];
 
-    // 2) 清掉上次注入（type=clonex.open 标记）
+    // 2) 只清理"已经不该存在"的条目；已有条目保留原位置（用户在 PX 里拖过的顺序不能被重置）
+    NSMutableSet<NSString *> *desiredIDs = [NSMutableSet set];
+    for (NSDictionary *item in items) {
+        NSString *bundle = item[@"bundleID"];
+        NSString *container = item[@"containerID"];
+        if (!bundle.length || !container.length) continue;
+        if (![CXCraneBridge isApplicationSupportedByCrane:bundle]) continue;
+        [desiredIDs addObject:CXVirtualID(bundle, container)];
+    }
     NSMutableSet<NSString *> *previousIDs = [NSMutableSet set];
     for (NSDictionary *record in customActions)
         if ([record[@"type"] isEqual:@"clonex.open"] && [record[@"id"] isKindOfClass:NSString.class])
             [previousIDs addObject:record[@"id"]];
     for (NSString *entry in previousIDs) {
+        if ([desiredIDs containsObject:entry]) continue;   // 仍然有效：位置不动
         [applications removeObject:entry];
         [names removeObjectForKey:entry];
         [symbols removeObjectForKey:entry];
         [images removeObjectForKey:entry];
     }
     [customActions filterUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSDictionary *record, id bindings) {
-        return ![record[@"type"] isEqual:@"clonex.open"];
+        if (![record[@"type"] isEqual:@"clonex.open"]) return YES;
+        return [desiredIDs containsObject:record[@"id"] ?: @""];
     }]];
 
     // 3) 全自动：Crane 里有几个容器就注入几条
