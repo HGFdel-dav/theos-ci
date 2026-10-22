@@ -64,7 +64,62 @@ static void CXMarkHandled(NSString *key) {
 
 #pragma mark - 打开分屏窗口（真实 bundle）
 
-static void CXOpenInSplit(NSString *bundleID) {
+static BOOL CXInternalOpen = NO;
+static BOOL CXShowingChooser = NO;
+
+static UIViewController *CXTopViewController(void) {
+    UIViewController *vc = nil;
+    for (UIWindow *window in UIApplication.sharedApplication.windows.reverseObjectEnumerator) {
+        if (window.hidden || !window.rootViewController) continue;
+        vc = window.rootViewController; break;
+    }
+    while (vc.presentedViewController) vc = vc.presentedViewController;
+    return vc;
+}
+
+static void CXOpenInSplit(NSString *bundleID);
+
+// 外部 URL 打开且应用有多容器时：先选账号
+static void CXPromptContainerThenOpen(NSString *bundleID, void (^cancel)(void)) {
+    NSArray<NSDictionary *> *containers = [CXCraneBridge containersForBundleID:bundleID];
+    if (containers.count < 2) { if (cancel) cancel(); return; }
+    UIViewController *host = CXTopViewController();
+    if (!host) { if (cancel) cancel(); return; }
+    CXShowingChooser = YES;
+    NSString *appName = bundleID;
+    Class proxyCls = NSClassFromString(@"LSApplicationProxy");
+    if (proxyCls) {
+        id proxy = ((id (*)(id, SEL, id))objc_msgSend)(proxyCls, NSSelectorFromString(@"applicationProxyForIdentifier:"), bundleID);
+        if (proxy) {
+            id n = ((id (*)(id, SEL))objc_msgSend)(proxy, NSSelectorFromString(@"localizedName"));
+            if ([n isKindOfClass:NSString.class] && [n length]) appName = n;
+        }
+    }
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"选择打开应用"
+                                                                   message:appName
+                                                            preferredStyle:UIAlertControllerStyleActionSheet];
+    for (NSDictionary *entry in containers) {
+        NSString *cid = entry[@"containerID"];
+        BOOL isDefault = [entry[@"isDefault"] boolValue];
+        NSString *title = isDefault ? @"默认" : (entry[@"name"] ?: cid);
+        [sheet addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
+            CXShowingChooser = NO;
+            [CXCraneBridge switchBundleID:bundleID toContainer:cid reload:NO completion:^(BOOL ok) {
+                CXInternalOpen = YES;
+                CXOpenInSplit(bundleID);
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    CXInternalOpen = NO;
+                });
+            }];
+        }]];
+    }
+    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:^(UIAlertAction *a) {
+        CXShowingChooser = NO;
+    }]];
+    [host presentViewController:sheet animated:YES completion:nil];
+}
+
+static void CXOpenInSplitImpl(NSString *bundleID) {
     // ① 首选：+[PXPanelEntry externalOpenApplication:] —— PX 自己会创建桥与容器视图，
     //    日志证实它随后调用 openApplication，视图为 312x675（分屏尺寸）。
     Class entryCls = NSClassFromString(@"PXPanelEntry");
@@ -240,6 +295,17 @@ static void CXActivated(Class cls, SEL _cmd, id argument) {
 
 static void CXExternalOpen(Class cls, SEL _cmd, id argument) {
     if (!CXOrigExternalOpen) return;
+    // 我们自己发起的打开：直接放行
+    if (CXInternalOpen || CXShowingChooser) { CXOrigExternalOpen(cls, _cmd, argument); return; }
+    if ([argument isKindOfClass:NSString.class]) {
+        NSString *bundle = argument;
+        NSDictionary *virtualItem = CXVirtualItemFromArgument(argument);
+        if (!virtualItem && [CXCraneBridge containersForBundleID:bundle].count >= 2) {
+            CXLog(@"[url] %@ 有多账号，弹选择", bundle);
+            CXPromptContainerThenOpen(bundle, ^{ CXOrigExternalOpen(cls, _cmd, argument); });
+            return;
+        }
+    }
     CXHandlePanelEntry(cls, _cmd, argument, CXOrigExternalOpen);
 }
 
