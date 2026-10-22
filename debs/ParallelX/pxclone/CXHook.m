@@ -164,6 +164,7 @@ static void (*CXOrigActivated)(Class, SEL, id);
 static void (*CXOrigExternalOpen)(Class, SEL, id);
 
 static void CXHandlePanelEntry(Class cls, SEL _cmd, id argument, void (*cont)(Class, SEL, id)) {
+    CXLog(@"[trace] %@ %@", NSStringFromSelector(_cmd), argument);
     NSDictionary *item = CXVirtualItemFromArgument(argument);
     if (!item) { cont(cls, _cmd, argument); return; }
     NSString *realBundle = item[@"bundleID"];
@@ -241,6 +242,15 @@ static void CXInstallPanelEntryHooks(void) {
     installed = (CXOrigActivated != NULL || CXOrigExternalOpen != NULL);
 }
 
+static void (*CXOrigOpenApp)(id, SEL, id, id, id, id);
+
+static void CXOpenAppHook(id self, SEL _cmd, id app, id view, id overlay, id completion) {
+    CXLog(@"[trace] openApplication app=%@(%@) view=%@(%@) overlay=%@(%@)",
+          app, NSStringFromClass([app class]), view, NSStringFromClass([view class]),
+          overlay, NSStringFromClass([overlay class]));
+    if (CXOrigOpenApp) CXOrigOpenApp(self, _cmd, app, view, overlay, completion);
+}
+
 static void CXInstallBridgeHooks(void) {
     static BOOL installed = NO;
     if (installed) return;
@@ -282,6 +292,25 @@ static void CXInstallBridgeHooks(void) {
             CXLog(@"[hook] prepareWindow installed=%d", CXOrigPrepareWindow != NULL);
         } else {
             CXLog(@"[hook] prepareWindow 签名不符，跳过");
+        }
+    }
+
+    // ③ openApplication:inView:keyboardOverlay:completion: —— 只记录，不改行为
+    SEL openSel = NSSelectorFromString(@"openApplication:inView:keyboardOverlay:completion:");
+    Method openMethod = class_getInstanceMethod(cls, openSel);
+    if (openMethod) {
+        NSMethodSignature *sig = [NSMethodSignature signatureWithObjCTypes:method_getTypeEncoding(openMethod)];
+        BOOL ok = sig && sig.numberOfArguments == 6 &&
+                  strcmp(sig.methodReturnType, @encode(void)) == 0 &&
+                  [sig getArgumentTypeAtIndex:2][0] == '@' &&
+                  [sig getArgumentTypeAtIndex:3][0] == '@' &&
+                  [sig getArgumentTypeAtIndex:4][0] == '@' &&
+                  [sig getArgumentTypeAtIndex:5][0] == '@';
+        if (ok) {
+            hook(cls, openSel, (IMP)CXOpenAppHook, (IMP *)&CXOrigOpenApp);
+            CXLog(@"[hook] openApplication installed=%d", CXOrigOpenApp != NULL);
+        } else {
+            CXLog(@"[hook] openApplication 签名不符，跳过");
         }
     }
 
