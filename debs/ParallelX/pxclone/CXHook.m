@@ -366,16 +366,65 @@ static void CXInstallBridgeHooks(void) {
     installed = (CXOrigPerformAction != NULL || CXOrigPrepareWindow != NULL);
 }
 
+static void (*CXOrigDragHandle)(id, SEL, id);
+
+static void CXDragHandleHook(id self, SEL _cmd, id gesture) {
+    CXSyncIfNeeded(@"dragHandle");
+    if (CXOrigDragHandle) CXOrigDragHandle(self, _cmd, gesture);
+}
+
+static void CXInstallDragHandleHook(void) {
+    static BOOL installed = NO;
+    if (installed) return;
+    Class cls = NSClassFromString(@"PXPanelEntry");
+    if (!cls) return;
+    SEL sel = NSSelectorFromString(@"dragHandle:");
+    Method method = class_getInstanceMethod(cls, sel);
+    if (!method) return;
+    CXHookFn hook = CXMSHookMessageEx();
+    if (!hook) return;
+    NSMethodSignature *sig = [NSMethodSignature signatureWithObjCTypes:method_getTypeEncoding(method)];
+    if (!sig || sig.numberOfArguments != 3 || [sig getArgumentTypeAtIndex:2][0] != '@') return;
+    hook(cls, sel, (IMP)CXDragHandleHook, (IMP *)&CXOrigDragHandle);
+    installed = CXOrigDragHandle != NULL;
+    CXLog(@"[hook] dragHandle installed=%d", installed);
+}
+
 static void CXInstallAll(void) {
     CXInstallPanelEntryHooks();
     CXInstallBridgeHooks();
+    CXInstallDragHandleHook();
 }
 
 #pragma mark - 配置同步
 
+static NSString *CXContainerSignature(void) {
+    NSArray<NSString *> *apps = [CXCraneBridge applicationsWithNonDefaultContainers];
+    NSMutableArray<NSString *> *parts = [NSMutableArray array];
+    for (NSString *bundle in [apps sortedArrayUsingSelector:@selector(compare:)]) {
+        NSMutableArray<NSString *> *ids = [NSMutableArray array];
+        for (NSDictionary *entry in [CXCraneBridge containersForBundleID:bundle])
+            if ([entry[@"containerID"] isKindOfClass:NSString.class]) [ids addObject:entry[@"containerID"]];
+        [parts addObject:[NSString stringWithFormat:@"%@=%@", bundle,
+                          [[ids sortedArrayUsingSelector:@selector(compare:)] componentsJoinedByString:@","]]];
+    }
+    return [parts componentsJoinedByString:@"|"];
+}
+
+static NSString *CXLastSignature;
+
 static void CXSyncMenu(void) {
     @try { [CXMenuInjector sync]; }
     @catch (__unused NSException *e) { CXLog(@"[menu] sync 异常"); }
+}
+
+// Crane 里新增/删除容器后自动重扫（默认 5s 一次，签名不变不写盘）
+static void CXSyncIfNeeded(NSString *reason) {
+    NSString *sig = CXContainerSignature();
+    if (CXLastSignature && [sig isEqualToString:CXLastSignature]) return;
+    CXLog(@"[menu] container change (%@), resync", reason);
+    CXLastSignature = sig;
+    CXSyncMenu();
 }
 
 static void CXPreferencesChanged(CFNotificationCenterRef center, void *observer,
@@ -406,7 +455,11 @@ __attribute__((constructor)) static void CXInitialize(void) {
         [CXPrefs.shared setBool:craneOK forKey:CXKeyDiagCraneOK];
         if (!craneOK) CXLog(@"[diag] %@", [[CXCraneBridge diagnosticLines] componentsJoinedByString:@" | "]);
         CXInstallAll();
+        CXLastSignature = CXContainerSignature();
         CXSyncMenu();
+        [NSTimer scheduledTimerWithTimeInterval:5.0 repeats:YES block:^(NSTimer *timer) {
+            CXSyncIfNeeded(@"timer");
+        }];
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
                                         NULL, CXPreferencesChanged,
                                         CFSTR("com.niubiprass.clonex/changed"),
