@@ -29,6 +29,8 @@
 
 typedef void (*CXHookFn)(Class, SEL, IMP, IMP *);
 
+static void CXSyncIfNeeded(NSString *reason);
+
 #pragma mark - 防重复处理
 
 static NSMutableDictionary<NSString *, NSDate *> *CXRecentHandles(void) {
