@@ -97,12 +97,12 @@ static void CXOpenInSplit(NSString *bundleID) {
             }
         }
         SEL prep = NSSelectorFromString(@"prepareWindowForBundleID:wasFullscreen:completion:");
-        NSMethodSignature *sig = [bridge methodSignatureForSelector:prep];
-        if (sig && sig.numberOfArguments == 5 &&
-            strcmp(sig.methodReturnType, @encode(void)) == 0 &&
-            [sig getArgumentTypeAtIndex:2][0] == '@' &&
-            [sig getArgumentTypeAtIndex:3][0] == 'B' &&
-            [sig getArgumentTypeAtIndex:4][0] == '@') {
+        NSMethodSignature *prepSig = [bridge methodSignatureForSelector:prep];
+        if (prepSig && prepSig.numberOfArguments == 5 &&
+            strcmp(prepSig.methodReturnType, @encode(void)) == 0 &&
+            [prepSig getArgumentTypeAtIndex:2][0] == '@' &&
+            [prepSig getArgumentTypeAtIndex:3][0] == 'B' &&
+            [prepSig getArgumentTypeAtIndex:4][0] == '@') {
             @try {
                 void (^done)(BOOL) = ^(BOOL ok) { CXLog(@"[open] prepareWindow %@ done=%d", bundleID, ok); };
                 ((void (*)(id, SEL, id, BOOL, id))objc_msgSend)(bridge, prep, bundleID, NO, done);
@@ -121,10 +121,10 @@ static void CXOpenInSplit(NSString *bundleID) {
     Class entry = NSClassFromString(@"PXPanelEntry");
     SEL sel = NSSelectorFromString(@"applicationActivated:");
     if (!entry) return;
-    NSMethodSignature *sig = [entry methodSignatureForSelector:sel];
-    if (!sig || sig.numberOfArguments != 3 ||
-        strcmp(sig.methodReturnType, @encode(void)) != 0 ||
-        [sig getArgumentTypeAtIndex:2][0] != '@') return;
+    NSMethodSignature *entrySig = [entry methodSignatureForSelector:sel];
+    if (!entrySig || entrySig.numberOfArguments != 3 ||
+        strcmp(entrySig.methodReturnType, @encode(void)) != 0 ||
+        [entrySig getArgumentTypeAtIndex:2][0] != '@') return;
     @try {
         ((void (*)(id, SEL, id))objc_msgSend)(entry, sel, bundleID);
     } @catch (__unused NSException *e) {
