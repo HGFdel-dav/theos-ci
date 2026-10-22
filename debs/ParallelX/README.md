@@ -1,5 +1,7 @@
 # ParallelX（内置分身菜单）
 
+> clone0.2：设置入口改回独立「分身」行（跨 bundle 链接在本机 Preferences 加载失败）。
+
 > 包名 `com.moxuan.parallelx`，装它 = 替换原版 ParallelX。原版引擎二进制
 > 原样随包（vendor/PX），分身功能以独立注入层实现，不改原版 Swift 二进制。
 
