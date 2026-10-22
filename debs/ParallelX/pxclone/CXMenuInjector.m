@@ -142,13 +142,19 @@ static UIImage *CXBadgedIcon(NSString *bundleID, BOOL isDefault) {
     if ([imagesRaw isKindOfClass:NSDictionary.class]) [images addEntriesFromDictionary:imagesRaw];
 
     // 2) 只清理"已经不该存在"的条目；已有条目保留原位置（用户在 PX 里拖过的顺序不能被重置）
+    // 有效项直接来自 Crane，与下方注入使用相同的容器数量和账号开关条件。
+    NSArray<NSString *> *craneApps = [CXCraneBridge applicationsWithNonDefaultContainers];
     NSMutableSet<NSString *> *desiredIDs = [NSMutableSet set];
-    for (NSDictionary *item in items) {
-        NSString *bundle = item[@"bundleID"];
-        NSString *container = item[@"containerID"];
-        if (!bundle.length || !container.length) continue;
-        if (![CXCraneBridge isApplicationSupportedByCrane:bundle]) continue;
-        [desiredIDs addObject:CXVirtualID(bundle, container)];
+    for (NSString *bundle in craneApps) {
+        if (![bundle isKindOfClass:NSString.class] || !bundle.length) continue;
+        NSArray<NSDictionary *> *containers = [CXCraneBridge containersForBundleID:bundle];
+        if (containers.count < 2) continue;
+        for (NSDictionary *entry in containers) {
+            NSString *containerID = entry[@"containerID"];
+            if (!containerID.length) continue;
+            if (![CXPrefs.shared isItemShownInMenu:bundle containerID:containerID]) continue;
+            [desiredIDs addObject:CXVirtualID(bundle, containerID)];
+        }
     }
     NSMutableSet<NSString *> *previousIDs = [NSMutableSet set];
     for (NSDictionary *record in customActions)
@@ -170,7 +176,6 @@ static UIImage *CXBadgedIcon(NSString *bundleID, BOOL isDefault) {
     NSMutableDictionary<NSString *, NSDictionary *> *idMap = CXIDMap();
     [idMap removeAllObjects];
     NSUInteger injected = 0;
-    NSArray<NSString *> *craneApps = [CXCraneBridge applicationsWithNonDefaultContainers];
     for (NSString *bundle in craneApps) {
         if (![bundle isKindOfClass:NSString.class] || !bundle.length) continue;
 
