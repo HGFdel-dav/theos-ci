@@ -63,6 +63,13 @@ static CFStringRef CXDomainRef(void) { return (__bridge CFStringRef)CXDomain; }
     [self synchronize];
 }
 
+- (void)setObject:(id)value forKey:(NSString *)key {
+    if (!key.length) return;
+    CFPreferencesSetAppValue((__bridge CFStringRef)key,
+                             (__bridge CFPropertyListRef)value, CXDomainRef());
+    [self synchronize];
+}
+
 - (void)synchronize {
     CFPreferencesAppSynchronize(CXDomainRef());
     notify_post(CXChangedNotification.UTF8String);

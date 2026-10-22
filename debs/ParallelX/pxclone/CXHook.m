@@ -26,6 +26,7 @@
 #import "CXPrefs.h"
 #import "CXLog.h"
 #import "CXMenuInjector.h"
+#import "CXRemember.h"
 
 typedef void (*CXHookFn)(Class, SEL, IMP, IMP *);
 
@@ -164,7 +165,9 @@ static BOOL CXHandleVirtualItem(NSDictionary *item) {
     // 必须重启应用：Crane 只改"下次启动"的容器，运行中的进程不会换数据
     [CXCraneBridge switchBundleID:bundleID toContainer:containerID reload:YES completion:^(BOOL ok) {
         CXLog(@"[hit] %@ switch=%d, opening split", bundleID, ok);
+        CXRememberNoteLaunch(bundleID, containerID);
         CXOpenInSplit(bundleID);
+        CXRememberApplySoon(bundleID, containerID);
     }];
     return YES;
 }
@@ -393,6 +396,7 @@ static void CXInstallDragHandleHook(void) {
 }
 
 static void CXInstallAll(void) {
+    CXRememberStart();
     CXInstallPanelEntryHooks();
     CXInstallBridgeHooks();
     CXInstallDragHandleHook();

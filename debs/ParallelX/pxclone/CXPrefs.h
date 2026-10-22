@@ -11,6 +11,7 @@ FOUNDATION_EXPORT NSString *const CXKeyDiagCraneOK;  // SpringBoard 里 Crane �
 - (id _Nullable)objectForKey:(NSString *)key;
 - (BOOL)boolForKey:(NSString *)key defaultValue:(BOOL)def;
 - (void)setBool:(BOOL)value forKey:(NSString *)key;
+- (void)setObject:(id _Nullable)value forKey:(NSString *)key;
 
 // 默认全部显示；可单独关掉某个应用的某个容器
 - (BOOL)isItemShownInMenu:(NSString *)bundleID containerID:(NSString *)containerID;
