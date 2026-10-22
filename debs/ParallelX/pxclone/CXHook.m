@@ -61,6 +61,34 @@ static void CXMarkHandled(NSString *key) {
 #pragma mark - 打开分屏窗口（真实 bundle）
 
 static void CXOpenInSplit(NSString *bundleID) {
+    // ① 首选：PXSceneBridge.sharedBridge 的 prepareWindow（真正的开窗管线）
+    Class bridgeCls = NSClassFromString(@"PXSceneBridge");
+    id bridge = nil;
+    if (bridgeCls && [bridgeCls respondsToSelector:NSSelectorFromString(@"sharedBridge")])
+        bridge = ((id (*)(id, SEL))objc_msgSend)(bridgeCls, NSSelectorFromString(@"sharedBridge"));
+    if (bridge) {
+        SEL prep = NSSelectorFromString(@"prepareWindowForBundleID:wasFullscreen:completion:");
+        NSMethodSignature *sig = [bridge methodSignatureForSelector:prep];
+        if (sig && sig.numberOfArguments == 5 &&
+            strcmp(sig.methodReturnType, @encode(void)) == 0 &&
+            [sig getArgumentTypeAtIndex:2][0] == '@' &&
+            [sig getArgumentTypeAtIndex:3][0] == 'B' &&
+            [sig getArgumentTypeAtIndex:4][0] == '@') {
+            @try {
+                void (^done)(BOOL) = ^(BOOL ok) { CXLog(@"[open] prepareWindow %@ done=%d", bundleID, ok); };
+                ((void (*)(id, SEL, id, BOOL, id))objc_msgSend)(bridge, prep, bundleID, NO, done);
+                CXLog(@"[open] %@ via sharedBridge.prepareWindow", bundleID);
+                return;
+            } @catch (__unused NSException *e) {
+                CXLog(@"[open] sharedBridge.prepareWindow 异常，回退", bundleID);
+            }
+        } else {
+            CXLog(@"[open] sharedBridge 存在但签名不符，回退");
+        }
+    } else {
+        CXLog(@"[open] sharedBridge 不存在，回退 applicationActivated:");
+    }
+    // ② 兜底：类方法 applicationActivated:
     Class entry = NSClassFromString(@"PXPanelEntry");
     SEL sel = NSSelectorFromString(@"applicationActivated:");
     if (!entry) return;
