@@ -140,23 +140,48 @@ static UIView *CXFindHandleView(void) {
 
 @end
 
+// 专用窗口：全屏，但只有四个角落的 72x72 区域接收触摸，其余 hitTest 返回 nil 直接穿透
+@interface CXArcWindow : UIWindow
+@end
+
+@implementation CXArcWindow
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    CGRect b = self.bounds;
+    CGFloat w = 72;
+    BOOL inCorner = (point.x < w && point.y > b.size.height - w) ||
+                    (point.x > b.size.width - w && point.y > b.size.height - w);
+    if (!inCorner) return nil;
+    return [super hitTest:point withEvent:event];
+}
+@end
+
 static CXArcWakeGesture *CXArcGesture;
+static CXArcWindow *CXArcWin;
 
 void CXArcWakeInstall(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
         if (CXArcGesture) return;
         UIWindow *host = nil;
-        for (UIWindow *window in UIApplication.sharedApplication.windows) {
-            if (!window.hidden && window.windowLevel == UIWindowLevelNormal) { host = window; break; }
-        }
-        if (!host) {
-            for (UIWindow *window in UIApplication.sharedApplication.windows)
-                if (!window.hidden) { host = window; break; }
-        }
-        if (!host) { CXLog(@"[arc] 没有可用窗口"); return; }
+        for (UIWindow *window in UIApplication.sharedApplication.windows)
+            if (!window.hidden && window.windowScene) { host = window; break; }
+        if (!host) { CXLog(@"[arc] 没有 windowScene"); return; }
+
+        CXArcWindow *win = [[CXArcWindow alloc] initWithWindowScene:host.windowScene];
+        win.frame = UIScreen.mainScreen.bounds;
+        win.windowLevel = UIWindowLevelAlert + 100;
+        win.backgroundColor = UIColor.clearColor;
+        win.hidden = NO;
+        UIViewController *root = [UIViewController new];
+        root.view.backgroundColor = UIColor.clearColor;
+        win.rootViewController = root;
+        [win makeKeyAndVisible];
+        // 让原来的 key window 继续当 key（避免键盘/焦点异常）
+        [host makeKeyWindow];
+
         CXArcWakeGesture *g = [CXArcWakeGesture new];
-        [host addGestureRecognizer:g];
+        [root.view addGestureRecognizer:g];
         CXArcGesture = g;
-        CXLog(@"[arc] 手势已安装 host=%@", NSStringFromClass(host.class));
+        CXArcWin = win;
+        CXLog(@"[arc] 手势已安装 extWindow level=%.0f", win.windowLevel);
     });
 }

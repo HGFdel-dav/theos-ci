@@ -150,6 +150,8 @@ static id CXRememberEntry = nil;
 
 static void (*CXOrigApplyResizePreview)(id, SEL);
 static void (*CXOrigCloseTapped)(id, SEL);
+static void (*CXOrigResizeHost)(id, SEL, id);
+static NSInteger CXCaptureGeneration = 0;
 
 static void CXCapture(id entry) {
     if (!entry) return;
@@ -171,6 +173,22 @@ static void CXApplyResizePreview(id self, SEL _cmd) {
 static void CXCloseTapped(id self, SEL _cmd) {
     CXCapture(self);
     if (CXOrigCloseTapped) CXOrigCloseTapped(self, _cmd);
+}
+
+// resizeHost: 在拖动缩放过程中被反复调用；停手 0.6s 后再记一次
+static void CXScheduleCapture(id entry) {
+    CXCaptureGeneration++;
+    NSInteger generation = CXCaptureGeneration;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        if (generation != CXCaptureGeneration) return;
+        CXCapture(entry);
+    });
+}
+
+static void CXResizeHostHook(id self, SEL _cmd, id gesture) {
+    if (CXOrigResizeHost) CXOrigResizeHost(self, _cmd, gesture);
+    CXScheduleCapture(self);
 }
 
 #pragma mark - 恢复
@@ -197,12 +215,14 @@ static void CXApplySize(id entry, NSString *bundle, NSString *container) {
 
 void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
     if (!bundleID.length || !containerID.length) return;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.9 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        id entry = CXRememberEntry ?: CXFindPanelEntry();
-        if (!entry) { CXLog(@"[remember] 找不到 PXPanelEntry，跳过恢复"); return; }
-        CXApplySize(entry, bundleID, containerID);
-    });
+    for (int i = 1; i <= 2; i++) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.9 * i * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            id entry = CXRememberEntry ?: CXFindPanelEntry();
+            if (!entry) { CXLog(@"[remember] 找不到 PXPanelEntry，跳过恢复"); return; }
+            CXApplySize(entry, bundleID, containerID);
+        });
+    }
 }
 
 #pragma mark - 安装
@@ -229,13 +249,15 @@ static void CXInstallRememberHooks(void) {
     struct { const char *name; IMP imp; IMP *orig; } hooks[] = {
         {"applyResizePreview", (IMP)CXApplyResizePreview, (IMP *)&CXOrigApplyResizePreview},
         {"closeTapped", (IMP)CXCloseTapped, (IMP *)&CXOrigCloseTapped},
+        {"resizeHost:", (IMP)CXResizeHostHook, (IMP *)&CXOrigResizeHost},
     };
     for (size_t i = 0; i < sizeof(hooks)/sizeof(hooks[0]); i++) {
         SEL sel = NSSelectorFromString([NSString stringWithUTF8String:hooks[i].name]);
         Method m = class_getInstanceMethod(cls, sel);
-        if (!m) continue;
+        if (!m) { CXLog(@"[remember] %s 不存在", hooks[i].name); continue; }
         NSMethodSignature *sig = [NSMethodSignature signatureWithObjCTypes:method_getTypeEncoding(m)];
-        if (!sig || sig.numberOfArguments != 2) continue;
+        NSUInteger want = (strchr(hooks[i].name, ':') != NULL) ? 3 : 2;
+        if (!sig || sig.numberOfArguments != want) { CXLog(@"[remember] %s 签名不符", hooks[i].name); continue; }
         *hooks[i].orig = (IMP)method_setImplementation(m, hooks[i].imp);
         CXLog(@"[remember] hook %s ok", hooks[i].name);
     }
