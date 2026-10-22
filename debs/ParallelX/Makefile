@@ -14,7 +14,7 @@ CloneX_FRAMEWORKS = UIKit Foundation CoreGraphics
 
 # ------------------------------------------------------- own settings bundle
 BUNDLE_NAME = CloneXPrefs
-CloneXPrefs_FILES = Prefs/CXRootListController.m Prefs/CXContainerPicker.m pxclone/CXCraneBridge.m pxclone/CXPrefs.m pxclone/CXLog.m
+CloneXPrefs_FILES = Prefs/CXRootListController.m pxclone/CXCraneBridge.m pxclone/CXPrefs.m pxclone/CXLog.m
 CloneXPrefs_INSTALL_PATH = /Library/PreferenceBundles
 CloneXPrefs_RESOURCE_FILES = Prefs/Resources/Info.plist Prefs/Resources/icon.png Prefs/Resources/icon@2x.png Prefs/Resources/icon@3x.png
 CloneXPrefs_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-unused-variable -Wno-unused-function -Ipxclone -IPrefs

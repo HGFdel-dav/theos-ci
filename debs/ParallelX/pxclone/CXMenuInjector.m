@@ -1,15 +1,10 @@
 // CXMenuInjector.m
 //
-// ParallelX 的菜单条目模型（从真机偏好 com.moxuan.parallelx.plist 读出）：
-//   applications      [String]        菜单条目 id：bundleID 或 px.action.* / px.custom.* / px.url.*
-//   customActions     [[String:Any]]  px.custom.* 的记录（app / title / kind ...）
-//   applicationNames  [String:String] 条目 id -> 菜单显示名
-//   shortcutSymbols   [String:String] 条目 id -> SF Symbol
-//   shortcutImages    [String:Any]    条目 id -> 自定义图标数据（PX 自己的图片槽）
+// 自动模式：Crane 里应用有几个容器，菜单里就注入几个条目（默认 + 分身），
+// 不需要用户勾选。设置页只负责展示和"整个应用不显示"的开关。
 //
-// CloneX 按同一模型注入：每个「应用+容器」= 一条 px.custom.<uuid> 条目，
-// 记录里带自定义标题；点击由 CXHook 截住（performConfiguredAction:），
-// 先切 Crane 容器，再让 PX 用真实 bundleID 开分屏窗口。
+// PX 菜单模型（真机 com.moxuan.parallelx.plist）：
+//   applications / customActions / applicationNames / shortcutSymbols / shortcutImages
 #import "CXMenuInjector.h"
 #import "CXPrefs.h"
 #import "CXCraneBridge.h"
@@ -23,10 +18,9 @@ NSString *const CXMenuIDPrefix = @"px.custom.";
 
 static NSString *const CXPXDomain = @"com.moxuan.parallelx";
 
-#pragma mark - id 生成（稳定、无碰撞）
+#pragma mark - id
 
 static NSString *CXVirtualID(NSString *bundleID, NSString *containerID) {
-    // FNV-1a 64 → 拼成 UUID 形状，保证同一 (bundle, container) 每次得到同一 id
     uint64_t hash = 1469598103934665603ULL;
     NSString *seed = [NSString stringWithFormat:@"clonex|%@|%@", bundleID, containerID];
     const char *bytes = seed.UTF8String;
@@ -49,20 +43,23 @@ static NSMutableDictionary<NSString *, NSDictionary *> *CXIDMap(void) {
     return map;
 }
 
+// 由 id 反查 bundle/container：map 里没有时按当前 Crane 容器列表重算
 NSDictionary<NSString *, NSString *> *CXVirtualItemForID(NSString *itemID) {
     if (![itemID isKindOfClass:NSString.class] || ![itemID hasPrefix:CXMenuIDPrefix]) return nil;
     NSDictionary *hit = CXIDMap()[itemID];
     if (hit) return hit;
-    // 进程重启后 map 为空：按配置重算一遍
-    for (NSDictionary *item in CXPrefs.shared.menuItems) {
-        NSString *mid = CXVirtualID(item[@"bundleID"], item[@"containerID"]);
-        CXIDMap()[mid] = item;
-        if ([mid isEqualToString:itemID]) return item;
+    for (NSString *bundle in [CXCraneBridge applicationsWithNonDefaultContainers]) {
+        for (NSDictionary *entry in [CXCraneBridge containersForBundleID:bundle]) {
+            NSString *mid = CXVirtualID(bundle, entry[@"containerID"]);
+            NSDictionary *item = @{@"bundleID": bundle, @"containerID": entry[@"containerID"]};
+            CXIDMap()[mid] = item;
+            if ([mid isEqualToString:itemID]) return item;
+        }
     }
     return nil;
 }
 
-#pragma mark - PX 偏好读写
+#pragma mark - PX 偏好
 
 static id CXPXRead(NSString *key) {
     CFPreferencesAppSynchronize((__bridge CFStringRef)CXPXDomain);
@@ -78,9 +75,9 @@ static void CXPXWrite(NSString *key, id value) {
     CFPreferencesAppSynchronize((__bridge CFStringRef)CXPXDomain);
 }
 
-#pragma mark - 图标（应用图标 + 「分」角标，PNG）
+#pragma mark - 图标（应用图标 + 默/分角标）
 
-static UIImage *CXBadgedIcon(NSString *bundleID) {
+static UIImage *CXBadgedIcon(NSString *bundleID, BOOL isDefault) {
     CGFloat scale = UIScreen.mainScreen.scale;
     UIImage *base = nil;
     SEL sel = NSSelectorFromString(@"_applicationIconImageForBundleIdentifier:format:scale:");
@@ -96,14 +93,13 @@ static UIImage *CXBadgedIcon(NSString *bundleID) {
         [base drawInRect:CGRectMake(0, 0, size.width, size.height)];
         CGFloat dia = 44;
         CGRect badge = CGRectMake(size.width - dia - 2, size.height - dia - 2, dia, dia);
-        UIBezierPath *circle = [UIBezierPath bezierPathWithOvalInRect:badge];
         [[UIColor colorWithWhite:0 alpha:0.78] setFill];
-        [circle fill];
+        [[UIBezierPath bezierPathWithOvalInRect:badge] fill];
         NSDictionary *attrs = @{
             NSFontAttributeName: [UIFont systemFontOfSize:24 weight:UIFontWeightBold],
             NSForegroundColorAttributeName: UIColor.whiteColor,
         };
-        NSString *mark = @"分";
+        NSString *mark = isDefault ? @"默" : @"分";
         CGSize textSize = [mark sizeWithAttributes:attrs];
         [mark drawAtPoint:CGPointMake(badge.origin.x + (dia - textSize.width) / 2,
                                       badge.origin.y + (dia - textSize.height) / 2)
@@ -120,9 +116,7 @@ static UIImage *CXBadgedIcon(NSString *bundleID) {
 }
 
 + (void)sync {
-    NSArray<NSDictionary *> *items = CXPrefs.shared.menuItems;
-
-    // 1) 现有 PX 数据
+    // 1) 读出 PX 现有数据
     NSMutableArray<NSString *> *applications = [NSMutableArray array];
     id appsRaw = CXPXRead(@"applications");
     if ([appsRaw isKindOfClass:NSArray.class])
@@ -147,7 +141,7 @@ static UIImage *CXBadgedIcon(NSString *bundleID) {
     id imagesRaw = CXPXRead(@"shortcutImages");
     if ([imagesRaw isKindOfClass:NSDictionary.class]) [images addEntriesFromDictionary:imagesRaw];
 
-    // 2) 清掉上次注入的条目（按 type 标记识别，配置改过也能清干净）
+    // 2) 清掉上次注入（type=clonex.open 标记）
     NSMutableSet<NSString *> *previousIDs = [NSMutableSet set];
     for (NSDictionary *record in customActions)
         if ([record[@"type"] isEqual:@"clonex.open"] && [record[@"id"] isKindOfClass:NSString.class])
@@ -162,19 +156,17 @@ static UIImage *CXBadgedIcon(NSString *bundleID) {
         return ![record[@"type"] isEqual:@"clonex.open"];
     }]];
 
-    // 3) 写入当前配置
+    // 3) 全自动：Crane 里有几个容器就注入几条
     NSMutableDictionary<NSString *, NSDictionary *> *idMap = CXIDMap();
     [idMap removeAllObjects];
-    for (NSDictionary *item in items) {
-        NSString *bundle = item[@"bundleID"];
-        NSString *container = item[@"containerID"];
-        if (!bundle.length || !container.length) continue;
-        if (![CXCraneBridge isApplicationSupportedByCrane:bundle]) continue;
+    NSUInteger injected = 0;
+    NSArray<NSString *> *craneApps = [CXCraneBridge applicationsWithNonDefaultContainers];
+    for (NSString *bundle in craneApps) {
+        if (![bundle isKindOfClass:NSString.class] || !bundle.length) continue;
+        if (![CXPrefs.shared isAppShownInMenu:bundle]) continue;
+        NSArray<NSDictionary *> *containers = [CXCraneBridge containersForBundleID:bundle];
+        if (containers.count < 2) continue;   // 只有默认容器的不算分身
 
-        NSString *itemID = CXVirtualID(bundle, container);
-        idMap[itemID] = item;
-
-        if (![applications containsObject:itemID]) [applications addObject:itemID];
         NSString *appName = bundle;
         Class proxyCls = NSClassFromString(@"LSApplicationProxy");
         if (proxyCls) {
@@ -185,28 +177,37 @@ static UIImage *CXBadgedIcon(NSString *bundleID) {
                 if ([name isKindOfClass:NSString.class] && [name length]) appName = name;
             }
         }
-        NSString *containerName = [CXCraneBridge displayNameForContainer:container bundleID:bundle];
-        if (!containerName.length) containerName = container;
-        [names setObject:[NSString stringWithFormat:@"%@ · %@", appName, containerName] forKey:itemID];
 
-        BOOL exists = NO;
-        for (NSDictionary *record in customActions)
-            if ([record[@"id"] isEqual:itemID]) { exists = YES; break; }
-        if (!exists) {
-            [customActions addObject:@{
-                @"id": itemID,
-                @"title": names[itemID],
-                @"app": bundle,
-                @"appTitle": appName,
-                @"kind": @"quick",
-                @"type": @"clonex.open",
-            }];
-        }
-        if (!symbols[itemID]) symbols[itemID] = @"square.on.square";
-        UIImage *icon = CXBadgedIcon(bundle);
-        if (icon) {
-            NSData *png = UIImagePNGRepresentation(icon);
-            if (png) images[itemID] = png;
+        for (NSDictionary *entry in containers) {
+            NSString *containerID = entry[@"containerID"];
+            if (!containerID.length) continue;
+            BOOL isDefault = [entry[@"isDefault"] boolValue];
+            NSString *itemID = CXVirtualID(bundle, containerID);
+            idMap[itemID] = @{@"bundleID": bundle, @"containerID": containerID};
+
+            if (![applications containsObject:itemID]) [applications addObject:itemID];
+            NSString *containerName = isDefault ? @"默认" : (entry[@"name"] ?: containerID);
+            names[itemID] = [NSString stringWithFormat:@"%@ · %@", appName, containerName];
+            BOOL exists = NO;
+            for (NSDictionary *record in customActions)
+                if ([record[@"id"] isEqual:itemID]) { exists = YES; break; }
+            if (!exists) {
+                [customActions addObject:@{
+                    @"id": itemID,
+                    @"title": names[itemID],
+                    @"app": bundle,
+                    @"appTitle": appName,
+                    @"kind": @"quick",
+                    @"type": @"clonex.open",
+                }];
+            }
+            if (!symbols[itemID]) symbols[itemID] = @"square.on.square";
+            UIImage *icon = CXBadgedIcon(bundle, isDefault);
+            if (icon) {
+                NSData *png = UIImagePNGRepresentation(icon);
+                if (png) images[itemID] = png;
+            }
+            injected++;
         }
     }
 
@@ -216,8 +217,7 @@ static UIImage *CXBadgedIcon(NSString *bundleID) {
     CXPXWrite(@"applicationNames", names);
     CXPXWrite(@"shortcutSymbols", symbols);
     CXPXWrite(@"shortcutImages", images);
-    CXLog(@"[menu] synced %lu clone entries (applications=%lu)",
-          (unsigned long)items.count, (unsigned long)applications.count);
+    CXLog(@"[menu] synced %lu entries for %lu apps", (unsigned long)injected, (unsigned long)craneApps.count);
 }
 
 @end
