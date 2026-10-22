@@ -16,6 +16,7 @@
 #include <stdlib.h>
 
 static NSString *const CXRememberKey = @"CXRememberSizes";   // { "bundle#container": {w,h,updated} }
+NSString *const CXRememberEnabledKey = @"CXRememberEnabled"; // BOOL 默认 YES
 static NSString *const CXLastOpenKey  = @"CXLastOpen";       // { bundle, container, at }
 
 #pragma mark - 当前打开上下文
@@ -51,7 +52,12 @@ static NSDictionary *CXSizeFor(NSString *bundle, NSString *container) {
     return [v isKindOfClass:NSDictionary.class] ? v : nil;
 }
 
+static BOOL CXRememberOn(void) {
+    return [CXPrefs.shared boolForKey:CXRememberEnabledKey defaultValue:YES];
+}
+
 static void CXStoreSize(NSString *bundle, NSString *container, CGSize size) {
+    if (!CXRememberOn()) return;
     NSString *key = CXKey(bundle, container);
     if (!key || size.width < 40 || size.height < 40) return;
     if (size.width > 5000 || size.height > 5000) return;
@@ -170,6 +176,7 @@ static void CXCloseTapped(id self, SEL _cmd) {
 #pragma mark - 恢复
 
 static void CXApplySize(id entry, NSString *bundle, NSString *container) {
+    if (!CXRememberOn()) return;
     NSDictionary *saved = CXSizeFor(bundle, container);
     if (!saved) return;
     CGFloat w = [saved[@"w"] doubleValue], h = [saved[@"h"] doubleValue];

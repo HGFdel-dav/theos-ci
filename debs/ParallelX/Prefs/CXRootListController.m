@@ -41,6 +41,20 @@ static NSString *CXAppName(NSString *bundleID) {
     [self reloadSpecifiers];
 }
 
+- (id)readRemember:(PSSpecifier *)spec {
+    return @([[CXPrefs shared] boolForKey:@"CXRememberEnabled" defaultValue:YES]);
+}
+
+- (void)writeRemember:(id)value specifier:(PSSpecifier *)spec {
+    [[CXPrefs shared] setBool:[value boolValue] forKey:@"CXRememberEnabled"];
+    CXLog(@"[prefs] remember=%d", [value boolValue]);
+}
+
+- (void)resetRemember {
+    [[CXPrefs shared] setObject:@{} forKey:@"CXRememberSizes"];
+    CXLog(@"[prefs] remembered sizes cleared");
+}
+
 - (id)readShown:(PSSpecifier *)spec {
     NSString *bundle = [spec propertyForKey:@"cxBundleID"];
     NSString *container = [spec propertyForKey:@"cxContainerID"];
@@ -62,6 +76,24 @@ static NSString *CXAppName(NSString *bundleID) {
     [intro setProperty:@"下面每个开关对应一个账号（容器），来自分身组件。打开的分身会出现在分屏菜单里；关掉只是不在菜单显示，不影响分身本身。"
                forKey:@"footerText"];
     [specs addObject:intro];
+
+    PSSpecifier *memGroup = [PSSpecifier groupSpecifierWithName:@"记忆"];
+    [memGroup setProperty:@"自动记住每个应用/账号上次的窗口大小，下次打开时恢复。关闭后不再记录也不再恢复。"
+                 forKey:@"footerText"];
+    [specs addObject:memGroup];
+    PSSpecifier *memSwitch = [PSSpecifier preferenceSpecifierNamed:@"记忆窗口大小"
+                                                            target:self
+                                                               set:@selector(writeRemember:specifier:)
+                                                               get:@selector(readRemember:)
+                                                            detail:nil
+                                                              cell:PSSwitchCell
+                                                              edit:nil];
+    [specs addObject:memSwitch];
+    PSSpecifier *resetRow = [PSSpecifier preferenceSpecifierNamed:@"重置记忆大小"
+                                                           target:self set:NULL get:NULL detail:nil
+                                                             cell:PSLinkCell edit:nil];
+    [resetRow setProperty:@YES forKey:@"cxResetRemember"];
+    [specs addObject:resetRow];
 
     if (![CXCraneBridge isCraneAvailable]) {
         [specs addObject:[PSSpecifier preferenceSpecifierNamed:@"未检测到分身组件"

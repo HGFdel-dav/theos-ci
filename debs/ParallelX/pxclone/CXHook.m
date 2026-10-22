@@ -27,6 +27,7 @@
 #import "CXLog.h"
 #import "CXMenuInjector.h"
 #import "CXRemember.h"
+#import "CXArcWake.h"
 
 typedef void (*CXHookFn)(Class, SEL, IMP, IMP *);
 
@@ -464,6 +465,7 @@ __attribute__((constructor)) static void CXInitialize(void) {
         [CXPrefs.shared setBool:craneOK forKey:CXKeyDiagCraneOK];
         if (!craneOK) CXLog(@"[diag] %@", [[CXCraneBridge diagnosticLines] componentsJoinedByString:@" | "]);
         CXInstallAll();
+        CXArcWakeInstall();
         CXLastSignature = CXContainerSignature();
         CXSyncMenu();
         [NSTimer scheduledTimerWithTimeInterval:5.0 repeats:YES block:^(NSTimer *timer) {

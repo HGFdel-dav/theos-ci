@@ -1,6 +1,7 @@
 // CXRemember.h — 分屏窗口大小记忆（按 应用+容器）
 #import <Foundation/Foundation.h>
 
+FOUNDATION_EXPORT NSString *const CXRememberEnabledKey;
 FOUNDATION_EXPORT void CXRememberStart(void);
 // 记录"这次是从哪个账号打开的"，供记忆取容器用
 FOUNDATION_EXPORT void CXRememberNoteLaunch(NSString *bundleID, NSString *containerID);
