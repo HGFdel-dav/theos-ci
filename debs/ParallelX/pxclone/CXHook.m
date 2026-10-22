@@ -159,8 +159,8 @@ static BOOL CXHandleVirtualItem(NSDictionary *item) {
     if (CXHandledRecently(key)) return YES;
     CXMarkHandled(key);
     CXLog(@"[hit] %@ -> container %@", bundleID, containerID);
-    // 不重启应用：只落定容器，让 PX 的 openApplication 把应用拉进窗口
-    [CXCraneBridge switchBundleID:bundleID toContainer:containerID reload:NO completion:^(BOOL ok) {
+    // 必须重启应用：Crane 只改"下次启动"的容器，运行中的进程不会换数据
+    [CXCraneBridge switchBundleID:bundleID toContainer:containerID reload:YES completion:^(BOOL ok) {
         CXLog(@"[hit] %@ switch=%d, opening split", bundleID, ok);
         CXOpenInSplit(bundleID);
     }];
