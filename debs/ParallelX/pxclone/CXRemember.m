@@ -99,15 +99,16 @@ static UIWindow *CXEntryPanelWindow(id entry) {
 
 static NSString *CXEntryContainer(id entry) {
     NSString *bundle = CXEntryBundle(entry);
+    if (!bundle.length) return @"DEFAULT";
+    // 以 Crane 当前活动容器为准：所有窗口（普通应用或分身）都按实际账号记
+    NSString *active = [CXCraneBridge activeContainerForBundleID:bundle];
+    if (active.length) return active;
     NSDictionary *last = CXLastOpen();
-    if (bundle.length && [last[@"bundle"] isEqual:bundle]) {
-        double at = [last[@"at"] doubleValue];
-        if (fabs([[NSDate date] timeIntervalSince1970] - at) < 600) {
-            id c = last[@"container"];
-            if ([c isKindOfClass:NSString.class] && [c length]) return c;
-        }
+    if ([last[@"bundle"] isEqual:bundle]) {
+        id c = last[@"container"];
+        if ([c isKindOfClass:NSString.class] && [c length]) return c;
     }
-    return [CXCraneBridge activeContainerForBundleID:bundle ?: @""] ?: @"DEFAULT";
+    return @"DEFAULT";
 }
 
 static UIWindow *CXFindPanelWindow(void) {

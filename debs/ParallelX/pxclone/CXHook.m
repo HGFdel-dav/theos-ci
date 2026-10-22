@@ -167,7 +167,6 @@ static BOOL CXHandleVirtualItem(NSDictionary *item) {
         CXLog(@"[hit] %@ switch=%d, opening split", bundleID, ok);
         CXRememberNoteLaunch(bundleID, containerID);
         CXOpenInSplit(bundleID);
-        CXRememberApplySoon(bundleID, containerID);
     }];
     return YES;
 }
@@ -299,10 +298,14 @@ static void CXInstallPanelEntryHooks(void) {
 static void (*CXOrigOpenApp)(id, SEL, id, id, id, id);
 
 static void CXOpenAppHook(id self, SEL _cmd, id app, id view, id overlay, id completion) {
-    CXLog(@"[trace] openApplication app=%@(%@) view=%@(%@) overlay=%@(%@)",
-          app, NSStringFromClass([app class]), view, NSStringFromClass([view class]),
-          overlay, NSStringFromClass([overlay class]));
+    NSString *bundle = [app isKindOfClass:NSString.class] ? app : nil;
+    NSString *container = bundle.length ? [CXCraneBridge activeContainerForBundleID:bundle] : nil;
+    CXLog(@"[trace] openApplication app=%@(%@)", app, NSStringFromClass([app class]));
     if (CXOrigOpenApp) CXOrigOpenApp(self, _cmd, app, view, overlay, completion);
+    if (bundle.length && container.length) {
+        CXRememberNoteLaunch(bundle, container);
+        CXRememberApplySoon(bundle, container);
+    }
 }
 
 static void CXInstallBridgeHooks(void) {
