@@ -203,6 +203,13 @@ static Class CXCraneManagerClass(void) {
 + (void)switchBundleID:(NSString *)bundleID
            toContainer:(NSString *)containerID
             completion:(void (^)(BOOL))completion {
+    [self switchBundleID:bundleID toContainer:containerID reload:YES completion:completion];
+}
+
++ (void)switchBundleID:(NSString *)bundleID
+           toContainer:(NSString *)containerID
+                reload:(BOOL)reload
+            completion:(void (^)(BOOL))completion {
     if (!completion) return;
     dispatch_async(dispatch_get_main_queue(), ^{
         if (CXSwitchInFlight) { completion(NO); return; }
@@ -215,9 +222,9 @@ static Class CXCraneManagerClass(void) {
         // ① 首选：无认证接口（Crane 官方公开，ScreenCore 同款链路）
         SEL plain = NSSelectorFromString(@"setActiveContainerIdentifier:forApplicationWithIdentifier:reloadApplication:");
         if ([manager respondsToSelector:plain]) {
-            SEL reload = NSSelectorFromString(@"reloadApplicationWithIdentifier:");
+            SEL reloadSel = NSSelectorFromString(@"reloadApplicationWithIdentifier:");
             if (!CXSignature(manager, plain, @encode(void), @[@"@", @"@", [NSString stringWithUTF8String:@encode(BOOL)]]) ||
-                !CXSignature(manager, reload, @encode(void), @[@"@"])) {
+                !CXSignature(manager, reloadSel, @encode(void), @[@"@"])) {
                 completion(NO); return;
             }
             CXSwitchInFlight = YES;
@@ -228,7 +235,12 @@ static Class CXCraneManagerClass(void) {
             BOOL ok = [now isEqualToString:containerID];
             CXLog(@"[crane] %@ want=%@ before=%@ after=%@ ok=%d", bundleID, containerID, current ?: @"?", now ?: @"?", ok);
             if (!ok) { CXSwitchInFlight = NO; completion(NO); return; }
-            @try { ((void (*)(id, SEL, id))objc_msgSend)(manager, reload, bundleID); }
+            if (!reload) {
+                CXSwitchInFlight = NO;
+                completion(YES);
+                return;
+            }
+            @try { ((void (*)(id, SEL, id))objc_msgSend)(manager, reloadSel, bundleID); }
             @catch (__unused NSException *e) {}
             // 重载会把应用拉起，等它落定再让分屏窗口接管，避免抢同一个 App
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),

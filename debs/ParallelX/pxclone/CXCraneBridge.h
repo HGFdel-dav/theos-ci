@@ -16,6 +16,12 @@ NS_ASSUME_NONNULL_BEGIN
            toContainer:(NSString *)containerID
             completion:(void (^)(BOOL ok))completion;
 
+// reload=NO：只落定容器，不重启应用（随后由 PX 启动应用，容器在启动时生效）
++ (void)switchBundleID:(NSString *)bundleID
+           toContainer:(NSString *)containerID
+                reload:(BOOL)reload
+            completion:(void (^)(BOOL ok))completion;
+
 + (void)prepareLaunchForBundleID:(NSString *)bundleID
                      containerID:(NSString * _Nullable)containerID
                       completion:(void (^)(BOOL ok))completion;

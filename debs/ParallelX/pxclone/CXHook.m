@@ -61,12 +61,41 @@ static void CXMarkHandled(NSString *key) {
 #pragma mark - 打开分屏窗口（真实 bundle）
 
 static void CXOpenInSplit(NSString *bundleID) {
-    // ① 首选：PXSceneBridge.sharedBridge 的 prepareWindow（真正的开窗管线）
+    // ① 首选：照抄普通应用的路径 openApplication:inView:keyboardOverlay:completion:
     Class bridgeCls = NSClassFromString(@"PXSceneBridge");
     id bridge = nil;
     if (bridgeCls && [bridgeCls respondsToSelector:NSSelectorFromString(@"sharedBridge")])
         bridge = ((id (*)(id, SEL))objc_msgSend)(bridgeCls, NSSelectorFromString(@"sharedBridge"));
     if (bridge) {
+        SEL openSel = NSSelectorFromString(@"openApplication:inView:keyboardOverlay:completion:");
+        NSMethodSignature *sig = [bridge methodSignatureForSelector:openSel];
+        if (sig && sig.numberOfArguments == 6 &&
+            strcmp(sig.methodReturnType, @encode(void)) == 0 &&
+            [sig getArgumentTypeAtIndex:2][0] == '@' &&
+            [sig getArgumentTypeAtIndex:3][0] == '@' &&
+            [sig getArgumentTypeAtIndex:4][0] == '@' &&
+            [sig getArgumentTypeAtIndex:5][0] == '@') {
+            id view = nil, overlay = nil;
+            SEL hostSel = NSSelectorFromString(@"hostView");
+            SEL overlaySel = NSSelectorFromString(@"keyboardOverlay");
+            if ([bridge respondsToSelector:hostSel])
+                view = ((id (*)(id, SEL))objc_msgSend)(bridge, hostSel);
+            if ([bridge respondsToSelector:overlaySel])
+                overlay = ((id (*)(id, SEL))objc_msgSend)(bridge, overlaySel);
+            if (view) {
+                CXLog(@"[open] %@ via sharedBridge.openApplication view=%@ overlay=%@",
+                      bundleID, NSStringFromClass([view class]), NSStringFromClass([overlay class]));
+                void (^done)(BOOL) = ^(BOOL ok) { CXLog(@"[open] openApplication %@ done=%d", bundleID, ok); };
+                @try {
+                    ((void (*)(id, SEL, id, id, id, id))objc_msgSend)(bridge, openSel, bundleID, view, overlay, done);
+                    return;
+                } @catch (__unused NSException *e) {
+                    CXLog(@"[open] openApplication 异常，回退 prepareWindow %@", bundleID);
+                }
+            } else {
+                CXLog(@"[open] sharedBridge.hostView 为空，回退 prepareWindow");
+            }
+        }
         SEL prep = NSSelectorFromString(@"prepareWindowForBundleID:wasFullscreen:completion:");
         NSMethodSignature *sig = [bridge methodSignatureForSelector:prep];
         if (sig && sig.numberOfArguments == 5 &&
@@ -112,7 +141,8 @@ static BOOL CXHandleVirtualItem(NSDictionary *item) {
     if (CXHandledRecently(key)) return YES;
     CXMarkHandled(key);
     CXLog(@"[hit] %@ -> container %@", bundleID, containerID);
-    [CXCraneBridge prepareLaunchForBundleID:bundleID containerID:containerID completion:^(BOOL ok) {
+    // 不重启应用：只落定容器，让 PX 的 openApplication 把应用拉进窗口
+    [CXCraneBridge switchBundleID:bundleID toContainer:containerID reload:NO completion:^(BOOL ok) {
         CXLog(@"[hit] %@ switch=%d, opening split", bundleID, ok);
         CXOpenInSplit(bundleID);
     }];
@@ -144,6 +174,7 @@ static void (*CXOrigPrepareWindow)(id, SEL, id, BOOL, id);
 
 static void CXPrepareWindow(id self, SEL _cmd, id bundleID, BOOL wasFullscreen, id completion) {
     if (!CXOrigPrepareWindow) return;
+    CXLog(@"[trace] prepareWindow %@ fullscreen=%d", bundleID, wasFullscreen);
     NSDictionary *item = CXVirtualItemFromArgument(bundleID);
     if (!item) { CXOrigPrepareWindow(self, _cmd, bundleID, wasFullscreen, completion); return; }
     NSString *realBundle = item[@"bundleID"];
