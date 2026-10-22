@@ -80,7 +80,7 @@ static void CXOpenInSplit(NSString *bundleID) {
                 CXLog(@"[open] %@ via sharedBridge.prepareWindow", bundleID);
                 return;
             } @catch (__unused NSException *e) {
-                CXLog(@"[open] sharedBridge.prepareWindow 异常，回退", bundleID);
+                CXLog(@"[open] sharedBridge.prepareWindow 异常，回退 %@", bundleID);
             }
         } else {
             CXLog(@"[open] sharedBridge 存在但签名不符，回退");
