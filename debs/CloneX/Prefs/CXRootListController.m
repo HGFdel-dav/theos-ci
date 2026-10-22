@@ -1,13 +1,14 @@
 // CXRootListController.m
 //
 // CloneX 设置根页。
-// 列表 = Crane 里存在分身的应用；行标题「应用名 · 当前选中的容器」。
-// 点行手动 push 容器选择页（不依赖 detail 自动实例化，参数直接传）。
-// 遵守 SplitX/LESSONS.md：不覆写 initForContentSize:，specifiers 一次建好缓存。
+// 列表 = 有分身的应用；行副标题显示「菜单里已启用 N 个分身」。
+// 点行进入多选页。遵守 SplitX/LESSONS.md：不覆写 initForContentSize:，
+// specifiers 每次重建（数量随配置变化）。
 #import <Preferences/PSListController.h>
 #import <Preferences/PSSpecifier.h>
 #import <UIKit/UIKit.h>
 #import <objc/message.h>
+#include <string.h>
 #import "CXContainerPicker.h"
 #import "CXCraneBridge.h"
 #import "CXPrefs.h"
@@ -38,16 +39,15 @@ static NSString *CXAppName(NSString *bundleID) {
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-    _specifiers = nil;            // 从选择页回来时刷新容器名
     [self reloadSpecifiers];
 }
 
 - (NSArray<PSSpecifier *> *)specifiers {
-    if (_specifiers) return _specifiers;
+    _specifiers = nil;
     NSMutableArray<PSSpecifier *> *specs = [NSMutableArray array];
 
     PSSpecifier *intro = [PSSpecifier groupSpecifierWithName:@""];
-    [intro setProperty:@"为应用指定分身容器。之后从分屏菜单点它的图标打开窗口时，会先切到所选分身，再按原样开窗。"
+    [intro setProperty:@"勾选的应用分身会作为独立图标出现在分屏菜单里（应用图标 + 分身名）。\n改动后请重新打开菜单；若菜单没刷新，重启一次桌面即可。"
                forKey:@"footerText"];
     [specs addObject:intro];
 
@@ -59,15 +59,16 @@ static NSString *CXAppName(NSString *bundleID) {
         return _specifiers;
     }
 
+    NSArray<NSDictionary *> *menuItems = [CXPrefs shared].menuItems;
     NSArray<NSString *> *craneApps = [CXCraneBridge applicationsWithNonDefaultContainers];
-    NSDictionary<NSString *, NSString *> *configured = [CXPrefs shared].cloneApps;
     NSMutableArray<NSString *> *bundleIDs = [NSMutableArray array];
     for (NSString *bundle in craneApps)
         if ([bundle isKindOfClass:NSString.class] && bundle.length && ![bundleIDs containsObject:bundle])
             [bundleIDs addObject:bundle];
-    for (NSString *bundle in configured)
-        if ([bundle isKindOfClass:NSString.class] && bundle.length && ![bundleIDs containsObject:bundle])
-            [bundleIDs addObject:bundle];
+    for (NSDictionary *item in menuItems) {
+        NSString *bundle = item[@"bundleID"];
+        if (bundle.length && ![bundleIDs containsObject:bundle]) [bundleIDs addObject:bundle];
+    }
     [bundleIDs sortUsingComparator:^NSComparisonResult(NSString *a, NSString *b) {
         return [CXAppName(a) localizedStandardCompare:CXAppName(b)];
     }];
@@ -78,13 +79,12 @@ static NSString *CXAppName(NSString *bundleID) {
                                                           cell:PSStaticTextCell edit:nil]];
     } else {
         for (NSString *bundle in bundleIDs) {
-            NSString *container = configured[bundle];
-            NSString *containerName = @"默认容器";
-            if (container.length && ![container isEqualToString:@"DEFAULT"]) {
-                NSString *name = [CXCraneBridge displayNameForContainer:container bundleID:bundle];
-                containerName = name.length ? name : container;
-            }
-            NSString *title = [NSString stringWithFormat:@"%@ · %@", CXAppName(bundle), containerName];
+            NSUInteger count = 0;
+            for (NSDictionary *item in menuItems)
+                if ([item[@"bundleID"] isEqual:bundle]) count++;
+            NSString *title = count
+                ? [NSString stringWithFormat:@"%@ · 菜单显示 %lu 个分身", CXAppName(bundle), (unsigned long)count]
+                : [NSString stringWithFormat:@"%@ · 未加入菜单", CXAppName(bundle)];
             PSSpecifier *row = [PSSpecifier preferenceSpecifierNamed:title
                                                               target:self set:NULL get:NULL detail:nil
                                                                 cell:PSLinkCell edit:nil];
@@ -94,7 +94,7 @@ static NSString *CXAppName(NSString *bundleID) {
     }
 
     PSSpecifier *note = [PSSpecifier groupSpecifierWithName:@"说明"];
-    [note setProperty:@"切换容器时目标应用会短暂重启，这是分身机制的固有行为。\n如果打开后仍是原来的数据，请先确认分身组件里这个应用的分身已启用。"
+    [note setProperty:@"切换容器时目标应用会短暂重启，这是分身机制的固有行为。\n如果菜单里看不到分身图标，先重启一次桌面；仍看不到就把 /var/mobile/Library/Application Support/CloneX/runtime.log 发我。"
                forKey:@"footerText"];
     [specs addObject:note];
 
@@ -102,18 +102,16 @@ static NSString *CXAppName(NSString *bundleID) {
     return _specifiers;
 }
 
-- (void)openPicker:(PSSpecifier *)spec {
-    NSString *bundleID = [spec propertyForKey:@"cxBundleID"];
-    if (![bundleID isKindOfClass:NSString.class] || !bundleID.length) return;
-    CXContainerPicker *picker = [[CXContainerPicker alloc] initForBundleID:bundleID];
-    [self.navigationController pushViewController:picker animated:YES];
-}
-
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     PSSpecifier *spec = [self specifierAtIndexPath:indexPath];
-    if ([spec propertyForKey:@"cxBundleID"]) [self openPicker:spec];
-    else [super tableView:tableView didSelectRowAtIndexPath:indexPath];
+    NSString *bundleID = [spec propertyForKey:@"cxBundleID"];
+    if ([bundleID isKindOfClass:NSString.class] && bundleID.length) {
+        CXContainerPicker *picker = [[CXContainerPicker alloc] initForBundleID:bundleID];
+        [self.navigationController pushViewController:picker animated:YES];
+        return;
+    }
+    [super tableView:tableView didSelectRowAtIndexPath:indexPath];
 }
 
 @end

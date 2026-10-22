@@ -2,34 +2,35 @@
 //
 // CloneX 主注入层（仅 SpringBoard）。
 //
-// 目标：ParallelX 的「菜单 → 打开应用图标 → 分屏窗口」链路在开窗前先把
-// Crane 容器切到用户给该应用选的分身。PX 是闭源 Swift，方案是钩它的
-// ObjC 可见漏斗，而不是改它：
+// 两个职责：
+//   A. 把 CloneX 配置同步进 PX 的菜单模型（CXMenuInjector），让菜单里
+//      出现「应用 · 分身名」条目（应用图标 + 「分」角标）。
+//   B. 截住这些条目的点击：先切 Crane 容器，再让 PX 用真实 bundleID
+//      走它自己的开窗流程。全部走运行时签名核验，不符只记日志。
 //
-//   ① -[PXSceneBridge prepareWindowForBundleID:wasFullscreen:completion:]
-//      真正"为某应用准备分屏窗口"的入口（反汇编 0x39574 处 objc_msgSend，
-//      selref 槽 0x87560）。菜单点图标最终走这里，所以以它为主钩子。
-//   ② +[PXPanelEntry applicationActivated:] / +externalOpenApplication:
-//      外部唤起入口（v24@0:8@16，Twin 0.1.0 起验证过）。兜底覆盖。
-//
-// 所有 hook 安装前都做运行时签名核验：签名不符就跳过并写日志，绝不硬上。
+// 依据（alpha342 反汇编）：
+//   -[PXSceneBridge performConfiguredAction:]  B24@0:8@16   （动作执行入口）
+//   -[PXSceneBridge prepareWindowForBundleID:wasFullscreen:completion:]
+//                                              v36@0:8@16B24@?28（开窗准备）
+//   +[PXPanelEntry applicationActivated:]      v24@0:8@16   （分屏打开）
+//   +[PXPanelEntry externalOpenApplication:]   v24@0:8@16   （全屏打开）
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
 #import <dlfcn.h>
 #import <mach-o/dyld.h>
+#import <notify.h>
+#include <string.h>
+#include <stdlib.h>
 #import "CXCraneBridge.h"
 #import "CXPrefs.h"
 #import "CXLog.h"
-#include <string.h>
-#include <stdlib.h>
+#import "CXMenuInjector.h"
 
 typedef void (*CXHookFn)(Class, SEL, IMP, IMP *);
 
 #pragma mark - 防重复处理
 
-// 同一次菜单点击可能先后经过多个入口；记录最近处理过的 bundleID，
-// 1.5 秒内不再重复切容器。
 static NSMutableDictionary<NSString *, NSDate *> *CXRecentHandles(void) {
     static NSMutableDictionary *map;
     static dispatch_once_t once;
@@ -37,79 +38,126 @@ static NSMutableDictionary<NSString *, NSDate *> *CXRecentHandles(void) {
     return map;
 }
 
-static BOOL CXHandledRecently(NSString *bundleID) {
-    if (!bundleID.length) return NO;
+static BOOL CXHandledRecently(NSString *key) {
+    if (!key.length) return NO;
     @synchronized (CXRecentHandles()) {
-        NSDate *date = CXRecentHandles()[bundleID];
+        NSDate *date = CXRecentHandles()[key];
         if (!date) return NO;
         if (-[date timeIntervalSinceNow] > 1.5) {
-            [CXRecentHandles() removeObjectForKey:bundleID];
+            [CXRecentHandles() removeObjectForKey:key];
             return NO;
         }
         return YES;
     }
 }
 
-static void CXMarkHandled(NSString *bundleID) {
-    if (!bundleID.length) return;
+static void CXMarkHandled(NSString *key) {
+    if (!key.length) return;
     @synchronized (CXRecentHandles()) {
-        CXRecentHandles()[bundleID] = NSDate.date;
+        CXRecentHandles()[key] = NSDate.date;
     }
 }
 
-#pragma mark - 通用：按配置准备容器
+#pragma mark - 打开分屏窗口（真实 bundle）
 
-// 返回 YES 表示已接管（稍后会带 orig 继续）；NO 表示应立即原样放行。
-static BOOL CXShouldDefer(NSString *bundleID) {
-    if (![bundleID isKindOfClass:NSString.class] || !bundleID.length) return NO;
-    NSString *container = [CXPrefs.shared containerForBundleID:bundleID];
-    if (!container.length || [container isEqualToString:@"DEFAULT"]) return NO;
-    if (CXHandledRecently(bundleID)) return NO;
+static void CXOpenInSplit(NSString *bundleID) {
+    Class entry = NSClassFromString(@"PXPanelEntry");
+    SEL sel = NSSelectorFromString(@"applicationActivated:");
+    if (!entry) return;
+    NSMethodSignature *sig = [entry methodSignatureForSelector:sel];
+    if (!sig || sig.numberOfArguments != 3 ||
+        strcmp(sig.methodReturnType, @encode(void)) != 0 ||
+        [sig getArgumentTypeAtIndex:2][0] != '@') return;
+    @try {
+        ((void (*)(id, SEL, id))objc_msgSend)(entry, sel, bundleID);
+    } @catch (__unused NSException *e) {
+        CXLog(@"[open] %@ 打开异常", bundleID);
+    }
+}
+
+// 截获一个虚拟条目：切容器 → 打开真实应用
+static BOOL CXHandleVirtualItem(NSDictionary *item) {
+    NSString *bundleID = item[@"bundleID"];
+    NSString *containerID = item[@"containerID"];
+    if (!bundleID.length || !containerID.length) return NO;
+    NSString *key = [NSString stringWithFormat:@"%@#%@", bundleID, containerID];
+    if (CXHandledRecently(key)) return YES;
+    CXMarkHandled(key);
+    CXLog(@"[hit] %@ -> container %@", bundleID, containerID);
+    [CXCraneBridge prepareLaunchForBundleID:bundleID containerID:containerID completion:^(BOOL ok) {
+        CXLog(@"[hit] %@ switch=%d, opening split", bundleID, ok);
+        CXOpenInSplit(bundleID);
+    }];
     return YES;
 }
 
-#pragma mark - ① PXSceneBridge prepareWindowForBundleID:wasFullscreen:completion:
+static NSDictionary *CXVirtualItemFromArgument(id argument) {
+    if ([argument isKindOfClass:NSString.class]) return CXVirtualItemForID(argument);
+    if ([argument isKindOfClass:NSDictionary.class]) {
+        id itemID = argument[@"id"];
+        if ([itemID isKindOfClass:NSString.class]) return CXVirtualItemForID(itemID);
+    }
+    return nil;
+}
+
+#pragma mark - ① performConfiguredAction:（菜单点击动作 / 自定义条目）
+
+static BOOL (*CXOrigPerformAction)(id, SEL, id);
+
+static BOOL CXPerformAction(id self, SEL _cmd, id argument) {
+    NSDictionary *item = CXVirtualItemFromArgument(argument);
+    if (item && CXHandleVirtualItem(item)) return YES;
+    return CXOrigPerformAction ? CXOrigPerformAction(self, _cmd, argument) : NO;
+}
+
+#pragma mark - ② prepareWindowForBundleID（条目被当作应用打开时）
 
 static void (*CXOrigPrepareWindow)(id, SEL, id, BOOL, id);
 
 static void CXPrepareWindow(id self, SEL _cmd, id bundleID, BOOL wasFullscreen, id completion) {
     if (!CXOrigPrepareWindow) return;
-    if (!CXShouldDefer(bundleID)) { CXOrigPrepareWindow(self, _cmd, bundleID, wasFullscreen, completion); return; }
-    NSString *container = [CXPrefs.shared containerForBundleID:bundleID];
-    CXMarkHandled(bundleID);
-    CXLog(@"[hook] prepareWindow %@ -> container %@", bundleID, container);
-    [CXCraneBridge prepareLaunchForBundleID:bundleID containerID:container completion:^(BOOL ok) {
-        // 失败（用户取消认证 / 容器核验不符）也继续原流程：
-        // PX 的 completion 必须被调用，否则窗口准备会卡在中间态。
-        CXLog(@"[hook] prepareWindow %@ switch=%d continue=%d", bundleID, ok, 1);
-        CXOrigPrepareWindow(self, _cmd, bundleID, wasFullscreen, completion);
+    NSDictionary *item = CXVirtualItemFromArgument(bundleID);
+    if (!item) { CXOrigPrepareWindow(self, _cmd, bundleID, wasFullscreen, completion); return; }
+    NSString *realBundle = item[@"bundleID"];
+    NSString *containerID = item[@"containerID"];
+    NSString *key = [NSString stringWithFormat:@"%@#%@", realBundle, containerID];
+    if (CXHandledRecently(key)) { CXOrigPrepareWindow(self, _cmd, realBundle, wasFullscreen, completion); return; }
+    CXMarkHandled(key);
+    CXLog(@"[hook] prepareWindow virtual %@ -> %@ / %@", bundleID, realBundle, containerID);
+    [CXCraneBridge prepareLaunchForBundleID:realBundle containerID:containerID completion:^(BOOL ok) {
+        CXLog(@"[hook] prepareWindow %@ switch=%d, continue", realBundle, ok);
+        CXOrigPrepareWindow(self, _cmd, realBundle, wasFullscreen, completion);
     }];
 }
 
-#pragma mark - ② PXPanelEntry 类方法（外部唤起兜底）
+#pragma mark - ③ PXPanelEntry 类方法（兜底）
 
 static void (*CXOrigActivated)(Class, SEL, id);
 static void (*CXOrigExternalOpen)(Class, SEL, id);
 
-static void CXHandlePanelEntry(Class cls, SEL _cmd, id bundleID, void (*cont)(Class, SEL, id)) {
-    if (!CXShouldDefer(bundleID)) { cont(cls, _cmd, bundleID); return; }
-    NSString *container = [CXPrefs.shared containerForBundleID:bundleID];
-    CXMarkHandled(bundleID);
-    CXLog(@"[hook] %@ %@ -> container %@", NSStringFromSelector(_cmd), bundleID, container);
-    [CXCraneBridge prepareLaunchForBundleID:bundleID containerID:container completion:^(BOOL ok) {
-        CXLog(@"[hook] %@ %@ switch=%d continue=1", NSStringFromSelector(_cmd), bundleID, ok);
-        cont(cls, _cmd, bundleID);
+static void CXHandlePanelEntry(Class cls, SEL _cmd, id argument, void (*cont)(Class, SEL, id)) {
+    NSDictionary *item = CXVirtualItemFromArgument(argument);
+    if (!item) { cont(cls, _cmd, argument); return; }
+    NSString *realBundle = item[@"bundleID"];
+    NSString *containerID = item[@"containerID"];
+    NSString *key = [NSString stringWithFormat:@"%@#%@", realBundle, containerID];
+    if (CXHandledRecently(key)) { cont(cls, _cmd, realBundle); return; }
+    CXMarkHandled(key);
+    CXLog(@"[hook] %@ virtual %@ -> %@ / %@", NSStringFromSelector(_cmd), argument, realBundle, containerID);
+    [CXCraneBridge prepareLaunchForBundleID:realBundle containerID:containerID completion:^(BOOL ok) {
+        CXLog(@"[hook] %@ %@ switch=%d, continue", NSStringFromSelector(_cmd), realBundle, ok);
+        cont(cls, _cmd, realBundle);
     }];
 }
 
-static void CXActivated(Class cls, SEL _cmd, id bundleID) {
+static void CXActivated(Class cls, SEL _cmd, id argument) {
     if (!CXOrigActivated) return;
-    CXHandlePanelEntry(cls, _cmd, bundleID, CXOrigActivated);
+    CXHandlePanelEntry(cls, _cmd, argument, CXOrigActivated);
 }
 
-static void CXExternalOpen(Class cls, SEL _cmd, id bundleID) {
+static void CXExternalOpen(Class cls, SEL _cmd, id argument) {
     if (!CXOrigExternalOpen) return;
-    CXHandlePanelEntry(cls, _cmd, bundleID, CXOrigExternalOpen);
+    CXHandlePanelEntry(cls, _cmd, argument, CXOrigExternalOpen);
 }
 
 #pragma mark - 安装
@@ -124,7 +172,6 @@ static BOOL CXTypecodeEqual(const char *actual, const char *expected) {
     return strcmp(actual, expected) == 0;
 }
 
-// 类方法签名核验：返回 meta 上的 Method（不存在或不符返回 NULL）
 static Method CXClassMethodIf(Class cls, NSString *selectorName, NSUInteger argCount, const char *arg2) {
     if (!cls || !selectorName.length) return NULL;
     Class meta = object_getClass(cls);
@@ -166,35 +213,69 @@ static void CXInstallPanelEntryHooks(void) {
     installed = (CXOrigActivated != NULL || CXOrigExternalOpen != NULL);
 }
 
-static void CXInstallBridgeHook(void) {
+static void CXInstallBridgeHooks(void) {
     static BOOL installed = NO;
     if (installed) return;
     Class cls = NSClassFromString(@"PXSceneBridge");
     if (!cls) return;
     CXHookFn hook = CXMSHookMessageEx();
     if (!hook) return;
-    SEL sel = NSSelectorFromString(@"prepareWindowForBundleID:wasFullscreen:completion:");
-    Method method = class_getInstanceMethod(cls, sel);
-    if (!method) { CXLog(@"[hook] PXSceneBridge prepareWindow 不存在（PX 版本差异），仅用入口钩子"); return; }
-    NSMethodSignature *sig = [NSMethodSignature signatureWithObjCTypes:method_getTypeEncoding(method)];
-    BOOL ok = sig && sig.numberOfArguments == 5 &&
-              strcmp(sig.methodReturnType, @encode(void)) == 0 &&
-              CXTypecodeEqual([sig getArgumentTypeAtIndex:2], @encode(id)) &&
-              CXTypecodeEqual([sig getArgumentTypeAtIndex:3], @encode(BOOL)) &&
-              [sig getArgumentTypeAtIndex:4][0] == '@';
-    if (!ok) {
-        CXLog(@"[hook] prepareWindow 签名 %s 核验未通过，跳过",
-             sig ? method_getTypeEncoding(method) : "?");
-        return;
+
+    // ① performConfiguredAction:（B24@0:8@16）——自定义条目点击
+    SEL actionSel = NSSelectorFromString(@"performConfiguredAction:");
+    Method actionMethod = class_getInstanceMethod(cls, actionSel);
+    if (actionMethod) {
+        NSMethodSignature *sig = [NSMethodSignature signatureWithObjCTypes:method_getTypeEncoding(actionMethod)];
+        BOOL ok = sig && sig.numberOfArguments == 3 &&
+                  strcmp(sig.methodReturnType, @encode(BOOL)) == 0 &&
+                  CXTypecodeEqual([sig getArgumentTypeAtIndex:2], @encode(id));
+        if (ok) {
+            hook(cls, actionSel, (IMP)CXPerformAction, (IMP *)&CXOrigPerformAction);
+            CXLog(@"[hook] performConfiguredAction: installed=%d", CXOrigPerformAction != NULL);
+        } else {
+            CXLog(@"[hook] performConfiguredAction: 签名不符，跳过");
+        }
+    } else {
+        CXLog(@"[hook] performConfiguredAction: 不存在，跳过");
     }
-    hook(cls, sel, (IMP)CXPrepareWindow, (IMP *)&CXOrigPrepareWindow);
-    installed = CXOrigPrepareWindow != NULL;
-    CXLog(@"[hook] PXSceneBridge prepareWindow installed=%d", installed);
+
+    // ② prepareWindowForBundleID:wasFullscreen:completion:
+    SEL prepareSel = NSSelectorFromString(@"prepareWindowForBundleID:wasFullscreen:completion:");
+    Method prepareMethod = class_getInstanceMethod(cls, prepareSel);
+    if (prepareMethod) {
+        NSMethodSignature *sig = [NSMethodSignature signatureWithObjCTypes:method_getTypeEncoding(prepareMethod)];
+        BOOL ok = sig && sig.numberOfArguments == 5 &&
+                  strcmp(sig.methodReturnType, @encode(void)) == 0 &&
+                  CXTypecodeEqual([sig getArgumentTypeAtIndex:2], @encode(id)) &&
+                  CXTypecodeEqual([sig getArgumentTypeAtIndex:3], @encode(BOOL)) &&
+                  [sig getArgumentTypeAtIndex:4][0] == '@';
+        if (ok) {
+            hook(cls, prepareSel, (IMP)CXPrepareWindow, (IMP *)&CXOrigPrepareWindow);
+            CXLog(@"[hook] prepareWindow installed=%d", CXOrigPrepareWindow != NULL);
+        } else {
+            CXLog(@"[hook] prepareWindow 签名不符，跳过");
+        }
+    }
+
+    installed = (CXOrigPerformAction != NULL || CXOrigPrepareWindow != NULL);
 }
 
 static void CXInstallAll(void) {
     CXInstallPanelEntryHooks();
-    CXInstallBridgeHook();
+    CXInstallBridgeHooks();
+}
+
+#pragma mark - 配置同步
+
+static void CXSyncMenu(void) {
+    @try { [CXMenuInjector sync]; }
+    @catch (__unused NSException *e) { CXLog(@"[menu] sync 异常"); }
+}
+
+static void CXPreferencesChanged(CFNotificationCenterRef center, void *observer,
+                                 CFStringRef name, const void *object,
+                                 CFDictionaryRef userInfo) {
+    dispatch_async(dispatch_get_main_queue(), ^{ CXSyncMenu(); });
 }
 
 #pragma mark - 载入时机
@@ -204,7 +285,6 @@ static void CXImageAdded(const struct mach_header *header, intptr_t slide) {
     if (!dladdr(header, &info) || !info.dli_fname) return;
     NSString *path = [NSString stringWithUTF8String:info.dli_fname];
     if (![path.lastPathComponent isEqualToString:@"ParallelX.dylib"]) return;
-    // dyld 回调里不能解析 ObjC 类；抛回主队列
     dispatch_async(dispatch_get_main_queue(), ^{ CXInstallAll(); });
 }
 
@@ -216,6 +296,11 @@ __attribute__((constructor)) static void CXInitialize(void) {
               [CXCraneBridge isCraneAvailable],
               NSClassFromString(@"PXPanelEntry") != nil,
               NSClassFromString(@"PXSceneBridge") != nil);
-        CXInstallAll();   // PX 可能早已加载（构造函数晚于 dyld 通知）
+        CXInstallAll();
+        CXSyncMenu();
+        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
+                                        NULL, CXPreferencesChanged,
+                                        CFSTR("com.niubiprass.clonex/changed"),
+                                        NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
     });
 }

@@ -1,8 +1,7 @@
 // CXContainerPicker.m
 //
-// 单个应用的容器选择页：默认容器 + 该应用的全部 Crane 容器（单选）。
-// 行模式照 Twin 的 TWChoiceController（PSButtonCell + buttonAction），
-// 已在真机设置进程里跑过，不用 detail 自动实例化。
+// 单个应用的分身选择页（多选）：勾选的「应用+容器」会作为独立图标
+// 出现在 ParallelX 的分屏菜单里。行模式照 Twin 的 TWChoiceController。
 #import "CXContainerPicker.h"
 #import "CXCraneBridge.h"
 #import "CXPrefs.h"
@@ -17,21 +16,17 @@
 - (instancetype)initForBundleID:(NSString *)bundleID {
     if ((self = [super init])) {
         _bundleID = [bundleID copy];
-        self.title = @"选择容器";
+        self.title = @"菜单里的分身";
         _specifiers = nil;
     }
     return self;
 }
 
-- (NSString *)currentContainerID {
-    return [[CXPrefs shared] containerForBundleID:_bundleID] ?: @"DEFAULT";
-}
-
 - (NSArray<PSSpecifier *> *)specifiers {
-    if (_specifiers) return _specifiers;
+    _specifiers = nil;
     NSMutableArray<PSSpecifier *> *rows = [NSMutableArray array];
     PSSpecifier *group = [PSSpecifier groupSpecifierWithName:@""];
-    [group setProperty:@"选中项 = 从分屏菜单打开这个应用时使用的容器。"
+    [group setProperty:@"勾选的分身会作为独立图标出现在分屏菜单里；点击该图标先切到对应容器，再按原样开分屏窗口。"
                forKey:@"footerText"];
     [rows addObject:group];
 
@@ -60,30 +55,21 @@
     PSSpecifier *spec = [self specifierAtIndexPath:indexPath];
     NSString *containerID = [spec propertyForKey:@"cxContainerID"];
     if (containerID.length) {
+        BOOL on = [[CXPrefs shared] isContainer:containerID shownForBundleID:_bundleID];
+        cell.accessoryType = on ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
         cell.textLabel.textColor = UIColor.labelColor;
-        cell.accessoryType = [containerID isEqualToString:self.currentContainerID]
-            ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
     }
     return cell;
-}
-
-- (void)selectContainer:(PSSpecifier *)spec {
-    NSString *containerID = [spec propertyForKey:@"cxContainerID"];
-    if (!containerID.length) return;
-    if ([containerID isEqualToString:@"DEFAULT"]) {
-        [[CXPrefs shared] removeContainerForBundleID:_bundleID];
-    } else {
-        [[CXPrefs shared] setContainer:containerID forBundleID:_bundleID];
-    }
-    CXLog(@"[prefs] %@ -> %@", _bundleID, containerID);
-    [self.navigationController popViewControllerAnimated:YES];
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     PSSpecifier *spec = [self specifierAtIndexPath:indexPath];
-    if ([spec propertyForKey:@"cxContainerID"]) [self selectContainer:spec];
-    else [super tableView:tableView didSelectRowAtIndexPath:indexPath];
+    NSString *containerID = [spec propertyForKey:@"cxContainerID"];
+    if (!containerID.length) { [super tableView:tableView didSelectRowAtIndexPath:indexPath]; return; }
+    [[CXPrefs shared] toggleContainer:containerID bundleID:_bundleID];
+    CXLog(@"[prefs] toggle %@ / %@", _bundleID, containerID);
+    [tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationNone];
 }
 
 @end

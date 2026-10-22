@@ -3,12 +3,11 @@
 #import <CoreFoundation/CoreFoundation.h>
 #import <notify.h>
 
-NSString *const CXKeyCloneApps = @"CXCloneApps";
-NSString *const CXKeyAskEachTime = @"CXAskEachTime";
+NSString *const CXKeyMenuItems = @"CXMenuItems";
 
 static NSString *const CXDomain = @"com.niubiprass.clonex";
-static CFStringRef CXDomainRef(void) { return (__bridge CFStringRef)CXDomain; }
 static NSString *const CXChangedNotification = @"com.niubiprass.clonex/changed";
+static CFStringRef CXDomainRef(void) { return (__bridge CFStringRef)CXDomain; }
 
 @implementation CXPrefs
 
@@ -31,38 +30,49 @@ static NSString *const CXChangedNotification = @"com.niubiprass.clonex/changed";
     return [value respondsToSelector:@selector(boolValue)] ? [value boolValue] : def;
 }
 
-- (NSDictionary<NSString *,NSString *> *)cloneApps {
-    id value = [self objectForKey:CXKeyCloneApps];
-    if (![value isKindOfClass:NSDictionary.class]) return @{};
-    NSMutableDictionary *out = [NSMutableDictionary dictionary];
-    for (id key in value) {
-        if (![key isKindOfClass:NSString.class] || ![key length]) continue;
-        id container = value[key];
-        if ([container isKindOfClass:NSString.class] && [container length]) out[key] = container;
+- (NSArray<NSDictionary *> *)menuItems {
+    id value = [self objectForKey:CXKeyMenuItems];
+    if (![value isKindOfClass:NSArray.class]) return @[];
+    NSMutableArray *out = [NSMutableArray array];
+    for (id item in value) {
+        if (![item isKindOfClass:NSDictionary.class]) continue;
+        NSString *bundle = item[@"bundleID"];
+        NSString *container = item[@"containerID"];
+        if (![bundle isKindOfClass:NSString.class] || !bundle.length) continue;
+        if (![container isKindOfClass:NSString.class] || !container.length) continue;
+        [out addObject:@{@"bundleID": bundle, @"containerID": container}];
     }
     return out;
 }
 
-- (NSString *)containerForBundleID:(NSString *)bundleID {
-    if (!bundleID.length) return nil;
-    return [self cloneApps][bundleID];
+- (BOOL)isContainer:(NSString *)containerID shownForBundleID:(NSString *)bundleID {
+    if (!bundleID.length || !containerID.length) return NO;
+    for (NSDictionary *item in [self menuItems])
+        if ([item[@"bundleID"] isEqual:bundleID] && [item[@"containerID"] isEqual:containerID]) return YES;
+    return NO;
 }
 
-- (void)setContainer:(NSString *)containerID forBundleID:(NSString *)bundleID {
+- (void)toggleContainer:(NSString *)containerID bundleID:(NSString *)bundleID {
     if (!bundleID.length || !containerID.length) return;
-    NSMutableDictionary *apps = [[self cloneApps] mutableCopy];
-    apps[bundleID] = containerID;
-    CFPreferencesSetAppValue((__bridge CFStringRef)CXKeyCloneApps,
-                             (__bridge CFPropertyListRef)apps, CXDomainRef());
+    NSMutableArray *items = [[self menuItems] mutableCopy];
+    NSUInteger index = NSNotFound;
+    for (NSUInteger i = 0; i < items.count; i++) {
+        NSDictionary *item = items[i];
+        if ([item[@"bundleID"] isEqual:bundleID] && [item[@"containerID"] isEqual:containerID]) {
+            index = i;
+            break;
+        }
+    }
+    if (index != NSNotFound) [items removeObjectAtIndex:index];
+    else [items addObject:@{@"bundleID": bundleID, @"containerID": containerID}];
+    CFPreferencesSetAppValue((__bridge CFStringRef)CXKeyMenuItems,
+                             (__bridge CFPropertyListRef)items, CXDomainRef());
     [self synchronize];
 }
 
-- (void)removeContainerForBundleID:(NSString *)bundleID {
-    if (!bundleID.length) return;
-    NSMutableDictionary *apps = [[self cloneApps] mutableCopy];
-    [apps removeObjectForKey:bundleID];
-    CFPreferencesSetAppValue((__bridge CFStringRef)CXKeyCloneApps,
-                             (__bridge CFPropertyListRef)apps, CXDomainRef());
+- (void)removeAllMenuItems {
+    CFPreferencesSetAppValue((__bridge CFStringRef)CXKeyMenuItems,
+                             (__bridge CFPropertyListRef)@[], CXDomainRef());
     [self synchronize];
 }
 

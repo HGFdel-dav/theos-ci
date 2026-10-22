@@ -9,7 +9,7 @@ include $(THEOS)/makefiles/common.mk
 # SpringBoard only. Hooks ParallelX's window-open funnel and settles the Crane
 # container before the window is prepared. Never touches Settings process.
 TWEAK_NAME = CloneX
-CloneX_FILES = pxclone/CXHook.m pxclone/CXCraneBridge.m pxclone/CXPrefs.m pxclone/CXLog.m
+CloneX_FILES = pxclone/CXHook.m pxclone/CXCraneBridge.m pxclone/CXMenuInjector.m pxclone/CXPrefs.m pxclone/CXLog.m
 CloneX_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-unused-variable -Wno-unused-function -Ipxclone
 CloneX_FRAMEWORKS = UIKit Foundation CoreGraphics
 
