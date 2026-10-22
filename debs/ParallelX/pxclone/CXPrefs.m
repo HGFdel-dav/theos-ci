@@ -3,7 +3,7 @@
 #import <CoreFoundation/CoreFoundation.h>
 #import <notify.h>
 
-NSString *const CXKeyHiddenApps = @"CXHiddenApps";
+NSString *const CXKeyHiddenItems = @"CXHiddenItems";
 NSString *const CXKeyDiagCraneOK = @"CXDiagCraneOK";
 
 static NSString *const CXDomain = @"com.niubiprass.clonex";
@@ -38,25 +38,27 @@ static CFStringRef CXDomainRef(void) { return (__bridge CFStringRef)CXDomain; }
     [self synchronize];
 }
 
-- (NSArray<NSString *> *)hiddenApps {
-    id value = [self objectForKey:CXKeyHiddenApps];
+- (NSArray<NSString *> *)hiddenItems {
+    id value = [self objectForKey:CXKeyHiddenItems];
     if (![value isKindOfClass:NSArray.class]) return @[];
     NSMutableArray *out = [NSMutableArray array];
     for (id item in value) if ([item isKindOfClass:NSString.class] && [item length]) [out addObject:item];
     return out;
 }
 
-- (BOOL)isAppShownInMenu:(NSString *)bundleID {
-    if (!bundleID.length) return NO;
-    return ![[self hiddenApps] containsObject:bundleID];
+- (BOOL)isItemShownInMenu:(NSString *)bundleID containerID:(NSString *)containerID {
+    if (!bundleID.length || !containerID.length) return NO;
+    NSString *key = [NSString stringWithFormat:@"%@#%@", bundleID, containerID];
+    return ![[self hiddenItems] containsObject:key];
 }
 
-- (void)setApp:(NSString *)bundleID shownInMenu:(BOOL)shown {
-    if (!bundleID.length) return;
-    NSMutableArray *hidden = [[self hiddenApps] mutableCopy];
-    [hidden removeObject:bundleID];
-    if (!shown) [hidden addObject:bundleID];
-    CFPreferencesSetAppValue((__bridge CFStringRef)CXKeyHiddenApps,
+- (void)setItemInMenu:(NSString *)bundleID containerID:(NSString *)containerID shown:(BOOL)shown {
+    if (!bundleID.length || !containerID.length) return;
+    NSString *key = [NSString stringWithFormat:@"%@#%@", bundleID, containerID];
+    NSMutableArray *hidden = [[self hiddenItems] mutableCopy];
+    [hidden removeObject:key];
+    if (!shown) [hidden addObject:key];
+    CFPreferencesSetAppValue((__bridge CFStringRef)CXKeyHiddenItems,
                              (__bridge CFPropertyListRef)hidden, CXDomainRef());
     [self synchronize];
 }

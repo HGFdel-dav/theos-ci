@@ -163,7 +163,7 @@ static UIImage *CXBadgedIcon(NSString *bundleID, BOOL isDefault) {
     NSArray<NSString *> *craneApps = [CXCraneBridge applicationsWithNonDefaultContainers];
     for (NSString *bundle in craneApps) {
         if (![bundle isKindOfClass:NSString.class] || !bundle.length) continue;
-        if (![CXPrefs.shared isAppShownInMenu:bundle]) continue;
+
         NSArray<NSDictionary *> *containers = [CXCraneBridge containersForBundleID:bundle];
         if (containers.count < 2) continue;   // 只有默认容器的不算分身
 
@@ -181,6 +181,7 @@ static UIImage *CXBadgedIcon(NSString *bundleID, BOOL isDefault) {
         for (NSDictionary *entry in containers) {
             NSString *containerID = entry[@"containerID"];
             if (!containerID.length) continue;
+            if (![CXPrefs.shared isItemShownInMenu:bundle containerID:containerID]) continue;
             BOOL isDefault = [entry[@"isDefault"] boolValue];
             NSString *itemID = CXVirtualID(bundle, containerID);
             idMap[itemID] = @{@"bundleID": bundle, @"containerID": containerID};

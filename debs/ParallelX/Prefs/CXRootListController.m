@@ -43,13 +43,15 @@ static NSString *CXAppName(NSString *bundleID) {
 
 - (id)readShown:(PSSpecifier *)spec {
     NSString *bundle = [spec propertyForKey:@"cxBundleID"];
-    return @([[CXPrefs shared] isAppShownInMenu:bundle]);
+    NSString *container = [spec propertyForKey:@"cxContainerID"];
+    return @([[CXPrefs shared] isItemShownInMenu:bundle containerID:container]);
 }
 
 - (void)writeShown:(id)value specifier:(PSSpecifier *)spec {
     NSString *bundle = [spec propertyForKey:@"cxBundleID"];
-    [[CXPrefs shared] setApp:bundle shownInMenu:[value boolValue]];
-    CXLog(@"[prefs] %@ shown=%d", bundle, [value boolValue]);
+    NSString *container = [spec propertyForKey:@"cxContainerID"];
+    [[CXPrefs shared] setItemInMenu:bundle containerID:container shown:[value boolValue]];
+    CXLog(@"[prefs] %@ / %@ shown=%d", bundle, container, [value boolValue]);
 }
 
 - (NSArray<PSSpecifier *> *)specifiers {
@@ -57,7 +59,7 @@ static NSString *CXAppName(NSString *bundleID) {
     NSMutableArray<PSSpecifier *> *specs = [NSMutableArray array];
 
     PSSpecifier *intro = [PSSpecifier groupSpecifierWithName:@""];
-    [intro setProperty:@"容器来自分身组件：应用在分身组件里设了几个容器，分屏菜单里就会自动出现几个图标（默 / 分），无需勾选。关闭某个应用的开关只会让它的分身图标从菜单里消失，不影响分身本身。"
+    [intro setProperty:@"下面每个开关对应一个账号（容器），来自分身组件。打开的分身会出现在分屏菜单里；关掉只是不在菜单显示，不影响分身本身。"
                forKey:@"footerText"];
     [specs addObject:intro];
 
@@ -92,24 +94,26 @@ static NSString *CXAppName(NSString *bundleID) {
                                                           cell:PSStaticTextCell edit:nil]];
     }
     for (NSString *bundle in sorted) {
+        NSString *appName = CXAppName(bundle);
+        PSSpecifier *header = [PSSpecifier groupSpecifierWithName:appName];
+        [specs addObject:header];
         NSArray<NSDictionary *> *containers = [CXCraneBridge containersForBundleID:bundle];
-        NSMutableArray<NSString *> *names = [NSMutableArray array];
         for (NSDictionary *entry in containers) {
             BOOL isDefault = [entry[@"isDefault"] boolValue];
+            NSString *containerID = entry[@"containerID"];
             NSString *name = entry[@"name"];
-            [names addObject:isDefault ? @"默认" : (name.length ? name : entry[@"containerID"])];
+            NSString *title = isDefault ? @"默认" : (name.length ? name : containerID);
+            PSSpecifier *row = [PSSpecifier preferenceSpecifierNamed:title
+                                                              target:self
+                                                                 set:@selector(writeShown:specifier:)
+                                                                 get:@selector(readShown:)
+                                                              detail:nil
+                                                                cell:PSSwitchCell
+                                                                edit:nil];
+            [row setProperty:bundle forKey:@"cxBundleID"];
+            [row setProperty:containerID forKey:@"cxContainerID"];
+            [specs addObject:row];
         }
-        NSString *title = [NSString stringWithFormat:@"%@（%@）", CXAppName(bundle),
-                           [names componentsJoinedByString:@" / "]];
-        PSSpecifier *row = [PSSpecifier preferenceSpecifierNamed:title
-                                                          target:self
-                                                             set:@selector(writeShown:specifier:)
-                                                             get:@selector(readShown:)
-                                                          detail:nil
-                                                            cell:PSSwitchCell
-                                                            edit:nil];
-        [row setProperty:bundle forKey:@"cxBundleID"];
-        [specs addObject:row];
     }
 
     PSSpecifier *note = [PSSpecifier groupSpecifierWithName:@"说明"];

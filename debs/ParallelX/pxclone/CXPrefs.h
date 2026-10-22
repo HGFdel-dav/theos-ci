@@ -3,7 +3,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-FOUNDATION_EXPORT NSString *const CXKeyHiddenApps;   // [String] 不在菜单显示分身的应用
+FOUNDATION_EXPORT NSString *const CXKeyHiddenItems;  // [String] "bundle#container" 不在菜单显示
 FOUNDATION_EXPORT NSString *const CXKeyDiagCraneOK;  // SpringBoard 里 Crane 是否可用
 
 @interface CXPrefs : NSObject
@@ -12,9 +12,9 @@ FOUNDATION_EXPORT NSString *const CXKeyDiagCraneOK;  // SpringBoard 里 Crane �
 - (BOOL)boolForKey:(NSString *)key defaultValue:(BOOL)def;
 - (void)setBool:(BOOL)value forKey:(NSString *)key;
 
-// 默认全部显示：Crane 里有的容器就出现在菜单里
-- (BOOL)isAppShownInMenu:(NSString *)bundleID;
-- (void)setApp:(NSString *)bundleID shownInMenu:(BOOL)shown;
+// 默认全部显示；可单独关掉某个应用的某个容器
+- (BOOL)isItemShownInMenu:(NSString *)bundleID containerID:(NSString *)containerID;
+- (void)setItemInMenu:(NSString *)bundleID containerID:(NSString *)containerID shown:(BOOL)shown;
 - (void)synchronize;
 @end
 
