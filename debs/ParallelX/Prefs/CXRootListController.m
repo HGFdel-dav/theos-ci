@@ -55,6 +55,16 @@ static NSString *CXAppName(NSString *bundleID) {
     CXLog(@"[prefs] remembered sizes cleared");
 }
 
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    PSSpecifier *spec = [self specifierAtIndexPath:indexPath];
+    if ([[spec propertyForKey:@"cxResetRemember"] boolValue]) {
+        [tableView deselectRowAtIndexPath:indexPath animated:YES];
+        [self resetRemember];
+        return;
+    }
+    [super tableView:tableView didSelectRowAtIndexPath:indexPath];
+}
+
 - (id)readShown:(PSSpecifier *)spec {
     NSString *bundle = [spec propertyForKey:@"cxBundleID"];
     NSString *container = [spec propertyForKey:@"cxContainerID"];
@@ -69,7 +79,7 @@ static NSString *CXAppName(NSString *bundleID) {
 }
 
 - (NSArray<PSSpecifier *> *)specifiers {
-    _specifiers = nil;
+    if (_specifiers) return _specifiers;
     NSMutableArray<PSSpecifier *> *specs = [NSMutableArray array];
 
     PSSpecifier *intro = [PSSpecifier groupSpecifierWithName:@""];

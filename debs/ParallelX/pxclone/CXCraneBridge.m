@@ -217,7 +217,9 @@ static Class CXCraneManagerClass(void) {
         if (!manager || ![self isApplicationSupportedByCrane:bundleID]) { completion(NO); return; }
 
         NSString *current = [self activeContainerForBundleID:bundleID];
-        if ([current isEqualToString:containerID]) { completion(YES); return; }
+        // activeContainer 只是启动配置；旧版 reload:NO 后它可与运行中账号不同。
+        // 用户明确要求重载时，即使配置ID已相同，也必须完成重载。
+        if ([current isEqualToString:containerID] && !reload) { completion(YES); return; }
 
         // ① 首选：无认证接口（Crane 官方公开，ScreenCore 同款链路）
         SEL plain = NSSelectorFromString(@"setActiveContainerIdentifier:forApplicationWithIdentifier:reloadApplication:");
@@ -240,8 +242,10 @@ static Class CXCraneManagerClass(void) {
                 completion(YES);
                 return;
             }
-            @try { ((void (*)(id, SEL, id))objc_msgSend)(manager, reloadSel, bundleID); }
-            @catch (__unused NSException *e) {}
+            @try {
+                ((void (*)(id, SEL, id))objc_msgSend)(manager, reloadSel, bundleID);
+                CXLog(@"[crane] %@ reload requested", bundleID);
+            } @catch (__unused NSException *e) { CXSwitchInFlight = NO; completion(NO); return; }
             // 重载会把应用拉起，等它落定再让分屏窗口接管，避免抢同一个 App
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{

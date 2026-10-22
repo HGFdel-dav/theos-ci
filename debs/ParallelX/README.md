@@ -1,37 +1,36 @@
 # ParallelX（内置分身菜单）
 
-> clone0.2：设置入口改回独立「分身」行（跨 bundle 链接在本机 Preferences 加载失败）。
+> 当前源码：clone0.18 本地修复候选；未云编译、未推送、未真机验证。
+> 具体旧源码复用来源与实测日志证据见 [CLONE018-FIXES.md](CLONE018-FIXES.md)。
 
-> 包名 `com.moxuan.parallelx`，装它 = 替换原版 ParallelX。原版引擎二进制
-> 原样随包（vendor/PX），分身功能以独立注入层实现，不改原版 Swift 二进制。
+包名仍为 `com.moxuan.parallelx`，安装升级覆盖原版ParallelX，不新增独立插件。
+原版引擎/vendor二进制原样保留；设置仍嵌入PX自己的面板，无设置首页独立分身入口。
 
-## 菜单模型（取自真机 com.moxuan.parallelx.plist）
+## 菜单与容器
 
-| 键 | 类型 | 含义 |
-|---|---|---|
-| `applications` | `[String]` | 菜单条目 id：bundleID / `px.action.*` / `px.custom.*` / `px.url.*` |
-| `customActions` | `[[String:Any]]` | `px.custom.*` 记录（`id`/`title`/`app`/`kind`/`type`） |
-| `applicationNames` | `[String:String]` | 条目 id → 显示名 |
-| `shortcutSymbols` | `[String:String]` | 条目 id → SF Symbol |
-| `shortcutImages` | `[String:Any]` | 条目 id → 自定义图标数据 |
+Crane应用有多个容器时自动生成默认/各容器菜单项，无需手动勾选加入。
+设置页每个账号一开关；关闭只隐藏菜单项。菜单使用原版
+`applications/customActions/applicationNames/shortcutSymbols/shortcutImages` schema；
+条目前缀`px.custom.`、类型`clonex.open`，虚拟ID由应用/容器稳定生成。
 
-每个勾选的「应用 + 容器」注入一条 `px.custom.<FNV64>`（`type=clonex.open`
-作标记），标题「应用 · 分身名」，图标为应用图标 + 「分」角标 PNG。
+菜单点击与URL弹窗选择统一走已实测过的clone0.8顺序：
+`切容器 → 回读ID → reloadApplicationWithIdentifier: → 等0.5s → externalOpenApplication:`。
+切换失败不打开错误账号。原版URL具体数据能否在重载后再投递仍需实测。
 
-## 点击链路
+## ARC设置
 
-`-[PXSceneBridge performConfiguredAction:]`（`B24@0:8@16`）拦截
-`clonex.open` → Crane 切容器（回读核验）→ `+[PXPanelEntry applicationActivated:]`
-用真实 bundleID 开分屏窗口。兜底：`prepareWindowForBundleID:wasFullscreen:completion:`
-（`v36@0:8@16B24@?28`）与 `externalOpenApplication:`（`v24@0:8@16`）。
+设置→ParallelX→ARC角落唤醒：启用、左右角、扇形/矩形、半径/长高/内侧圆角、
+水平/垂直偏移、调试触发区；默认值/命中/调试共用实际接线，不塞不能用的菜单外观开关。
+系统手势通道与触发几何复用已有实现；菜单、图标和动画仍由PX驱动。
+系统通道/真实PX对象不存在时明确日志和有限fallback，不创建吞触摸的透明覆盖窗口。
 
-## 设置
+## 窗口记忆
 
-设置 → 分身：勾选哪些容器进入分屏菜单。偏好域 `com.niubiprass.clonex`。
-检测不到分身组件时，页内会列出所有尝试过的 libcrane 路径，便于排查。
+按应用+容器保存分屏hostCard实际宽高；无分身的普通应用使用DEFAULT。
+保存来自真正的缩放结束/关闭回调，恢复遵循原版card.frame+layoutHost顺序。
+不把菜单panelWindow当分屏窗，不把原生Swift String/tuple按ObjC对象读取。
+设置页保留记忆开关及重置，关闭后不记录不恢复。
 
-日志：`/var/mobile/Library/Application Support/CloneX/runtime.log`
-
-## 状态
-
-静态分析 + 云编译，未真机验证。
+日志：`/var/mobile/Library/Application Support/CloneX/runtime.log`。
+关键事件：`[url] selected`、`[crane] reload requested`、`[arc] begin/end`、
+`[remember] bind/store/apply`。只有看到设置保存/手势注册不能证明运行已通过。

@@ -115,12 +115,22 @@ static void CXPromptContainerThenOpen(NSString *bundleID, void (^cancel)(void)) 
         BOOL isDefault = [entry[@"isDefault"] boolValue];
         NSString *title = isDefault ? @"默认" : (entry[@"name"] ?: cid);
         [sheet addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
-            CXShowingChooser = NO;
-            [CXCraneBridge switchBundleID:bundleID toContainer:cid reload:NO completion:^(BOOL ok) {
-                CXInternalOpen = YES;
+            // 复用 clone0.8 已通过的顺序：切容器 -> Crane 重载 -> 开窗。
+            // reload:NO 只修改下次启动，不能切换运行中的账号。
+            CXLog(@"[url] %@ selected=%@, reload=1", bundleID, cid);
+            BOOL wasInternal = CXInternalOpen;
+            CXInternalOpen = YES; // 重载引发的激活不能再次弹选择
+            [CXCraneBridge switchBundleID:bundleID toContainer:cid reload:YES completion:^(BOOL ok) {
+                CXShowingChooser = NO;
+                if (!ok) {
+                    CXInternalOpen = wasInternal;
+                    CXLog(@"[url] %@ switch failed, do not open wrong account", bundleID);
+                    return;
+                }
+                CXRememberNoteLaunch(bundleID, cid);
                 CXOpenInSplit(bundleID);
                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                    CXInternalOpen = NO;
+                    CXInternalOpen = wasInternal;
                 });
             }];
         }]];
@@ -232,8 +242,9 @@ static BOOL CXHandleVirtualItem(NSDictionary *item) {
     CXLog(@"[hit] %@ -> container %@", bundleID, containerID);
     // 必须重启应用：Crane 只改"下次启动"的容器，运行中的进程不会换数据
     [CXCraneBridge switchBundleID:bundleID toContainer:containerID reload:YES completion:^(BOOL ok) {
-        CXLog(@"[hit] %@ switch=%d, opening split", bundleID, ok);
-        CXRememberNoteLaunch(bundleID, containerID);
+    CXLog(@"[hit] %@ switch=%d", bundleID, ok);
+    if (!ok) { CXLog(@"[hit] switch failed, skip opening wrong account"); return; }
+    CXRememberNoteLaunch(bundleID, containerID);
         CXOpenInSplit(bundleID);
     }];
     return YES;
@@ -378,13 +389,14 @@ static void (*CXOrigOpenApp)(id, SEL, id, id, id, id);
 
 static void CXOpenAppHook(id self, SEL _cmd, id app, id view, id overlay, id completion) {
     NSString *bundle = [app isKindOfClass:NSString.class] ? app : nil;
-    NSString *container = bundle.length ? [CXCraneBridge activeContainerForBundleID:bundle] : nil;
+    NSString *active = bundle.length ? [CXCraneBridge activeContainerForBundleID:bundle] : nil;
+    NSString *container = active.length ? active : @"DEFAULT"; // 普通应用也要记忆
     CXLog(@"[trace] openApplication app=%@(%@)", app, NSStringFromClass([app class]));
+    if (bundle.length && [view isKindOfClass:UIView.class])
+        CXRememberBindOpen(self, view, bundle, container);
     if (CXOrigOpenApp) CXOrigOpenApp(self, _cmd, app, view, overlay, completion);
-    if (bundle.length && container.length) {
-        CXRememberNoteLaunch(bundle, container);
-        CXRememberApplySoon(bundle, container);
-    }
+    // 原 completion 原样传回，不猜 block 内部签名；只在原开窗之后有限重试。
+    if (bundle.length) CXRememberApplySoon(bundle, container);
 }
 
 static void CXInstallBridgeHooks(void) {
@@ -456,6 +468,7 @@ static void CXInstallBridgeHooks(void) {
 static void (*CXOrigDragHandle)(id, SEL, id);
 
 static void CXDragHandleHook(id self, SEL _cmd, id gesture) {
+    CXArcWakeCaptureEntry(self); // 捕获原版真正运行的实例，不再猜响应链
     CXSyncIfNeeded(@"dragHandle");
     if (CXOrigDragHandle) CXOrigDragHandle(self, _cmd, gesture);
 }
@@ -518,7 +531,10 @@ static void CXSyncIfNeeded(NSString *reason) {
 static void CXPreferencesChanged(CFNotificationCenterRef center, void *observer,
                                  CFStringRef name, const void *object,
                                  CFDictionaryRef userInfo) {
-    dispatch_async(dispatch_get_main_queue(), ^{ CXSyncMenu(); });
+    dispatch_async(dispatch_get_main_queue(), ^{
+        CXSyncMenu();
+        CXArcWakeSync(); // 与旧版一样：设置变更即时刷新手势与调试热区
+    });
 }
 
 #pragma mark - 载入时机
