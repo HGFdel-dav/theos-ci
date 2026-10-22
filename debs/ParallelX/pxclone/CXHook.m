@@ -61,7 +61,25 @@ static void CXMarkHandled(NSString *key) {
 #pragma mark - 打开分屏窗口（真实 bundle）
 
 static void CXOpenInSplit(NSString *bundleID) {
-    // ① 首选：照抄普通应用的路径 openApplication:inView:keyboardOverlay:completion:
+    // ① 首选：+[PXPanelEntry externalOpenApplication:] —— PX 自己会创建桥与容器视图，
+    //    日志证实它随后调用 openApplication，视图为 312x675（分屏尺寸）。
+    Class entryCls = NSClassFromString(@"PXPanelEntry");
+    SEL extSel = NSSelectorFromString(@"externalOpenApplication:");
+    if (entryCls && [entryCls respondsToSelector:extSel]) {
+        NSMethodSignature *extSig = [entryCls methodSignatureForSelector:extSel];
+        if (extSig && extSig.numberOfArguments == 3 &&
+            strcmp(extSig.methodReturnType, @encode(void)) == 0 &&
+            [extSig getArgumentTypeAtIndex:2][0] == '@') {
+            @try {
+                ((void (*)(id, SEL, id))objc_msgSend)(entryCls, extSel, bundleID);
+                CXLog(@"[open] %@ via externalOpenApplication", bundleID);
+                return;
+            } @catch (__unused NSException *e) {
+                CXLog(@"[open] externalOpenApplication 异常，回退 %@", bundleID);
+            }
+        }
+    }
+    // ② 照抄普通应用的路径 openApplication:inView:keyboardOverlay:completion:
     Class bridgeCls = NSClassFromString(@"PXSceneBridge");
     id bridge = nil;
     if (bridgeCls && [bridgeCls respondsToSelector:NSSelectorFromString(@"sharedBridge")])
