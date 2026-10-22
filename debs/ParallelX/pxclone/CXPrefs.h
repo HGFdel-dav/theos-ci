@@ -4,11 +4,13 @@
 NS_ASSUME_NONNULL_BEGIN
 
 FOUNDATION_EXPORT NSString *const CXKeyMenuItems;   // [{bundleID, containerID}]
+FOUNDATION_EXPORT NSString *const CXKeyDiagCraneOK; // SpringBoard 进程里 Crane 是否可用
 
 @interface CXPrefs : NSObject
 + (instancetype)shared;
 - (id _Nullable)objectForKey:(NSString *)key;
 - (BOOL)boolForKey:(NSString *)key defaultValue:(BOOL)def;
+- (void)setBool:(BOOL)value forKey:(NSString *)key;
 
 // 菜单里要显示的分身条目
 - (NSArray<NSDictionary *> *)menuItems;

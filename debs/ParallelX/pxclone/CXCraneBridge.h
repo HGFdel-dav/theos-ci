@@ -11,16 +11,17 @@ NS_ASSUME_NONNULL_BEGIN
 + (NSArray<NSDictionary *> *)containersForBundleID:(NSString *)bundleID;
 + (NSString *)displayNameForContainer:(NSString *)containerID bundleID:(NSString *)bundleID;
 
-// 切到指定容器；completion 保证只在主队列回调一次。
-// 目标就是当前容器时直接 completion(YES)。
+// 切换容器；completion 保证只在主队列回调一次。
 + (void)switchBundleID:(NSString *)bundleID
            toContainer:(NSString *)containerID
             completion:(void (^)(BOOL ok))completion;
 
-// 按配置把容器落定；containerID 为空/@"DEFAULT" 时直接放行。
 + (void)prepareLaunchForBundleID:(NSString *)bundleID
                      containerID:(NSString * _Nullable)containerID
                       completion:(void (^)(BOOL ok))completion;
+
+// 诊断：返回尝试过的路径和是否存在（设置页展示用）
++ (NSArray<NSString *> *)diagnosticLines;
 @end
 
 NS_ASSUME_NONNULL_END

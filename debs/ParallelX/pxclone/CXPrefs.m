@@ -4,6 +4,7 @@
 #import <notify.h>
 
 NSString *const CXKeyMenuItems = @"CXMenuItems";
+NSString *const CXKeyDiagCraneOK = @"CXDiagCraneOK";
 
 static NSString *const CXDomain = @"com.niubiprass.clonex";
 static NSString *const CXChangedNotification = @"com.niubiprass.clonex/changed";
@@ -28,6 +29,13 @@ static CFStringRef CXDomainRef(void) { return (__bridge CFStringRef)CXDomain; }
 - (BOOL)boolForKey:(NSString *)key defaultValue:(BOOL)def {
     id value = [self objectForKey:key];
     return [value respondsToSelector:@selector(boolValue)] ? [value boolValue] : def;
+}
+
+- (void)setBool:(BOOL)value forKey:(NSString *)key {
+    if (!key.length) return;
+    CFPreferencesSetAppValue((__bridge CFStringRef)key,
+                             (__bridge CFPropertyListRef)@(value), CXDomainRef());
+    [self synchronize];
 }
 
 - (NSArray<NSDictionary *> *)menuItems {

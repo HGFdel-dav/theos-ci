@@ -33,7 +33,7 @@ static NSString *CXAppName(NSString *bundleID) {
 @implementation CXRootListController
 
 - (instancetype)init {
-    if ((self = [super init])) self.title = @"CloneX";
+    if ((self = [super init])) self.title = @"分身";
     return self;
 }
 
@@ -55,6 +55,18 @@ static NSString *CXAppName(NSString *bundleID) {
         [specs addObject:[PSSpecifier preferenceSpecifierNamed:@"未检测到分身组件"
                                                         target:self set:NULL get:NULL detail:nil
                                                           cell:PSStaticTextCell edit:nil]];
+        BOOL springboardOK = [[CXPrefs shared] boolForKey:CXKeyDiagCraneOK defaultValue:NO];
+        PSSpecifier *diagGroup = [PSSpecifier groupSpecifierWithName:@"查找记录"];
+        [diagGroup setProperty:springboardOK
+            ? @"SpringBoard 里已加载分身组件，功能实际可用；只是设置进程里没找到，重启设置应用后再看。"
+            : @"以上是设置进程里尝试过的路径。若都显示 ✗，说明这台机器上确实没有装分身组件。"
+            forKey:@"footerText"];
+        [specs addObject:diagGroup];
+        for (NSString *line in [CXCraneBridge diagnosticLines]) {
+            [specs addObject:[PSSpecifier preferenceSpecifierNamed:line
+                                                            target:self set:NULL get:NULL detail:nil
+                                                              cell:PSStaticTextCell edit:nil]];
+        }
         _specifiers = specs;
         return _specifiers;
     }

@@ -296,6 +296,9 @@ __attribute__((constructor)) static void CXInitialize(void) {
               [CXCraneBridge isCraneAvailable],
               NSClassFromString(@"PXPanelEntry") != nil,
               NSClassFromString(@"PXSceneBridge") != nil);
+        BOOL craneOK = [CXCraneBridge isCraneAvailable];
+        [CXPrefs.shared setBool:craneOK forKey:CXKeyDiagCraneOK];
+        if (!craneOK) CXLog(@"[diag] %@", [[CXCraneBridge diagnosticLines] componentsJoinedByString:@" | "]);
         CXInstallAll();
         CXSyncMenu();
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),

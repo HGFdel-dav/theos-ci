@@ -47,14 +47,39 @@ static id CXMsgSendStr(id target, SEL sel, id arg) {
 
 @implementation CXCraneBridge
 
+static NSArray<NSString *> *CXCraneCandidatePaths(void) {
+    NSMutableArray<NSString *> *paths = [NSMutableArray array];
+    void (^addRoot)(NSString *) = ^(NSString *root) {
+        if (!root.length) return;
+        NSString *p = [root stringByAppendingPathComponent:@"usr/lib/libcrane.dylib"];
+        if (![paths containsObject:p]) [paths addObject:p];
+    };
+    const char *env = getenv("JBROOT");
+    if (env) addRoot([NSString stringWithUTF8String:env]);
+    addRoot(@"/");
+    addRoot(@"/var/jb");
+    // RootHide：真实的隐藏根是 .jbroot-<UUID> 目录（/var/jb、.jbroot 都可能只是符号链接）
+    NSArray<NSString *> *bases = @[
+        @"/var/containers/Bundle/Application",
+        @"/var/mobile/Containers/Shared/AppGroup",
+        @"/var/mobile/Containers/Bundle/Application",
+    ];
+    NSFileManager *fm = NSFileManager.defaultManager;
+    for (NSString *base in bases) {
+        NSArray<NSString *> *entries = [fm contentsOfDirectoryAtPath:base error:nil];
+        if (!entries.count) continue;
+        for (NSString *name in entries) {
+            if (![name hasPrefix:@".jbroot"]) continue;
+            addRoot([base stringByAppendingPathComponent:name]);
+        }
+    }
+    return paths;
+}
+
 static Class CXCraneManagerClass(void) {
     Class cls = NSClassFromString(@"CraneManager");
     if (cls) return cls;
-    NSMutableArray<NSString *> *paths = [NSMutableArray array];
-    const char *env = getenv("JBROOT");
-    if (env) [paths addObject:[NSString stringWithFormat:@"%s/usr/lib/libcrane.dylib", env]];
-    [paths addObjectsFromArray:@[@"/var/jb/usr/lib/libcrane.dylib", @"/usr/lib/libcrane.dylib"]];
-    for (NSString *path in paths) {
+    for (NSString *path in CXCraneCandidatePaths()) {
         if (![NSFileManager.defaultManager fileExistsAtPath:path]) continue;
         if (dlopen(path.fileSystemRepresentation, RTLD_NOW | RTLD_GLOBAL)) {
             cls = NSClassFromString(@"CraneManager");
@@ -62,6 +87,17 @@ static Class CXCraneManagerClass(void) {
         }
     }
     return cls;
+}
+
++ (NSArray<NSString *> *)diagnosticLines {
+    NSMutableArray<NSString *> *lines = [NSMutableArray array];
+    Class existing = NSClassFromString(@"CraneManager");
+    [lines addObject:[NSString stringWithFormat:@"CraneManager 类: %@", existing ? @"已存在" : @"未加载"]];
+    for (NSString *path in CXCraneCandidatePaths()) {
+        BOOL exists = [NSFileManager.defaultManager fileExistsAtPath:path];
+        [lines addObject:[NSString stringWithFormat:@"%@ %@", exists ? @"✓" : @"✗", path]];
+    }
+    return lines;
 }
 
 + (BOOL)isCraneAvailable {
