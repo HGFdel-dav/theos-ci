@@ -15,6 +15,7 @@
 //   +[PXPanelEntry applicationActivated:]      v24@0:8@16   （分屏打开）
 //   +[PXPanelEntry externalOpenApplication:]   v24@0:8@16   （全屏打开）
 #import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
 #import <dlfcn.h>
@@ -77,7 +78,18 @@ static UIViewController *CXTopViewController(void) {
     return vc;
 }
 
-static void CXOpenInSplit(NSString *bundleID);
+static void CXOpenInSplitImpl(NSString *bundleID);
+
+// 菜单已指定账号，或 URL 已选择账号：内部开窗不再次弹选择。
+static void CXOpenInSplit(NSString *bundleID) {
+    BOOL wasInternal = CXInternalOpen;
+    CXInternalOpen = YES;
+    @try {
+        CXOpenInSplitImpl(bundleID);
+    } @finally {
+        CXInternalOpen = wasInternal;
+    }
+}
 
 // 外部 URL 打开且应用有多容器时：先选账号
 static void CXPromptContainerThenOpen(NSString *bundleID, void (^cancel)(void)) {
