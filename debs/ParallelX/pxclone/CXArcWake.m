@@ -264,6 +264,7 @@ static id CXDisplayIdentity;
 static BOOL CXSystemRegistered;
 static NSMapTable<UIWindow *, CXArcWakeGesture *> *CXFallbackGestures;
 static NSMapTable<UIWindow *, UIView *> *CXDebugViews;
+@class CXArcDebugWindow;
 static CXArcDebugWindow *CXDebugWindow;
 static BOOL CXArcStarted;
 
