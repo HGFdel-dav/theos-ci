@@ -326,15 +326,12 @@ static void CXApplyBeforeLayout(id self) {
         [NSStringFromClass(canvas.superview.class) containsString:@"PXHostCard"]) card = canvas.superview;
     CGRect screen = card.superview ? card.superview.bounds : card.window.bounds;
     if (![card isKindOfClass:UIView.class] || CGRectIsEmpty(screen)) return;
-    CXPendingApplied = YES; // 先占位：下面的 layoutIfNeeded 可能同步回调 layoutHost
-    card.hidden = YES;      // 套好前不露出旧尺寸
+    // 只在 PX 首次 layoutHost 前写入初始 frame；后续动画完全交给 ParallelX。
+    // 不隐藏卡片、不调用 layoutIfNeeded、不清理 PX 的动画状态，避免开窗时跳变。
+    CXPendingApplied = YES;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
-    [card.layer removeAllAnimations];
-    card.transform = CGAffineTransformIdentity;
     card.frame = CXSanitizedTarget(CXPendingRect, card.frame, screen);
-    [card setNeedsLayout];
-    [card layoutIfNeeded];
     [CATransaction commit];
     if (CXPendingKey) [CXAppliedKeySet() addObject:CXPendingKey];
     CXLog(@"[remember] apply-before-layout %@ %.0fx%.0f",
@@ -364,10 +361,6 @@ static void CXLayoutHostHook(id self, SEL _cmd) {
     }
     if (CXOrigLayoutHost) CXOrigLayoutHost(self, _cmd);
     UIView *cardNow = CXEntryCard(CXRememberEntry ?: CXFindPanelEntry());
-    if (cardNow.hidden && CXPendingApplied) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.02 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{ cardNow.hidden = NO; });
-    }
 }
 
 #pragma mark - 安装
