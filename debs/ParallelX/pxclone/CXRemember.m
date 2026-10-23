@@ -345,7 +345,14 @@ static void CXLayoutHostHook(id self, SEL _cmd) {
         }
     }
     if (CXOrigLayoutHost) CXOrigLayoutHost(self, _cmd);
+    // 原版 layoutHost 完成后再做一次无动画布局，确保 canvas/content 使用新 bounds。
     UIView *cardNow = CXEntryCard(CXRememberEntry ?: CXFindPanelEntry());
+    if (cardNow && CXPendingApplied) {
+        [cardNow setNeedsLayout];
+        [cardNow.superview setNeedsLayout];
+        [cardNow layoutIfNeeded];
+        CXLog(@"[remember] content relayout %.0fx%.0f", cardNow.bounds.size.width, cardNow.bounds.size.height);
+    }
 }
 
 #pragma mark - 安装
