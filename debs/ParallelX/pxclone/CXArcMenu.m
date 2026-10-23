@@ -49,30 +49,13 @@ NSArray<UIView *> *CXFanIconsInWindows(NSArray<UIWindow *> *windows) {
 
 void CXFanArrange(NSArray<UIView *> *icons, UIWindow *window, BOOL left) {
     if (!icons.count) return;
+    // 不修改 PX 的 rail 锚点和 position；那会与原版布局动画互相覆盖。
     UIView *rail = icons.firstObject.superview;
-    if (rail && (!window || rail != window)) {
-        // 让 PX 自己的缩放/展开从角落长出来，而不是从屏幕边缘
-        if (rail.layer.anchorPoint.x != (left ? 0 : 1) || rail.layer.anchorPoint.y != 1) {
-            CGPoint oldAnchor = rail.layer.anchorPoint;
-            CGPoint oldPos = rail.layer.position;
-            CGRect f = rail.frame;
-            // 新锚点在角落
-            CGPoint newAnchor = CGPointMake(left ? 0 : 1, 1);
-            // 新 position = frame 原点 + 新锚点在 frame 中的偏移
-            CGPoint newPos = CGPointMake(f.origin.x + newAnchor.x * f.size.width,
-                                         f.origin.y + newAnchor.y * f.size.height);
-            rail.layer.anchorPoint = newAnchor;
-            rail.layer.position = newPos;
-            CXLog(@"[arc] rail anchor %.2f,%.2f→%.2f,%.2f pos %.0f,%.0f→%.0f,%.0f",
-                  oldAnchor.x, oldAnchor.y, newAnchor.x, newAnchor.y,
-                  oldPos.x, oldPos.y, newPos.x, newPos.y);
-        }
-    }
     CGSize size = window ? window.bounds.size : CGSizeZero;
     if (size.width < 100 || size.height < 100) size = UIScreen.mainScreen.bounds.size;
     if (size.width < 100 || size.height < 100) return;
-    CGFloat anchorX = left ? 6 : size.width - 6;
-    CGFloat anchorY = size.height - 6;
+    CGFloat anchorX = left ? offsetX : size.width - offsetX;
+    CGFloat anchorY = size.height - offsetY;
     id radiusObject = [CXPrefs.shared objectForKey:@"CXArcRadius"];
     id offsetXObject = [CXPrefs.shared objectForKey:@"CXArcOffsetX"];
     id offsetYObject = [CXPrefs.shared objectForKey:@"CXArcOffsetY"];
@@ -83,7 +66,7 @@ void CXFanArrange(NSArray<UIView *> *icons, UIWindow *window, BOOL left) {
     anchorX += left ? offsetX : -offsetX;
     anchorY -= offsetY;
     CGFloat radiusBase = MAX(54, radiusSetting);
-    CGFloat start = left ? 1.5 * M_PI : M_PI;
+    CGFloat start = left ? -M_PI_2 : -M_PI;
     NSInteger perRing = icons.count > 8 ? 8 : (NSInteger)icons.count;
     NSMutableArray<NSValue *> *points = [NSMutableArray array];
     for (NSInteger i = 0; i < (NSInteger)icons.count; i++) {
