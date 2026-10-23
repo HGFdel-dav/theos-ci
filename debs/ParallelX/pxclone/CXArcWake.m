@@ -120,8 +120,32 @@ void CXArcWakeCaptureEntry(id entry) {
     if (first && NSThread.isMainThread) CXArcWakeSync(); // 首次拿到实例后补挂调试层
 }
 
-// panelWindow 是 Swift 私有属性、不在 CXPXEntryObject 白名单里：直接走选择器读，
-// 返回类型可能是 Optional(@?)，所以只校验 isKindOfClass，不依赖签名里的返回编码。
+// 原版 PXPanelEntry 的 panelWindow 是 Optional<UIWindow>；其 Swift ivar
+// 在当前 arm64e 二进制中没有 ObjC type encoding。按已核证的空 type、8 字节
+// 槽和边界读取，避免把 String?/tuple 当对象；其它字段仍走 CXPXRuntime 白名单。
+static UIWindow *CXReadPanelWindow(id entry) {
+    Class cls = NSClassFromString(@"PXPanelEntry");
+    if (!entry || !cls || ![entry isKindOfClass:cls]) return nil;
+    Ivar ivar = class_getInstanceVariable(cls, "panelWindow");
+    if (!ivar) return nil;
+    const char *type = ivar_getTypeEncoding(ivar);
+    ptrdiff_t offset = ivar_getOffset(ivar);
+    if ((type && type[0]) || offset < 0 || (size_t)offset + sizeof(id) > class_getInstanceSize(cls)) return nil;
+    unsigned int count = 0;
+    Ivar *ivars = class_copyIvarList(cls, &count);
+    ptrdiff_t end = (ptrdiff_t)class_getInstanceSize(cls);
+    for (unsigned int i = 0; ivars && i < count; i++) {
+        ptrdiff_t next = ivar_getOffset(ivars[i]);
+        if (next > offset && next < end) end = next;
+    }
+    free(ivars);
+    if (end - offset != (ptrdiff_t)sizeof(id)) return nil;
+    id __unsafe_unretained value = nil;
+    memcpy(&value, (const uint8_t *)(__bridge const void *)entry + offset, sizeof(value));
+    return [value isKindOfClass:UIWindow.class] ? value : nil;
+}
+
+// Getter fallback is retained for builds that expose panelWindow dynamically.
 static UIWindow *CXReadEntryWindow(id entry, const char *name) {
     if (!entry || !name) return nil;
     SEL sel = sel_registerName(name);
@@ -140,6 +164,7 @@ static NSArray<UIWindow *> *CXMenuWindows(void) {
         if (w && !w.hidden && ![list containsObject:w]) [list addObject:w];
     };
     id entry = CXFindPanelEntry();
+    add(CXReadPanelWindow(entry));
     add(CXReadEntryWindow(entry, "panelWindow"));
     add(CXPXEntryObject(entry, "handleWindow", UIWindow.class));
     add(CXPXEntryObject(entry, "hostWindow", UIWindow.class));

@@ -163,6 +163,7 @@ static void CXOpenInSplit(NSString *bundleID) {
 @property (nonatomic, copy) NSString *bundleID;
 @property (nonatomic, copy) void (^pick)(NSString *containerID);
 @property (nonatomic, copy) void (^cancel)(void);
+@property (nonatomic, assign) BOOL finishing;
 @end
 
 @implementation CXChooserController
@@ -187,10 +188,16 @@ static void CXOpenInSplit(NSString *bundleID) {
     row.distribution = UIStackViewDistributionFillEqually;
     row.spacing = 8;
     UIImage *icon = nil;
-    SEL iconSel = NSSelectorFromString(@"_applicationIconImageForBundleIdentifier:format:scale:");
-    if ([UIImage respondsToSelector:iconSel])
-        icon = ((id (*)(id, SEL, id, long, double))objc_msgSend)(UIImage.class, iconSel,
-            self.bundleID, 0, (double)UIScreen.mainScreen.scale);
+    @try {
+        SEL iconSel = NSSelectorFromString(@"_applicationIconImageForBundleIdentifier:format:scale:");
+        if ([UIImage respondsToSelector:iconSel])
+            icon = ((id (*)(id, SEL, id, long, double))objc_msgSend)(UIImage.class, iconSel,
+                self.bundleID, 0, (double)UIScreen.mainScreen.scale);
+    } @catch (NSException *e) {
+        CXLog(@"[url] icon API 异常: %@", e.reason ?: @"unknown");
+    }
+    // 没有图标时用占位（空图片，不崩溃）
+    if (!icon) icon = [[UIImage alloc] init];
     for (NSDictionary *entry in self.containers) {
         NSString *cid = entry[@"containerID"];
         BOOL isDefault = [entry[@"isDefault"] boolValue];
@@ -214,14 +221,19 @@ static void CXOpenInSplit(NSString *bundleID) {
             dot.translatesAutoresizingMaskIntoConstraints = NO;
             [button addSubview:dot];
             [NSLayoutConstraint activateConstraints:@[
-                [dot.widthAnchor constraintEqualToConstant:8], [dot.heightAnchor constraintEqualToConstant:8],
-                [dot.trailingAnchor constraintEqualToAnchor:name.trailingAnchor constant:6],
-                [dot.centerYAnchor constraintEqualToAnchor:name.centerYAnchor]]];
+                [dot.widthAnchor constraintEqualToConstant:8],
+                [dot.heightAnchor constraintEqualToConstant:8]]];
         }
         UIStackView *col = [[UIStackView alloc] initWithArrangedSubviews:@[iv, name]];
         col.axis = UILayoutConstraintAxisVertical; col.alignment = UIStackViewAlignmentCenter; col.spacing = 6;
         col.userInteractionEnabled = NO; col.translatesAutoresizingMaskIntoConstraints = NO;
         [button addSubview:col];
+        if (!isDefault) {
+            UIView *dot = button.subviews.firstObject;
+            [NSLayoutConstraint activateConstraints:@[
+                [dot.trailingAnchor constraintEqualToAnchor:button.trailingAnchor constant:-8],
+                [dot.centerYAnchor constraintEqualToAnchor:button.centerYAnchor]]];
+        }
         [NSLayoutConstraint activateConstraints:@[
             [iv.widthAnchor constraintEqualToConstant:56], [iv.heightAnchor constraintEqualToConstant:56],
             [col.centerXAnchor constraintEqualToAnchor:button.centerXAnchor],
@@ -258,10 +270,14 @@ static void CXOpenInSplit(NSString *bundleID) {
 }
 
 - (void)tapped:(UIButton *)sender {
+    if (self.finishing || sender.tag < 0 || sender.tag >= (NSInteger)self.containers.count) return;
+    self.finishing = YES;
     NSDictionary *entry = self.containers[sender.tag];
     [self dismissViewControllerAnimated:YES completion:^{ if (self.pick) self.pick(entry[@"containerID"]); }];
 }
 - (void)cancelled {
+    if (self.finishing) return;
+    self.finishing = YES;
     [self dismissViewControllerAnimated:YES completion:^{ if (self.cancel) self.cancel(); }];
 }
 @end
@@ -313,7 +329,6 @@ static BOOL CXPromptForURL(NSString *bundleID, BOOL requireURL, void (^proceed)(
             if (incoming) CXReplayURL(incoming);
             __block NSInteger tries = 0;
             __block void (^poll)(void);
-            __block __weak void (^weakPoll)(void);
             poll = ^{
                 if (++tries > 15) { CXInternalOpen = wasInternal; return; }  // 增加到15次，每次0.3s
                 if (CXAppRunning(bundleID)) {
@@ -321,14 +336,24 @@ static BOOL CXPromptForURL(NSString *bundleID, BOOL requireURL, void (^proceed)(
                     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2.0 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
                         CXInternalOpen = wasInternal; });
                 } else {
-                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.3 * NSEC_PER_SEC), dispatch_get_main_queue(), weakPoll);
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.3 * NSEC_PER_SEC), dispatch_get_main_queue(), poll);
                 }
             };
-            weakPoll = poll;
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.6 * NSEC_PER_SEC), dispatch_get_main_queue(), poll);
         }];
     };
-    [host presentViewController:chooser animated:YES completion:nil];
+    @try {
+        if (!host.viewIfLoaded.window && host.view.window == nil) {
+            CXShowingChooser = NO;
+            CXLog(@"[url] chooser host 无有效窗口");
+            return NO;
+        }
+        [host presentViewController:chooser animated:YES completion:nil];
+    } @catch (NSException *e) {
+        CXShowingChooser = NO;
+        CXLog(@"[url] present chooser 异常: %@", e.reason ?: @"unknown");
+        return NO;
+    }
     return YES;
 }
 

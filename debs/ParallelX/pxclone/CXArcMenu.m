@@ -8,8 +8,19 @@
 static char CXFanKey;
 
 static BOOL CXFanIsIcon(UIView *v) {
-    return [NSStringFromClass(v.class) containsString:@"PXPanelIcon"] &&
-           !v.hidden && v.alpha > 0.01 && !CGRectIsEmpty(v.bounds);
+    if (!v || v.hidden || v.alpha <= 0.01 || CGRectIsEmpty(v.bounds)) return NO;
+    NSString *name = NSStringFromClass(v.class);
+    BOOL named = [name containsString:@"PXPanelIcon"];
+    if (named) return YES;
+    // Swift 私有类名可能被优化；只接受 PX 菜单树中的图像视图，避免扫到宿主卡片。
+    if (![v isKindOfClass:UIImageView.class]) return NO;
+    UIView *p = v.superview;
+    for (NSUInteger i = 0; p && i < 5; i++, p = p.superview) {
+        NSString *pn = NSStringFromClass(p.class);
+        if ([pn containsString:@"PXPanel"] || [pn containsString:@"PXMenu"] ||
+            [pn containsString:@"PXRail"]) return YES;
+    }
+    return NO;
 }
 
 static NSArray<UIView *> *CXFanScan(UIWindow *window, NSMutableSet<NSValue *> *seen) {

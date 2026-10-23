@@ -171,7 +171,7 @@ static void CXCapture(id entry) {
     if (!entry || !CXRememberOn()) return;
     CXRememberEntry = entry;
     CXArcWakeCaptureEntry(entry);
-    if ([objc_getAssociatedObject(entry, &CXResizeActiveKey) boolValue]) return;
+    // 去掉 ResizeActive 判断：拖动结束时也要保存
     if (CXPXEntryFlag(entry, "fullscreenToWindowInProgress") ||
         CXPXEntryFlag(entry, "fullscreenLaunchInProgress")) return;
     NSString *bundle = CXEntryBundle(entry);
