@@ -62,8 +62,9 @@ static NSInteger CXArcSideAtPoint(CGPoint point) {
     @try {
         if (!CXArcEnabled()) return -1;
         NSInteger side = (NSInteger)CXArcNumber(@"CXArcSide");
-        if ((side == 1 || side == 2) && [CXArcPath(YES) containsPoint:point]) return 1;
-        if ((side == 0 || side == 2) && [CXArcPath(NO) containsPoint:point]) return 0;
+        // side=1 左下，side=0 右下，side=2 两侧；先按 x 分流，避免左右路径重叠时右侧优先。
+        if ((side == 1 || side == 2) && point.x <= CGRectGetMidX(UIScreen.mainScreen.bounds) && [CXArcPath(YES) containsPoint:point]) return 1;
+        if ((side == 0 || side == 2) && point.x >= CGRectGetMidX(UIScreen.mainScreen.bounds) && [CXArcPath(NO) containsPoint:point]) return 0;
     } @catch (__unused NSException *e) { return -1; }
     return -1;
 }

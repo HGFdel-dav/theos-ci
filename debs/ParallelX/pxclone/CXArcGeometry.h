@@ -19,19 +19,16 @@ static inline UIBezierPath *CXArcTriggerPath(BOOL left, NSInteger mode, CGFloat 
         CGFloat h = MIN(height, anchor.y - CGRectGetMinY(bounds));
         if (w <= 0 || h <= 0) return path;
         CGFloat r = isfinite(cornerRadius) && cornerRadius >= 0 ? MIN(cornerRadius, MIN(w, h)) : MIN(12, MIN(w, h));
-        [path moveToPoint:CGPointZero];
-        [path addLineToPoint:CGPointMake(w, 0)];
-        [path addLineToPoint:CGPointMake(w, h - r)];
-        if (r > 0) [path addArcWithCenter:CGPointMake(w - r, h - r) radius:r
-                             startAngle:0 endAngle:M_PI_2 clockwise:YES];
-        [path addLineToPoint:CGPointMake(0, h)];
-        [path closePath];
-        [path applyTransform:CGAffineTransformMake(left ? 1 : -1, 0, 0, -1, anchor.x, anchor.y)];
+        CGRect rect = left ? CGRectMake(anchor.x, anchor.y - h, w, h)
+                           : CGRectMake(anchor.x - w, anchor.y - h, w, h);
+        [path appendPath:[UIBezierPath bezierPathWithRoundedRect:rect cornerRadius:r]];
     } else {
         radius = isfinite(radius) && radius >= 1 ? radius : 40;
-        CGFloat start = left ? 1.5 * M_PI : M_PI;
+        // 屏幕坐标系：两个角都从底边向上扫入屏幕，避免左侧变换后跑到屏幕外。
+        CGFloat start = -M_PI_2;
+        CGFloat end = left ? 0 : -M_PI;
         [path moveToPoint:anchor];
-        [path addArcWithCenter:anchor radius:radius startAngle:start endAngle:start + M_PI_2 clockwise:YES];
+        [path addArcWithCenter:anchor radius:radius startAngle:start endAngle:end clockwise:left];
         [path closePath];
     }
     return path;
