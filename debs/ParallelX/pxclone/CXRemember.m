@@ -172,7 +172,7 @@ static void CXCapture(id entry) {
     CXRememberEntry = entry;
     CXArcWakeCaptureEntry(entry);
     // 只在原生缩放完全结束后保存，拖动过程不触碰记忆状态。
-    if (objc_getAssociatedObject(entry, &CXResizeActiveKey) == @YES ||
+    if ([objc_getAssociatedObject(entry, &CXResizeActiveKey) boolValue] ||
         CXPXEntryFlag(entry, "fullscreenToWindowInProgress") ||
         CXPXEntryFlag(entry, "fullscreenLaunchInProgress")) return;
     NSString *bundle = CXEntryBundle(entry);
