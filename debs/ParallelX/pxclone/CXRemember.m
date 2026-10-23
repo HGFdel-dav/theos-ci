@@ -37,6 +37,7 @@ void CXRememberNoteLaunch(NSString *bundleID, NSString *containerID) {
 }
 
 static NSMutableSet<NSString *> *CXAppliedKeySet(void);
+static NSMutableDictionary<NSString *, NSNumber *> *CXAppliedGenerations(void);
 static NSString *CXKey(NSString *bundle, NSString *container) {
     if (!bundle.length) return nil;
     return [NSString stringWithFormat:@"%@#%@", bundle, container.length ? container : @"DEFAULT"];
@@ -303,7 +304,9 @@ void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
             [card.layer removeAllAnimations];
             card.transform = CGAffineTransformIdentity;
             card.frame = CXSanitizedTarget(CXPendingRect, card.frame, screen);
+            [card setNeedsLayout];
             [CATransaction commit];
+            [card layoutIfNeeded];  // commit 后再 layout，确保子视图在禁用动画后完成布局
             if (CXPendingKey) [CXAppliedKeySet() addObject:CXPendingKey];
             CXLog(@"[remember] apply %@#%@ %.0fx%.0f", bundle, CXPendingContainer,
                   card.frame.size.width, card.frame.size.height);
