@@ -37,6 +37,7 @@ void CXRememberNoteLaunch(NSString *bundleID, NSString *containerID) {
 
 static NSMutableSet<NSString *> *CXAppliedKeySet(void);
 static NSMutableDictionary<NSString *, NSNumber *> *CXAppliedGenerations(void);
+void CXRememberApplySoon(NSString *bundleID, NSString *containerID);
 static NSString *CXKey(NSString *bundle, NSString *container) {
     if (!bundle.length) return nil;
     return [NSString stringWithFormat:@"%@#%@", bundle, container.length ? container : @"DEFAULT"];
@@ -106,6 +107,7 @@ void CXRememberBindOpen(id bridge, UIView *canvas, NSString *bundleID, NSString 
     objc_setAssociatedObject(bridge, &CXRememberBindingKey, context, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     CXRememberNoteLaunch(bundleID, container);
     CXLog(@"[remember] bind %@#%@ canvas=%@", bundleID, container, NSStringFromClass(canvas.class));
+    CXRememberApplySoon(bundleID, container);
 }
 
 static id CXRememberEntry;
@@ -134,6 +136,17 @@ static NSString *CXEntryContainer(id entry) {
 }
 
 static id CXFindPanelEntry(void) { return CXRememberEntry; }
+
+static UIView *CXBoundHostCard(void) {
+    UIView *view = CXBoundCanvas;
+    for (NSInteger depth = 0; view && depth < 8; depth++, view = view.superview) {
+        NSString *name = NSStringFromClass(view.class);
+        if ([name containsString:@"PXHostCard"] || [name containsString:@"HostCard"]) return view;
+    }
+    id entry = CXRememberEntry;
+    UIView *card = CXEntryCard(entry);
+    return [card isKindOfClass:UIView.class] ? card : nil;
+}
 
 // 真实缩放是在 hostCard 上发生；panelWindow 只是菜单，hostWindow 常为全屏透明宿主。
 static BOOL CXGetHost(id entry, NSString *bundle, id *bridgeOut, UIView **cardOut) {
@@ -293,10 +306,7 @@ void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
             id entry = CXRememberEntry;
             NSString *actualContainer = CXEntryContainer(entry);
             if (![actualContainer isEqual:CXPendingContainer]) return;
-            UIView *card = CXEntryCard(entry);
-            if (!card && CXBoundCanvas.superview &&
-                [NSStringFromClass(CXBoundCanvas.superview.class) containsString:@"PXHostCard"])
-                card = CXBoundCanvas.superview;
+            UIView *card = CXBoundHostCard();
             if (![card isKindOfClass:UIView.class] || !card.window) return;
             CGRect screen = card.superview ? card.superview.bounds : card.window.bounds;
             if (CGRectIsEmpty(screen)) return;
