@@ -282,6 +282,21 @@ static void CXOpenInSplit(NSString *bundleID) {
 }
 @end
 
+// 主队列定时任务持有每次重试参数，不使用自引用 block。
+static void CXPollReloadedURL(NSString *bundleID, NSURL *incoming, BOOL wasInternal, NSInteger tries) {
+    if (tries >= 15) { CXInternalOpen = wasInternal; return; }
+    if (CXAppRunning(bundleID)) {
+        if (incoming) CXReplayURL(incoming);
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2.0 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+            CXInternalOpen = wasInternal;
+        });
+        return;
+    }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        CXPollReloadedURL(bundleID, incoming, wasInternal, tries + 1);
+    });
+}
+
 // 任何开窗入口（URL/快捷/激活）通用：有分身且有新鲜 URL 就弹；proceed 由调用方继续原流程
 static BOOL CXPromptForURL(NSString *bundleID, BOOL requireURL, void (^proceed)(void)) {
     if (CXInternalOpen || CXShowingChooser || !bundleID.length) return NO;
@@ -327,19 +342,9 @@ static BOOL CXPromptForURL(NSString *bundleID, BOOL requireURL, void (^proceed)(
             // 重载过的进程要等它真正起来再补投，否则又只落主界面
             // 改为：立即补投一次（reload 后进程仍存活，URL 可能已入队），再轮询补投以防丢失
             if (incoming) CXReplayURL(incoming);
-            __block NSInteger tries = 0;
-            __block void (^poll)(void);
-            poll = ^{
-                if (++tries > 15) { CXInternalOpen = wasInternal; return; }  // 增加到15次，每次0.3s
-                if (CXAppRunning(bundleID)) {
-                    if (incoming) CXReplayURL(incoming);  // 每次轮询都补投，直到进程确认处理
-                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2.0 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-                        CXInternalOpen = wasInternal; });
-                } else {
-                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.3 * NSEC_PER_SEC), dispatch_get_main_queue(), poll);
-                }
-            };
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.6 * NSEC_PER_SEC), dispatch_get_main_queue(), poll);
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.6 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+                CXPollReloadedURL(bundleID, incoming, wasInternal, 0);
+            });
         }];
     };
     @try {
