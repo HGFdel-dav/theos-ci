@@ -309,6 +309,7 @@ static BOOL CXPromptForURL(NSString *bundleID, void (^proceed)(void)) {
             // 重载过的进程要等它真正起来再补投，否则又只落主界面
             __block NSInteger tries = 0;
             __block void (^poll)(void);
+            __block __weak void (^weakPoll)(void);
             poll = ^{
                 if (++tries > 12) { CXInternalOpen = wasInternal; return; }
                 if (CXAppRunning(bundleID)) {
@@ -316,9 +317,10 @@ static BOOL CXPromptForURL(NSString *bundleID, void (^proceed)(void)) {
                     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1.4 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
                         CXInternalOpen = wasInternal; });
                 } else {
-                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.25 * NSEC_PER_SEC), dispatch_get_main_queue(), poll);
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.25 * NSEC_PER_SEC), dispatch_get_main_queue(), weakPoll);
                 }
             };
+            weakPoll = poll;
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.4 * NSEC_PER_SEC), dispatch_get_main_queue(), poll);
         }];
     };
