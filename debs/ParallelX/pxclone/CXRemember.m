@@ -171,8 +171,9 @@ static void CXCapture(id entry) {
     if (!entry || !CXRememberOn()) return;
     CXRememberEntry = entry;
     CXArcWakeCaptureEntry(entry);
-    // 去掉 ResizeActive 判断：拖动结束时也要保存
-    if (CXPXEntryFlag(entry, "fullscreenToWindowInProgress") ||
+    // 只在原生缩放完全结束后保存，拖动过程不触碰记忆状态。
+    if (objc_getAssociatedObject(entry, &CXResizeActiveKey) == @YES ||
+        CXPXEntryFlag(entry, "fullscreenToWindowInProgress") ||
         CXPXEntryFlag(entry, "fullscreenLaunchInProgress")) return;
     NSString *bundle = CXEntryBundle(entry);
     if (!bundle.length) { CXStoreFailure(@"activeBridge.bundleID unavailable"); return; }
@@ -184,8 +185,8 @@ static void CXCapture(id entry) {
 }
 
 static void CXApplyResizePreview(id self, SEL _cmd) {
+    // 预览回调发生在原生手势中间，不写记忆，避免 frame 被回放造成跳动。
     if (CXOrigApplyResizePreview) CXOrigApplyResizePreview(self, _cmd);
-    CXCapture(self);
 }
 
 static void CXCloseTapped(id self, SEL _cmd) {
@@ -218,7 +219,13 @@ static void CXResizeHostHook(id self, SEL _cmd, id gesture) {
     if (state == UIGestureRecognizerStateBegan || state == UIGestureRecognizerStateEnded)
         CXLog(@"[remember] resize state=%ld", (long)state);
     if (CXOrigResizeHost) CXOrigResizeHost(self, _cmd, gesture);
-    CXScheduleCapture(self);
+    if (state == UIGestureRecognizerStateEnded ||
+        state == UIGestureRecognizerStateCancelled ||
+        state == UIGestureRecognizerStateFailed) {
+        objc_setAssociatedObject(self, &CXResizeActiveKey, @NO, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        // 原生 resizeHost 已完成最终 frame，此处只保存一次。
+        CXCapture(self);
+    }
 }
 
 #pragma mark - 恢复
@@ -281,39 +288,13 @@ void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
     CXPendingKey = [key copy];
     CXPendingRect = CGRectMake(x, y, w, h);
     CXPendingApplied = NO;
-    CXPendingUntil = CACurrentMediaTime() + 2.2;
+    CXPendingUntil = CACurrentMediaTime() + 0.8;
     NSInteger generation = CXPendingGen;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.3 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{ if (generation == CXPendingGen) CXRememberLayoutApplied(); });
-    for (int i = 1; i <= 8; i++) { // 12ms 起持续压住 PX 开窗动画
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.20 * i * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{
-            if (generation != CXPendingGen || CXPendingApplied || CACurrentMediaTime() > CXPendingUntil) return;
-            id entry = CXRememberEntry ?: CXFindPanelEntry();
-            NSInteger openGeneration = CXOpenGeneration;
-            if (!entry) return;
-            id bridge = nil;
-            UIView *card = nil;
-            NSString *bundle = CXPendingBundle;
-            if (!bundle || !CXGetHost(entry, bundle, &bridge, &card)) return;
-            if (!CXGetHost(entry, bundle, &bridge, &card)) return;
-            CGRect screen = card.superview ? card.superview.bounds : card.window.bounds;
-            if (CGRectIsEmpty(screen)) return;
-            [CATransaction begin];
-            [CATransaction setDisableActions:YES];
-            [card.layer removeAllAnimations];
-            card.transform = CGAffineTransformIdentity;
-            card.frame = CXSanitizedTarget(CXPendingRect, card.frame, screen);
-            [card setNeedsLayout];
-            [CATransaction commit];
-            [card layoutIfNeeded];  // commit 后再 layout，确保子视图在禁用动画后完成布局
-            CXPendingApplied = YES;
-            if (CXPendingKey) [CXAppliedKeySet() addObject:CXPendingKey];
-            CXLog(@"[remember] apply %@#%@ %.0fx%.0f", bundle, CXPendingContainer,
-                  card.frame.size.width, card.frame.size.height);
-            if (openGeneration == CXOpenGeneration) { }
-        });
-    }
+    // 只等待第一次原生 layoutHost 回调，不再定时反复写 frame。
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        if (generation == CXPendingGen && !CXPendingApplied) CXRememberLayoutApplied();
+    });
 }
 
 // 原版首次布局前套用，页面显示时就是目标大小，不会先大后缩。
@@ -333,9 +314,13 @@ static void CXApplyBeforeLayout(id self) {
     [CATransaction setDisableActions:YES];
     card.frame = CXSanitizedTarget(CXPendingRect, card.frame, screen);
     [CATransaction commit];
+    [card setNeedsLayout];
+    [card.superview setNeedsLayout];
+    [card layoutIfNeeded];
     if (CXPendingKey) [CXAppliedKeySet() addObject:CXPendingKey];
-    CXLog(@"[remember] apply-before-layout %@ %.0fx%.0f",
-          CXPendingBundle, card.frame.size.width, card.frame.size.height);
+    CXLog(@"[remember] apply-before-layout %@ %.0fx%.0f content=%.0fx%.0f",
+          CXPendingBundle, card.frame.size.width, card.frame.size.height,
+          card.bounds.size.width, card.bounds.size.height);
 }
 
 static void CXLayoutHostHook(id self, SEL _cmd) {
