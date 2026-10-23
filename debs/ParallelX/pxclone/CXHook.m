@@ -267,15 +267,17 @@ static void CXOpenInSplit(NSString *bundleID) {
 @end
 
 // 任何开窗入口（URL/快捷/激活）通用：有分身且有新鲜 URL 就弹；proceed 由调用方继续原流程
-static BOOL CXPromptForURL(NSString *bundleID, void (^proceed)(void)) {
+static BOOL CXPromptForURL(NSString *bundleID, BOOL requireURL, void (^proceed)(void)) {
     if (CXInternalOpen || CXShowingChooser || !bundleID.length) return NO;
     NSArray<NSDictionary *> *containers = [CXCraneBridge containersForBundleID:bundleID];
     if (containers.count < 2) return NO;
     NSURL *incoming = nil;
-    if (!CXFreshURL(&incoming)) return NO;
+    BOOL fresh = CXFreshURL(&incoming);
+    if (requireURL && !fresh) return NO;
     UIViewController *host = CXTopViewController();
     if (!host) return NO;
     CXShowingChooser = YES;
+    CXLog(@"[url] %@ 容器=%lu url=%d", bundleID, (unsigned long)containers.count, fresh);
     NSString *appName = bundleID;
     Class proxyCls = NSClassFromString(@"LSApplicationProxy");
     if (proxyCls) {
@@ -330,7 +332,7 @@ static BOOL CXPromptForURL(NSString *bundleID, void (^proceed)(void)) {
 
 // 旧调用点：选完由本函数自己开窗
 static void CXPromptContainerThenOpen(NSString *bundleID, void (^cancel)(void)) {
-    if (CXPromptForURL(bundleID, ^{ CXOpenInSplit(bundleID); })) return;
+    if (CXPromptForURL(bundleID, NO, ^{ CXOpenInSplit(bundleID); })) return;
     if (cancel) cancel();
 }
 
@@ -487,7 +489,7 @@ static void CXPrepareWindow(id self, SEL _cmd, id bundleID, BOOL wasFullscreen, 
     NSDictionary *item = CXVirtualItemFromArgument(bundleID);
     if (!item) {
         NSString *real = [bundleID isKindOfClass:NSString.class] ? bundleID : nil;
-        if (CXPromptForURL(real, ^{ CXOrigPrepareWindow(self, _cmd, bundleID, wasFullscreen, completion); })) return;
+        if (CXPromptForURL(real, YES, ^{ CXOrigPrepareWindow(self, _cmd, bundleID, wasFullscreen, completion); })) return;
         CXOrigPrepareWindow(self, _cmd, bundleID, wasFullscreen, completion);
         return;
     }
@@ -513,7 +515,7 @@ static void CXHandlePanelEntry(Class cls, SEL _cmd, id argument, void (*cont)(Cl
     NSDictionary *item = CXVirtualItemFromArgument(argument);
     if (!item) {
         NSString *real = [argument isKindOfClass:NSString.class] ? argument : nil;
-        if (CXPromptForURL(real, ^{ cont(cls, _cmd, argument); })) return;
+        if (CXPromptForURL(real, YES, ^{ cont(cls, _cmd, argument); })) return;
         cont(cls, _cmd, argument);
         return;
     }

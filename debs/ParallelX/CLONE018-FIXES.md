@@ -62,3 +62,8 @@
 - URL 不再只挂 externalOpenApplication；prepareWindow / applicationActivated 等所有真实 bundle 入口都走同一判断：只要有分身且有新鲜 URL 就弹。第二账号重载后轮询等进程起来再补投（最多3s）。
 - 调试图层移到独立 `userInteractionEnabled=NO` 的透传窗口（hitTest 返回 nil），不再挡住底下图标；关调试即销毁。
 - 记忆：套用期间先隐藏卡片，套好下一次布局后再显示；强制窗口延长到 2.2s，隐藏中的卡片仍视为有效宿主。
+
+## clone0.23
+- 日志证实 `[arc] arranged` 从未出现：图标不在 handleWindow。菜单窗口改为 panelWindow 优先。
+- 记忆：只套一次（setFrame→layoutIfNeeded→原版layoutHost），删掉每0.12s重复强设；兜底仅未套用时重试。
+- URL：externalOpen 是真正的URL路径，不再要求“新鲜URL”才弹（prepare/activated 仍要求）；日志加容器数。

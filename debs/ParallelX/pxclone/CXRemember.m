@@ -267,10 +267,10 @@ void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
     NSInteger generation = CXPendingGen;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.3 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{ if (generation == CXPendingGen) CXRememberLayoutApplied(); });
-    for (int i = 1; i <= 16; i++) { // 12ms 起持续压住 PX 开窗动画
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.12 * i * NSEC_PER_SEC)),
+    for (int i = 1; i <= 8; i++) { // 12ms 起持续压住 PX 开窗动画
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.20 * i * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
-            if (generation != CXPendingGen || CACurrentMediaTime() > CXPendingUntil) return;
+            if (generation != CXPendingGen || CXPendingApplied || CACurrentMediaTime() > CXPendingUntil) return;
             id entry = CXRememberEntry ?: CXFindPanelEntry();
             NSInteger openGeneration = CXOpenGeneration;
             if (!entry) return;
@@ -298,19 +298,21 @@ void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
 static void (*CXOrigLayoutHost)(id, SEL);
 static void CXLayoutHostHook(id self, SEL _cmd) {
     if (!CXPendingApplied && CXPendingBridge == self) CXLog(@"[remember] first layout");
-    if (CXPendingBridge == self && CACurrentMediaTime() < CXPendingUntil) {
+    if (CXPendingBridge == self && !CXPendingApplied && CACurrentMediaTime() < CXPendingUntil) {
         UIView *card = CXEntryCard(CXRememberEntry ?: CXFindPanelEntry());
         UIView *canvas = CXPXGetObject(self, @"canvas");
         if (!card && [canvas isKindOfClass:UIView.class] &&
             [NSStringFromClass(canvas.superview.class) containsString:@"PXHostCard"]) card = canvas.superview;
         CGRect screen = card.superview ? card.superview.bounds : card.window.bounds;
         if ([card isKindOfClass:UIView.class] && !CGRectIsEmpty(screen)) {
-            if (!CXPendingApplied) card.hidden = YES; // 套好前不露出旧尺寸
+            card.hidden = YES; // 套好前不露出旧尺寸
             [CATransaction begin];
             [CATransaction setDisableActions:YES];
             [card.layer removeAllAnimations];
             card.transform = CGAffineTransformIdentity;
             card.frame = CXSanitizedTarget(CXPendingRect, card.frame, screen);
+            [card setNeedsLayout];
+            [card layoutIfNeeded];
             [CATransaction commit];
             if (!CXPendingApplied) {
                 CXLog(@"[remember] apply-before-layout %@ %.0fx%.0f",

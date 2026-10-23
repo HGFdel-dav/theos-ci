@@ -172,7 +172,7 @@ static NSArray<NSString *> *CXMenuIDs(void) {
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)g
     shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)other { return YES; }
 
-- (UIWindow *)handleWindow { return CXPXEntryObject(_entry ?: CXFindPanelEntry(), "handleWindow", UIWindow.class); }
+- (UIWindow *)handleWindow { return CXMenuWindow(); }
 
 - (void)cleanup {
     UIView *handle = _synth.view;
