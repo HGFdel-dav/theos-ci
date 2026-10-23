@@ -244,13 +244,14 @@ static void CXResizeHostHook(id self, SEL _cmd, id gesture) {
 
 #pragma mark - 恢复
 
-// 待恢复：开窗即登记，真实 hostCard 出现后无动画套用。
 static __weak id CXPendingBridge;
 static NSString *CXPendingBundle, *CXPendingContainer;
 static CGRect CXPendingRect = {0};
 static BOOL CXPendingApplied = YES;
 static NSMutableSet<NSString *> *CXAppliedKeys;
 static NSString *CXPendingKey;
+static BOOL CXInLayoutApply;
+static void (*CXOrigLayoutHost)(id, SEL);
 static NSMutableSet<NSString *> *CXAppliedKeySet(void) {
     if (!CXAppliedKeys) CXAppliedKeys = [NSMutableSet set];
     return CXAppliedKeys;
@@ -260,7 +261,7 @@ static CGRect CXSanitizedTarget(CGRect saved, CGRect current, CGRect screen) {
     CGFloat w = MIN(saved.size.width, CGRectGetWidth(screen));
     CGFloat h = MIN(saved.size.height, CGRectGetHeight(screen));
     CGFloat x = saved.origin.x, y = saved.origin.y;
-    if (!isfinite(x) || !isfinite(y)) { // 老记录只有宽高：围绕当前中心
+    if (!isfinite(x) || !isfinite(y)) {
         x = CGRectGetMidX(current) - w / 2.0;
         y = CGRectGetMidY(current) - h / 2.0;
     }
@@ -295,42 +296,47 @@ void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
     CXPendingKey = [key copy];
     CXPendingRect = CGRectMake(x, y, w, h);
     CXPendingApplied = NO;
-    NSInteger generation = CXPendingGen;
-    // alpha342 等待真实 hostCard 出现后直接恢复。
-    for (NSInteger step = 1; step <= 8; step++) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
-                                      (int64_t)(step * 0.12 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{
-            if (generation != CXPendingGen || CXPendingApplied) return;
-            if (CXBoundBridge != CXPendingBridge) return;
-            id entry = CXRememberEntry;
-            NSString *actualContainer = CXEntryContainer(entry);
-            if (![actualContainer isEqual:CXPendingContainer]) return;
-            UIView *card = CXBoundHostCard();
-            if (![card isKindOfClass:UIView.class] || !card.window) return;
-            CGRect screen = card.superview ? card.superview.bounds : card.window.bounds;
-            if (CGRectIsEmpty(screen)) return;
-            CXPendingApplied = YES;
-            [CATransaction begin];
-            [CATransaction setDisableActions:YES];
-            card.frame = CXSanitizedTarget(CXPendingRect, card.frame, screen);
-            [CATransaction commit];
-            [card setNeedsLayout];
-            [card.superview setNeedsLayout];
-            [card layoutIfNeeded];
-            if (CXPendingKey) [CXAppliedKeySet() addObject:CXPendingKey];
-            CXLog(@"[remember] apply-after-bind %@ %.0fx%.0f", CXPendingBundle,
-                  card.frame.size.width, card.frame.size.height);
-            CXRememberLayoutApplied();
-        });
+}
+
+static void CXApplyBeforeLayout(id self) {
+    if (CXPendingApplied || CXPendingBridge != self) return;
+    id entry = CXRememberEntry ?: CXFindPanelEntry();
+    UIView *card = CXEntryCard(entry) ?: CXBoundHostCard();
+    if (![card isKindOfClass:UIView.class]) return;
+    UIView *surface = card.superview ?: card.window;
+    CGRect screen = surface.bounds;
+    if (CGRectIsEmpty(screen)) return;
+    CXPendingApplied = YES;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    card.frame = CXSanitizedTarget(CXPendingRect, card.frame, screen);
+    [CATransaction commit];
+    [card setNeedsLayout];
+    [surface setNeedsLayout];
+    if (CXPendingKey) [CXAppliedKeySet() addObject:CXPendingKey];
+    CXLog(@"[remember] apply-before-layout %@ %.0fx%.0f", CXPendingBundle,
+          card.frame.size.width, card.frame.size.height);
+}
+
+static void CXLayoutHostHook(id self, SEL _cmd) {
+    if (CXInLayoutApply) {
+        if (CXOrigLayoutHost) CXOrigLayoutHost(self, _cmd);
+        return;
     }
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        if (generation == CXPendingGen && !CXPendingApplied) {
-            CXLog(@"[remember] apply timeout %@", CXPendingBundle);
-            CXRememberLayoutApplied();
-        }
-    });
+    CXInLayoutApply = YES;
+    CXApplyBeforeLayout(self);
+    if (CXOrigLayoutHost) CXOrigLayoutHost(self, _cmd);
+    UIView *card = CXEntryCard(CXRememberEntry ?: CXFindPanelEntry());
+    if ([card isKindOfClass:UIView.class]) {
+        [CATransaction begin];
+        [CATransaction setDisableActions:YES];
+        [card setNeedsLayout];
+        [card.superview setNeedsLayout];
+        [card layoutIfNeeded];
+        [CATransaction commit];
+    }
+    CXInLayoutApply = NO;
+    if (CXPendingApplied) CXRememberLayoutApplied();
 }
 
 #pragma mark - 安装
@@ -358,6 +364,7 @@ static void CXInstallRememberHooks(void) {
         {"applyResizePreview", (IMP)CXApplyResizePreview, (IMP *)&CXOrigApplyResizePreview},
         {"closeTapped", (IMP)CXCloseTapped, (IMP *)&CXOrigCloseTapped},
         {"resizeHost:", (IMP)CXResizeHostHook, (IMP *)&CXOrigResizeHost},
+        {"layoutHost", (IMP)CXLayoutHostHook, (IMP *)&CXOrigLayoutHost},
     };
     for (size_t i = 0; i < sizeof(hooks)/sizeof(hooks[0]); i++) {
         SEL sel = NSSelectorFromString([NSString stringWithUTF8String:hooks[i].name]);
