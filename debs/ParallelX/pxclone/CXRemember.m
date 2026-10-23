@@ -59,22 +59,28 @@ static BOOL CXRememberOn(void) {
     return [CXPrefs.shared boolForKey:CXRememberEnabledKey defaultValue:YES];
 }
 
-static void CXStoreSize(NSString *bundle, NSString *container, CGSize size) {
+static void CXStoreSize(NSString *bundle, NSString *container, CGRect frame) {
     if (!CXRememberOn()) return;
     NSString *key = CXKey(bundle, container);
-    if (!key || !isfinite(size.width) || !isfinite(size.height) ||
-        size.width < 40 || size.height < 40) return;
-    if (size.width > 5000 || size.height > 5000) return;
+    if (!key || !isfinite(frame.origin.x) || !isfinite(frame.origin.y) ||
+        !isfinite(frame.size.width) || !isfinite(frame.size.height) ||
+        frame.size.width < 40 || frame.size.height < 40) return;
+    if (frame.size.width > 5000 || frame.size.height > 5000) return;
     NSMutableDictionary *all = CXAllSizes();
     NSDictionary *old = all[key];
     if ([old isKindOfClass:NSDictionary.class]) {
+        double ox = old[@"x"] ? [old[@"x"] doubleValue] : NAN;
+        double oy = old[@"y"] ? [old[@"y"] doubleValue] : NAN;
         double ow = [old[@"w"] doubleValue], oh = [old[@"h"] doubleValue];
-        if (fabs(ow - size.width) < 0.5 && fabs(oh - size.height) < 0.5) return;   // 没变不写
+        if (fabs(ow - frame.size.width) < 0.5 && fabs(oh - frame.size.height) < 0.5 &&
+            fabs(ox - frame.origin.x) < 0.5 && fabs(oy - frame.origin.y) < 0.5) return; // 没变不写
     }
-    all[key] = @{@"w": @(size.width), @"h": @(size.height),
+    all[key] = @{@"x": @(frame.origin.x), @"y": @(frame.origin.y),
+                 @"w": @(frame.size.width), @"h": @(frame.size.height),
                  @"updated": @([[NSDate date] timeIntervalSince1970])};
     [CXPrefs.shared setObject:all forKey:CXRememberKey];
-    CXLog(@"[remember] store %@ %.0fx%.0f", key, size.width, size.height);
+    CXLog(@"[remember] store %@ %.0f,%.0f %.0fx%.0f", key, frame.origin.x, frame.origin.y,
+          frame.size.width, frame.size.height);
 }
 
 #pragma mark - PX 宿主上下文（复用旧按应用/容器方案，取真实 activeBridge）
@@ -169,9 +175,8 @@ static void CXCapture(id entry) {
     id bridge = nil;
     UIView *card = nil;
     if (!CXGetHost(entry, bundle, &bridge, &card)) { CXStoreFailure(@"hostCard unavailable"); return; }
-    // 缩放停手后原版已将 transform 清零、setFrame；读取显示的真实卡片尺寸。
-    CGRect f = card.frame;
-    CXStoreSize(bundle, CXEntryContainer(entry), f.size);
+    // 缩放手势停手后原版已把 transform 清零并 setFrame；记录完整 frame（含贴边位置）。
+    CXStoreSize(bundle, CXEntryContainer(entry), card.frame);
 }
 
 static void CXApplyResizePreview(id self, SEL _cmd) {
@@ -214,59 +219,100 @@ static void CXResizeHostHook(id self, SEL _cmd, id gesture) {
 
 #pragma mark - 恢复
 
-static BOOL CXApplySize(id entry, NSString *bundle, NSString *container) {
-    if (!CXRememberOn()) return YES;
-    NSDictionary *saved = CXSizeFor(bundle, container);
-    if (!saved) return YES;
-    CGFloat w = [saved[@"w"] doubleValue], h = [saved[@"h"] doubleValue];
-    if (!isfinite(w) || !isfinite(h) || w < 40 || h < 40 || w > 5000 || h > 5000) return YES;
-    if (entry && ([objc_getAssociatedObject(entry, &CXResizeActiveKey) boolValue] ||
-                  CXPXEntryFlag(entry, "fullscreenToWindowInProgress") ||
-                  CXPXEntryFlag(entry, "fullscreenLaunchInProgress"))) return NO;
-    id bridge = nil;
-    UIView *card = nil;
-    if (!CXGetHost(entry, bundle, &bridge, &card)) return NO;
-    if (entry && ![CXEntryContainer(entry) isEqual:container]) return YES;
-    if (!CXPXVoidSelector(bridge, @"layoutHost", 0)) return NO;
-    CGRect f = card.frame;
-    CGRect screen = card.superview ? card.superview.bounds : card.window.bounds;
-    if (CGRectIsEmpty(screen)) return NO;
-    w = MIN(w, CGRectGetWidth(screen));
-    h = MIN(h, CGRectGetHeight(screen));
-    CGFloat cx = CGRectGetMidX(f), cy = CGRectGetMidY(f);
-    CGRect target = CGRectMake(cx - w / 2.0, cy - h / 2.0, w, h);
-    if (CGRectGetMaxX(f) > CGRectGetMaxX(screen) - 2) target.origin.x = CGRectGetMaxX(screen) - w;
-    target.origin.x = MIN(MAX(target.origin.x, CGRectGetMinX(screen)), CGRectGetMaxX(screen) - w);
-    target.origin.y = MIN(MAX(target.origin.y, CGRectGetMinY(screen)), CGRectGetMaxY(screen) - h);
-    if (fabs(f.size.width - w) < 0.5 && fabs(f.size.height - h) < 0.5) return YES;
-    // 原版 resizeHost: 结束顺序：卡片 transform=identity -> setFrame -> layoutIfNeeded
-    // -> activeBridge.layoutHost。只改window.frame不会更新里面的真实宿主比例。
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    card.transform = CGAffineTransformIdentity;
-    card.frame = target;
-    [card setNeedsLayout];
-    [card layoutIfNeeded];
-    ((void (*)(id, SEL))objc_msgSend)(bridge, NSSelectorFromString(@"layoutHost"));
-    [CATransaction commit];
-    CXLog(@"[remember] apply %@#%@ %.0fx%.0f hostCard", bundle, container, w, h);
-    return YES;
+// 待恢复：开窗即登记，原版第一次 layoutHost 之前套用，避免“先大后缩”的动画。
+static NSInteger CXPendingGen = 0;
+static __weak id CXPendingBridge;
+static NSString *CXPendingBundle, *CXPendingContainer;
+static CGRect CXPendingRect = {0};
+static BOOL CXPendingApplied = YES;
+
+static CGRect CXSanitizedTarget(CGRect saved, CGRect current, CGRect screen) {
+    CGFloat w = MIN(saved.size.width, CGRectGetWidth(screen));
+    CGFloat h = MIN(saved.size.height, CGRectGetHeight(screen));
+    CGFloat x = saved.origin.x, y = saved.origin.y;
+    if (!isfinite(x) || !isfinite(y)) { // 老记录只有宽高：围绕当前中心
+        x = CGRectGetMidX(current) - w / 2.0;
+        y = CGRectGetMidY(current) - h / 2.0;
+    }
+    x = MIN(MAX(x, CGRectGetMinX(screen)), CGRectGetMaxX(screen) - w);
+    y = MIN(MAX(y, CGRectGetMinY(screen)), CGRectGetMaxY(screen) - h);
+    return CGRectMake(x, y, w, h);
+}
+
+static void CXRememberLayoutApplied(void) {
+    CXPendingApplied = YES;
+    CXPendingBridge = nil;
+    CXPendingBundle = nil;
+    CXPendingContainer = nil;
+    CXPendingRect = CGRectZero;
 }
 
 void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
-    if (!bundleID.length || !CXRememberOn()) return;
+    if (!bundleID.length || !CXRememberOn()) { CXRememberLayoutApplied(); return; }
     NSString *container = containerID.length ? containerID : @"DEFAULT";
-    if (!CXSizeFor(bundleID, container)) return;
-    NSInteger generation = CXOpenGeneration;
-    for (int i = 1; i <= 4; i++) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.45 * i * NSEC_PER_SEC)),
+    NSDictionary *saved = CXSizeFor(bundleID, container);
+    if (!saved) { CXRememberLayoutApplied(); return; }
+    CGFloat w = [saved[@"w"] doubleValue], h = [saved[@"h"] doubleValue];
+    if (!isfinite(w) || !isfinite(h) || w < 40 || h < 40) { CXRememberLayoutApplied(); return; }
+    CGFloat x = saved[@"x"] ? [saved[@"x"] doubleValue] : NAN;
+    CGFloat y = saved[@"y"] ? [saved[@"y"] doubleValue] : NAN;
+    CXPendingGen++;
+    CXPendingBridge = CXBoundBridge;
+    CXPendingBundle = [bundleID copy];
+    CXPendingContainer = [container copy];
+    CXPendingRect = CGRectMake(x, y, w, h);
+    CXPendingApplied = NO;
+    NSInteger generation = CXPendingGen;
+    for (int i = 1; i <= 5; i++) { // layoutHost 没赶上的兜底
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * i * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
-            if (generation != CXOpenGeneration) return; // 新开窗不覆盖为上一个应用/账号
+            if (generation != CXPendingGen || CXPendingApplied) return;
             id entry = CXRememberEntry ?: CXFindPanelEntry();
-            BOOL applied = CXApplySize(entry, bundleID, container);
-            if (!applied && i == 4) CXLog(@"[remember] restore skipped %@#%@: host not ready", bundleID, container);
+            NSInteger openGeneration = CXOpenGeneration;
+            if (!entry) return;
+            id bridge = nil;
+            UIView *card = nil;
+            NSString *bundle = CXPendingBundle;
+            if (!bundle || !CXGetHost(entry, bundle, &bridge, &card)) return;
+            if (!CXGetHost(entry, bundle, &bridge, &card)) return;
+            CGRect screen = card.superview ? card.superview.bounds : card.window.bounds;
+            if (CGRectIsEmpty(screen)) return;
+            [CATransaction begin];
+            [CATransaction setDisableActions:YES];
+            [card.layer removeAllAnimations];
+            card.transform = CGAffineTransformIdentity;
+            card.frame = CXSanitizedTarget(CXPendingRect, card.frame, screen);
+            [CATransaction commit];
+            CXLog(@"[remember] apply %@#%@ %.0fx%.0f", bundle, CXPendingContainer,
+                  card.frame.size.width, card.frame.size.height);
+            CXRememberLayoutApplied();
+            if (openGeneration == CXOpenGeneration) { }
         });
     }
+}
+
+// 原版首次布局前套用，页面显示时就是目标大小，不会先大后缩。
+static void (*CXOrigLayoutHost)(id, SEL);
+static void CXLayoutHostHook(id self, SEL _cmd) {
+    if (!CXPendingApplied && CXPendingBridge == self) {
+        UIView *card = CXEntryCard(CXRememberEntry ?: CXFindPanelEntry());
+        UIView *canvas = CXPXGetObject(self, @"canvas");
+        if (!card && [canvas isKindOfClass:UIView.class] &&
+            [NSStringFromClass(canvas.superview.class) containsString:@"PXHostCard"]) card = canvas.superview;
+        CGRect screen = card.superview ? card.superview.bounds : card.window.bounds;
+        if ([card isKindOfClass:UIView.class] && !CGRectIsEmpty(screen)) {
+            [CATransaction begin];
+            [CATransaction setDisableActions:YES];
+            [card.layer removeAllAnimations];
+            card.transform = CGAffineTransformIdentity;
+            card.frame = CXSanitizedTarget(CXPendingRect, card.frame, screen);
+            [CATransaction commit];
+            CXLog(@"[remember] apply-before-layout %@ %.0fx%.0f",
+                  CXPendingBundle, card.frame.size.width, card.frame.size.height);
+            CXRememberLayoutApplied();
+        }
+    }
+    if (CXOrigLayoutHost) CXOrigLayoutHost(self, _cmd);
 }
 
 #pragma mark - 安装
@@ -295,6 +341,7 @@ static void CXInstallRememberHooks(void) {
         {"applyResizePreview", (IMP)CXApplyResizePreview, (IMP *)&CXOrigApplyResizePreview},
         {"closeTapped", (IMP)CXCloseTapped, (IMP *)&CXOrigCloseTapped},
         {"resizeHost:", (IMP)CXResizeHostHook, (IMP *)&CXOrigResizeHost},
+        {"layoutHost", (IMP)CXLayoutHostHook, (IMP *)&CXOrigLayoutHost},
     };
     for (size_t i = 0; i < sizeof(hooks)/sizeof(hooks[0]); i++) {
         SEL sel = NSSelectorFromString([NSString stringWithUTF8String:hooks[i].name]);

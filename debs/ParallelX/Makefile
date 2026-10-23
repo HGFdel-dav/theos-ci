@@ -7,7 +7,7 @@ include $(THEOS)/makefiles/common.mk
 
 # ---------------------------------------------------------------- SpringBoard 注入
 TWEAK_NAME = CloneX
-CloneX_FILES = pxclone/CXHook.m pxclone/CXCraneBridge.m pxclone/CXMenuInjector.m pxclone/CXRemember.m pxclone/CXArcWake.m pxclone/CXPrefs.m pxclone/CXLog.m
+CloneX_FILES = pxclone/CXHook.m pxclone/CXCraneBridge.m pxclone/CXMenuInjector.m pxclone/CXRemember.m pxclone/CXArcWake.m pxclone/CXArcMenu.m pxclone/CXPrefs.m pxclone/CXLog.m
 CloneX_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-unused-variable -Wno-unused-function -Ipxclone
 CloneX_FRAMEWORKS = UIKit Foundation CoreGraphics QuartzCore
 

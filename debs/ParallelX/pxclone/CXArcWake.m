@@ -2,9 +2,8 @@
 //
 // ScreenCore 式角落拖拽唤醒 → 驱动 ParallelX 自己的手柄手势。
 //
-// PX 没有公开的"打开菜单"方法；它的菜单由 -[PXPanelEntry dragHandle:] 驱动。
-// 这里在角落监听拖拽，把一段合成手势喂给 dragHandle:，
-// 菜单、图标、展开动画全部由 PX 自己播放。
+// 从角落向内拖动 → 扇形菜单（PX 的菜单条目与应用本体图标）→ 松开选中，
+// 再走 PX 已验证的 externalOpenApplication 分屏链路。
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
@@ -17,6 +16,9 @@
 #import "CXArcSettings.h"
 #import "CXArcGeometry.h"
 #import "CXPXRuntime.h"
+#import "CXArcMenu.h"
+#import <CoreFoundation/CoreFoundation.h>
+void CXOpenMenuItem(NSString *identifier);
 #include <math.h>
 
 // 复用旧系统通道、触发形状和不拦截的调试层；菜单/图标仍全部由 PX 绘制。
@@ -53,35 +55,6 @@ static CGPoint CXArcGesturePoint(UIPanGestureRecognizer *gesture) {
     CGPoint point = [gesture locationInView:window];
     return window ? [window convertPoint:point toCoordinateSpace:UIScreen.mainScreen.coordinateSpace] : point;
 }
-
-// 合成对象是实际 UIPan 子类，并挂到原版左右手柄；坐标转换遵守传入view。
-@interface CXSynthPan : UIPanGestureRecognizer
-@property (nonatomic, assign) UIGestureRecognizerState synthState;
-@property (nonatomic, assign) CGPoint synthTranslation;
-@property (nonatomic, assign) CGPoint synthLocation;
-@property (nonatomic, assign) CGPoint synthVelocity;
-@end
-
-static CGPoint CXArcScreenPoint(UIView *reference, CGPoint point, UIView *view) {
-    if (!reference.window || !view) return point;
-    CGPoint inWindow = [reference.window convertPoint:point fromCoordinateSpace:UIScreen.mainScreen.coordinateSpace];
-    return [view convertPoint:inWindow fromView:reference.window];
-}
-
-@implementation CXSynthPan
-- (UIGestureRecognizerState)state { return self.synthState; }
-- (CGPoint)translationInView:(UIView *)view {
-    CGPoint a = CXArcScreenPoint(self.view, CGPointZero, view);
-    CGPoint b = CXArcScreenPoint(self.view, self.synthTranslation, view);
-    return CGPointMake(b.x - a.x, b.y - a.y);
-}
-- (CGPoint)locationInView:(UIView *)view { return CXArcScreenPoint(self.view, self.synthLocation, view); }
-- (CGPoint)velocityInView:(UIView *)view {
-    CGPoint a = CXArcScreenPoint(self.view, CGPointZero, view);
-    CGPoint b = CXArcScreenPoint(self.view, self.synthVelocity, view);
-    return CGPointMake(b.x - a.x, b.y - a.y);
-}
-@end
 
 #pragma mark - PX 对象查找
 
@@ -124,15 +97,6 @@ void CXArcWakeCaptureEntry(id entry) {
     if (first && NSThread.isMainThread) CXArcWakeSync(); // 首次拿到实例后补挂调试层
 }
 
-static UIView *CXFindHandleView(BOOL left) {
-    id entry = CXFindPanelEntry();
-    UIView *handle = CXPXEntryObject(entry, left ? "leftHandle" : "handle", UIView.class);
-    if (handle.window && !handle.hidden) return handle;
-    // 触发侧与PX手柄侧是两个设置；不覆盖用户PX设置，转发到其实际可见手柄。
-    UIView *alternate = CXPXEntryObject(entry, left ? "handle" : "leftHandle", UIView.class);
-    return alternate.window && !alternate.hidden ? alternate : nil;
-}
-
 #pragma mark - 手势
 
 @class CXArcWakeGesture;
@@ -142,12 +106,38 @@ static __weak CXArcWakeGesture *CXActiveArc;
 - (void)cancelForwarding;
 @end
 
+// 合成手势：PX 只读这些方法驱动它自己的菜单与动画
+@interface CXSynthPan : UIPanGestureRecognizer
+@property (nonatomic, assign) UIGestureRecognizerState synthState;
+@property (nonatomic, assign) CGPoint synthTranslation;
+@property (nonatomic, assign) CGPoint synthLocation;
+@property (nonatomic, assign) CGPoint synthVelocity;
+@end
+@implementation CXSynthPan
+- (UIGestureRecognizerState)state { return self.synthState; }
+- (CGPoint)translationInView:(UIView *)view { return self.synthTranslation; }
+- (CGPoint)locationInView:(UIView *)view { return self.synthLocation; }
+- (CGPoint)velocityInView:(UIView *)view { return self.synthVelocity; }
+@end
+
+static NSArray<NSString *> *CXMenuIDs(void) {
+    CFPreferencesAppSynchronize(CFSTR("com.moxuan.parallelx"));
+    CFPropertyListRef v = CFPreferencesCopyAppValue(CFSTR("applications"), CFSTR("com.moxuan.parallelx"));
+    NSArray *raw = v ? (__bridge_transfer NSArray *)v : nil;
+    NSMutableArray *ids = [NSMutableArray array];
+    if ([raw isKindOfClass:NSArray.class])
+        for (id x in raw) if ([x isKindOfClass:NSString.class] && [x length]) [ids addObject:x];
+    return ids;
+}
+
 @implementation CXArcWakeGesture {
     CXSynthPan *_synth;
     id _entry;
+    NSArray<UIView *> *_icons;
     CGPoint _start;
     BOOL _armed;
     BOOL _left;
+    BOOL _rearranged;
 }
 
 - (instancetype)init {
@@ -181,49 +171,60 @@ static __weak CXArcWakeGesture *CXActiveArc;
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)g
     shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)other { return YES; }
 
-- (void)finishForwarding {
+- (UIWindow *)handleWindow { return CXPXEntryObject(_entry ?: CXFindPanelEntry(), "handleWindow", UIWindow.class); }
+
+- (void)cleanup {
     UIView *handle = _synth.view;
     [handle removeGestureRecognizer:_synth];
     _synth = nil;
     _entry = nil;
+    _icons = nil;
     _armed = NO;
+    _rearranged = NO;
     if (CXActiveArc == self) CXActiveArc = nil;
 }
 
-- (void)cancelForwarding {
-    if (_synth && _entry && CXPXVoidSelector(_entry, @"dragHandle:", 1)) {
-        _synth.synthState = UIGestureRecognizerStateCancelled;
-        @try { ((void (*)(id, SEL, id))objc_msgSend)(_entry, NSSelectorFromString(@"dragHandle:"), _synth); }
-        @catch (__unused NSException *e) { }
-    }
-    [self finishForwarding];
+- (void)cancelForwarding { [self cleanup]; }
+
+// PX 布局会覆盖位置，每次转发后重新排成扇形
+- (void)rearrange {
+    UIWindow *window = [self handleWindow];
+    if (!window) return;
+    _icons = CXFanIcons(window);
+    if (!_icons.count) return;
+    CXFanArrange(_icons, window, _left);
+    _rearranged = YES;
 }
 
 - (void)handle:(UIPanGestureRecognizer *)g {
-    if (!CXArcEnabled()) { [self cancelForwarding]; return; }
+    if (!CXArcEnabled()) { [self cleanup]; return; }
     CGPoint point = CXArcGesturePoint(g);
     if (g.state == UIGestureRecognizerStateBegan) {
         if (!_armed || (CXActiveArc && CXActiveArc != self)) return;
         id entry = CXFindPanelEntry();
-        UIView *handle = CXFindHandleView(_left);
         UIWindow *window = CXPXEntryObject(entry, "handleWindow", UIWindow.class);
-        if (!entry || !handle || !window.rootViewController || !CXPXVoidSelector(entry, @"dragHandle:", 1)) {
-            CXLog(@"[arc] begin skipped: real entry=%d handle=%d root=%d", entry != nil,
-                  handle != nil, window.rootViewController != nil);
+        if (!entry || !window.rootViewController || !CXPXVoidSelector(entry, @"dragHandle:", 1)) {
+            CXLog(@"[arc] begin skipped: entry=%d root=%d", entry != nil, window.rootViewController != nil);
             _armed = NO;
             return;
         }
         CXActiveArc = self;
         _entry = entry;
         _synth = [CXSynthPan new];
-        _synth.enabled = NO; // 不接受第二组真实触摸，只承载本次转发的状态
-        [handle addGestureRecognizer:_synth];
+        _synth.enabled = NO;
+        [CXPXEntryObject(entry, _left ? "leftHandle" : "handle", UIView.class) addGestureRecognizer:_synth];
+        if (!_synth.view) [CXPXEntryObject(entry, "handle", UIView.class) addGestureRecognizer:_synth];
         _synth.synthState = UIGestureRecognizerStateBegan;
-        _synth.synthLocation = _start;
+        _synth.synthLocation = point;
         _synth.synthTranslation = CGPointZero;
         CXLog(@"[arc] begin side=%@ %.0f,%.0f", _left ? @"left" : @"right", point.x, point.y);
         @try { ((void (*)(id, SEL, id))objc_msgSend)(entry, NSSelectorFromString(@"dragHandle:"), _synth); }
-        @catch (__unused NSException *e) { [self finishForwarding]; return; }
+        @catch (__unused NSException *e) { [self cleanup]; return; }
+        for (int i = 1; i <= 6; i++) { // PX 图标是异步创建的，多次补排
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.02 * i * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{ if (_synth) [self rearrange]; });
+        }
+        return;
     }
     if (!_synth || !_entry) return;
     _synth.synthTranslation = CGPointMake(point.x - _start.x, point.y - _start.y);
@@ -233,10 +234,20 @@ static __weak CXArcWakeGesture *CXActiveArc;
                  g.state == UIGestureRecognizerStateFailed;
     _synth.synthState = ended ? g.state : UIGestureRecognizerStateChanged;
     @try { ((void (*)(id, SEL, id))objc_msgSend)(_entry, NSSelectorFromString(@"dragHandle:"), _synth); }
-    @catch (__unused NSException *e) { [self finishForwarding]; return; }
+    @catch (__unused NSException *e) { [self cleanup]; return; }
     if (ended) {
-        CXLog(@"[arc] end state=%ld", (long)g.state);
-        [self finishForwarding];
+        UIWindow *window = [self handleWindow];
+        CGPoint local = window ? [window convertPoint:point fromCoordinateSpace:UIScreen.mainScreen.coordinateSpace] : point;
+        NSInteger index = g.state == UIGestureRecognizerStateEnded ? CXFanNearest(_icons, local) : -1;
+        NSArray *ids = CXMenuIDs();
+        NSString *picked = (index >= 0 && index < (NSInteger)ids.count) ? ids[index] : nil;
+        CXLog(@"[arc] end state=%ld index=%ld picked=%@", (long)g.state, (long)index, picked ?: @"(none)");
+        // 让 PX 收起菜单但不用它的半圆命中；选中由扇形结果决定
+        _synth.synthState = UIGestureRecognizerStateCancelled;
+        @try { ((void (*)(id, SEL, id))objc_msgSend)(_entry, NSSelectorFromString(@"dragHandle:"), _synth); }
+        @catch (__unused NSException *e) { }
+        [self cleanup];
+        if (picked.length) CXOpenMenuItem(picked);
     }
 }
 

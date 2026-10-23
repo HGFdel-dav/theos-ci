@@ -11,6 +11,41 @@
 @interface CXArcListController : PSListController
 @end
 
+// 自绘滑杆行：左侧功能名、右侧固定宽度数值（右对齐，不再被裁）。
+@interface CXArcSliderCell : UITableViewCell
+@property (nonatomic, strong) UILabel *nameLabel;
+@property (nonatomic, strong) UILabel *valueLabel;
+@property (nonatomic, strong) UISlider *slider;
+@end
+
+@implementation CXArcSliderCell
+- (instancetype)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)reuseIdentifier {
+    if ((self = [super initWithStyle:style reuseIdentifier:reuseIdentifier])) {
+        self.selectionStyle = UITableViewCellSelectionStyleNone;
+        _nameLabel = [[UILabel alloc] init];
+        _nameLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+        _valueLabel = [[UILabel alloc] init];
+        _valueLabel.font = [UIFont monospacedDigitSystemFontOfSize:15 weight:UIFontWeightRegular];
+        _valueLabel.textColor = UIColor.secondaryLabelColor;
+        _valueLabel.textAlignment = NSTextAlignmentRight;
+        _slider = [[UISlider alloc] init];
+        for (UIView *v in @[_nameLabel, _valueLabel, _slider]) [self.contentView addSubview:v];
+        for (UIView *v in @[_nameLabel, _valueLabel, _slider]) v.translatesAutoresizingMaskIntoConstraints = NO;
+        [_nameLabel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:16].active = YES;
+        [_nameLabel.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:10].active = YES;
+        [_valueLabel.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-16].active = YES;
+        [_valueLabel.lastBaselineAnchor constraintEqualToAnchor:_nameLabel.lastBaselineAnchor].active = YES;
+        [_valueLabel.widthAnchor constraintEqualToConstant:64].active = YES;
+        [_nameLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_valueLabel.leadingAnchor constant:-8].active = YES;
+        [_slider.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:16].active = YES;
+        [_slider.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-16].active = YES;
+        [_slider.topAnchor constraintEqualToAnchor:_nameLabel.bottomAnchor constant:2].active = YES;
+        [_slider.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-8].active = YES;
+    }
+    return self;
+}
+@end
+
 @implementation CXArcListController
 - (instancetype)init {
     if ((self = [super init])) self.title = @"ARC 角落唤醒";
@@ -98,20 +133,48 @@
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];
     PSSpecifier *spec = [self specifierAtIndexPath:indexPath];
+    if ([spec cellType] == PSSliderCell) {
+        CXArcSliderCell *cell = [tableView dequeueReusableCellWithIdentifier:@"cxArcSlider"];
+        if (!cell) cell = [[CXArcSliderCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"cxArcSlider"];
+        cell.nameLabel.text = spec.name;
+        CGFloat min = [[spec propertyForKey:@"min"] doubleValue];
+        CGFloat max = [[spec propertyForKey:@"max"] doubleValue];
+        cell.slider.minimumValue = min;
+        cell.slider.maximumValue = max;
+        cell.slider.continuous = NO; // 松手才写，避免拖动中反复刷新
+        cell.slider.value = [[self readPreferenceValue:spec] doubleValue];
+        cell.valueLabel.text = [NSString stringWithFormat:@"%.0f", cell.slider.value];
+        cell.slider.tag = indexPath.section * 1000 + indexPath.row;
+        [cell.slider removeTarget:self action:@selector(sliderChanged:) forControlEvents:UIControlEventValueChanged];
+        [cell.slider addTarget:self action:@selector(sliderChanged:) forControlEvents:UIControlEventValueChanged];
+        return cell;
+    }
+    UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];
     if ([[spec propertyForKey:@"cxArcChoice"] boolValue]) {
         NSArray *values = [spec propertyForKey:@"validValues"], *titles = [spec propertyForKey:@"validTitles"];
         NSUInteger i = [values indexOfObject:[self readPreferenceValue:spec]];
         cell.detailTextLabel.text = i < titles.count ? titles[i] : @"";
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    } else {
+        cell.detailTextLabel.text = @"";
     }
     return cell;
 }
 
+- (void)sliderChanged:(UISlider *)sender {
+    NSIndexPath *ip = [NSIndexPath indexPathForRow:sender.tag % 1000 inSection:sender.tag / 1000];
+    PSSpecifier *spec = [self specifierAtIndexPath:ip];
+    if (!spec) return;
+    CXArcSliderCell *cell = (CXArcSliderCell *)[self.tableView cellForRowAtIndexPath:ip];
+    if ([cell isKindOfClass:CXArcSliderCell.class])
+        cell.valueLabel.text = [NSString stringWithFormat:@"%.0f", sender.value];
+    [self setPreferenceValue:@(round(sender.value)) specifier:spec];
+}
+
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
     PSSpecifier *spec = [self specifierAtIndexPath:indexPath];
-    if ([spec cellType] == PSSliderCell) return 64;
+    if ([spec cellType] == PSSliderCell) return 68;
     return [super tableView:tableView heightForRowAtIndexPath:indexPath];
 }
 

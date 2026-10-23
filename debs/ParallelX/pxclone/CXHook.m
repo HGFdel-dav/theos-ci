@@ -33,6 +33,7 @@
 typedef void (*CXHookFn)(Class, SEL, IMP, IMP *);
 
 static void CXSyncIfNeeded(NSString *reason);
+static CXHookFn CXMSHookMessageEx(void);
 
 #pragma mark - 防重复处理
 
@@ -61,6 +62,56 @@ static void CXMarkHandled(NSString *key) {
     @synchronized (CXRecentHandles()) {
         CXRecentHandles()[key] = NSDate.date;
     }
+}
+
+#pragma mark - 最近一次外部 URL（重载后补投，否则只落到主界面）
+
+static NSURL *CXLastURL;
+static NSTimeInterval CXLastURLAt;
+
+static BOOL CXFreshURL(NSURL **out) {
+    if (!CXLastURL || [NSDate date].timeIntervalSince1970 - CXLastURLAt > 6.0) return NO;
+    if (out) *out = CXLastURL;
+    return YES;
+}
+
+static void CXReplayURL(NSURL *url) {
+    if (!url) return;
+    BOOL wasInternal = CXInternalOpen;
+    CXInternalOpen = YES; // 补投引起的激活不再弹选择
+    CXLog(@"[url] replay %@", url.scheme);
+    @try {
+        ((void (*)(id, SEL, id, id, id))objc_msgSend)(UIApplication.sharedApplication,
+            NSSelectorFromString(@"openURL:options:completionHandler:"), url, @{}, nil);
+    } @catch (__unused NSException *e) { CXLog(@"[url] replay 异常"); }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        CXInternalOpen = wasInternal;
+    });
+}
+
+static void (*CXOrigOpenURL)(id, SEL, id, id, id);
+static void CXOpenURLHook(id self, SEL _cmd, id url, id options, id completion) {
+    if ([url isKindOfClass:NSURL.class]) {
+        CXLastURL = [url copy];
+        CXLastURLAt = [NSDate date].timeIntervalSince1970;
+    }
+    if (CXOrigOpenURL) CXOrigOpenURL(self, _cmd, url, options, completion);
+}
+
+static void CXInstallURLHook(void) {
+    static BOOL installed = NO;
+    if (installed) return;
+    Class cls = UIApplication.class;
+    SEL sel = NSSelectorFromString(@"openURL:options:completionHandler:");
+    Method method = class_getInstanceMethod(cls, sel);
+    if (!method) return;
+    NSMethodSignature *sig = [NSMethodSignature signatureWithObjCTypes:method_getTypeEncoding(method)];
+    if (!sig || sig.numberOfArguments != 5 || [sig getArgumentTypeAtIndex:2][0] != '@') return;
+    CXHookFn hook = CXMSHookMessageEx();
+    if (!hook) return;
+    hook(cls, sel, (IMP)CXOpenURLHook, (IMP *)&CXOrigOpenURL);
+    installed = CXOrigOpenURL != NULL;
+    CXLog(@"[hook] openURL installed=%d", installed);
 }
 
 #pragma mark - 打开分屏窗口（真实 bundle）
@@ -97,6 +148,8 @@ static void CXPromptContainerThenOpen(NSString *bundleID, void (^cancel)(void)) 
     if (containers.count < 2) { if (cancel) cancel(); return; }
     UIViewController *host = CXTopViewController();
     if (!host) { if (cancel) cancel(); return; }
+    NSURL *incoming = nil;
+    BOOL hasURL = CXFreshURL(&incoming);
     CXShowingChooser = YES;
     NSString *appName = bundleID;
     Class proxyCls = NSClassFromString(@"LSApplicationProxy");
@@ -129,6 +182,8 @@ static void CXPromptContainerThenOpen(NSString *bundleID, void (^cancel)(void)) 
                 }
                 CXRememberNoteLaunch(bundleID, cid);
                 CXOpenInSplit(bundleID);
+                if (hasURL) dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.9 * NSEC_PER_SEC)),
+                                           dispatch_get_main_queue(), ^{ CXReplayURL(incoming); });
                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
                     CXInternalOpen = wasInternal;
                 });
@@ -248,6 +303,21 @@ static BOOL CXHandleVirtualItem(NSDictionary *item) {
         CXOpenInSplit(bundleID);
     }];
     return YES;
+}
+
+// 扇形菜单选中条目：分身走切容器，普通应用直接开分屏
+void CXOpenMenuItem(NSString *identifier) {
+    if (!identifier.length) return;
+    NSDictionary *item = CXVirtualItemForID(identifier);
+    if (item) { CXHandleVirtualItem(item); return; }
+    if ([identifier hasPrefix:@"px."]) return; // 其他快捷操作暂不接
+    CXLog(@"[arc] open %@", identifier);
+    if ([CXCraneBridge containersForBundleID:identifier].count >= 2) {
+        CXPromptContainerThenOpen(identifier, nil);
+        return;
+    }
+    CXRememberNoteLaunch(identifier, @"DEFAULT");
+    CXOpenInSplit(identifier);
 }
 
 static NSDictionary *CXVirtualItemFromArgument(id argument) {
@@ -492,6 +562,7 @@ static void CXInstallDragHandleHook(void) {
 
 static void CXInstallAll(void) {
     CXRememberStart();
+    CXInstallURLHook();
     CXInstallPanelEntryHooks();
     CXInstallBridgeHooks();
     CXInstallDragHandleHook();
