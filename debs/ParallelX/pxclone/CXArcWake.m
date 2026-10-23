@@ -264,6 +264,7 @@ static id CXDisplayIdentity;
 static BOOL CXSystemRegistered;
 static NSMapTable<UIWindow *, CXArcWakeGesture *> *CXFallbackGestures;
 static NSMapTable<UIWindow *, UIView *> *CXDebugViews;
+static CXArcDebugWindow *CXDebugWindow;
 static BOOL CXArcStarted;
 
 @interface CXArcDebugView : UIView
@@ -273,40 +274,44 @@ static BOOL CXArcStarted;
 - (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event { return NO; }
 @end
 
+// 独立透传窗口：整个窗口不接收触摸，底层图标/按钮照常点
+@interface CXArcDebugWindow : UIWindow
+@end
+@implementation CXArcDebugWindow
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event { return nil; }
+@end
+
 id CXArcWakeEntry(void) { return CXFindPanelEntry(); }
 
 static void CXArcDrawDebug(void) {
-    if (!CXDebugViews) CXDebugViews = [NSMapTable weakToStrongObjectsMapTable];
-    for (UIWindow *window in CXDebugViews.keyEnumerator.allObjects) {
-        [[CXDebugViews objectForKey:window] removeFromSuperview];
-        [CXDebugViews removeObjectForKey:window];
-    }
+    if (CXDebugWindow) { CXDebugWindow.hidden = YES; CXDebugWindow = nil; }
     if (!CXArcEnabled() || ![CXPrefs.shared boolForKey:@"CXArcDebug" defaultValue:NO]) return;
-    UIWindow *window = CXPXEntryObject(CXLiveEntry, "handleWindow", UIWindow.class);
-    if (!window || window.hidden) return;
+    UIWindow *host = CXPXEntryObject(CXLiveEntry, "handleWindow", UIWindow.class);
+    if (!host.windowScene) return;
+    CXArcDebugWindow *window = [[CXArcDebugWindow alloc] initWithWindowScene:host.windowScene];
+    window.frame = UIScreen.mainScreen.bounds;
+    window.windowLevel = UIWindowLevelAlert + 5;
+    window.backgroundColor = UIColor.clearColor;
+    window.userInteractionEnabled = NO; // 不拦任何触摸
+    UIViewController *vc = [[UIViewController alloc] init];
     CXArcDebugView *view = [[CXArcDebugView alloc] initWithFrame:window.bounds];
     view.userInteractionEnabled = NO;
-    view.backgroundColor = UIColor.clearColor;
-    view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    vc.view = view;
+    window.rootViewController = vc;
     NSInteger side = (NSInteger)CXArcNumber(@"CXArcSide");
     for (NSNumber *leftValue in @[@NO, @YES]) {
         BOOL left = leftValue.boolValue;
         if ((left && side == 0) || (!left && side == 1)) continue;
         UIBezierPath *path = [CXArcPath(left) copy];
-        CGPoint zero = [window convertPoint:CGPointZero fromCoordinateSpace:UIScreen.mainScreen.coordinateSpace];
-        CGPoint x = [window convertPoint:CGPointMake(1, 0) fromCoordinateSpace:UIScreen.mainScreen.coordinateSpace];
-        CGPoint y = [window convertPoint:CGPointMake(0, 1) fromCoordinateSpace:UIScreen.mainScreen.coordinateSpace];
-        [path applyTransform:CGAffineTransformMake(x.x - zero.x, x.y - zero.y,
-            y.x - zero.x, y.y - zero.y, zero.x, zero.y)];
         CAShapeLayer *layer = [CAShapeLayer layer];
         layer.path = path.CGPath;
-        layer.fillColor = [UIColor.systemOrangeColor colorWithAlphaComponent:0.22].CGColor;
+        layer.fillColor = [UIColor.systemOrangeColor colorWithAlphaComponent:0.20].CGColor;
         layer.strokeColor = UIColor.systemOrangeColor.CGColor;
         layer.lineWidth = 1;
         [view.layer addSublayer:layer];
     }
-    [window addSubview:view];
-    [CXDebugViews setObject:view forKey:window];
+    window.hidden = NO;
+    CXDebugWindow = window;
 }
 
 static void CXArcFallbackSync(BOOL want) {

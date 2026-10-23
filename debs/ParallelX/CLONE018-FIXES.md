@@ -56,3 +56,9 @@
 - URL：日志显示选“默认”时已处于 DEFAULT 仍强制重载，进程被杀导致 URL 丢。改为仅目标容器与当前不同才重载，同容器直接沿用正在启动的进程。
 - 记忆：12ms 起每 0.12s 持续压住并逐帧 layoutHost 强制目标 frame 到 1.2s，清动画；不再只在 0.3s 兜底套一次。
 - 扇形：菜单 rail 锚点改到角落（PX 自己的缩放从角落长），图标在 began 立刻重排并全程每帧重排，命中用 window 坐标。
+
+## clone0.22
+- 选择弹窗改为深色自绘 sheet：每个容器一个应用本体图标＋名字，分身带橙点，底部“取消跳转”（对齐 ScreenCore 观感）。
+- URL 不再只挂 externalOpenApplication；prepareWindow / applicationActivated 等所有真实 bundle 入口都走同一判断：只要有分身且有新鲜 URL 就弹。第二账号重载后轮询等进程起来再补投（最多3s）。
+- 调试图层移到独立 `userInteractionEnabled=NO` 的透传窗口（hitTest 返回 nil），不再挡住底下图标；关调试即销毁。
+- 记忆：套用期间先隐藏卡片，套好下一次布局后再显示；强制窗口延长到 2.2s，隐藏中的卡片仍视为有效宿主。

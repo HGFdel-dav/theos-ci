@@ -156,14 +156,125 @@ static void CXOpenInSplit(NSString *bundleID) {
     }
 }
 
-// 外部 URL 打开且应用有多容器时：先选账号
-static void CXPromptContainerThenOpen(NSString *bundleID, void (^cancel)(void)) {
+// 外部 URL 且应用有多容器：带图标的容器选择（参照 ScreenCore 的深色选择条）
+@interface CXChooserController : UIViewController
+@property (nonatomic, copy) NSArray<NSDictionary *> *containers;
+@property (nonatomic, copy) NSString *appName;
+@property (nonatomic, copy) NSString *bundleID;
+@property (nonatomic, copy) void (^pick)(NSString *containerID);
+@property (nonatomic, copy) void (^cancel)(void);
+@end
+
+@implementation CXChooserController
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.view.backgroundColor = [UIColor colorWithWhite:0 alpha:0.35];
+    UIView *sheet = [[UIView alloc] init];
+    sheet.backgroundColor = [UIColor colorWithRed:0.11 green:0.11 blue:0.12 alpha:1];
+    sheet.layer.cornerRadius = 26;
+    sheet.layer.cornerCurve = kCACornerCurveContinuous;
+    sheet.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:sheet];
+
+    UILabel *title = [[UILabel alloc] init];
+    title.text = @"选择打开应用";
+    title.font = [UIFont systemFontOfSize:19 weight:UIFontWeightSemibold];
+    title.textColor = UIColor.whiteColor;
+    title.textAlignment = NSTextAlignmentCenter;
+
+    UIStackView *row = [[UIStackView alloc] init];
+    row.axis = UILayoutConstraintAxisHorizontal;
+    row.distribution = UIStackViewDistributionFillEqually;
+    row.spacing = 8;
+    UIImage *icon = nil;
+    SEL iconSel = NSSelectorFromString(@"_applicationIconImageForBundleIdentifier:format:scale:");
+    if ([UIImage respondsToSelector:iconSel])
+        icon = ((id (*)(id, SEL, id, long, double))objc_msgSend)(UIImage.class, iconSel,
+            self.bundleID, 0, (double)UIScreen.mainScreen.scale);
+    for (NSDictionary *entry in self.containers) {
+        NSString *cid = entry[@"containerID"];
+        BOOL isDefault = [entry[@"isDefault"] boolValue];
+        UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
+        button.tag = [self.containers indexOfObject:entry];
+        UIImageView *iv = [[UIImageView alloc] initWithImage:icon];
+        iv.contentMode = UIViewContentModeScaleAspectFit;
+        iv.layer.cornerRadius = 14;
+        iv.clipsToBounds = YES;
+        iv.userInteractionEnabled = NO;
+        UILabel *name = [[UILabel alloc] init];
+        name.text = isDefault ? self.appName : (entry[@"name"] ?: cid);
+        name.font = [UIFont systemFontOfSize:13];
+        name.textColor = UIColor.whiteColor;
+        name.textAlignment = NSTextAlignmentCenter;
+        name.userInteractionEnabled = NO;
+        if (!isDefault) {
+            UIView *dot = [[UIView alloc] init];
+            dot.backgroundColor = [UIColor systemOrangeColor];
+            dot.layer.cornerRadius = 4;
+            dot.translatesAutoresizingMaskIntoConstraints = NO;
+            [button addSubview:dot];
+            [NSLayoutConstraint activateConstraints:@[
+                [dot.widthAnchor constraintEqualToConstant:8], [dot.heightAnchor constraintEqualToConstant:8],
+                [dot.trailingAnchor constraintEqualToAnchor:name.trailingAnchor constant:6],
+                [dot.centerYAnchor constraintEqualToAnchor:name.centerYAnchor]]];
+        }
+        UIStackView *col = [[UIStackView alloc] initWithArrangedSubviews:@[iv, name]];
+        col.axis = UILayoutConstraintAxisVertical; col.alignment = UIStackViewAlignmentCenter; col.spacing = 6;
+        col.userInteractionEnabled = NO; col.translatesAutoresizingMaskIntoConstraints = NO;
+        [button addSubview:col];
+        [NSLayoutConstraint activateConstraints:@[
+            [iv.widthAnchor constraintEqualToConstant:56], [iv.heightAnchor constraintEqualToConstant:56],
+            [col.centerXAnchor constraintEqualToAnchor:button.centerXAnchor],
+            [col.topAnchor constraintEqualToAnchor:button.topAnchor constant:4]]];
+        [button addTarget:self action:@selector(tapped:) forControlEvents:UIControlEventTouchUpInside];
+        [row addArrangedSubview:button];
+    }
+    UIButton *cancel = [UIButton buttonWithType:UIButtonTypeSystem];
+    [cancel setTitle:@"取消跳转" forState:UIControlStateNormal];
+    [cancel setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    cancel.titleLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightMedium];
+    cancel.backgroundColor = [UIColor colorWithWhite:0.22 alpha:1];
+    cancel.layer.cornerRadius = 14;
+    [cancel addTarget:self action:@selector(cancelled) forControlEvents:UIControlEventTouchUpInside];
+
+    for (UIView *v in @[title, row, cancel]) { v.translatesAutoresizingMaskIntoConstraints = NO; [sheet addSubview:v]; }
+    UILayoutGuide *g = self.view.safeAreaLayoutGuide;
+    [NSLayoutConstraint activateConstraints:@[
+        [sheet.leadingAnchor constraintEqualToAnchor:g.leadingAnchor constant:10],
+        [sheet.trailingAnchor constraintEqualToAnchor:g.trailingAnchor constant:-10],
+        [sheet.bottomAnchor constraintEqualToAnchor:g.bottomAnchor constant:-6],
+        [title.topAnchor constraintEqualToAnchor:sheet.topAnchor constant:18],
+        [title.leadingAnchor constraintEqualToAnchor:sheet.leadingAnchor constant:16],
+        [title.trailingAnchor constraintEqualToAnchor:sheet.trailingAnchor constant:-16],
+        [row.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:16],
+        [row.leadingAnchor constraintEqualToAnchor:sheet.leadingAnchor constant:14],
+        [row.trailingAnchor constraintEqualToAnchor:sheet.trailingAnchor constant:-14],
+        [row.heightAnchor constraintEqualToConstant:84],
+        [cancel.topAnchor constraintEqualToAnchor:row.bottomAnchor constant:16],
+        [cancel.leadingAnchor constraintEqualToAnchor:sheet.leadingAnchor constant:14],
+        [cancel.trailingAnchor constraintEqualToAnchor:sheet.trailingAnchor constant:-14],
+        [cancel.heightAnchor constraintEqualToConstant:50],
+        [cancel.bottomAnchor constraintEqualToAnchor:sheet.bottomAnchor constant:-14]]];
+}
+
+- (void)tapped:(UIButton *)sender {
+    NSDictionary *entry = self.containers[sender.tag];
+    [self dismissViewControllerAnimated:YES completion:^{ if (self.pick) self.pick(entry[@"containerID"]); }];
+}
+- (void)cancelled {
+    [self dismissViewControllerAnimated:YES completion:^{ if (self.cancel) self.cancel(); }];
+}
+@end
+
+// 任何开窗入口（URL/快捷/激活）通用：有分身且有新鲜 URL 就弹；proceed 由调用方继续原流程
+static BOOL CXPromptForURL(NSString *bundleID, void (^proceed)(void)) {
+    if (CXInternalOpen || CXShowingChooser || !bundleID.length) return NO;
     NSArray<NSDictionary *> *containers = [CXCraneBridge containersForBundleID:bundleID];
-    if (containers.count < 2) { if (cancel) cancel(); return; }
-    UIViewController *host = CXTopViewController();
-    if (!host) { if (cancel) cancel(); return; }
+    if (containers.count < 2) return NO;
     NSURL *incoming = nil;
-    BOOL hasURL = CXFreshURL(&incoming);
+    if (!CXFreshURL(&incoming)) return NO;
+    UIViewController *host = CXTopViewController();
+    if (!host) return NO;
     CXShowingChooser = YES;
     NSString *appName = bundleID;
     Class proxyCls = NSClassFromString(@"LSApplicationProxy");
@@ -174,43 +285,51 @@ static void CXPromptContainerThenOpen(NSString *bundleID, void (^cancel)(void)) 
             if ([n isKindOfClass:NSString.class] && [n length]) appName = n;
         }
     }
-    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"选择打开应用"
-                                                                   message:appName
-                                                            preferredStyle:UIAlertControllerStyleActionSheet];
-    for (NSDictionary *entry in containers) {
-        NSString *cid = entry[@"containerID"];
-        BOOL isDefault = [entry[@"isDefault"] boolValue];
-        NSString *title = isDefault ? @"默认" : (entry[@"name"] ?: cid);
-        [sheet addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
-            // 复用 clone0.8 已通过的顺序：切容器 -> Crane 重载 -> 开窗。
-            // reload:NO 只修改下次启动，不能切换运行中的账号。
-            // 同 ScreenCore：先只改启动配置再开窗；应用本来没起来时绝不重载，URL 才能投递进新进程
-            BOOL running = CXAppRunning(bundleID);
-            CXLog(@"[url] %@ selected=%@ reload=%d", bundleID, cid, running);
-            BOOL wasInternal = CXInternalOpen;
-            CXInternalOpen = YES; // 重载引发的激活不能再次弹选择
-            [CXCraneBridge switchBundleID:bundleID toContainer:cid reload:running completion:^(BOOL ok) {
-                CXShowingChooser = NO;
-                if (!ok) {
-                    CXInternalOpen = wasInternal;
-                    CXLog(@"[url] %@ switch failed, do not open wrong account", bundleID);
-                    return;
-                }
-                CXRememberNoteLaunch(bundleID, cid);
-                CXOpenInSplit(bundleID);
-                // 只有走了重载（应用原本在运行）才需要补投；未运行由系统原样投递
-                if (hasURL && running) dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.9 * NSEC_PER_SEC)),
-                                                      dispatch_get_main_queue(), ^{ CXReplayURL(incoming); });
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                    CXInternalOpen = wasInternal;
-                });
-            }];
-        }]];
-    }
-    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:^(UIAlertAction *a) {
+    CXChooserController *chooser = [[CXChooserController alloc] init];
+    chooser.containers = containers;
+    chooser.appName = appName;
+    chooser.bundleID = bundleID;
+    chooser.modalPresentationStyle = UIModalPresentationOverFullScreen;
+    chooser.cancel = ^{ CXShowingChooser = NO; if (proceed) proceed(); };
+    chooser.pick = ^(NSString *cid) {
         CXShowingChooser = NO;
-    }]];
-    [host presentViewController:sheet animated:YES completion:nil];
+        BOOL running = CXAppRunning(bundleID);
+        CXLog(@"[url] %@ selected=%@ reload=%d", bundleID, cid, running);
+        BOOL wasInternal = CXInternalOpen;
+        CXInternalOpen = YES;
+        [CXCraneBridge switchBundleID:bundleID toContainer:cid reload:running completion:^(BOOL ok) {
+            if (!ok) { CXInternalOpen = wasInternal; CXLog(@"[url] %@ switch failed", bundleID); return; }
+            CXRememberNoteLaunch(bundleID, cid);
+            if (proceed) proceed();
+            if (!running) {
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1.0 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+                    CXInternalOpen = wasInternal; });
+                return;
+            }
+            // 重载过的进程要等它真正起来再补投，否则又只落主界面
+            __block NSInteger tries = 0;
+            __block void (^poll)(void);
+            poll = ^{
+                if (++tries > 12) { CXInternalOpen = wasInternal; return; }
+                if (CXAppRunning(bundleID)) {
+                    CXReplayURL(incoming);
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1.4 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+                        CXInternalOpen = wasInternal; });
+                } else {
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.25 * NSEC_PER_SEC), dispatch_get_main_queue(), poll);
+                }
+            };
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.4 * NSEC_PER_SEC), dispatch_get_main_queue(), poll);
+        }];
+    };
+    [host presentViewController:chooser animated:YES completion:nil];
+    return YES;
+}
+
+// 旧调用点：选完由本函数自己开窗
+static void CXPromptContainerThenOpen(NSString *bundleID, void (^cancel)(void)) {
+    if (CXPromptForURL(bundleID, ^{ CXOpenInSplit(bundleID); })) return;
+    if (cancel) cancel();
 }
 
 static void CXOpenInSplitImpl(NSString *bundleID) {
@@ -364,7 +483,12 @@ static void CXPrepareWindow(id self, SEL _cmd, id bundleID, BOOL wasFullscreen, 
     if (!CXOrigPrepareWindow) return;
     CXLog(@"[trace] prepareWindow %@ fullscreen=%d", bundleID, wasFullscreen);
     NSDictionary *item = CXVirtualItemFromArgument(bundleID);
-    if (!item) { CXOrigPrepareWindow(self, _cmd, bundleID, wasFullscreen, completion); return; }
+    if (!item) {
+        NSString *real = [bundleID isKindOfClass:NSString.class] ? bundleID : nil;
+        if (CXPromptForURL(real, ^{ CXOrigPrepareWindow(self, _cmd, bundleID, wasFullscreen, completion); })) return;
+        CXOrigPrepareWindow(self, _cmd, bundleID, wasFullscreen, completion);
+        return;
+    }
     NSString *realBundle = item[@"bundleID"];
     NSString *containerID = item[@"containerID"];
     NSString *key = [NSString stringWithFormat:@"%@#%@", realBundle, containerID];
@@ -385,7 +509,12 @@ static void (*CXOrigExternalOpen)(Class, SEL, id);
 static void CXHandlePanelEntry(Class cls, SEL _cmd, id argument, void (*cont)(Class, SEL, id)) {
     CXLog(@"[trace] %@ %@", NSStringFromSelector(_cmd), argument);
     NSDictionary *item = CXVirtualItemFromArgument(argument);
-    if (!item) { cont(cls, _cmd, argument); return; }
+    if (!item) {
+        NSString *real = [argument isKindOfClass:NSString.class] ? argument : nil;
+        if (CXPromptForURL(real, ^{ cont(cls, _cmd, argument); })) return;
+        cont(cls, _cmd, argument);
+        return;
+    }
     NSString *realBundle = item[@"bundleID"];
     NSString *containerID = item[@"containerID"];
     NSString *key = [NSString stringWithFormat:@"%@#%@", realBundle, containerID];
