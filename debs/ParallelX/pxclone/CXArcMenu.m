@@ -54,8 +54,6 @@ void CXFanArrange(NSArray<UIView *> *icons, UIWindow *window, BOOL left) {
     CGSize size = window ? window.bounds.size : CGSizeZero;
     if (size.width < 100 || size.height < 100) size = UIScreen.mainScreen.bounds.size;
     if (size.width < 100 || size.height < 100) return;
-    CGFloat anchorX = left ? offsetX : size.width - offsetX;
-    CGFloat anchorY = size.height - offsetY;
     id radiusObject = [CXPrefs.shared objectForKey:@"CXArcRadius"];
     id offsetXObject = [CXPrefs.shared objectForKey:@"CXArcOffsetX"];
     id offsetYObject = [CXPrefs.shared objectForKey:@"CXArcOffsetY"];
@@ -63,6 +61,8 @@ void CXFanArrange(NSArray<UIView *> *icons, UIWindow *window, BOOL left) {
     CGFloat offsetX = [offsetXObject isKindOfClass:NSNumber.class] ? [(NSNumber *)offsetXObject doubleValue] : 0;
     CGFloat offsetY = [offsetYObject isKindOfClass:NSNumber.class] ? [(NSNumber *)offsetYObject doubleValue] : 0;
     if (radiusSetting < 1) radiusSetting = 86;
+    CGFloat anchorX = left ? offsetX : size.width - offsetX;
+    CGFloat anchorY = size.height - offsetY;
     anchorX += left ? offsetX : -offsetX;
     anchorY -= offsetY;
     CGFloat radiusBase = MAX(54, radiusSetting);
