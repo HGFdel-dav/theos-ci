@@ -64,6 +64,8 @@ static void CXMarkHandled(NSString *key) {
     }
 }
 
+static BOOL CXInternalOpen = NO;
+
 #pragma mark - 最近一次外部 URL（重载后补投，否则只落到主界面）
 
 static NSURL *CXLastURL;
@@ -116,7 +118,6 @@ static void CXInstallURLHook(void) {
 
 #pragma mark - 打开分屏窗口（真实 bundle）
 
-static BOOL CXInternalOpen = NO;
 static BOOL CXShowingChooser = NO;
 
 static UIViewController *CXTopViewController(void) {
