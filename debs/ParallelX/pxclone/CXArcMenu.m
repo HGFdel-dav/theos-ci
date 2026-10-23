@@ -21,21 +21,23 @@ NSArray<UIView *> *CXFanIcons(UIWindow *window) {
 void CXFanArrange(NSArray<UIView *> *icons, UIWindow *window, BOOL left) {
     if (!icons.count || !window) return;
     CGSize size = window.bounds.size;
-    CGFloat anchorX = left ? 2 : size.width - 2;
-    CGFloat anchorY = size.height - 2;
+    CGFloat anchorX = left ? 6 : size.width - 6;
+    CGFloat anchorY = size.height - 6;
     CGFloat start = left ? 1.5 * M_PI : M_PI;
-    NSInteger perRing = icons.count > 4 ? 4 : (NSInteger)icons.count;
+    NSInteger perRing = icons.count > 8 ? 8 : (NSInteger)icons.count;
     NSMutableArray<NSValue *> *points = [NSMutableArray array];
     for (NSInteger i = 0; i < (NSInteger)icons.count; i++) {
         UIView *icon = icons[i];
-        CGFloat d = MAX(44, icon.bounds.size.width);
+        CGFloat d = MAX(38, icon.bounds.size.width * 0.9);
         NSInteger ring = perRing ? i / perRing : 0;
         NSInteger inRing = perRing ? i % perRing : 0;
         NSInteger count = MIN(perRing, (NSInteger)icons.count - ring * perRing);
-        CGFloat radius = 96 + ring * (d + 16);
+        CGFloat radius = 74 + ring * (d + 12);
         CGFloat t = count <= 1 ? 0.5 : (CGFloat)inRing / (CGFloat)(count - 1);
-        CGFloat angle = start + (left ? 1 : -1) * (0.05 * M_PI_2 + M_PI_2 * 0.9 * t);
+        CGFloat angle = start + (left ? 1 : -1) * (0.02 * M_PI_2 + M_PI_2 * 0.72 * t);
         CGPoint p = CGPointMake(anchorX + radius * cos(angle), anchorY + radius * sin(angle));
+        p.x = MIN(MAX(p.x, 20), size.width - 20);
+        p.y = MIN(MAX(p.y, 40), size.height - 20);
         icon.center = p; // 不动 transform，PX 自己的高亮缩放照旧
         [points addObject:[NSValue valueWithCGPoint:p]];
     }

@@ -8,7 +8,9 @@
 #import "CXLog.h"
 #include <math.h>
 
-@interface CXArcListController : PSListController
+@interface CXArcListController : PSListController {
+    NSArray<NSString *> *_sliderKeys;
+}
 @end
 
 // 自绘滑杆行：左侧功能名、右侧固定宽度数值（右对齐，不再被裁）。
@@ -97,7 +99,9 @@
         @[@"水平偏移", @"CXArcOffsetX", @0, @100],
         @[@"垂直偏移", @"CXArcOffsetY", @0, @100]
     ];
+    NSMutableArray<NSString *> *sliderKeys = [NSMutableArray array];
     for (NSArray *row in sliders) {
+        [sliderKeys addObject:row[1]];
         PSSpecifier *spec = [self row:row[0] key:row[1] cell:PSSliderCell];
         [spec setProperty:row[2] forKey:@"min"];
         [spec setProperty:row[3] forKey:@"max"];
@@ -105,6 +109,7 @@
         [spec setProperty:@64 forKey:@"height"];
         [specs addObject:spec];
     }
+    _sliderKeys = sliderKeys;
     [specs addObject:[self row:@"显示触发区域（调试）" key:@"CXArcDebug" cell:PSSwitchCell]];
     _specifiers = specs;
     return _specifiers;
@@ -145,7 +150,7 @@
         cell.slider.continuous = NO; // 松手才写，避免拖动中反复刷新
         cell.slider.value = [[self readPreferenceValue:spec] doubleValue];
         cell.valueLabel.text = [NSString stringWithFormat:@"%.0f", cell.slider.value];
-        cell.slider.tag = indexPath.section * 1000 + indexPath.row;
+        cell.slider.tag = (NSInteger)[_sliderKeys indexOfObject:[spec propertyForKey:@"key"]];
         [cell.slider removeTarget:self action:@selector(sliderChanged:) forControlEvents:UIControlEventValueChanged];
         [cell.slider addTarget:self action:@selector(sliderChanged:) forControlEvents:UIControlEventValueChanged];
         return cell;
@@ -163,13 +168,21 @@
 }
 
 - (void)sliderChanged:(UISlider *)sender {
-    NSIndexPath *ip = [NSIndexPath indexPathForRow:sender.tag % 1000 inSection:sender.tag / 1000];
-    PSSpecifier *spec = [self specifierAtIndexPath:ip];
-    if (!spec) return;
-    CXArcSliderCell *cell = (CXArcSliderCell *)[self.tableView cellForRowAtIndexPath:ip];
-    if ([cell isKindOfClass:CXArcSliderCell.class])
-        cell.valueLabel.text = [NSString stringWithFormat:@"%.0f", sender.value];
-    [self setPreferenceValue:@(round(sender.value)) specifier:spec];
+    @try {
+        NSInteger index = sender.tag;
+        if (index < 0 || index >= (NSInteger)_sliderKeys.count) return;
+        NSString *key = _sliderKeys[index];
+        id spec = sender.superview.superview; // 只用于回显；不依赖 PS 查询
+        NSInteger v = (NSInteger)llround(sender.value);
+        [CXPrefs.shared setObject:@(v) forKey:key];
+        if ([key hasPrefix:@"CXArcRectangle"])
+            [CXPrefs.shared setObject:@1 forKey:@"CXArcTriggerRegionMode"];
+        UIView *cell = sender.superview.superview;
+        if ([cell isKindOfClass:CXArcSliderCell.class])
+            ((CXArcSliderCell *)cell).valueLabel.text = [NSString stringWithFormat:@"%ld", (long)v];
+        CXLog(@"[prefs] arc %@=%ld", key, (long)v);
+        (void)spec;
+    } @catch (NSException *e) { CXLog(@"[prefs] slider 异常 %@", e.reason); }
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {

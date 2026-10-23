@@ -47,3 +47,7 @@
 - ARC：仍然触发 PX 自己的菜单（同一批图标、同一套高亮/动画），只把 PXPanelIcon 按角落扇形重排；选中用扇形最近图标，命中后走已验证的 externalOpenApplication。
 - URL：钩住 UIApplication openURL 存最近 6s URL，选账号重载开窗后补投一次，解决只进主界面。
 - 记忆：保存完整 x/y/w/h；在原版首次 layoutHost 之前套用并 removeAllAnimations，避免先大后缩；贴边位置也恢复。
+
+## clone0.20 修正（设置闪退与扇形范围）
+- 闪退栈：UIControl 松手 → CloneXPrefsUI 未识别选择子。滑杆改为按 tag 查按键数组直接写偏好，不再在 endTracking 里走 specifierAtIndexPath/cellForRow；整体 @try 兜底。
+- 扇形：图标锚点移到角落、角度收窄到约 65°、每环最多 8 个、半径收紧并夹进屏内；等 PX 入场动画落定后再排，之后按 120ms 节流，避免边飞边拉。

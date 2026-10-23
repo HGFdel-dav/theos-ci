@@ -138,6 +138,7 @@ static NSArray<NSString *> *CXMenuIDs(void) {
     BOOL _armed;
     BOOL _left;
     BOOL _rearranged;
+    CFTimeInterval _lastArrange;
 }
 
 - (instancetype)init {
@@ -194,6 +195,7 @@ static NSArray<NSString *> *CXMenuIDs(void) {
     if (!_icons.count) return;
     CXFanArrange(_icons, window, _left);
     _rearranged = YES;
+    _lastArrange = CACurrentMediaTime();
 }
 
 - (void)handle:(UIPanGestureRecognizer *)g {
@@ -220,8 +222,9 @@ static NSArray<NSString *> *CXMenuIDs(void) {
         CXLog(@"[arc] begin side=%@ %.0f,%.0f", _left ? @"left" : @"right", point.x, point.y);
         @try { ((void (*)(id, SEL, id))objc_msgSend)(entry, NSSelectorFromString(@"dragHandle:"), _synth); }
         @catch (__unused NSException *e) { [self cleanup]; return; }
-        for (int i = 1; i <= 6; i++) { // PX 图标是异步创建的，多次补排
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.02 * i * NSEC_PER_SEC)),
+        // PX 自己会先播入场动画；等它落定再改成扇形，避免边飞边拉
+        for (NSNumber *delay in @[@0.20, @0.34, @0.50]) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay.doubleValue * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{ if (_synth) [self rearrange]; });
         }
         return;
@@ -235,6 +238,7 @@ static NSArray<NSString *> *CXMenuIDs(void) {
     _synth.synthState = ended ? g.state : UIGestureRecognizerStateChanged;
     @try { ((void (*)(id, SEL, id))objc_msgSend)(_entry, NSSelectorFromString(@"dragHandle:"), _synth); }
     @catch (__unused NSException *e) { [self cleanup]; return; }
+    if (!ended && _rearranged && CACurrentMediaTime() - _lastArrange > 0.12) [self rearrange];
     if (ended) {
         UIWindow *window = [self handleWindow];
         CGPoint local = window ? [window convertPoint:point fromCoordinateSpace:UIScreen.mainScreen.coordinateSpace] : point;
