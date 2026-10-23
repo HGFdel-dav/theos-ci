@@ -1,5 +1,6 @@
 // CXArcMenu.m — 仅做几何：PX 负责菜单、图标、动画；这里只把它们摆成扇形。
 #import "CXArcMenu.h"
+#import "CXLog.h"
 #import <objc/runtime.h>
 #include <math.h>
 
@@ -20,6 +21,15 @@ NSArray<UIView *> *CXFanIcons(UIWindow *window) {
 
 void CXFanArrange(NSArray<UIView *> *icons, UIWindow *window, BOOL left) {
     if (!icons.count || !window) return;
+    UIView *rail = icons.firstObject.superview;
+    if (rail && rail != window) {
+        // 让 PX 自己的缩放/展开从角落长出来，而不是从屏幕边缘
+        if (rail.layer.anchorPoint.x != (left ? 0 : 1) || rail.layer.anchorPoint.y != 1) {
+            CGRect f = rail.frame;
+            rail.layer.anchorPoint = CGPointMake(left ? 0 : 1, 1);
+            rail.layer.position = CGPointMake(f.origin.x + (left ? 0 : f.size.width), f.origin.y + f.size.height);
+        }
+    }
     CGSize size = window.bounds.size;
     CGFloat anchorX = left ? 6 : size.width - 6;
     CGFloat anchorY = size.height - 6;
@@ -38,10 +48,12 @@ void CXFanArrange(NSArray<UIView *> *icons, UIWindow *window, BOOL left) {
         CGPoint p = CGPointMake(anchorX + radius * cos(angle), anchorY + radius * sin(angle));
         p.x = MIN(MAX(p.x, 20), size.width - 20);
         p.y = MIN(MAX(p.y, 40), size.height - 20);
-        icon.center = p; // 不动 transform，PX 自己的高亮缩放照旧
-        [points addObject:[NSValue valueWithCGPoint:p]];
+        [points addObject:[NSValue valueWithCGPoint:p]]; // 记录 window 坐标供命中
+        CGPoint local = rail && rail != window ? [rail convertPoint:p fromView:window] : p;
+        icon.center = local; // 不动 transform，PX 自己的高亮缩放照旧
     }
     objc_setAssociatedObject(window, &CXFanKey, points, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    CXLog(@"[arc] arranged %lu icons rail=%@", (unsigned long)icons.count, NSStringFromClass(rail.class));
 }
 
 NSInteger CXFanNearest(NSArray<UIView *> *icons, CGPoint point) {

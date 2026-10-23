@@ -225,6 +225,7 @@ static __weak id CXPendingBridge;
 static NSString *CXPendingBundle, *CXPendingContainer;
 static CGRect CXPendingRect = {0};
 static BOOL CXPendingApplied = YES;
+static CFTimeInterval CXPendingUntil = 0;
 
 static CGRect CXSanitizedTarget(CGRect saved, CGRect current, CGRect screen) {
     CGFloat w = MIN(saved.size.width, CGRectGetWidth(screen));
@@ -262,11 +263,12 @@ void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
     CXPendingContainer = [container copy];
     CXPendingRect = CGRectMake(x, y, w, h);
     CXPendingApplied = NO;
+    CXPendingUntil = CACurrentMediaTime() + 1.2;
     NSInteger generation = CXPendingGen;
-    for (int i = 1; i <= 5; i++) { // layoutHost 没赶上的兜底
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * i * NSEC_PER_SEC)),
+    for (int i = 1; i <= 10; i++) { // 12ms 起持续压住 PX 开窗动画
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.12 * i * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
-            if (generation != CXPendingGen || CXPendingApplied) return;
+            if (generation != CXPendingGen || CACurrentMediaTime() > CXPendingUntil) return;
             id entry = CXRememberEntry ?: CXFindPanelEntry();
             NSInteger openGeneration = CXOpenGeneration;
             if (!entry) return;
@@ -285,7 +287,6 @@ void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
             [CATransaction commit];
             CXLog(@"[remember] apply %@#%@ %.0fx%.0f", bundle, CXPendingContainer,
                   card.frame.size.width, card.frame.size.height);
-            CXRememberLayoutApplied();
             if (openGeneration == CXOpenGeneration) { }
         });
     }
@@ -294,7 +295,8 @@ void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
 // 原版首次布局前套用，页面显示时就是目标大小，不会先大后缩。
 static void (*CXOrigLayoutHost)(id, SEL);
 static void CXLayoutHostHook(id self, SEL _cmd) {
-    if (!CXPendingApplied && CXPendingBridge == self) {
+    if (!CXPendingApplied && CXPendingBridge == self) CXLog(@"[remember] first layout");
+    if (CXPendingBridge == self && CACurrentMediaTime() < CXPendingUntil) {
         UIView *card = CXEntryCard(CXRememberEntry ?: CXFindPanelEntry());
         UIView *canvas = CXPXGetObject(self, @"canvas");
         if (!card && [canvas isKindOfClass:UIView.class] &&
@@ -307,11 +309,14 @@ static void CXLayoutHostHook(id self, SEL _cmd) {
             card.transform = CGAffineTransformIdentity;
             card.frame = CXSanitizedTarget(CXPendingRect, card.frame, screen);
             [CATransaction commit];
-            CXLog(@"[remember] apply-before-layout %@ %.0fx%.0f",
-                  CXPendingBundle, card.frame.size.width, card.frame.size.height);
-            CXRememberLayoutApplied();
+            if (!CXPendingApplied) {
+                CXLog(@"[remember] apply-before-layout %@ %.0fx%.0f",
+                      CXPendingBundle, card.frame.size.width, card.frame.size.height);
+                CXPendingApplied = YES;
+            }
         }
     }
+    else if (CXPendingBridge == self && CXPendingApplied) CXRememberLayoutApplied();
     if (CXOrigLayoutHost) CXOrigLayoutHost(self, _cmd);
 }
 

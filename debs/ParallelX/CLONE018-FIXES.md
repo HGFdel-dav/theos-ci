@@ -51,3 +51,8 @@
 ## clone0.20 修正（设置闪退与扇形范围）
 - 闪退栈：UIControl 松手 → CloneXPrefsUI 未识别选择子。滑杆改为按 tag 查按键数组直接写偏好，不再在 endTracking 里走 specifierAtIndexPath/cellForRow；整体 @try 兜底。
 - 扇形：图标锚点移到角落、角度收窄到约 65°、每环最多 8 个、半径收紧并夹进屏内；等 PX 入场动画落定后再排，之后按 120ms 节流，避免边飞边拉。
+
+## clone0.21
+- URL：日志显示选“默认”时已处于 DEFAULT 仍强制重载，进程被杀导致 URL 丢。改为仅目标容器与当前不同才重载，同容器直接沿用正在启动的进程。
+- 记忆：12ms 起每 0.12s 持续压住并逐帧 layoutHost 强制目标 frame 到 1.2s，清动画；不再只在 0.3s 兜底套一次。
+- 扇形：菜单 rail 锚点改到角落（PX 自己的缩放从角落长），图标在 began 立刻重排并全程每帧重排，命中用 window 坐标。

@@ -77,6 +77,19 @@ static BOOL CXFreshURL(NSURL **out) {
     return YES;
 }
 
+// 应用是否已在运行（有场景）。运行中才需要重载，未运行直接切配置即可保住 URL。
+static BOOL CXAppRunning(NSString *bundle) {
+    Class cls = NSClassFromString(@"PXSceneBridge");
+    SEL shared = NSSelectorFromString(@"sharedBridge");
+    if (!cls || ![cls respondsToSelector:shared]) return NO;
+    id bridge = ((id (*)(id, SEL))objc_msgSend)(cls, shared);
+    SEL sel = NSSelectorFromString(@"hasSceneForApplication:");
+    if (!bridge || ![bridge respondsToSelector:sel]) return NO;
+    NSMethodSignature *sig = [bridge methodSignatureForSelector:sel];
+    if (!sig || sig.numberOfArguments != 3 || sig.methodReturnType[0] != 'B') return NO;
+    return ((BOOL (*)(id, SEL, id))objc_msgSend)(bridge, sel, bundle) != 0;
+}
+
 static void CXReplayURL(NSURL *url) {
     if (!url) return;
     BOOL wasInternal = CXInternalOpen;
@@ -171,10 +184,12 @@ static void CXPromptContainerThenOpen(NSString *bundleID, void (^cancel)(void)) 
         [sheet addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
             // 复用 clone0.8 已通过的顺序：切容器 -> Crane 重载 -> 开窗。
             // reload:NO 只修改下次启动，不能切换运行中的账号。
-            CXLog(@"[url] %@ selected=%@, reload=1", bundleID, cid);
+            // 同 ScreenCore：先只改启动配置再开窗；应用本来没起来时绝不重载，URL 才能投递进新进程
+            BOOL running = CXAppRunning(bundleID);
+            CXLog(@"[url] %@ selected=%@ reload=%d", bundleID, cid, running);
             BOOL wasInternal = CXInternalOpen;
             CXInternalOpen = YES; // 重载引发的激活不能再次弹选择
-            [CXCraneBridge switchBundleID:bundleID toContainer:cid reload:YES completion:^(BOOL ok) {
+            [CXCraneBridge switchBundleID:bundleID toContainer:cid reload:running completion:^(BOOL ok) {
                 CXShowingChooser = NO;
                 if (!ok) {
                     CXInternalOpen = wasInternal;
@@ -183,8 +198,9 @@ static void CXPromptContainerThenOpen(NSString *bundleID, void (^cancel)(void)) 
                 }
                 CXRememberNoteLaunch(bundleID, cid);
                 CXOpenInSplit(bundleID);
-                if (hasURL) dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.9 * NSEC_PER_SEC)),
-                                           dispatch_get_main_queue(), ^{ CXReplayURL(incoming); });
+                // 只有走了重载（应用原本在运行）才需要补投；未运行由系统原样投递
+                if (hasURL && running) dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.9 * NSEC_PER_SEC)),
+                                                      dispatch_get_main_queue(), ^{ CXReplayURL(incoming); });
                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
                     CXInternalOpen = wasInternal;
                 });
