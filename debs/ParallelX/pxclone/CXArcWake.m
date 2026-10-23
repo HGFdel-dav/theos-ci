@@ -296,7 +296,7 @@ static NSArray<NSString *> *CXMenuIDs(void) {
 
 static CXArcWakeGesture *CXArcGesture;
 static id CXSystemGestureManager;
-static id CXDisplayIdentity;
+static id CXCachedDisplayIdentity; // 改名避免与下面函数冲突
 static BOOL CXSystemRegistered;
 static NSMapTable<UIWindow *, CXArcWakeGesture *> *CXFallbackGestures;
 static NSMapTable<UIWindow *, UIView *> *CXDebugViews;
@@ -396,7 +396,7 @@ static id CXSystemManager(void) {
 }
 
 // 原版取 UIScreen.displayIdentity；缺失时按旧 Twin 的候选链再找一次。
-static id CXDisplayIdentity(void) {
+static id CXGetDisplayIdentity(void) { // 改名避免与全局变量冲突
     @try {
         id identity = CXPXGetObject(UIScreen.mainScreen, @"displayIdentity");
         if (identity) return identity;
@@ -415,7 +415,7 @@ static BOOL CXTryRegisterSystemGesture(void) {
     if (now < CXSystemRetryAt) return NO;
     @try {
         id manager = CXSystemManager();
-        id identity = CXDisplayIdentity();
+        id identity = CXGetDisplayIdentity(); // 调用改名后的函数
         if (!manager || !identity ||
             !CXPXVoidSelector(manager, @"addGestureRecognizer:toDisplayWithIdentity:", 2) ||
             !CXPXVoidSelector(manager, @"removeGestureRecognizer:fromDisplayWithIdentity:", 2)) {
