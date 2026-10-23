@@ -431,7 +431,7 @@ static BOOL CXTryRegisterSystemGesture(void) {
         ((void (*)(id, SEL, id, id))objc_msgSend)(manager,
             NSSelectorFromString(@"addGestureRecognizer:toDisplayWithIdentity:"), CXArcGesture, identity);
         CXSystemGestureManager = manager;
-        CXDisplayIdentity = identity;
+        CXCachedDisplayIdentity = identity; // 改为新名字
         CXSystemRegistered = YES;
         CXSystemFailures = 0;
         CXLog(@"[arc] system gesture registered");
@@ -459,7 +459,7 @@ void CXArcWakeSync(void) {
                  @"removeGestureRecognizer:fromDisplayWithIdentity:", 2)) {
                 @try {
                     ((void (*)(id, SEL, id, id))objc_msgSend)(CXSystemGestureManager,
-                        NSSelectorFromString(@"removeGestureRecognizer:fromDisplayWithIdentity:"), CXArcGesture, CXDisplayIdentity);
+                        NSSelectorFromString(@"removeGestureRecognizer:fromDisplayWithIdentity:"), CXArcGesture, CXCachedDisplayIdentity); // 改为新名字
                     CXSystemRegistered = NO;
                 } @catch (__unused NSException *e) { keepFallback = YES; }
             }
