@@ -36,6 +36,7 @@ void CXRememberNoteLaunch(NSString *bundleID, NSString *containerID) {
                        forKey:CXLastOpenKey];
 }
 
+static NSMutableSet<NSString *> *CXAppliedKeySet(void);
 static NSString *CXKey(NSString *bundle, NSString *container) {
     if (!bundle.length) return nil;
     return [NSString stringWithFormat:@"%@#%@", bundle, container.length ? container : @"DEFAULT"];
@@ -97,6 +98,8 @@ void CXRememberBindOpen(id bridge, UIView *canvas, NSString *bundleID, NSString 
     CXBoundBridge = bridge;
     CXBoundCanvas = canvas;
     CXOpenGeneration++;
+    NSString *appliedKey = CXKey(bundleID, container);
+    if (appliedKey) [CXAppliedKeySet() removeObject:appliedKey]; // 新开窗：允许这套组合再套一次
     NSDictionary *context = @{@"bundle": bundleID, @"container": container};
     objc_setAssociatedObject(bridge, &CXRememberBindingKey, context, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     CXRememberNoteLaunch(bundleID, container);
@@ -226,6 +229,16 @@ static NSString *CXPendingBundle, *CXPendingContainer;
 static CGRect CXPendingRect = {0};
 static BOOL CXPendingApplied = YES;
 static CFTimeInterval CXPendingUntil = 0;
+// 每个 bundle#container 只套一次：既防 layoutHost 递归成环，也防重复强设。
+static NSMutableSet<NSString *> *CXAppliedKeys;
+static NSString *CXPendingKey;
+static NSMutableSet<NSString *> *CXAppliedKeySet(void) {
+    if (!CXAppliedKeys) CXAppliedKeys = [NSMutableSet set];
+    return CXAppliedKeys;
+}
+// layoutIfNeeded 期间的重入标记（layoutHost 会被同步回调回来）
+static BOOL CXInLayoutApply;
+static NSInteger CXApplyFailures;
 
 static CGRect CXSanitizedTarget(CGRect saved, CGRect current, CGRect screen) {
     CGFloat w = MIN(saved.size.width, CGRectGetWidth(screen));
@@ -242,6 +255,7 @@ static CGRect CXSanitizedTarget(CGRect saved, CGRect current, CGRect screen) {
 
 static void CXRememberLayoutApplied(void) {
     CXPendingApplied = YES;
+    CXPendingKey = nil;
     CXPendingBridge = nil;
     CXPendingBundle = nil;
     CXPendingContainer = nil;
@@ -251,6 +265,8 @@ static void CXRememberLayoutApplied(void) {
 void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
     if (!bundleID.length || !CXRememberOn()) { CXRememberLayoutApplied(); return; }
     NSString *container = containerID.length ? containerID : @"DEFAULT";
+    NSString *key = CXKey(bundleID, container);
+    if (key && [CXAppliedKeySet() containsObject:key]) { CXRememberLayoutApplied(); return; }
     NSDictionary *saved = CXSizeFor(bundleID, container);
     if (!saved) { CXRememberLayoutApplied(); return; }
     CGFloat w = [saved[@"w"] doubleValue], h = [saved[@"h"] doubleValue];
@@ -261,6 +277,7 @@ void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
     CXPendingBridge = CXBoundBridge;
     CXPendingBundle = [bundleID copy];
     CXPendingContainer = [container copy];
+    CXPendingKey = [key copy];
     CXPendingRect = CGRectMake(x, y, w, h);
     CXPendingApplied = NO;
     CXPendingUntil = CACurrentMediaTime() + 2.2;
@@ -287,6 +304,7 @@ void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
             card.transform = CGAffineTransformIdentity;
             card.frame = CXSanitizedTarget(CXPendingRect, card.frame, screen);
             [CATransaction commit];
+            if (CXPendingKey) [CXAppliedKeySet() addObject:CXPendingKey];
             CXLog(@"[remember] apply %@#%@ %.0fx%.0f", bundle, CXPendingContainer,
                   card.frame.size.width, card.frame.size.height);
             if (openGeneration == CXOpenGeneration) { }
@@ -296,29 +314,48 @@ void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
 
 // 原版首次布局前套用，页面显示时就是目标大小，不会先大后缩。
 static void (*CXOrigLayoutHost)(id, SEL);
+// 只在原版首次布局前调用一次；进入即置 applied，layoutIfNeeded 回调回来也不会再套。
+static void CXApplyBeforeLayout(id self) {
+    UIView *card = CXEntryCard(CXRememberEntry ?: CXFindPanelEntry());
+    UIView *canvas = CXPXGetObject(self, @"canvas");
+    if (!card && [canvas isKindOfClass:UIView.class] &&
+        [NSStringFromClass(canvas.superview.class) containsString:@"PXHostCard"]) card = canvas.superview;
+    CGRect screen = card.superview ? card.superview.bounds : card.window.bounds;
+    if (![card isKindOfClass:UIView.class] || CGRectIsEmpty(screen)) return;
+    CXPendingApplied = YES; // 先占位：下面的 layoutIfNeeded 可能同步回调 layoutHost
+    card.hidden = YES;      // 套好前不露出旧尺寸
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    [card.layer removeAllAnimations];
+    card.transform = CGAffineTransformIdentity;
+    card.frame = CXSanitizedTarget(CXPendingRect, card.frame, screen);
+    [card setNeedsLayout];
+    [card layoutIfNeeded];
+    [CATransaction commit];
+    if (CXPendingKey) [CXAppliedKeySet() addObject:CXPendingKey];
+    CXLog(@"[remember] apply-before-layout %@ %.0fx%.0f",
+          CXPendingBundle, card.frame.size.width, card.frame.size.height);
+}
+
 static void CXLayoutHostHook(id self, SEL _cmd) {
-    if (!CXPendingApplied && CXPendingBridge == self) CXLog(@"[remember] first layout");
-    if (CXPendingBridge == self && !CXPendingApplied && CACurrentMediaTime() < CXPendingUntil) {
-        UIView *card = CXEntryCard(CXRememberEntry ?: CXFindPanelEntry());
-        UIView *canvas = CXPXGetObject(self, @"canvas");
-        if (!card && [canvas isKindOfClass:UIView.class] &&
-            [NSStringFromClass(canvas.superview.class) containsString:@"PXHostCard"]) card = canvas.superview;
-        CGRect screen = card.superview ? card.superview.bounds : card.window.bounds;
-        if ([card isKindOfClass:UIView.class] && !CGRectIsEmpty(screen)) {
-            card.hidden = YES; // 套好前不露出旧尺寸
-            [CATransaction begin];
-            [CATransaction setDisableActions:YES];
-            [card.layer removeAllAnimations];
-            card.transform = CGAffineTransformIdentity;
-            card.frame = CXSanitizedTarget(CXPendingRect, card.frame, screen);
-            [card setNeedsLayout];
-            [card layoutIfNeeded];
-            [CATransaction commit];
-            if (!CXPendingApplied) {
-                CXLog(@"[remember] apply-before-layout %@ %.0fx%.0f",
-                      CXPendingBundle, card.frame.size.width, card.frame.size.height);
-                CXPendingApplied = YES;
+    if (CXInLayoutApply) { // layoutIfNeeded 递归回来：不再套，直接交给原版
+        if (CXOrigLayoutHost) CXOrigLayoutHost(self, _cmd);
+        return;
+    }
+    if (!CXPendingApplied && CXPendingBridge == self) {
+        CXLog(@"[remember] first layout");
+        if (CACurrentMediaTime() < CXPendingUntil) {
+            CXInLayoutApply = YES;
+            @try { CXApplyBeforeLayout(self); CXApplyFailures = 0; }
+            @catch (__unused NSException *e) {
+                // 套用失败就别成环重试：最多三次，之后交给 0.2s 循环兜底
+                CXInLayoutApply = NO;
+                CXPendingApplied = ++CXApplyFailures >= 3;
+                CXLog(@"[remember] apply exception (%ld)", (long)CXApplyFailures);
+                UIView *stuck = CXEntryCard(CXRememberEntry ?: CXFindPanelEntry());
+                stuck.hidden = NO;
             }
+            CXInLayoutApply = NO;
         }
     }
     if (CXOrigLayoutHost) CXOrigLayoutHost(self, _cmd);

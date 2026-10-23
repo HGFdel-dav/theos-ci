@@ -38,10 +38,12 @@ static UIBezierPath *CXArcPath(BOOL left) {
         CXArcNumber(@"CXArcOffsetX"), CXArcNumber(@"CXArcOffsetY"), UIScreen.mainScreen.bounds);
 }
 static NSInteger CXArcSideAtPoint(CGPoint point) {
-    if (!CXArcEnabled()) return -1;
-    NSInteger side = (NSInteger)CXArcNumber(@"CXArcSide");
-    if ((side == 1 || side == 2) && [CXArcPath(YES) containsPoint:point]) return 1;
-    if ((side == 0 || side == 2) && [CXArcPath(NO) containsPoint:point]) return 0;
+    @try {
+        if (!CXArcEnabled()) return -1;
+        NSInteger side = (NSInteger)CXArcNumber(@"CXArcSide");
+        if ((side == 1 || side == 2) && [CXArcPath(YES) containsPoint:point]) return 1;
+        if ((side == 0 || side == 2) && [CXArcPath(NO) containsPoint:point]) return 0;
+    } @catch (__unused NSException *e) { return -1; }
     return -1;
 }
 
@@ -97,12 +99,34 @@ void CXArcWakeCaptureEntry(id entry) {
     if (first && NSThread.isMainThread) CXArcWakeSync(); // 首次拿到实例后补挂调试层
 }
 
-// 菜单图标在 panelWindow；handleWindow 只是手柄条
-static UIWindow *CXMenuWindow(void) {
+// panelWindow 是 Swift 私有属性、不在 CXPXEntryObject 白名单里：直接走选择器读，
+// 返回类型可能是 Optional(@?)，所以只校验 isKindOfClass，不依赖签名里的返回编码。
+static UIWindow *CXReadEntryWindow(id entry, const char *name) {
+    if (!entry || !name) return nil;
+    SEL sel = sel_registerName(name);
+    @try {
+        if (![entry respondsToSelector:sel]) return nil;
+        id value = ((id (*)(id, SEL))objc_msgSend)(entry, sel);
+        return [value isKindOfClass:UIWindow.class] ? value : nil;
+    } @catch (__unused NSException *e) { return nil; }
+}
+
+// 菜单图标在 panelWindow；handleWindow 只是手柄条。
+// 两个都读不到时再退回 PX 的所有窗口，交给扇形扫描去找 PXPanelIcon。
+static NSArray<UIWindow *> *CXMenuWindows(void) {
+    NSMutableArray<UIWindow *> *list = [NSMutableArray array];
+    void (^add)(UIWindow *) = ^(UIWindow *w) {
+        if (w && !w.hidden && ![list containsObject:w]) [list addObject:w];
+    };
     id entry = CXFindPanelEntry();
-    UIWindow *w = CXPXEntryObject(entry, "panelWindow", UIWindow.class);
-    if (w && !w.hidden) return w;
-    return CXPXEntryObject(entry, "handleWindow", UIWindow.class);
+    add(CXReadEntryWindow(entry, "panelWindow"));
+    add(CXPXEntryObject(entry, "handleWindow", UIWindow.class));
+    add(CXPXEntryObject(entry, "hostWindow", UIWindow.class));
+    if (!list.count) {
+        for (UIWindow *w in UIApplication.sharedApplication.windows)
+            if ([NSStringFromClass(w.class) containsString:@"PX"]) add(w);
+    }
+    return list;
 }
 
 #pragma mark - 手势
@@ -180,7 +204,7 @@ static NSArray<NSString *> *CXMenuIDs(void) {
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)g
     shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)other { return YES; }
 
-- (UIWindow *)handleWindow { return CXMenuWindow(); }
+- (UIWindow *)handleWindow { return CXMenuWindows().firstObject; }
 
 - (void)cleanup {
     UIView *handle = _synth.view;
@@ -197,11 +221,13 @@ static NSArray<NSString *> *CXMenuIDs(void) {
 
 // PX 布局会覆盖位置，每次转发后重新排成扇形
 - (void)rearrange {
-    UIWindow *window = [self handleWindow];
-    if (!window) return;
-    _icons = CXFanIcons(window);
-    if (!_icons.count) return;
-    CXFanArrange(_icons, window, _left);
+    NSArray<UIWindow *> *windows = CXMenuWindows();
+    if (!windows.count) return;
+    NSArray<UIView *> *icons = CXFanIconsInWindows(windows);
+    if (!icons.count) return;
+    UIWindow *window = icons.firstObject.window ?: windows.firstObject;
+    _icons = icons;
+    CXFanArrange(icons, window, _left);
     _rearranged = YES;
     _lastArrange = CACurrentMediaTime();
 }
@@ -212,8 +238,9 @@ static NSArray<NSString *> *CXMenuIDs(void) {
     if (g.state == UIGestureRecognizerStateBegan) {
         if (!_armed || (CXActiveArc && CXActiveArc != self)) return;
         id entry = CXFindPanelEntry();
-        UIWindow *window = CXPXEntryObject(entry, "handleWindow", UIWindow.class);
-        if (!entry || !window.rootViewController || !CXPXVoidSelector(entry, @"dragHandle:", 1)) {
+        UIWindow *window = nil;
+        for (UIWindow *w in CXMenuWindows()) if (w.rootViewController) { window = w; break; }
+        if (!entry || !window || !CXPXVoidSelector(entry, @"dragHandle:", 1)) {
             CXLog(@"[arc] begin skipped: entry=%d root=%d", entry != nil, window.rootViewController != nil);
             _armed = NO;
             return;
@@ -224,6 +251,7 @@ static NSArray<NSString *> *CXMenuIDs(void) {
         _synth.enabled = NO;
         [CXPXEntryObject(entry, _left ? "leftHandle" : "handle", UIView.class) addGestureRecognizer:_synth];
         if (!_synth.view) [CXPXEntryObject(entry, "handle", UIView.class) addGestureRecognizer:_synth];
+        if (!_synth.view) { CXLog(@"[arc] begin skipped: no handle view"); [self cleanup]; return; }
         _synth.synthState = UIGestureRecognizerStateBegan;
         _synth.synthLocation = point;
         _synth.synthTranslation = CGPointZero;
@@ -249,7 +277,7 @@ static NSArray<NSString *> *CXMenuIDs(void) {
     @catch (__unused NSException *e) { [self cleanup]; return; }
     if (!ended) [self rearrange];
     if (ended) {
-        UIWindow *window = [self handleWindow];
+        UIWindow *window = _icons.firstObject.window ?: [self handleWindow];
         CGPoint local = window ? [window convertPoint:point fromCoordinateSpace:UIScreen.mainScreen.coordinateSpace] : point;
         NSInteger index = g.state == UIGestureRecognizerStateEnded ? CXFanNearest(_icons, local) : -1;
         NSArray *ids = CXMenuIDs();
@@ -292,10 +320,16 @@ static BOOL CXArcStarted;
 
 id CXArcWakeEntry(void) { return CXFindPanelEntry(); }
 
+static void CXArcDrawDebugUnsafe(void);
+
 static void CXArcDrawDebug(void) {
+    @try { CXArcDrawDebugUnsafe(); } @catch (__unused NSException *e) { CXDebugWindow.hidden = YES; CXDebugWindow = nil; }
+}
+
+static void CXArcDrawDebugUnsafe(void) {
     if (CXDebugWindow) { CXDebugWindow.hidden = YES; CXDebugWindow = nil; }
     if (!CXArcEnabled() || ![CXPrefs.shared boolForKey:@"CXArcDebug" defaultValue:NO]) return;
-    UIWindow *host = CXPXEntryObject(CXLiveEntry, "handleWindow", UIWindow.class);
+    UIWindow *host = CXMenuWindows().firstObject;
     if (!host.windowScene) return;
     CXArcDebugWindow *window = [[CXArcDebugWindow alloc] initWithWindowScene:host.windowScene];
     window.frame = UIScreen.mainScreen.bounds;
@@ -323,7 +357,13 @@ static void CXArcDrawDebug(void) {
     CXDebugWindow = window;
 }
 
+static void CXArcFallbackSyncUnsafe(BOOL want);
+
 static void CXArcFallbackSync(BOOL want) {
+    @try { CXArcFallbackSyncUnsafe(want); } @catch (__unused NSException *e) { }
+}
+
+static void CXArcFallbackSyncUnsafe(BOOL want) {
     if (!CXFallbackGestures) CXFallbackGestures = [NSMapTable weakToStrongObjectsMapTable];
     for (UIWindow *window in CXFallbackGestures.keyEnumerator.allObjects) {
         CXArcWakeGesture *gesture = [CXFallbackGestures objectForKey:window];
@@ -342,58 +382,107 @@ static void CXArcFallbackSync(BOOL want) {
     }
 }
 
+static CFTimeInterval CXSystemRetryAt = 0;
+static NSInteger CXSystemFailures = 0;
+
+static id CXSystemManager(void) {
+    @try {
+        Class cls = NSClassFromString(@"_UISystemGestureManager");
+        if (!cls) return nil;
+        SEL sel = NSSelectorFromString(@"sharedInstance");
+        if (![cls respondsToSelector:sel]) return nil;
+        return ((id (*)(id, SEL))objc_msgSend)(cls, sel);
+    } @catch (__unused NSException *e) { return nil; }
+}
+
+// 原版取 UIScreen.displayIdentity；缺失时按旧 Twin 的候选链再找一次。
+static id CXDisplayIdentity(void) {
+    @try {
+        id identity = CXPXGetObject(UIScreen.mainScreen, @"displayIdentity");
+        if (identity) return identity;
+        Class fbdm = NSClassFromString(@"FBDisplayManager");
+        if (!fbdm) return nil;
+        id display = CXPXGetObject(fbdm, @"mainDisplay") ?: CXPXGetObject(fbdm, @"sharedInstance");
+        return CXPXGetObject(display, @"identity") ?: CXPXGetObject(display, @"displayIdentity");
+    } @catch (__unused NSException *e) { return nil; }
+}
+
+// YES=已挂上系统通道；NO=本轮到不了，调用方退回窗口手势。
+// 私有 API 任何一步异常都只记日志并冷却重试，绝不把 SpringBoard 拖进安全模式。
+static BOOL CXTryRegisterSystemGesture(void) {
+    if (CXSystemRegistered || !CXArcGesture) return CXSystemRegistered;
+    CFTimeInterval now = CACurrentMediaTime();
+    if (now < CXSystemRetryAt) return NO;
+    @try {
+        id manager = CXSystemManager();
+        id identity = CXDisplayIdentity();
+        if (!manager || !identity ||
+            !CXPXVoidSelector(manager, @"addGestureRecognizer:toDisplayWithIdentity:", 2) ||
+            !CXPXVoidSelector(manager, @"removeGestureRecognizer:fromDisplayWithIdentity:", 2)) {
+            CXSystemFailures++;
+            CXSystemRetryAt = now + MIN(60.0, 5.0 * (double)CXSystemFailures);
+            static BOOL reported;
+            if (!reported)
+                CXLog(@"[arc] system gesture unavailable manager=%d identity=%d; window fallback",
+                      manager != nil, identity != nil);
+            reported = YES;
+            return NO;
+        }
+        ((void (*)(id, SEL, id, id))objc_msgSend)(manager,
+            NSSelectorFromString(@"addGestureRecognizer:toDisplayWithIdentity:"), CXArcGesture, identity);
+        CXSystemGestureManager = manager;
+        CXDisplayIdentity = identity;
+        CXSystemRegistered = YES;
+        CXSystemFailures = 0;
+        CXLog(@"[arc] system gesture registered");
+        return YES;
+    } @catch (__unused NSException *e) {
+        CXSystemRegistered = NO;
+        CXSystemFailures++;
+        CXSystemRetryAt = now + MIN(60.0, 5.0 * (double)CXSystemFailures);
+        CXLog(@"[arc] system gesture register exception (%ld)", (long)CXSystemFailures);
+        return NO;
+    }
+}
+
 void CXArcWakeSync(void) {
     if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(), ^{ CXArcWakeSync(); }); return; }
-    (void)CXFindPanelEntry(); // 若初始化早于插件载入，先从原版手势 target 找真实实例
-    BOOL want = CXArcEnabled();
-    if (!CXArcGesture) CXArcGesture = [CXArcWakeGesture new];
-    BOOL keepFallback = NO;
-    if (!want) {
-        [CXArcGesture cancelForwarding];
-        CXArcGesture.enabled = NO;
-        if (CXSystemRegistered && CXPXVoidSelector(CXSystemGestureManager,
-             @"removeGestureRecognizer:fromDisplayWithIdentity:", 2)) {
-            @try {
-                ((void (*)(id, SEL, id, id))objc_msgSend)(CXSystemGestureManager,
-                    NSSelectorFromString(@"removeGestureRecognizer:fromDisplayWithIdentity:"), CXArcGesture, CXDisplayIdentity);
-                CXSystemRegistered = NO;
-            } @catch (__unused NSException *e) { keepFallback = YES; }
+    @try {
+        (void)CXFindPanelEntry(); // 若初始化早于插件载入，先从原版手势 target 找真实实例
+        BOOL want = CXArcEnabled();
+        if (!CXArcGesture) CXArcGesture = [CXArcWakeGesture new];
+        BOOL keepFallback = NO;
+        if (!want) {
+            [CXArcGesture cancelForwarding];
+            CXArcGesture.enabled = NO;
+            if (CXSystemRegistered && CXPXVoidSelector(CXSystemGestureManager,
+                 @"removeGestureRecognizer:fromDisplayWithIdentity:", 2)) {
+                @try {
+                    ((void (*)(id, SEL, id, id))objc_msgSend)(CXSystemGestureManager,
+                        NSSelectorFromString(@"removeGestureRecognizer:fromDisplayWithIdentity:"), CXArcGesture, CXDisplayIdentity);
+                    CXSystemRegistered = NO;
+                } @catch (__unused NSException *e) { keepFallback = YES; }
+            }
+            CXArcFallbackSync(!keepFallback);
+            CXArcDrawDebug();
+            return;
         }
-        CXArcFallbackSync(!keepFallback);
+        CXArcGesture.enabled = YES;
+        if (!CXSystemRegistered) CXTryRegisterSystemGesture();
+        CXArcFallbackSync(!CXSystemRegistered);
         CXArcDrawDebug();
-        return;
+    } @catch (__unused NSException *e) {
+        CXLog(@"[arc] sync exception, window fallback");
+        if (CXArcGesture) CXArcGesture.enabled = YES;
+        CXArcFallbackSync(YES);
     }
-    CXArcGesture.enabled = YES;
-    if (!CXSystemRegistered) {
-        // 照旧原版：UIScreen.mainScreen.displayIdentity；身份缺失就失败，不传nil冒充成功。
-        id identity = CXPXGetObject(UIScreen.mainScreen, @"displayIdentity");
-        id manager = CXPXGetObject(NSClassFromString(@"_UISystemGestureManager"), @"sharedInstance");
-        BOOL interfaces = CXPXVoidSelector(manager, @"addGestureRecognizer:toDisplayWithIdentity:", 2) &&
-                          CXPXVoidSelector(manager, @"removeGestureRecognizer:fromDisplayWithIdentity:", 2);
-        if (manager && identity && interfaces) {
-            @try {
-                ((void (*)(id, SEL, id, id))objc_msgSend)(manager,
-                    NSSelectorFromString(@"addGestureRecognizer:toDisplayWithIdentity:"), CXArcGesture, identity);
-                CXSystemGestureManager = manager;
-                CXDisplayIdentity = identity;
-                CXSystemRegistered = YES;
-                CXLog(@"[arc] system gesture registered");
-            } @catch (__unused NSException *e) { CXLog(@"[arc] system gesture register exception"); }
-        } else {
-            static BOOL reported;
-            if (!reported) CXLog(@"[arc] system gesture unavailable manager=%d identity=%d interface=%d; desktop fallback only",
-                                  manager != nil, identity != nil, interfaces);
-            reported = YES;
-        }
-    }
-    CXArcFallbackSync(!CXSystemRegistered);
-    CXArcDrawDebug();
 }
 
 void CXArcWakeInstall(void) {
     if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(), ^{ CXArcWakeInstall(); }); return; }
     if (CXArcStarted) { CXArcWakeSync(); return; }
     CXArcStarted = YES;
+    CXSystemRetryAt = CACurrentMediaTime() + 3.0; // SpringBoard 启动早期先只挂窗口手势，系统通道延后
     CXArcWakeSync();
     [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidBecomeActiveNotification
         object:nil queue:NSOperationQueue.mainQueue usingBlock:^(__unused NSNotification *note) { CXArcWakeSync(); }];
