@@ -97,6 +97,14 @@ void CXArcWakeCaptureEntry(id entry) {
     if (first && NSThread.isMainThread) CXArcWakeSync(); // 首次拿到实例后补挂调试层
 }
 
+// 菜单图标在 panelWindow；handleWindow 只是手柄条
+static UIWindow *CXMenuWindow(void) {
+    id entry = CXFindPanelEntry();
+    UIWindow *w = CXPXEntryObject(entry, "panelWindow", UIWindow.class);
+    if (w && !w.hidden) return w;
+    return CXPXEntryObject(entry, "handleWindow", UIWindow.class);
+}
+
 #pragma mark - 手势
 
 @class CXArcWakeGesture;
