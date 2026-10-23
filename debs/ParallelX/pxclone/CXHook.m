@@ -105,7 +105,7 @@ static void CXReplayURL(NSURL *url) {
 }
 
 static void (*CXOrigOpenURL)(id, SEL, id, id, id);
-static void (*CXOrigOpenURLLegacy)(id, SEL, id);
+static BOOL (*CXOrigOpenURLLegacy)(id, SEL, id);
 static void CXCaptureExternalURL(id url) {
     if (![url isKindOfClass:NSURL.class]) return;
     CXLastURL = [url copy];
