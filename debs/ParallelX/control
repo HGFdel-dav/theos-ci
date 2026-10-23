@@ -10,4 +10,3 @@ Depends: mobilesubstrate, preferenceloader
 Conflicts: com.niubiprass.clonex
 Replaces: com.moxuan.parallelx
 Provides: com.moxuan.parallelx
-# CI rebuild trigger: 1792762419
