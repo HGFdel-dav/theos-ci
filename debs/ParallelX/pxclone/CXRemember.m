@@ -296,6 +296,31 @@ void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
     CXPendingKey = [key copy];
     CXPendingRect = CGRectMake(x, y, w, h);
     CXPendingApplied = NO;
+    // PX alpha342 没有 layoutHost；在原生开窗完成后的多个布局窗口重试。
+    NSInteger generation = CXPendingGen;
+    NSArray *delays = @[@0.20, @0.55, @1.00, @1.60];
+    for (NSNumber *delay in delays) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay.doubleValue * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            if (generation != CXPendingGen || CXPendingApplied || CXResizeActiveKey == 0) return;
+            id entry = CXRememberEntry ?: CXFindPanelEntry();
+            UIView *card = CXEntryCard(entry) ?: CXBoundHostCard();
+            if (![card isKindOfClass:UIView.class] || !card.window) return;
+            UIView *surface = card.superview ?: card.window;
+            CGRect screen = surface.bounds;
+            if (CGRectIsEmpty(screen)) return;
+            [CATransaction begin];
+            [CATransaction setDisableActions:YES];
+            card.frame = CXSanitizedTarget(CXPendingRect, card.frame, screen);
+            [CATransaction commit];
+            [card setNeedsLayout];
+            [surface setNeedsLayout];
+            CXPendingApplied = YES;
+            if (CXPendingKey) [CXAppliedKeySet() addObject:CXPendingKey];
+            CXLog(@"[remember] apply-after-open %@ %.0fx%.0f", CXPendingBundle,
+                  card.frame.size.width, card.frame.size.height);
+        });
+    }
 }
 
 static void CXApplyBeforeLayout(id self) {
