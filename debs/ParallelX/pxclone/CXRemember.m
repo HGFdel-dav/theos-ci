@@ -302,22 +302,48 @@ void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
     for (NSNumber *delay in delays) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay.doubleValue * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
-            if (generation != CXPendingGen || CXPendingApplied || CXResizeActiveKey == 0) return;
+            if (generation != CXPendingGen || CXPendingApplied) return;
             id entry = CXRememberEntry ?: CXFindPanelEntry();
-            UIView *card = CXEntryCard(entry) ?: CXBoundHostCard();
-            if (![card isKindOfClass:UIView.class] || !card.window) return;
-            UIView *surface = card.superview ?: card.window;
+            id bridge = entry ? CXEntryBridge(entry) : CXPendingBridge;
+            NSString *actualBundle = CXPXGetObject(bridge, @"bundleID");
+            if (![actualBundle isKindOfClass:NSString.class] ||
+                ![actualBundle isEqualToString:CXPendingBundle]) {
+                CXLog(@"[remember] retry bundle expected=%@ actual=%@", CXPendingBundle,
+                      [actualBundle isKindOfClass:NSString.class] ? actualBundle : @"<nil>");
+                return;
+            }
+            UIView *card = entry ? CXEntryCard(entry) : nil;
+            if (![card isKindOfClass:UIView.class] && bridge) {
+                id value = CXPXGetObject(bridge, @"hostCard");
+                if ([value isKindOfClass:UIView.class]) card = value;
+            }
+            if (![card isKindOfClass:UIView.class]) {
+                CXLog(@"[remember] retry hostCard unavailable %@", CXPendingBundle);
+                return;
+            }
+            if (!card.window || !card.superview) {
+                CXLog(@"[remember] retry hostCard detached %@ window=%d superview=%d",
+                      CXPendingBundle, card.window != nil, card.superview != nil);
+                return;
+            }
+            UIView *surface = card.superview;
             CGRect screen = surface.bounds;
-            if (CGRectIsEmpty(screen)) return;
+            if (CGRectIsEmpty(screen)) {
+                CXLog(@"[remember] retry surface empty %@", CXPendingBundle);
+                return;
+            }
+            CGRect target = CXSanitizedTarget(CXPendingRect, card.frame, screen);
             [CATransaction begin];
             [CATransaction setDisableActions:YES];
-            card.frame = CXSanitizedTarget(CXPendingRect, card.frame, screen);
-            [CATransaction commit];
+            card.frame = target;
             [card setNeedsLayout];
             [surface setNeedsLayout];
+            [card layoutIfNeeded];
+            [CATransaction commit];
             CXPendingApplied = YES;
             if (CXPendingKey) [CXAppliedKeySet() addObject:CXPendingKey];
-            CXLog(@"[remember] apply-after-open %@ %.0fx%.0f", CXPendingBundle,
+            CXLog(@"[remember] apply-after-open %@ %.0f,%.0f %.0fx%.0f", CXPendingBundle,
+                  card.frame.origin.x, card.frame.origin.y,
                   card.frame.size.width, card.frame.size.height);
         });
     }
