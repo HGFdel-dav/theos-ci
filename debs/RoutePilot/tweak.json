@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "name": "RoutePilot",
+  "id": "routepilot",
+  "display_name": "RoutePilot",
+  "class_prefix": "RoutePilot",
+  "symbol_prefix": "routepilot_app",
+  "package": "com.niubiprass.routepilot",
+  "bundle": "com.apple.springboard",
+  "sdk_version": "15.5",
+  "minimum_ios": "15.0",
+  "preferences": true,
+  "slider": false,
+  "github_actions": false
+}

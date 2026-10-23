@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>title</key><string>RoutePilot</string>
+    <key>items</key>
+    <array>
+        <dict>
+            <key>cell</key><string>PSGroupCell</string>
+            <key>label</key><string>基本设置</string>
+        </dict>
+        <dict>
+            <key>cell</key><string>PSSwitchCell</string>
+            <key>label</key><string>启用 RoutePilot</string>
+            <key>key</key><string>enabled</string>
+            <key>defaults</key><string>com.niubiprass.routepilot</string>
+            <key>default</key><false/>
+        </dict>
+        <dict>
+            <key>cell</key><string>PSGroupCell</string>
+            <key>label</key><string>直连应用名单</string>
+            <key>footerText</key><string>名单用于识别应用。当前版本不会改变 VPN 路由，必须连接已适配的 VPN 后端才能启用直连。</string>
+        </dict>
+        <dict>
+            <key>cell</key><string>PSLinkListCell</string>
+            <key>label</key><string>直连应用名单</string>
+            <key>detail</key><string>ATLApplicationListMultiSelectionController</string>
+            <key>bundle</key><string>AltList</string>
+            <key>key</key><string>directBundleIDs</string>
+            <key>defaults</key><string>com.niubiprass.routepilot</string>
+            <key>sections</key>
+            <array><dict><key>sectionType</key><string>User</string></dict></array>
+            <key>useSearchBar</key><true/>
+        </dict>
+        <dict>
+            <key>cell</key><string>PSGroupCell</string>
+            <key>label</key><string>路由状态</string>
+            <key>footerText</key><string>名单管理已启用。当前构建尚未连接 VPN 客户端路由适配器，因此不会改变实际流量路径。各 VPN 后端需要独立适配并验证。</string>
+        </dict>
+
+    </array>
+</dict>
+</plist>

@@ -1,0 +1,11 @@
+Package: com.niubiprass.routepilot
+Name: RoutePilot
+Version: 0.1.0
+Architecture: iphoneos-arm
+Description: 按应用控制 VPN 直连与代理路由
+Maintainer: Local
+Author: Local
+Section: Tweaks
+Depends: mobilesubstrate, preferenceloader, com.opa334.altlist
+Icon: https://github.com/Niubiprass/theos-ci/icon/routepilot.png
+Sileodepiction: https://github.com/Niubiprass/theos-ci/sileodepiction/routepilot/js.json
