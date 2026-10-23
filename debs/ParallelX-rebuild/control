@@ -1,6 +1,0 @@
-Package: com.moxuan.parallelx
-Name: ParallelX
-Version: 0.1.0-alpha342-rebuild
-Architecture: iphoneos-arm64
-Description: Split-screen windows
-Depends: mobilesubstrate

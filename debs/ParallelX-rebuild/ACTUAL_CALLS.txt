@@ -1,4 +1,0 @@
-[PXPanelEntry applicationActivated:]
-[PXPanelEntry externalOpenApplication:]
-[PXSceneBridge performConfiguredAction:]
-[PXSceneBridge prepareWindowForBundleID:wasFullscreen:completion:]

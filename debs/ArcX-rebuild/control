@@ -1,6 +1,0 @@
-Package: com.arcx
-Name: Arc-X
-Version: 1.1.3-rebuild
-Architecture: iphoneos-arm64
-Description: Enhanced arc gesture for ScreenCore
-Depends: com.susudear.screencore, mobilesubstrate
