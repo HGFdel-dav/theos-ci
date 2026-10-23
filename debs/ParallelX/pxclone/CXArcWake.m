@@ -31,6 +31,27 @@ static CGFloat CXArcNumber(NSString *key) {
 static BOOL CXArcEnabled(void) {
     return [CXPrefs.shared boolForKey:@"CXArcEnabled" defaultValue:YES];
 }
+
+// 仅在系统手势注册/角落手势处理期间短暂落盘。若 SpringBoard 崩溃，下次启动关闭系统通道；
+// 使用原始 CFPreferences 避免在每次触摸时发设置变更通知、重入刷新流程。
+static NSUInteger CXCrashGuardEpoch;
+static void CXCrashGuardWrite(BOOL pending) {
+    CFStringRef domain = CFSTR("com.niubiprass.clonex");
+    CFPreferencesSetAppValue(CFSTR("CXArcChannelPending"), (__bridge CFPropertyListRef)@(pending), domain);
+    CFPreferencesAppSynchronize(domain);
+}
+static void CXCrashGuardArm(void) {
+    NSUInteger epoch = ++CXCrashGuardEpoch;
+    CXCrashGuardWrite(YES);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 20 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        if (epoch == CXCrashGuardEpoch) CXCrashGuardWrite(NO);
+    });
+}
+static void CXCrashGuardDisarm(void) {
+    ++CXCrashGuardEpoch;
+    CXCrashGuardWrite(NO);
+}
+
 static UIBezierPath *CXArcPath(BOOL left) {
     return CXArcTriggerPath(left, (NSInteger)CXArcNumber(@"CXArcTriggerRegionMode"),
         CXArcNumber(@"CXArcRadius"), CXArcNumber(@"CXArcRectangleLength"),
@@ -136,6 +157,7 @@ static __weak CXArcWakeGesture *CXActiveArc;
 
 @interface CXArcWakeGesture : UIPanGestureRecognizer <UIGestureRecognizerDelegate>
 - (void)cancelForwarding;
+- (void)handleUnsafe:(UIPanGestureRecognizer *)gesture;
 @end
 
 // 合成手势：PX 只读这些方法驱动它自己的菜单与动画
@@ -151,6 +173,13 @@ static __weak CXArcWakeGesture *CXActiveArc;
 - (CGPoint)locationInView:(UIView *)view { return self.synthLocation; }
 - (CGPoint)velocityInView:(UIView *)view { return self.synthVelocity; }
 @end
+
+// PX 的动画 block 在 dragHandle: 返回后可能仍引用合成手势，摘下后暂存以避免悬空指针。
+static NSMutableArray<CXSynthPan *> *CXSynthPool(void) {
+    static NSMutableArray<CXSynthPan *> *pool;
+    if (!pool) pool = [NSMutableArray array];
+    return pool;
+}
 
 static NSArray<NSString *> *CXMenuIDs(void) {
     CFPreferencesAppSynchronize(CFSTR("com.moxuan.parallelx"));
@@ -187,18 +216,23 @@ static NSArray<NSString *> *CXMenuIDs(void) {
 }
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)g shouldReceiveTouch:(UITouch *)touch {
-    CGPoint point = CXArcTouchPoint(touch);
-    NSInteger side = CXArcSideAtPoint(point);
-    if (side < 0 || CXPXEntryFlag(CXLiveEntry, "deviceLocked")) return NO;
-    if (_synth || (CXActiveArc && CXActiveArc != self)) return NO;
-    _start = point;
-    _left = side == 1;
-    _armed = YES;
-    return YES;
+    // 系统通道下全屏每个触摸都会进这里，异常绝不能漏回 UIKit，否则 SpringBoard 直接安全模式
+    @try {
+        CGPoint point = CXArcTouchPoint(touch);
+        NSInteger side = CXArcSideAtPoint(point);
+        if (side < 0 || CXPXEntryFlag(CXLiveEntry, "deviceLocked")) return NO;
+        if (_synth || (CXActiveArc && CXActiveArc != self)) return NO;
+        _start = point;
+        _left = side == 1;
+        _armed = YES;
+        return YES;
+    } @catch (NSException *e) { _armed = NO; return NO; }
 }
 
 - (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)g {
-    return _armed && CXArcEnabled() && (!CXActiveArc || CXActiveArc == self);
+    @try {
+        return _armed && CXArcEnabled() && (!CXActiveArc || CXActiveArc == self);
+    } @catch (NSException *e) { return NO; }
 }
 
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)g
@@ -207,8 +241,14 @@ static NSArray<NSString *> *CXMenuIDs(void) {
 - (UIWindow *)handleWindow { return CXMenuWindows().firstObject; }
 
 - (void)cleanup {
-    UIView *handle = _synth.view;
-    [handle removeGestureRecognizer:_synth];
+    CXSynthPan *synth = _synth;
+    [synth.view removeGestureRecognizer:synth];
+    if (synth) {
+        [CXSynthPool() addObject:synth];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 6.0 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+            [CXSynthPool() removeObjectIdenticalTo:synth];
+        });
+    }
     _synth = nil;
     _entry = nil;
     _icons = nil;
@@ -221,18 +261,25 @@ static NSArray<NSString *> *CXMenuIDs(void) {
 
 // PX 布局会覆盖位置，每次转发后重新排成扇形
 - (void)rearrange {
-    NSArray<UIWindow *> *windows = CXMenuWindows();
-    if (!windows.count) return;
-    NSArray<UIView *> *icons = CXFanIconsInWindows(windows);
-    if (!icons.count) return;
-    UIWindow *window = icons.firstObject.window ?: windows.firstObject;
-    _icons = icons;
-    CXFanArrange(icons, window, _left);
-    _rearranged = YES;
     _lastArrange = CACurrentMediaTime();
+    @try {
+        NSArray<UIWindow *> *windows = CXMenuWindows();
+        if (!windows.count) return;
+        NSArray<UIView *> *icons = CXFanIconsInWindows(windows);
+        if (!icons.count) return;
+        UIWindow *window = icons.firstObject.window ?: windows.firstObject;
+        _icons = icons;
+        CXFanArrange(icons, window, _left);
+        _rearranged = YES;
+    } @catch (__unused NSException *e) { }
 }
 
 - (void)handle:(UIPanGestureRecognizer *)g {
+    @try { [self handleUnsafe:g]; }
+    @catch (NSException *e) { CXLog(@"[arc] handle 异常：%@", e.reason); [self cleanup]; }
+}
+
+- (void)handleUnsafe:(UIPanGestureRecognizer *)g {
     if (!CXArcEnabled()) { [self cleanup]; return; }
     CGPoint point = CXArcGesturePoint(g);
     if (g.state == UIGestureRecognizerStateBegan) {
@@ -275,7 +322,7 @@ static NSArray<NSString *> *CXMenuIDs(void) {
     _synth.synthState = ended ? g.state : UIGestureRecognizerStateChanged;
     @try { ((void (*)(id, SEL, id))objc_msgSend)(_entry, NSSelectorFromString(@"dragHandle:"), _synth); }
     @catch (__unused NSException *e) { [self cleanup]; return; }
-    if (!ended) [self rearrange];
+    if (!ended && CACurrentMediaTime() - _lastArrange > 0.06) [self rearrange];
     if (ended) {
         UIWindow *window = _icons.firstObject.window ?: [self handleWindow];
         CGPoint local = window ? [window convertPoint:point fromCoordinateSpace:UIScreen.mainScreen.coordinateSpace] : point;
@@ -407,12 +454,41 @@ static id CXGetDisplayIdentity(void) { // 改名避免与全局变量冲突
     } @catch (__unused NSException *e) { return nil; }
 }
 
+// 通道自愈：连续两次启动都死在稳定点（25s）之前，多半已经进了安全模式。
+// 这时先停用系统通道，只留窗口手势，避免一开就再崩；设置页可一键重置。
+static BOOL CXChannelBlocked(void) {
+    return [CXPrefs.shared boolForKey:@"CXArcChannelBlocked" defaultValue:NO];
+}
+
+static void CXArcChannelBoot(void) {
+    BOOL pending = [CXPrefs.shared boolForKey:@"CXArcChannelPending" defaultValue:NO];
+    NSInteger failures = [[CXPrefs.shared objectForKey:@"CXArcChannelFailures"] integerValue];
+    if (pending) {
+        failures++;
+        [CXPrefs.shared setObject:@(failures) forKey:@"CXArcChannelFailures"];
+        CXLog(@"[arc] 上次启动未到稳定点，累计=%ld", (long)failures);
+        if (failures >= 2 && !CXChannelBlocked()) {
+            [CXPrefs.shared setObject:@YES forKey:@"CXArcChannelBlocked"];
+            CXLog(@"[arc] 系统通道两次不稳定，本次起只走窗口手势");
+        }
+    }
+    [CXPrefs.shared setObject:@YES forKey:@"CXArcChannelPending"];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 25.0 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        [CXPrefs.shared setObject:@NO forKey:@"CXArcChannelPending"];
+    });
+}
+
 // YES=已挂上系统通道；NO=本轮到不了，调用方退回窗口手势。
 // 私有 API 任何一步异常都只记日志并冷却重试，绝不把 SpringBoard 拖进安全模式。
 static BOOL CXTryRegisterSystemGesture(void) {
     if (CXSystemRegistered || !CXArcGesture) return CXSystemRegistered;
     CFTimeInterval now = CACurrentMediaTime();
     if (now < CXSystemRetryAt) return NO;
+    if (CXChannelBlocked()) {
+        static BOOL told;
+        if (!told) { CXLog(@"[arc] 系统通道已停用（安全模式保护），只用窗口手势"); told = YES; }
+        return NO;
+    }
     @try {
         id manager = CXSystemManager();
         id identity = CXGetDisplayIdentity(); // 调用改名后的函数
@@ -428,6 +504,11 @@ static BOOL CXTryRegisterSystemGesture(void) {
             reported = YES;
             return NO;
         }
+        // 同一个手势重复挂到同一管理器会断言：先摘一次，没挂过也无副作用
+        @try {
+            ((void (*)(id, SEL, id, id))objc_msgSend)(manager,
+                NSSelectorFromString(@"removeGestureRecognizer:fromDisplayWithIdentity:"), CXArcGesture, identity);
+        } @catch (__unused NSException *e) { }
         ((void (*)(id, SEL, id, id))objc_msgSend)(manager,
             NSSelectorFromString(@"addGestureRecognizer:toDisplayWithIdentity:"), CXArcGesture, identity);
         CXSystemGestureManager = manager;
@@ -445,14 +526,43 @@ static BOOL CXTryRegisterSystemGesture(void) {
     }
 }
 
+// 显示身份会随前后台、投屏和重连变化，旧身份失效后挂着的通道收不到触摸。
+// 身份变了就摘旧挂新；重挂失败直接退回窗口手势，不在半坏状态里凑合。
+static void CXRefreshSystemGesture(void) {
+    if (!CXSystemRegistered || !CXArcGesture) return;
+    @try {
+        id identity = CXGetDisplayIdentity();
+        if (!identity || identity == CXCachedDisplayIdentity) return;
+        id manager = CXSystemManager();
+        if (!manager || !CXPXVoidSelector(manager, @"addGestureRecognizer:toDisplayWithIdentity:", 2)) return;
+        if (CXSystemGestureManager && CXCachedDisplayIdentity &&
+            CXPXVoidSelector(CXSystemGestureManager, @"removeGestureRecognizer:fromDisplayWithIdentity:", 2)) {
+            @try {
+                ((void (*)(id, SEL, id, id))objc_msgSend)(CXSystemGestureManager,
+                    NSSelectorFromString(@"removeGestureRecognizer:fromDisplayWithIdentity:"), CXArcGesture, CXCachedDisplayIdentity);
+            } @catch (__unused NSException *e) { }
+        }
+        ((void (*)(id, SEL, id, id))objc_msgSend)(manager,
+            NSSelectorFromString(@"addGestureRecognizer:toDisplayWithIdentity:"), CXArcGesture, identity);
+        CXSystemGestureManager = manager;
+        CXCachedDisplayIdentity = identity;
+        CXLog(@"[arc] display identity changed, re-registered");
+    } @catch (__unused NSException *e) {
+        CXSystemRegistered = NO;
+        CXSystemRetryAt = CACurrentMediaTime() + 10.0;
+        CXLog(@"[arc] re-register exception, window fallback");
+    }
+}
+
 void CXArcWakeSync(void) {
     if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(), ^{ CXArcWakeSync(); }); return; }
     @try {
         (void)CXFindPanelEntry(); // 若初始化早于插件载入，先从原版手势 target 找真实实例
         BOOL want = CXArcEnabled();
-        if (!CXArcGesture) CXArcGesture = [CXArcWakeGesture new];
+        if (want && !CXArcGesture) CXArcGesture = [CXArcWakeGesture new];
         BOOL keepFallback = NO;
         if (!want) {
+            if (!CXArcGesture) { CXArcFallbackSync(NO); CXArcDrawDebug(); return; }
             [CXArcGesture cancelForwarding];
             CXArcGesture.enabled = NO;
             if (CXSystemRegistered && CXPXVoidSelector(CXSystemGestureManager,
@@ -469,6 +579,7 @@ void CXArcWakeSync(void) {
         }
         CXArcGesture.enabled = YES;
         if (!CXSystemRegistered) CXTryRegisterSystemGesture();
+        else CXRefreshSystemGesture();
         CXArcFallbackSync(!CXSystemRegistered);
         CXArcDrawDebug();
     } @catch (__unused NSException *e) {
@@ -482,6 +593,7 @@ void CXArcWakeInstall(void) {
     if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(), ^{ CXArcWakeInstall(); }); return; }
     if (CXArcStarted) { CXArcWakeSync(); return; }
     CXArcStarted = YES;
+    CXArcChannelBoot(); // 先判上次是否崩在稳定点前，再决定要不要碰系统通道
     CXSystemRetryAt = CACurrentMediaTime() + 3.0; // SpringBoard 启动早期先只挂窗口手势，系统通道延后
     CXArcWakeSync();
     [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidBecomeActiveNotification

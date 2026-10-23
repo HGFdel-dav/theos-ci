@@ -6,6 +6,7 @@
 #import "CXPrefs.h"
 #import "CXArcSettings.h"
 #import "CXLog.h"
+#import "CXArcWake.h"
 #include <math.h>
 
 @interface CXArcListController : PSListController {
@@ -111,6 +112,14 @@
     }
     _sliderKeys = sliderKeys;
     [specs addObject:[self row:@"显示触发区域（调试）" key:@"CXArcDebug" cell:PSSwitchCell]];
+    PSSpecifier *channel = [PSSpecifier groupSpecifierWithName:@"系统手势通道"];
+    [channel setProperty:@"系统通道让 ARC 在应用内也能响应。连续两次启动异常会自动停用它、只保留窗口手势；刚出过安全模式或应用内按不出来时，点下面重置一次。"
+                forKey:@"footerText"];
+    [specs addObject:channel];
+    PSSpecifier *reset = [PSSpecifier preferenceSpecifierNamed:@"重置系统手势通道" target:self
+        set:NULL get:NULL detail:nil cell:PSButtonCell edit:NULL];
+    [reset setButtonAction:@selector(resetSystemChannel:)];
+    [specs addObject:reset];
     _specifiers = specs;
     return _specifiers;
 }
@@ -183,6 +192,14 @@
         CXLog(@"[prefs] arc %@=%ld", key, (long)v);
         (void)spec;
     } @catch (NSException *e) { CXLog(@"[prefs] slider 异常 %@", e.reason); }
+}
+
+- (void)resetSystemChannel:(PSSpecifier *)spec {
+    [CXPrefs.shared setObject:@NO forKey:@"CXArcChannelBlocked"];
+    [CXPrefs.shared setObject:@0 forKey:@"CXArcChannelFailures"];
+    [CXPrefs.shared setObject:@NO forKey:@"CXArcChannelPending"];
+    // CXPrefs synchronize 会发布 com.niubiprass.clonex/changed，SpringBoard 据此重试注册。
+    CXLog(@"[prefs] 系统手势通道已重置");
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
