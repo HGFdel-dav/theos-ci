@@ -105,11 +105,19 @@ static void CXReplayURL(NSURL *url) {
 }
 
 static void (*CXOrigOpenURL)(id, SEL, id, id, id);
+static void (*CXOrigOpenURLLegacy)(id, SEL, id);
+static void CXCaptureExternalURL(id url) {
+    if (![url isKindOfClass:NSURL.class]) return;
+    CXLastURL = [url copy];
+    CXLastURLAt = [NSDate date].timeIntervalSince1970;
+    CXLog(@"[url] captured scheme=%@ host=%@", CXLastURL.scheme ?: @"", CXLastURL.host ?: @"");
+}
+static BOOL CXOpenURLLegacyHook(id self, SEL _cmd, id url) {
+    CXCaptureExternalURL(url);
+    return CXOrigOpenURLLegacy ? CXOrigOpenURLLegacy(self, _cmd, url) : NO;
+}
 static void CXOpenURLHook(id self, SEL _cmd, id url, id options, id completion) {
-    if ([url isKindOfClass:NSURL.class]) {
-        CXLastURL = [url copy];
-        CXLastURLAt = [NSDate date].timeIntervalSince1970;
-    }
+    CXCaptureExternalURL(url);
     if (CXOrigOpenURL) CXOrigOpenURL(self, _cmd, url, options, completion);
 }
 
@@ -126,7 +134,15 @@ static void CXInstallURLHook(void) {
     if (!hook) return;
     hook(cls, sel, (IMP)CXOpenURLHook, (IMP *)&CXOrigOpenURL);
     installed = CXOrigOpenURL != NULL;
-    CXLog(@"[hook] openURL installed=%d", installed);
+    SEL legacySel = NSSelectorFromString(@"openURL:");
+    Method legacyMethod = class_getInstanceMethod(cls, legacySel);
+    if (legacyMethod) {
+        NSMethodSignature *legacySig = [NSMethodSignature signatureWithObjCTypes:method_getTypeEncoding(legacyMethod)];
+        if (legacySig && legacySig.numberOfArguments == 3 && [legacySig getArgumentTypeAtIndex:2][0] == '@') {
+            hook(cls, legacySel, (IMP)CXOpenURLLegacyHook, (IMP *)&CXOrigOpenURLLegacy);
+        }
+    }
+    CXLog(@"[hook] openURL installed=%d legacy=%d", installed, CXOrigOpenURLLegacy != NULL);
 }
 
 #pragma mark - 打开分屏窗口（真实 bundle）

@@ -307,6 +307,7 @@ void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
             [card setNeedsLayout];
             [CATransaction commit];
             [card layoutIfNeeded];  // commit 后再 layout，确保子视图在禁用动画后完成布局
+            CXPendingApplied = YES;
             if (CXPendingKey) [CXAppliedKeySet() addObject:CXPendingKey];
             CXLog(@"[remember] apply %@#%@ %.0fx%.0f", bundle, CXPendingContainer,
                   card.frame.size.width, card.frame.size.height);

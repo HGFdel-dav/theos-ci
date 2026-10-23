@@ -1,6 +1,7 @@
 // CXArcMenu.m — 仅做几何：PX 负责菜单、图标、动画；这里只把它们摆成扇形。
 #import "CXArcMenu.h"
 #import "CXLog.h"
+#import "CXPrefs.h"
 #import <objc/runtime.h>
 #include <math.h>
 
@@ -72,6 +73,13 @@ void CXFanArrange(NSArray<UIView *> *icons, UIWindow *window, BOOL left) {
     if (size.width < 100 || size.height < 100) return;
     CGFloat anchorX = left ? 6 : size.width - 6;
     CGFloat anchorY = size.height - 6;
+    CGFloat radiusSetting = [CXPrefs.shared objectForKey:@"CXArcRadius"].doubleValue;
+    CGFloat offsetX = [CXPrefs.shared objectForKey:@"CXArcOffsetX"].doubleValue;
+    CGFloat offsetY = [CXPrefs.shared objectForKey:@"CXArcOffsetY"].doubleValue;
+    if (radiusSetting < 1) radiusSetting = 86;
+    anchorX += left ? offsetX : -offsetX;
+    anchorY -= offsetY;
+    CGFloat radiusBase = MAX(54, radiusSetting);
     CGFloat start = left ? 1.5 * M_PI : M_PI;
     NSInteger perRing = icons.count > 8 ? 8 : (NSInteger)icons.count;
     NSMutableArray<NSValue *> *points = [NSMutableArray array];
@@ -81,16 +89,16 @@ void CXFanArrange(NSArray<UIView *> *icons, UIWindow *window, BOOL left) {
         NSInteger ring = perRing ? i / perRing : 0;
         NSInteger inRing = perRing ? i % perRing : 0;
         NSInteger count = MIN(perRing, (NSInteger)icons.count - ring * perRing);
-        CGFloat radius = 74 + ring * (d + 12);
+        CGFloat radius = radiusBase + ring * (d + 12);
         CGFloat t = count <= 1 ? 0.5 : (CGFloat)inRing / (CGFloat)(count - 1);
         CGFloat angle = start + (left ? 1 : -1) * (0.02 * M_PI_2 + M_PI_2 * 0.72 * t);
         CGPoint p = CGPointMake(anchorX + radius * cos(angle), anchorY + radius * sin(angle));
         p.x = MIN(MAX(p.x, 20), size.width - 20);
         p.y = MIN(MAX(p.y, 40), size.height - 20);
         UIView *hostView = window ?: icon.window;
-        [points addObject:[NSValue valueWithCGPoint:p]]; // 记录 window 坐标供命中
-        CGPoint local = (rail && rail != hostView) ? [rail convertPoint:p fromView:hostView] : p;
-        icon.center = local; // 不动 transform，PX 自己的高亮缩放照旧
+        [points addObject:[NSValue valueWithCGPoint:p]];
+        CGPoint local = (rail && hostView && rail != hostView) ? [rail convertPoint:p fromView:hostView] : p;
+        icon.center = local;
     }
     objc_setAssociatedObject(icons, &CXFanKey, points, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     CXLog(@"[arc] arranged %lu icons rail=%@", (unsigned long)icons.count, NSStringFromClass(rail.class));
