@@ -398,15 +398,20 @@ static BOOL CXPromptForURL(NSString *bundleID, BOOL requireURL, void (^proceed)(
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((same ? 0.05 : (running ? 1.0 : 0.2)) * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{
                 if (proceed) proceed();
-                if (!running || same) {
+                if (!incoming) {
                     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.8 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
                         CXInternalOpen = wasInternal; });
                     return;
                 }
-                if (incoming) CXReplayURL(incoming);
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.6 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-                    CXPollReloadedURL(bundleID, incoming, wasInternal, 0);
-                });
+                // 重启后进程要几秒才可收链接；多补几次，避免第一次打开丢链接。
+                NSArray *delays = same ? @[@0.3, @1.0] : @[@1.5, @2.5, @3.5, @4.5];
+                BOOL wasInt = CXInternalOpen;
+                for (NSNumber *d in delays) {
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(d.doubleValue * NSEC_PER_SEC)),
+                                   dispatch_get_main_queue(), ^{ CXReplayURL(incoming); });
+                }
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((same ? 1.5 : 5.0) * NSEC_PER_SEC)),
+                               dispatch_get_main_queue(), ^{ CXInternalOpen = wasInt; });
             });
         }];
     };
