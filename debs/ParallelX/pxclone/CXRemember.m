@@ -191,7 +191,8 @@ static UIView *CXBoundHostCard(void) {
 
 // 真实缩放是在 hostCard 上发生；panelWindow 只是菜单，hostWindow 常为全屏透明宿主。
 static BOOL CXGetHost(id entry, NSString *bundle, id *bridgeOut, UIView **cardOut) {
-    id bridge = entry ? CXEntryBridge(entry) : CXBoundBridge;
+    id bridge = entry ? CXEntryBridge(entry) : nil;
+    if (!bridge) bridge = CXBoundBridge;
     UIView *card = entry ? CXEntryCard(entry) : nil;
     UIView *canvas = CXPXGetObject(bridge, @"canvas");
     if (![canvas isKindOfClass:UIView.class]) canvas = CXBoundCanvas;
@@ -258,7 +259,7 @@ static void CXScheduleCapture(id entry) {
     CXCaptureGeneration++;
     NSInteger generation = CXCaptureGeneration;
     NSInteger openGeneration = CXOpenGeneration;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)),
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         if (generation != CXCaptureGeneration || openGeneration != CXOpenGeneration) return;
         CXCapture(entry);
@@ -578,12 +579,12 @@ static void CXLogTree(UIView *view, NSInteger depth) {
 // 藏着的这段时间里反复钉住目标几何，稳定后才显示。
 static void CXSettleTick(NSInteger generation, CGRect target, NSInteger quiet, NSInteger ticks) {
     if (generation != CXPendingGen) return;
-    if (ticks > 18) {
+    if (ticks > 8) {
         CXLog(@"[remember] settle timeout");
         CXRememberRevealHost(CXBoundHostCard());
         return;
     }
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)),
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.08 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         id entry = CXRememberEntry ?: CXFindPanelEntry();
         UIView *card = entry ? CXEntryCard(entry) : nil;
@@ -615,7 +616,7 @@ static void CXSettleTick(NSInteger generation, CGRect target, NSInteger quiet, N
 static void CXRememberRetryLater(NSInteger generation) {
     if (generation != CXPendingGen || CXPendingApplied) return;
     if (++CXPendingTries > 20) { CXLog(@"[remember] give up waiting hostCard"); CXRememberRevealHost(CXBoundHostCard()); return; }
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)),
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.08 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{ CXRememberTickApply(generation); });
 }
 
@@ -662,6 +663,33 @@ static void CXLayoutHostHook(id self, SEL _cmd) {
 
 #pragma mark - 安装
 
+// 卡片第一次挂到窗口时就藏起来，避免它先以默认位置露一帧再被挪走。
+static void (*CXOrigDidMoveToWindow)(id, SEL);
+static void CXCardDidMoveToWindow(id self, SEL _cmd) {
+    if (CXOrigDidMoveToWindow) CXOrigDidMoveToWindow(self, _cmd);
+    if (CXPendingApplied || !CXPendingBundle.length) return;
+    UIView *view = (UIView *)self;
+    if (!objc_getAssociatedObject(view, &CXRememberHiddenKey))
+        objc_setAssociatedObject(view, &CXRememberHiddenKey, @(view.alpha), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    view.alpha = 0.0;
+}
+
+static Class CXHostCardClass(void) {
+    static Class found;
+    if (found) return found;
+    int count = objc_getClassList(NULL, 0);
+    if (count <= 0) return nil;
+    Class *classes = calloc((size_t)count, sizeof(Class));
+    if (!classes) return nil;
+    objc_getClassList(classes, count);
+    for (int i = 0; i < count; i++) {
+        const char *name = class_getName(classes[i]);
+        if (name && strstr(name, "PXHostCard")) { found = classes[i]; break; }
+    }
+    free(classes);
+    return found;
+}
+
 static void CXInstallRememberHooks(void) {
     static BOOL installed = NO;
     if (installed) return;
@@ -700,6 +728,14 @@ static void CXInstallRememberHooks(void) {
         }
         *hooks[i].orig = (IMP)method_setImplementation(m, hooks[i].imp);
         CXLog(@"[remember] hook %s ok", hooks[i].name);
+    }
+    Class cardCls = CXHostCardClass();
+    Method didMove = cardCls ? class_getInstanceMethod(cardCls, NSSelectorFromString(@"didMoveToWindow")) : NULL;
+    if (didMove) {
+        CXOrigDidMoveToWindow = (void *)method_setImplementation(didMove, (IMP)CXCardDidMoveToWindow);
+        CXLog(@"[remember] hook didMoveToWindow on %@", NSStringFromClass(cardCls));
+    } else {
+        CXLog(@"[remember] PXHostCard/didMoveToWindow 不可用");
     }
     installed = YES;
 }

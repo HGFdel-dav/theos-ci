@@ -391,20 +391,22 @@ static BOOL CXPromptForURL(NSString *bundleID, BOOL requireURL, void (^proceed)(
         CXLog(@"[url] %@ selected=%@ reload=%d", bundleID, cid, running);
         BOOL wasInternal = CXInternalOpen;
         CXInternalOpen = YES;
-        [CXCraneBridge switchBundleID:bundleID toContainer:cid reload:running completion:^(BOOL ok) {
+        [CXCraneBridge switchBundleID:bundleID toContainer:cid reload:YES completion:^(BOOL ok) {
             if (!ok) { CXInternalOpen = wasInternal; CXLog(@"[url] %@ switch failed", bundleID); return; }
             CXRememberNoteLaunch(bundleID, cid);
-            if (proceed) proceed();
-            if (!running) {
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1.0 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-                    CXInternalOpen = wasInternal; });
-                return;
-            }
-            // 重载过的进程要等它真正起来再补投，否则又只落主界面
-            // 改为：立即补投一次（reload 后进程仍存活，URL 可能已入队），再轮询补投以防丢失
-            if (incoming) CXReplayURL(incoming);
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.6 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-                CXPollReloadedURL(bundleID, incoming, wasInternal, 0);
+            // 重载后进程要重新起来，立刻开窗会开到旧账号的进程上，所以先等一拍。
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((running ? 1.0 : 0.2) * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                if (proceed) proceed();
+                if (!running) {
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.8 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+                        CXInternalOpen = wasInternal; });
+                    return;
+                }
+                if (incoming) CXReplayURL(incoming);
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.6 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+                    CXPollReloadedURL(bundleID, incoming, wasInternal, 0);
+                });
             });
         }];
     };
