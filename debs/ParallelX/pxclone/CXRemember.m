@@ -529,26 +529,31 @@ static void CXApplyFrameToCard(UIView *card, id bridge, id entry, CGRect target)
     card.transform = CGAffineTransformIdentity;
     card.frame = target;
     // ScreenCore 的做法：内容保持原始尺寸，用缩放变换套进容器，而不是改内容尺寸。
-    CGSize content = canvas.bounds.size;
-    BOOL needScale = fabs(content.width - target.size.width) > 8 ||
-                     fabs(content.height - target.size.height) > 8;
-    if (needScale && content.width > 1 && content.height > 1) {
-        CGFloat sx = target.size.width / content.width;
-        CGFloat sy = target.size.height / content.height;
-        UIView *hostView = CXPXGetObject(bridge, @"hostView");
-        if (![hostView isKindOfClass:UIView.class]) hostView = canvas;
-        for (UIView *layerView in (hostView == canvas ? @[canvas] : @[canvas, hostView])) {
-            layerView.transform = CGAffineTransformMakeScale(sx, sy);
-            UIView *parent = layerView.superview;
-            if (parent == card) {
-                layerView.center = CGPointMake(target.size.width / 2.0, target.size.height / 2.0);
-            } else if (parent) {
-                layerView.center = [card convertPoint:CGPointMake(CGRectGetMidX(card.bounds),
-                                                                  CGRectGetMidY(card.bounds))
-                                               toView:parent];
-            }
+    // 内容按“场景参考尺寸”摆放，再整体缩放到目标尺寸（ScreenCore 的参考尺寸模型）。
+    CGSize source = CGSizeZero;
+    SEL srcSel = NSSelectorFromString(@"hostedSourceSize");
+    if (bridge && [bridge respondsToSelector:srcSel]) {
+        source = ((CGSize (*)(id, SEL))objc_msgSend)(bridge, srcSel);
+    }
+    if (source.width < 1 || source.height < 1) source = canvas.bounds.size;
+    if (source.width < 1 || source.height < 1) source = target.size;
+    UIView *hostView = CXPXGetObject(bridge, @"hostView");
+    if (![hostView isKindOfClass:UIView.class]) hostView = canvas;
+    for (UIView *layerView in (hostView == canvas ? @[canvas] : @[canvas, hostView])) {
+        if (fabs(layerView.bounds.size.width - source.width) > 8 ||
+            fabs(layerView.bounds.size.height - source.height) > 8) {
+            layerView.bounds = (CGRect){ CGPointZero, source };
+            layerView.frame = (CGRect){ layerView.frame.origin, source };
         }
-
+        layerView.transform = CGAffineTransformMakeScale(target.size.width / source.width,
+                                                         target.size.height / source.height);
+        if (layerView.superview == card) {
+            layerView.center = CGPointMake(target.size.width / 2.0, target.size.height / 2.0);
+        } else if (layerView.superview) {
+            layerView.center = [card convertPoint:CGPointMake(CGRectGetMidX(card.bounds),
+                                                              CGRectGetMidY(card.bounds))
+                                           toView:layerView.superview];
+        }
     }
     [card.superview setNeedsLayout];
     [CATransaction commit];
@@ -564,15 +569,18 @@ static void CXApplyFrameToCard(UIView *card, id bridge, id entry, CGRect target)
 static void CXSyncContentScale(UIView *card, id bridge, id entry) {
     UIView *canvas = CXPXGetObject(bridge, @"canvas");
     if (![canvas isKindOfClass:UIView.class]) canvas = CXBoundCanvas;
-    CGSize content = canvas.bounds.size;
-    if (content.width < 1 || content.height < 1) return;
+    if (![canvas isKindOfClass:UIView.class]) return;
+    CGSize source = CGSizeZero;
+    SEL srcSel = NSSelectorFromString(@"hostedSourceSize");
+    if (bridge && [bridge respondsToSelector:srcSel])
+        source = ((CGSize (*)(id, SEL))objc_msgSend)(bridge, srcSel);
+    if (source.width < 1 || source.height < 1) source = canvas.bounds.size;
+    if (source.width < 1 || source.height < 1) return;
     CGRect frame = card.frame;
-    if (fabs(content.width - frame.size.width) < 8 && fabs(content.height - frame.size.height) < 8) return;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
-    CGFloat sx = frame.size.width / content.width;
-    CGFloat sy = frame.size.height / content.height;
-    canvas.transform = CGAffineTransformMakeScale(sx, sy);
+    canvas.transform = CGAffineTransformMakeScale(frame.size.width / source.width,
+                                                  frame.size.height / source.height);
     if (canvas.superview == card)
         canvas.center = CGPointMake(frame.size.width / 2.0, frame.size.height / 2.0);
     else if (canvas.superview)
