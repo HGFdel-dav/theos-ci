@@ -514,6 +514,11 @@ static void CXApplyFrameToCard(UIView *card, id bridge, id entry, CGRect target)
     card.bounds = (CGRect){ CGPointZero, target.size };
     [card.superview setNeedsLayout];
     [CATransaction commit];
+    SEL preview = NSSelectorFromString(@"applyResizePreview");
+    if (entry && [entry respondsToSelector:preview]) {
+        @try { ((void (*)(id, SEL))objc_msgSend)(entry, preview); }
+        @catch (NSException *e) { CXLog(@"[remember] preview 异常 %@", e.reason); }
+    }
     CXNotifyHostedGeometry(entry, bridge, card);
 }
 
@@ -527,9 +532,17 @@ static void CXLogSelectorsOnce(id entry, id bridge, UIView *card) {
         [card respondsToSelector:NSSelectorFromString(@"scale")],
         [card respondsToSelector:NSSelectorFromString(@"setScale:")],
         [card respondsToSelector:NSSelectorFromString(@"hostedGeometryChanged:")]];
-    NSString *bridgeSels = [NSString stringWithFormat:@"hostedSourceSize=%d",
-        [bridge respondsToSelector:NSSelectorFromString(@"hostedSourceSize")]];
-    CXLog(@"[probe] card %@ / bridge %@", cardSels, bridgeSels);
+    UIView *canvas = CXPXGetObject(bridge, @"canvas");
+    if (![canvas isKindOfClass:UIView.class]) canvas = CXBoundCanvas;
+    NSString *src = @"-";
+    SEL srcSel = NSSelectorFromString(@"hostedSourceSize");
+    if ([bridge respondsToSelector:srcSel]) {
+        CGSize size = ((CGSize (*)(id, SEL))objc_msgSend)(bridge, srcSel);
+        src = [NSString stringWithFormat:@"%.0fx%.0f", size.width, size.height];
+    }
+    CXLog(@"[probe] card %@ / hostedSourceSize=%@ canvas=%.0fx%.0f scale=%.3f/%.3f cardFrame=%.0fx%.0f",
+          cardSels, src, canvas.bounds.size.width, canvas.bounds.size.height,
+          canvas.transform.a, canvas.transform.d, card.frame.size.width, card.frame.size.height);
 }
 
 // 藏着的这段时间里反复钉住目标几何，稳定后才显示。
@@ -662,6 +675,6 @@ static void CXInstallRememberHooks(void) {
 }
 
 void CXRememberStart(void) {
-    CXLog(@"[remember] memory-build=clone0.36 sha-marker=R036N");
+    CXLog(@"[remember] memory-build=clone0.37 sha-marker=R037P");
     CXInstallRememberHooks();
 }
