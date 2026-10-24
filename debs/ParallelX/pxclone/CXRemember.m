@@ -679,7 +679,7 @@ static Class CXHostCardClass(void) {
     if (found) return found;
     int count = objc_getClassList(NULL, 0);
     if (count <= 0) return nil;
-    Class *classes = calloc((size_t)count, sizeof(Class));
+    Class *classes = (Class *)calloc((size_t)count, sizeof(Class));
     if (!classes) return nil;
     objc_getClassList(classes, count);
     for (int i = 0; i < count; i++) {
