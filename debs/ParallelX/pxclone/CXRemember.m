@@ -93,6 +93,24 @@ static __weak id CXBoundBridge;
 static __weak UIView *CXBoundCanvas;
 static NSInteger CXOpenGeneration = 0;
 static NSInteger CXPendingGen = 0;
+static char CXRememberHiddenKey;
+static UIView *CXBoundHostCard(void);
+
+static void CXRememberHideInitialHost(void) {
+    UIView *target = CXBoundHostCard();
+    if (![target isKindOfClass:UIView.class]) target = CXBoundCanvas;
+    if (![target isKindOfClass:UIView.class]) return;
+    objc_setAssociatedObject(target, &CXRememberHiddenKey, @(target.alpha), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    target.alpha = 0.0;
+}
+
+static void CXRememberRevealHost(UIView *target) {
+    if (![target isKindOfClass:UIView.class]) target = CXBoundCanvas;
+    if (![target isKindOfClass:UIView.class]) return;
+    NSNumber *oldAlpha = objc_getAssociatedObject(target, &CXRememberHiddenKey);
+    target.alpha = oldAlpha ? oldAlpha.doubleValue : 1.0;
+    objc_setAssociatedObject(target, &CXRememberHiddenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
 
 void CXRememberBindOpen(id bridge, UIView *canvas, NSString *bundleID, NSString *containerID) {
     if (!bridge || ![canvas isKindOfClass:UIView.class] || !bundleID.length) return;
@@ -333,12 +351,35 @@ void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
                 return;
             }
             CGRect target = CXSanitizedTarget(CXPendingRect, card.frame, screen);
+            UIView *canvas = CXPXGetObject(bridge, @"canvas");
+            if (![canvas isKindOfClass:UIView.class]) canvas = CXBoundCanvas;
+            UIView *hostView = CXPXGetObject(bridge, @"hostView");
+            if (![hostView isKindOfClass:UIView.class]) hostView = canvas;
             [CATransaction begin];
             [CATransaction setDisableActions:YES];
+            [card.layer removeAllAnimations];
+            [canvas.layer removeAllAnimations];
+            [hostView.layer removeAllAnimations];
+            card.transform = CGAffineTransformIdentity;
+            canvas.transform = CGAffineTransformIdentity;
+            hostView.transform = CGAffineTransformIdentity;
             card.frame = target;
+            card.bounds = (CGRect){ CGPointZero, target.size };
+            if (canvas && canvas != card) {
+                canvas.frame = card.bounds;
+                canvas.bounds = (CGRect){ CGPointZero, card.bounds.size };
+            }
+            if (hostView && hostView != card && hostView != canvas) {
+                hostView.frame = card.bounds;
+                hostView.bounds = (CGRect){ CGPointZero, card.bounds.size };
+            }
             [card setNeedsLayout];
+            [canvas setNeedsLayout];
+            [hostView setNeedsLayout];
             [surface setNeedsLayout];
             [card layoutIfNeeded];
+            [canvas layoutIfNeeded];
+            [hostView layoutIfNeeded];
             [CATransaction commit];
             CXPendingApplied = YES;
             if (CXPendingKey) [CXAppliedKeySet() addObject:CXPendingKey];
