@@ -387,16 +387,18 @@ static BOOL CXPromptForURL(NSString *bundleID, BOOL requireURL, void (^proceed)(
     chooser.pick = ^(NSString *cid) {
         CXShowingChooser = NO;
         BOOL running = CXAppRunning(bundleID);
-        CXLog(@"[url] %@ selected=%@ reload=%d", bundleID, cid, running);
+        NSString *active = [CXCraneBridge activeContainerForBundleID:bundleID] ?: @"DEFAULT";
+        BOOL same = [active isEqualToString:cid];
+        CXLog(@"[url] %@ selected=%@ same=%d running=%d", bundleID, cid, same, running);
         BOOL wasInternal = CXInternalOpen;
         CXInternalOpen = YES;
-        [CXCraneBridge switchBundleID:bundleID toContainer:cid reload:YES completion:^(BOOL ok) {
+        [CXCraneBridge switchBundleID:bundleID toContainer:cid reload:!same completion:^(BOOL ok) {
             if (!ok) { CXInternalOpen = wasInternal; CXLog(@"[url] %@ switch failed", bundleID); return; }
             // 重载后进程要重新起来，立刻开窗会开到旧账号的进程上，所以先等一拍。
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((running ? 1.0 : 0.2) * NSEC_PER_SEC)),
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((same ? 0.05 : (running ? 1.0 : 0.2)) * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{
                 if (proceed) proceed();
-                if (!running) {
+                if (!running || same) {
                     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.8 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
                         CXInternalOpen = wasInternal; });
                     return;
@@ -529,7 +531,9 @@ static BOOL CXHandleVirtualItem(NSDictionary *item) {
     CXMarkHandled(key);
     CXLog(@"[hit] %@ -> container %@", bundleID, containerID);
     // 必须重启应用：Crane 只改"下次启动"的容器，运行中的进程不会换数据
-    [CXCraneBridge switchBundleID:bundleID toContainer:containerID reload:YES completion:^(BOOL ok) {
+    NSString *activeNow = [CXCraneBridge activeContainerForBundleID:bundleID] ?: @"DEFAULT";
+    BOOL sameNow = [activeNow isEqualToString:containerID];
+    [CXCraneBridge switchBundleID:bundleID toContainer:containerID reload:!sameNow completion:^(BOOL ok) {
     CXLog(@"[hit] %@ switch=%d", bundleID, ok);
     if (!ok) { CXLog(@"[hit] switch failed, skip opening wrong account"); return; }
         CXOpenInSplit(bundleID);
