@@ -111,6 +111,7 @@ static NSInteger CXPendingGen = 0;
 static BOOL CXPendingApplied = YES;
 static char CXRememberHiddenKey;
 static __weak UIView *CXHiddenCard;
+static BOOL CXPendingRevealed;
 static UIView *CXBoundHostCard(void);
 
 static void CXRememberHideInitialHost(void) {
@@ -123,6 +124,7 @@ static void CXRememberHideInitialHost(void) {
 }
 
 static void CXRememberRevealHost(UIView *target) {
+    CXPendingRevealed = YES;
     // 隐藏可能落在卡片上，也可能落在外层画布上，两处都要还原。
     NSArray *targets = @[target ?: NSNull.null, CXHiddenCard ?: NSNull.null,
                          CXBoundCanvas ?: NSNull.null, CXBoundHostCard() ?: NSNull.null];
@@ -243,6 +245,8 @@ static void CXCapture(id entry) {
     // 缩放手势停手后原版已把 transform 清零并 setFrame；记录完整 frame（含贴边位置）。
     if (!CGAffineTransformIsIdentity(card.transform) || !CXPendingApplied) return;
     CXStoreSize(bundle, CXEntryContainer(entry), card);
+    @try { CXSyncContentScale(card, bridge, entry); }
+    @catch (NSException *e) { CXLog(@"[remember] 同步缩放异常 %@", e.reason); }
 }
 
 static void CXApplyResizePreview(id self, SEL _cmd) {
@@ -384,6 +388,7 @@ static void CXSettleTick(NSInteger generation, CGRect target, NSInteger quiet, N
 static void CXApplyFrameToCard(UIView *card, id bridge, id entry, CGRect target);
 static void CXNotifyHostedGeometry(id entry, id bridge, UIView *card);
 static void CXLogSelectorsOnce(id entry, id bridge, UIView *card);
+static void CXSyncContentScale(UIView *card, id bridge, id entry);
 static void CXLogTree(UIView *view, NSInteger depth);
 static NSInteger CXPendingTries = 0;
 static BOOL CXPendingPrepareAt = NO;
@@ -417,6 +422,7 @@ void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
     //   ② hostCard 已挂到窗口、尺寸有效、用户没在拖。
     CXPendingPrepareAt = NO;
     CXPendingFallback = NO;
+    CXPendingRevealed = NO;
     NSInteger generation = CXPendingGen;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
@@ -552,6 +558,28 @@ static void CXApplyFrameToCard(UIView *card, id bridge, id entry, CGRect target)
     CXNotifyHostedGeometry(entry, bridge, card);
 }
 
+// 只把内容缩放同步到卡片当前尺寸，不动卡片本身（供缩放结束后用）。
+static void CXSyncContentScale(UIView *card, id bridge, id entry) {
+    UIView *canvas = CXPXGetObject(bridge, @"canvas");
+    if (![canvas isKindOfClass:UIView.class]) canvas = CXBoundCanvas;
+    CGSize content = canvas.bounds.size;
+    if (content.width < 1 || content.height < 1) return;
+    CGRect frame = card.frame;
+    if (fabs(content.width - frame.size.width) < 8 && fabs(content.height - frame.size.height) < 8) return;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    CGFloat sx = frame.size.width / content.width;
+    CGFloat sy = frame.size.height / content.height;
+    canvas.transform = CGAffineTransformMakeScale(sx, sy);
+    if (canvas.superview == card)
+        canvas.center = CGPointMake(frame.size.width / 2.0, frame.size.height / 2.0);
+    else if (canvas.superview)
+        canvas.center = [card convertPoint:CGPointMake(CGRectGetMidX(card.bounds), CGRectGetMidY(card.bounds))
+                                   toView:canvas.superview];
+    [CATransaction commit];
+    CXNotifyHostedGeometry(entry, bridge, card);
+}
+
 static void CXLogSelectorsOnce(id entry, id bridge, UIView *card) {
     static NSInteger loggedGen = -1;
     if (loggedGen == CXPendingGen) return;
@@ -617,6 +645,8 @@ static void CXSettleTick(NSInteger generation, CGRect target, NSInteger quiet, N
         if (quiet >= 2) {
             CXRememberRevealHost(card);
             CXLog(@"[remember] shown after settle");
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{ CXRememberRevealHost(CXHiddenCard); });
             return;
         }
         CXSettleTick(generation, target, quiet + 1, ticks + 1);
@@ -677,7 +707,7 @@ static void CXLayoutHostHook(id self, SEL _cmd) {
 static void (*CXOrigDidMoveToWindow)(id, SEL);
 static void CXCardDidMoveToWindow(id self, SEL _cmd) {
     if (CXOrigDidMoveToWindow) CXOrigDidMoveToWindow(self, _cmd);
-    if (CXPendingApplied || !CXPendingBundle.length) return;
+    if (CXPendingApplied || CXPendingRevealed || !CXPendingBundle.length) return;
     UIView *view = (UIView *)self;
     if (!objc_getAssociatedObject(view, &CXRememberHiddenKey))
         objc_setAssociatedObject(view, &CXRememberHiddenKey, @(view.alpha), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
