@@ -380,6 +380,7 @@ static void CXSettleTick(NSInteger generation, CGRect target, NSInteger quiet, N
 static void CXApplyFrameToCard(UIView *card, id bridge, id entry, CGRect target);
 static void CXNotifyHostedGeometry(id entry, id bridge, UIView *card);
 static void CXLogSelectorsOnce(id entry, id bridge, UIView *card);
+static void CXLogTree(UIView *view, NSInteger depth);
 static NSInteger CXPendingTries = 0;
 static BOOL CXPendingPrepareAt = NO;
 static BOOL CXPendingFallback = NO;
@@ -517,8 +518,18 @@ static void CXApplyFrameToCard(UIView *card, id bridge, id entry, CGRect target)
     if (content.width > 1 && content.height > 1) {
         CGFloat sx = target.size.width / content.width;
         CGFloat sy = target.size.height / content.height;
-        canvas.transform = CGAffineTransformMakeScale(sx, sy);
-        canvas.center = CGPointMake(target.size.width / 2.0, target.size.height / 2.0);
+        UIView *hostView = CXPXGetObject(bridge, @"hostView");
+        if (![hostView isKindOfClass:UIView.class]) hostView = canvas;
+        for (UIView *layerView in (hostView == canvas ? @[canvas] : @[canvas, hostView])) {
+            layerView.transform = CGAffineTransformMakeScale(sx, sy);
+            layerView.center = CGPointMake(target.size.width / 2.0, target.size.height / 2.0);
+        }
+        UIView *first = canvas.subviews.firstObject;
+        if ([first isKindOfClass:UIView.class] && first.bounds.size.width > 1) {
+            first.transform = CGAffineTransformMakeScale(
+                target.size.width / first.bounds.size.width,
+                target.size.height / first.bounds.size.height);
+        }
     }
     [card.superview setNeedsLayout];
     [CATransaction commit];
@@ -551,6 +562,17 @@ static void CXLogSelectorsOnce(id entry, id bridge, UIView *card) {
     CXLog(@"[probe] card %@ / hostedSourceSize=%@ canvas=%.0fx%.0f scale=%.3f/%.3f cardFrame=%.0fx%.0f",
           cardSels, src, canvas.bounds.size.width, canvas.bounds.size.height,
           canvas.transform.a, canvas.transform.d, card.frame.size.width, card.frame.size.height);
+    CXLogTree(card, 0);
+}
+
+static void CXLogTree(UIView *view, NSInteger depth) {
+    if (depth > 2 || ![view isKindOfClass:UIView.class]) return;
+    CXLog(@"[tree] %@ f=%.0f,%.0f %.0fx%.0f b=%.0fx%.0f s=%.3f a=%.2f sub=%lu",
+          NSStringFromClass(view.class), view.frame.origin.x, view.frame.origin.y,
+          view.frame.size.width, view.frame.size.height, view.bounds.size.width,
+          view.bounds.size.height, view.transform.a, view.alpha,
+          (unsigned long)view.subviews.count);
+    for (UIView *child in view.subviews) CXLogTree(child, depth + 1);
 }
 
 // 藏着的这段时间里反复钉住目标几何，稳定后才显示。
@@ -683,6 +705,6 @@ static void CXInstallRememberHooks(void) {
 }
 
 void CXRememberStart(void) {
-    CXLog(@"[remember] memory-build=clone0.38 sha-marker=R038T");
+    CXLog(@"[remember] memory-build=clone0.39 sha-marker=R039V");
     CXInstallRememberHooks();
 }
