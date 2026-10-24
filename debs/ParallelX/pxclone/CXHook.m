@@ -120,7 +120,7 @@ static void CXCaptureExternalURL(id url) {
     if (![url isKindOfClass:NSURL.class]) return;
     CXLastURL = [url copy];
     CXLastURLAt = [NSDate date].timeIntervalSince1970;
-    [CXPrefs.shared setObject:url.absoluteString forKey:@"CXSharedURL"];
+    [CXPrefs.shared setObject:((NSURL *)url).absoluteString forKey:@"CXSharedURL"];
     [CXPrefs.shared setObject:@([[NSDate date] timeIntervalSince1970]) forKey:@"CXSharedURLAt"];
     CXLog(@"[url] captured scheme=%@ host=%@", CXLastURL.scheme ?: @"", CXLastURL.host ?: @"");
 }
