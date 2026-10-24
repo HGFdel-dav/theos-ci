@@ -135,7 +135,9 @@ static void CXRememberRevealHost(UIView *target) {
         UIView *view = item;
         NSNumber *oldAlpha = objc_getAssociatedObject(view, &CXRememberHiddenKey);
         if (!oldAlpha) continue;
-        view.alpha = oldAlpha.doubleValue;
+        CGFloat target = oldAlpha.doubleValue;
+        if (target < 0.05) target = 1.0;
+        view.alpha = target;
         objc_setAssociatedObject(view, &CXRememberHiddenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         if (view == CXHiddenCard) CXHiddenCard = nil;
     }
@@ -526,7 +528,6 @@ static void CXApplyFrameToCard(UIView *card, id bridge, id entry, CGRect target)
     [canvas.layer removeAllAnimations];
     card.transform = CGAffineTransformIdentity;
     card.frame = target;
-    card.bounds = (CGRect){ CGPointZero, target.size };
     // ScreenCore 的做法：内容保持原始尺寸，用缩放变换套进容器，而不是改内容尺寸。
     CGSize content = canvas.bounds.size;
     BOOL needScale = fabs(content.width - target.size.width) > 8 ||
@@ -645,9 +646,19 @@ static void CXSettleTick(NSInteger generation, CGRect target, NSInteger quiet, N
         }
         if (quiet >= 2) {
             CXRememberRevealHost(card);
-            CXLog(@"[remember] shown after settle");
+            CXLog(@"[remember] shown after settle cardAlpha=%.2f", card.alpha);
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{ CXRememberRevealHost(CXHiddenCard); });
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.7 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                UIView *c = CXEntryCard(CXRememberEntry ?: CXFindPanelEntry());
+                if (![c isKindOfClass:UIView.class]) return;
+                UIView *cv = c.subviews.firstObject;
+                CXLog(@"[post] card a=%.2f f=%.0fx%.0f win=%.0fx%.0f sub=%@ f=%.0fx%.0f sc=%.2f",
+                      c.alpha, c.frame.size.width, c.frame.size.height,
+                      c.window.bounds.size.width, c.window.bounds.size.height,
+                      NSStringFromClass(cv.class), cv.frame.size.width, cv.frame.size.height, cv.transform.a);
+            });
             return;
         }
         CXSettleTick(generation, target, quiet + 1, ticks + 1);
