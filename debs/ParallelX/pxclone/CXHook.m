@@ -27,7 +27,6 @@
 #import "CXPrefs.h"
 #import "CXLog.h"
 #import "CXMenuInjector.h"
-#import "CXRemember.h"
 #import "CXArcWake.h"
 
 typedef void (*CXHookFn)(Class, SEL, IMP, IMP *);
@@ -393,7 +392,6 @@ static BOOL CXPromptForURL(NSString *bundleID, BOOL requireURL, void (^proceed)(
         CXInternalOpen = YES;
         [CXCraneBridge switchBundleID:bundleID toContainer:cid reload:YES completion:^(BOOL ok) {
             if (!ok) { CXInternalOpen = wasInternal; CXLog(@"[url] %@ switch failed", bundleID); return; }
-            CXRememberNoteLaunch(bundleID, cid);
             // 重载后进程要重新起来，立刻开窗会开到旧账号的进程上，所以先等一拍。
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((running ? 1.0 : 0.2) * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{
@@ -534,7 +532,6 @@ static BOOL CXHandleVirtualItem(NSDictionary *item) {
     [CXCraneBridge switchBundleID:bundleID toContainer:containerID reload:YES completion:^(BOOL ok) {
     CXLog(@"[hit] %@ switch=%d", bundleID, ok);
     if (!ok) { CXLog(@"[hit] switch failed, skip opening wrong account"); return; }
-    CXRememberNoteLaunch(bundleID, containerID);
         CXOpenInSplit(bundleID);
     }];
     return YES;
@@ -551,7 +548,6 @@ void CXOpenMenuItem(NSString *identifier) {
         CXPromptContainerThenOpen(identifier, nil);
         return;
     }
-    CXRememberNoteLaunch(identifier, @"DEFAULT");
     CXOpenInSplit(identifier);
 }
 
@@ -584,21 +580,18 @@ static void CXPrepareWindow(id self, SEL _cmd, id bundleID, BOOL wasFullscreen, 
     NSDictionary *item = CXVirtualItemFromArgument(bundleID);
     if (!item) {
         NSString *real = [bundleID isKindOfClass:NSString.class] ? bundleID : nil;
-        if (CXPromptForURL(real, YES, ^{ CXOrigPrepareWindow(self, _cmd, bundleID, wasFullscreen, completion); if (!wasFullscreen) CXRememberApplyAfterPrepare(real); })) return;
         CXOrigPrepareWindow(self, _cmd, bundleID, wasFullscreen, completion);
-        if (!wasFullscreen) CXRememberApplyAfterPrepare(real);
         return;
     }
     NSString *realBundle = item[@"bundleID"];
     NSString *containerID = item[@"containerID"];
     NSString *key = [NSString stringWithFormat:@"%@#%@", realBundle, containerID];
-    if (CXHandledRecently(key)) { CXOrigPrepareWindow(self, _cmd, realBundle, wasFullscreen, completion); if (!wasFullscreen) CXRememberApplyAfterPrepare(realBundle); return; }
+    if (CXHandledRecently(key)) { CXOrigPrepareWindow(self, _cmd, realBundle, wasFullscreen, completion); return; }
     CXMarkHandled(key);
     CXLog(@"[hook] prepareWindow virtual %@ -> %@ / %@", bundleID, realBundle, containerID);
     [CXCraneBridge prepareLaunchForBundleID:realBundle containerID:containerID completion:^(BOOL ok) {
         CXLog(@"[hook] prepareWindow %@ switch=%d, continue", realBundle, ok);
         CXOrigPrepareWindow(self, _cmd, realBundle, wasFullscreen, completion);
-        if (!wasFullscreen) CXRememberApplyAfterPrepare(realBundle);
     }];
 }
 
@@ -710,10 +703,8 @@ static void CXOpenAppHook(id self, SEL _cmd, id app, id view, id overlay, id com
     NSString *container = active.length ? active : @"DEFAULT"; // 普通应用也要记忆
     CXLog(@"[trace] openApplication app=%@(%@)", app, NSStringFromClass([app class]));
     if (bundle.length && [view isKindOfClass:UIView.class])
-        CXRememberBindOpen(self, view, bundle, container);
     if (CXOrigOpenApp) CXOrigOpenApp(self, _cmd, app, view, overlay, completion);
     // 原 completion 原样传回，不猜 block 内部签名；只在原开窗之后有限重试。
-    if (bundle.length) CXRememberApplySoon(bundle, container);
 }
 
 static void CXInstallBridgeHooks(void) {
@@ -808,7 +799,6 @@ static void CXInstallDragHandleHook(void) {
 }
 
 static void CXInstallAll(void) {
-    CXRememberStart();
     CXInstallURLHook();
     CXInstallPanelEntryHooks();
     CXInstallBridgeHooks();
