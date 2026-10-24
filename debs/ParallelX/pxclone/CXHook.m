@@ -947,6 +947,16 @@ static void CXImageAdded(const struct mach_header *header, intptr_t slide) {
 }
 
 __attribute__((constructor)) static void CXInitialize(void) {
+    NSString *bid = NSBundle.mainBundle.bundleIdentifier;
+    BOOL isSB = [bid isEqualToString:@"com.apple.springboard"];
+    if (!isSB) {
+        // 普通应用：只挂 URL 抓取，本进程内不做任何分身/菜单工作。
+        dispatch_async(dispatch_get_main_queue(), ^{
+            @try { CXInstallURLHook(); } @catch (__unused NSException *e) {}
+            CXLog(@"[init] app-side URL capture in %@", bid);
+        });
+        return;
+    }
     _dyld_register_func_for_add_image(CXImageAdded);
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
@@ -954,14 +964,6 @@ __attribute__((constructor)) static void CXInitialize(void) {
               [CXCraneBridge isCraneAvailable],
               NSClassFromString(@"PXPanelEntry") != nil,
               NSClassFromString(@"PXSceneBridge") != nil);
-        NSString *bid = NSBundle.mainBundle.bundleIdentifier;
-        BOOL isSB = [bid isEqualToString:@"com.apple.springboard"];
-        if (!isSB) {
-            // 普通应用里只负责把外发链接记下来，交给 SpringBoard。
-            CXInstallURLHook();
-            CXLog(@"[init] app-side URL capture in %@", bid);
-            return;
-        }
         BOOL craneOK = [CXCraneBridge isCraneAvailable];
         [CXPrefs.shared setBool:craneOK forKey:CXKeyDiagCraneOK];
         if (!craneOK) CXLog(@"[diag] %@", [[CXCraneBridge diagnosticLines] componentsJoinedByString:@" | "]);
