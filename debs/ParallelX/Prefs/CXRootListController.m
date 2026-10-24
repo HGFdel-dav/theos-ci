@@ -11,6 +11,7 @@
 #include <string.h>
 #import "CXCraneBridge.h"
 #import "CXPrefs.h"
+#import "CXBuild.h"
 #import "CXLog.h"
 
 static NSString *CXAppName(NSString *bundleID) {
@@ -163,6 +164,12 @@ static NSString *CXAppName(NSString *bundleID) {
     [note setProperty:@"切换容器时目标应用会短暂重启，这是分身机制的固有行为。\n若菜单里没看到分身图标，重启一次桌面；仍有问题就把 /var/mobile/Library/Application Support/CloneX/runtime.log 发我。"
                forKey:@"footerText"];
     [specs addObject:note];
+
+    NSString *version = CX_BUILD_TAG;
+    PSSpecifier *about = [PSSpecifier groupSpecifierWithName:@"版本"];
+    [about setProperty:[NSString stringWithFormat:@"当前安装版本：%@", version]
+                forKey:@"footerText"];
+    [specs addObject:about];
 
     _specifiers = specs;
     return _specifiers;

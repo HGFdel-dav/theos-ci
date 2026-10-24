@@ -9,6 +9,7 @@
 #import "CXCraneBridge.h"
 #import "CXLog.h"
 #import "CXPXRuntime.h"
+#import "CXBuild.h"
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
@@ -741,6 +742,6 @@ static void CXInstallRememberHooks(void) {
 }
 
 void CXRememberStart(void) {
-    CXLog(@"[remember] memory-build=clone0.41 sha-marker=R041X");
+    CXLog(@"[remember] memory-build=%@", CX_BUILD_TAG);
     CXInstallRememberHooks();
 }
