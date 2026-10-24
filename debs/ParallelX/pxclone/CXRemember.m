@@ -656,6 +656,16 @@ static void CXSettleTick(NSInteger generation, CGRect target, NSInteger quiet, N
             CXLog(@"[remember] shown after settle cardAlpha=%.2f", card.alpha);
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{ CXRememberRevealHost(CXHiddenCard); });
+            // PX 在显示后还会再布局一次，把缩放清回 1；按当前尺寸再校几次，只改缩放不动位置。
+            for (NSNumber *d in @[@0.25, @0.7, @1.2]) {
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(d.doubleValue * NSEC_PER_SEC)),
+                               dispatch_get_main_queue(), ^{
+                    UIView *c = CXEntryCard(CXRememberEntry ?: CXFindPanelEntry());
+                    if (![c isKindOfClass:UIView.class] || !c.window) return;
+                    @try { CXSyncContentScale(c, CXEntryBridge(CXRememberEntry ?: CXFindPanelEntry()), CXRememberEntry); }
+                    @catch (NSException *e) { CXLog(@"[remember] 后校异常 %@", e.reason); }
+                });
+            }
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.7 * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{
                 UIView *c = CXEntryCard(CXRememberEntry ?: CXFindPanelEntry());
