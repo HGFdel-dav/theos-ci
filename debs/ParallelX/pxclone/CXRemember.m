@@ -597,6 +597,14 @@ static void CXApplyFrameToCard(UIView *card, id bridge, id entry, CGRect target)
         }
     }
     CXNotifyHostedGeometry(entry, bridge, card);
+    
+    // 修复黑屏 App（Quantumult X/Shu/闪连）：它们的内容画布 UIImageView alpha 被 PX 设为 0。
+    for (UIView *child in canvas.subviews) {
+        if (child.alpha < 0.1) {
+            CXLog(@"[remember] fix %@ alpha %.2f->1.00", NSStringFromClass(child.class), child.alpha);
+            child.alpha = 1.0;
+        }
+    }
 }
 
 // 只把内容缩放同步到卡片当前尺寸，不动卡片本身（供缩放结束后用）。
@@ -695,10 +703,25 @@ static void CXSettleTick(NSInteger generation, CGRect target, NSInteger quiet, N
         if (quiet >= 2) {
             CXRememberRevealHost(card);
             CXLog(@"[remember] shown after settle cardAlpha=%.2f", card.alpha);
+            // 补修复 alpha：防止 PX 又清零
+            UIView *canvas = canvasNow;
+            for (UIView *child in canvas.subviews) {
+                if (child.alpha < 0.1) {
+                    CXLog(@"[remember] re-fix %@ alpha %.2f->1.00", NSStringFromClass(child.class), child.alpha);
+                    child.alpha = 1.0;
+                }
+            }
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{
                 if (generation != CXPendingGen || CXNativeGeometryOpen) return;
-                CXRememberRevealHost(card);
+                UIView *cardNow = CXEntryCard(CXRememberEntry ?: CXFindPanelEntry());
+                CXRememberRevealHost(cardNow);
+                // 第二次补修
+                id br = CXEntryBridge(CXRememberEntry ?: CXFindPanelEntry());
+                UIView *cv = CXPXGetObject(br, @"canvas");
+                if ([cv isKindOfClass:UIView.class]) {
+                    for (UIView *ch in cv.subviews) if (ch.alpha < 0.1) ch.alpha = 1.0;
+                }
             });
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.7 * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{
@@ -706,10 +729,20 @@ static void CXSettleTick(NSInteger generation, CGRect target, NSInteger quiet, N
                 UIView *c = CXEntryCard(CXRememberEntry ?: CXFindPanelEntry());
                 if (![c isKindOfClass:UIView.class]) return;
                 UIView *cv = c.subviews.firstObject;
-                CXLog(@"[post] card a=%.2f f=%.0fx%.0f win=%.0fx%.0f sub=%@ f=%.0fx%.0f sc=%.2f",
+                NSString *alphaWarn = @"";
+                if ([cv isKindOfClass:UIView.class]) {
+                    for (UIView *ch in cv.subviews) {
+                        if (ch.alpha < 0.1) {
+                            alphaWarn = [NSString stringWithFormat:@" WARN:%@-alpha%.2f", NSStringFromClass(ch.class), ch.alpha];
+                            ch.alpha = 1.0; // 第三次补
+                            break;
+                        }
+                    }
+                }
+                CXLog(@"[post] card a=%.2f f=%.0fx%.0f win=%.0fx%.0f sub=%@ f=%.0fx%.0f sc=%.2f%@",
                       c.alpha, c.frame.size.width, c.frame.size.height,
                       c.window.bounds.size.width, c.window.bounds.size.height,
-                      NSStringFromClass(cv.class), cv.frame.size.width, cv.frame.size.height, cv.layer.sublayerTransform.m11);
+                      NSStringFromClass(cv.class), cv.frame.size.width, cv.frame.size.height, cv.layer.sublayerTransform.m11, alphaWarn);
             });
             return;
         }
