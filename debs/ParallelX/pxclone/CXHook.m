@@ -130,6 +130,55 @@ static void CXOpenURLHook(id self, SEL _cmd, id url, id options, id completion) 
     if (CXOrigOpenURL) CXOrigOpenURL(self, _cmd, url, options, completion);
 }
 
+static void (*CXOrigSceneOpen)(id, SEL, id, id);
+static void CXSceneOpenHook(id self, SEL _cmd, id scene, id contexts) {
+    for (id ctx in contexts) {
+        id url = nil;
+        @try { url = [ctx valueForKey:@"URL"]; } @catch (__unused NSException *e) {}
+        CXCaptureExternalURL(url);
+    }
+    if (CXOrigSceneOpen) CXOrigSceneOpen(self, _cmd, scene, contexts);
+}
+
+static void (*CXOrigAppOpenURL)(id, SEL, id, id, id);
+static void CXAppOpenURLHook(id self, SEL _cmd, id app, id url, id options) {
+    CXCaptureExternalURL(url);
+    if (CXOrigAppOpenURL) CXOrigAppOpenURL(self, _cmd, app, url, options);
+}
+
+static void CXInstallSceneURLHooks(void) {
+    static BOOL done = NO;
+    if (done) return;
+    done = YES;
+    SEL sceneSel = NSSelectorFromString(@"scene:openURLContexts:");
+    SEL appSel = NSSelectorFromString(@"application:openURL:options:");
+    int count = objc_getClassList(NULL, 0);
+    if (count <= 0) return;
+    Class *classes = (Class *)calloc((size_t)count, sizeof(Class));
+    if (!classes) return;
+    objc_getClassList(classes, count);
+    int n = 0;
+    for (int i = 0; i < count; i++) {
+        Class c = classes[i];
+        Method m = class_getInstanceMethod(c, sceneSel);
+        if (m) {
+            CXOrigSceneOpen = (void *)method_getImplementation(m);
+            method_setImplementation(m, (IMP)CXSceneOpenHook);
+            n++;
+            CXLog(@"[url] scene hook %s", class_getName(c));
+        }
+        Method a = class_getInstanceMethod(c, appSel);
+        if (a) {
+            CXOrigAppOpenURL = (void *)method_getImplementation(a);
+            method_setImplementation(a, (IMP)CXAppOpenURLHook);
+            n++;
+            CXLog(@"[url] appdelegate hook %s", class_getName(c));
+        }
+    }
+    free(classes);
+    CXLog(@"[url] scene hooks=%d", n);
+}
+
 static void CXInstallURLHook(void) {
     static BOOL installed = NO;
     if (installed) return;
@@ -152,6 +201,7 @@ static void CXInstallURLHook(void) {
         }
     }
     CXLog(@"[hook] openURL installed=%d legacy=%d", installed, CXOrigOpenURLLegacy != NULL);
+    CXInstallSceneURLHooks();
 
     // 支付、第三方跳转常常走 LSApplicationWorkspace，不走 UIApplication
     Class workspace = NSClassFromString(@"LSApplicationWorkspace");
