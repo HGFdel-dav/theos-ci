@@ -376,6 +376,10 @@ static void CXRememberLayoutApplied(void) {
 static void CXRememberTickApply(NSInteger generation);
 static void CXRememberRetryLater(NSInteger generation);
 static BOOL CXUserTouching(void);
+static void CXSettleTick(NSInteger generation, CGRect target, NSInteger quiet, NSInteger ticks);
+static void CXApplyFrameToCard(UIView *card, id bridge, id entry, CGRect target);
+static void CXNotifyHostedGeometry(id entry, id bridge, UIView *card);
+static void CXLogSelectorsOnce(id entry, id bridge, UIView *card);
 static NSInteger CXPendingTries = 0;
 static BOOL CXPendingPrepareAt = NO;
 static BOOL CXPendingFallback = NO;
@@ -449,10 +453,13 @@ static void CXNotifyHostedGeometry(id entry, id bridge, UIView *card) {
     BOOL called = NO;
     for (id target in candidates) {
         if (target == NSNull.null || ![target respondsToSelector:sel]) continue;
-        ((void (*)(id, SEL, id))objc_msgSend)(target, sel, note);
+        ((void (*)(id, SEL, id))objc_msgSend)(target, sel, card);
         called = YES;
     }
-    if (!called) CXLog(@"[remember] hostedGeometryChanged: 不可用");
+    if (!called) {
+        Method m = class_getInstanceMethod([card class], sel);
+        CXLog(@"[remember] hostedGeometryChanged: 不可用 %@", m ? @(method_getTypeEncoding(m)) : @"none");
+    }
     [NSNotificationCenter.defaultCenter postNotificationName:name object:card];
 }
 
@@ -482,45 +489,77 @@ static void CXRememberTickApply(NSInteger generation) {
     UIView *hostView = CXPXGetObject(bridge, @"hostView");
     if (![hostView isKindOfClass:UIView.class]) hostView = canvas;
     CXRememberHideInitialHost();
+    CXApplyFrameToCard(card, bridge, entry, target);
+    CXLog(@"[remember] apply-once %@ %.0f,%.0f %.0fx%.0f", CXPendingBundle,
+          target.origin.x, target.origin.y, target.size.width, target.size.height);
+    CXLogSelectorsOnce(entry, bridge, card);
+    // 卡片一直藏着，每 0.1s 看一次：被 PX 顶偏就按回去，连续两次没跑偏才显示。
+    CXSettleTick(generation, target, 0, 0);
+}
+
+static void CXApplyFrameToCard(UIView *card, id bridge, id entry, CGRect target) {
+    UIView *canvas = CXPXGetObject(bridge, @"canvas");
+    if (![canvas isKindOfClass:UIView.class]) canvas = CXBoundCanvas;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     [card.layer removeAllAnimations];
     [canvas.layer removeAllAnimations];
-    [hostView.layer removeAllAnimations];
     card.transform = CGAffineTransformIdentity;
     card.frame = target;
     card.bounds = (CGRect){ CGPointZero, target.size };
-    [surface setNeedsLayout];
+    [card.superview setNeedsLayout];
     [CATransaction commit];
-    // 内容是否跟着缩放由 PX 自己的几何流程决定；改完 frame 通知它重算一次。
     CXNotifyHostedGeometry(entry, bridge, card);
-    if (CXPendingKey) [CXAppliedKeySet() addObject:CXPendingKey];
-    CXLog(@"[remember] apply-once %@ %.0f,%.0f %.0fx%.0f", CXPendingBundle,
-          target.origin.x, target.origin.y, target.size.width, target.size.height);
-    // 卡片还藏着的时候把可能的跑偏修掉，然后才显示，避免看到第二次跳。
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.12 * NSEC_PER_SEC)),
+}
+
+static void CXLogSelectorsOnce(id entry, id bridge, UIView *card) {
+    static NSInteger loggedGen = -1;
+    if (loggedGen == CXPendingGen) return;
+    loggedGen = CXPendingGen;
+    NSString *cardSels = [NSString stringWithFormat:@"sourceSize=%d setSourceSize=%d scale=%d setScale=%d hostGeom=%d",
+        [card respondsToSelector:NSSelectorFromString(@"sourceSize")],
+        [card respondsToSelector:NSSelectorFromString(@"setSourceSize:")],
+        [card respondsToSelector:NSSelectorFromString(@"scale")],
+        [card respondsToSelector:NSSelectorFromString(@"setScale:")],
+        [card respondsToSelector:NSSelectorFromString(@"hostedGeometryChanged:")]];
+    NSString *bridgeSels = [NSString stringWithFormat:@"hostedSourceSize=%d",
+        [bridge respondsToSelector:NSSelectorFromString(@"hostedSourceSize")]];
+    CXLog(@"[probe] card %@ / bridge %@", cardSels, bridgeSels);
+}
+
+// 藏着的这段时间里反复钉住目标几何，稳定后才显示。
+static void CXSettleTick(NSInteger generation, CGRect target, NSInteger quiet, NSInteger ticks) {
+    if (generation != CXPendingGen) return;
+    if (ticks > 18) {
+        CXLog(@"[remember] settle timeout");
+        CXRememberRevealHost(CXBoundHostCard());
+        return;
+    }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        UIView *current = CXEntryCard(CXRememberEntry ?: CXFindPanelEntry());
-        if ([current isKindOfClass:UIView.class] && current.window && generation == CXPendingGen) {
-            CGFloat dx = fabs(current.frame.origin.x - target.origin.x);
-            CGFloat dy = fabs(current.frame.origin.y - target.origin.y);
-            CGFloat dw = fabs(current.frame.size.width - target.size.width);
-            CGFloat dh = fabs(current.frame.size.height - target.size.height);
-            if (dx >= 2 || dy >= 2 || dw >= 2 || dh >= 2) {
-                [CATransaction begin];
-                [CATransaction setDisableActions:YES];
-                current.transform = CGAffineTransformIdentity;
-                current.frame = target;
-                current.bounds = (CGRect){ CGPointZero, target.size };
-                [CATransaction commit];
-                CXLog(@"[remember] corrected while hidden");
-            }
+        id entry = CXRememberEntry ?: CXFindPanelEntry();
+        UIView *card = entry ? CXEntryCard(entry) : nil;
+        if (![card isKindOfClass:UIView.class] || !card.window) {
+            CXRememberRevealHost(CXBoundHostCard());
+            return;
         }
-        UIView *shown = [current isKindOfClass:UIView.class] ? current : card;
-        [CATransaction begin];
-        [CATransaction setDisableActions:YES];
-        CXRememberRevealHost(shown);
-        [CATransaction commit];
+        CGFloat drift = fabs(card.frame.origin.x - target.origin.x) +
+                        fabs(card.frame.origin.y - target.origin.y) +
+                        fabs(card.frame.size.width - target.size.width) +
+                        fabs(card.frame.size.height - target.size.height);
+        if (drift > 1.5) {
+            id bridge = entry ? CXEntryBridge(entry) : nil;
+            CXApplyFrameToCard(card, bridge, entry, target);
+            CXLog(@"[remember] re-pin drift %.1f", drift);
+            CXSettleTick(generation, target, 0, ticks + 1);
+            return;
+        }
+        if (quiet >= 2) {
+            CXRememberRevealHost(card);
+            CXLog(@"[remember] shown after settle");
+            return;
+        }
+        CXSettleTick(generation, target, quiet + 1, ticks + 1);
     });
 }
 
@@ -617,6 +656,6 @@ static void CXInstallRememberHooks(void) {
 }
 
 void CXRememberStart(void) {
-    CXLog(@"[remember] memory-build=clone0.34 sha-marker=R034H");
+    CXLog(@"[remember] memory-build=clone0.35 sha-marker=R035S");
     CXInstallRememberHooks();
 }
