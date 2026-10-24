@@ -185,39 +185,6 @@ static BOOL CXGetHost(id entry, NSString *bundle, id *bridgeOut, UIView **cardOu
 }
 
 
-static void CXNormalizeContentTree(UIView *root, CGRect bounds, NSInteger depth) {
-    if (![root isKindOfClass:UIView.class] || depth > 4) return;
-    NSArray *children = [root.subviews copy];
-    for (UIView *child in children) {
-        if (child.hidden || child.alpha <= 0.001) continue;
-        NSString *name = NSStringFromClass(child.class);
-        BOOL likelyContent = [name containsString:@"Content"] ||
-            [name containsString:@"Host"] || [name containsString:@"Scene"] ||
-            CGRectGetWidth(child.frame) > CGRectGetWidth(root.bounds) * 0.75;
-        if (likelyContent && child != root) {
-            child.transform = CGAffineTransformIdentity;
-            child.frame = bounds;
-            child.bounds = (CGRect){ CGPointZero, bounds.size };
-            [child setNeedsLayout];
-            [child layoutIfNeeded];
-        }
-        CXNormalizeContentTree(child, child.bounds, depth + 1);
-    }
-}
-
-static void CXNormalizeContent(UIView *card, UIView *canvas, UIView *hostView) {
-    CGRect bounds = card.bounds;
-    for (UIView *view in @[canvas ?: (id)[NSNull null], hostView ?: (id)[NSNull null]]) {
-        if (![view isKindOfClass:UIView.class] || view == card) continue;
-        view.transform = CGAffineTransformIdentity;
-        view.frame = bounds;
-        view.bounds = (CGRect){ CGPointZero, bounds.size };
-        [view setNeedsLayout];
-        [view layoutIfNeeded];
-        CXNormalizeContentTree(view, view.bounds, 0);
-    }
-}
-
 static void CXStoreFailure(NSString *reason) {
     static NSString *lastReason;
     if ([lastReason isEqual:reason]) return;
@@ -416,7 +383,6 @@ void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
             [card layoutIfNeeded];
             [canvas layoutIfNeeded];
             [hostView layoutIfNeeded];
-            CXNormalizeContent(card, canvas, hostView);
             [CATransaction commit];
             CXPendingApplied = finalAttempt;
             if (finalAttempt && CXPendingKey) [CXAppliedKeySet() addObject:CXPendingKey];
@@ -512,6 +478,6 @@ static void CXInstallRememberHooks(void) {
 }
 
 void CXRememberStart(void) {
-    CXLog(@"[remember] memory-build=clone0.29 sha-marker=R029B");
+    CXLog(@"[remember] memory-build=clone0.30 sha-marker=R030C");
     CXInstallRememberHooks();
 }
