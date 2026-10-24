@@ -247,7 +247,12 @@ static void CXResizeHostHook(id self, SEL _cmd, id gesture) {
     UIGestureRecognizerState state = [gesture isKindOfClass:UIGestureRecognizer.class]
         ? ((UIGestureRecognizer *)gesture).state : UIGestureRecognizerStatePossible;
     BOOL active = state == UIGestureRecognizerStateBegan || state == UIGestureRecognizerStateChanged;
-    if (state == UIGestureRecognizerStateBegan) CXOpenGeneration++; // 手动调整取消本次开窗的延迟恢复
+    if (state == UIGestureRecognizerStateBegan) {
+        CXOpenGeneration++;
+        CXPendingGen++;
+        CXPendingApplied = YES;
+        CXLog(@"[remember] cancel pending restore for manual resize");
+    }
     objc_setAssociatedObject(self, &CXResizeActiveKey, @(active), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     if (state == UIGestureRecognizerStateBegan || state == UIGestureRecognizerStateEnded)
         CXLog(@"[remember] resize state=%ld", (long)state);
