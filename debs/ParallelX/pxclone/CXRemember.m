@@ -741,6 +741,6 @@ static void CXInstallRememberHooks(void) {
 }
 
 void CXRememberStart(void) {
-    CXLog(@"[remember] memory-build=clone0.39 sha-marker=R039V");
+    CXLog(@"[remember] memory-build=clone0.41 sha-marker=R041X");
     CXInstallRememberHooks();
 }
