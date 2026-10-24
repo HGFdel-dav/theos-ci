@@ -113,6 +113,8 @@ static char CXRememberHiddenKey;
 static __weak UIView *CXHiddenCard;
 static BOOL CXPendingRevealed;
 static UIView *CXBoundHostCard(void);
+static void CXSyncContentScale(UIView *card, id bridge, id entry);
+static void CXNotifyHostedGeometry(id entry, id bridge, UIView *card);
 
 static void CXRememberHideInitialHost(void) {
     UIView *target = CXBoundHostCard();
@@ -388,7 +390,6 @@ static void CXSettleTick(NSInteger generation, CGRect target, NSInteger quiet, N
 static void CXApplyFrameToCard(UIView *card, id bridge, id entry, CGRect target);
 static void CXNotifyHostedGeometry(id entry, id bridge, UIView *card);
 static void CXLogSelectorsOnce(id entry, id bridge, UIView *card);
-static void CXSyncContentScale(UIView *card, id bridge, id entry);
 static void CXLogTree(UIView *view, NSInteger depth);
 static NSInteger CXPendingTries = 0;
 static BOOL CXPendingPrepareAt = NO;
