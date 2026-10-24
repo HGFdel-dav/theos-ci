@@ -146,6 +146,24 @@ static void CXAppOpenURLHook(id self, SEL _cmd, id app, id url, id options) {
     if (CXOrigAppOpenURL) CXOrigAppOpenURL(self, _cmd, app, url, options);
 }
 
+// FrontBoard 直接把 URL 塞进场景上下文，前面几种都收不到；从上下文对象初始化处抓。
+static id (*CXOrigOpenURLContextInit)(id, SEL, id, id);
+static id CXOpenURLContextInit(id self, SEL _cmd, id url, id options) {
+    CXCaptureExternalURL(url);
+    return CXOrigOpenURLContextInit ? CXOrigOpenURLContextInit(self, _cmd, url, options) : self;
+}
+
+static void CXInstallURLContextHook(void) {
+    Class cls = NSClassFromString(@"UIOpenURLContext");
+    if (!cls) { CXLog(@"[url] UIOpenURLContext 不存在"); return; }
+    SEL sel = NSSelectorFromString(@"initWithURL:options:");
+    Method m = class_getInstanceMethod(cls, sel);
+    if (!m) { CXLog(@"[url] initWithURL:options: 不存在"); return; }
+    CXOrigOpenURLContextInit = (void *)method_getImplementation(m);
+    method_setImplementation(m, (IMP)CXOpenURLContextInit);
+    CXLog(@"[url] UIOpenURLContext hook ok");
+}
+
 static void CXInstallSceneURLHooks(void) {
     static BOOL done = NO;
     if (done) return;
@@ -202,6 +220,7 @@ static void CXInstallURLHook(void) {
     }
     CXLog(@"[hook] openURL installed=%d legacy=%d", installed, CXOrigOpenURLLegacy != NULL);
     CXInstallSceneURLHooks();
+    CXInstallURLContextHook();
 
     // 支付、第三方跳转常常走 LSApplicationWorkspace，不走 UIApplication
     Class workspace = NSClassFromString(@"LSApplicationWorkspace");
