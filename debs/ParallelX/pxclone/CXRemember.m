@@ -93,6 +93,7 @@ static __weak id CXBoundBridge;
 static __weak UIView *CXBoundCanvas;
 static NSInteger CXOpenGeneration = 0;
 static NSInteger CXPendingGen = 0;
+static BOOL CXPendingApplied = YES;
 static char CXRememberHiddenKey;
 static UIView *CXBoundHostCard(void);
 
@@ -271,7 +272,6 @@ static void CXResizeHostHook(id self, SEL _cmd, id gesture) {
 static __weak id CXPendingBridge;
 static NSString *CXPendingBundle, *CXPendingContainer;
 static CGRect CXPendingRect = {0};
-static BOOL CXPendingApplied = YES;
 static NSMutableSet<NSString *> *CXAppliedKeys;
 static NSString *CXPendingKey;
 static BOOL CXInLayoutApply;
