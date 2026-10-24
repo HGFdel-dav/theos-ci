@@ -549,7 +549,8 @@ static void CXApplyFrameToCard(UIView *card, id bridge, id entry, CGRect target)
             layerView.frame = (CGRect){ layerView.frame.origin, source };
         }
         CXExpectedScale = target.size.width / source.width;
-        layerView.transform = CGAffineTransformMakeScale(CXExpectedScale, CXExpectedScale);
+        layerView.transform = CGAffineTransformIdentity;
+        layerView.layer.sublayerTransform = CATransform3DMakeScale(CXExpectedScale, CXExpectedScale, 1.0);
         if (layerView.superview == card) {
             layerView.center = CGPointMake(target.size.width / 2.0, target.size.height / 2.0);
         } else if (layerView.superview) {
@@ -575,8 +576,9 @@ static void CXSyncContentScale(UIView *card, id bridge, id entry) {
     CGRect frame = card.frame;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
-    canvas.transform = CGAffineTransformMakeScale(frame.size.width / source.width,
-                                                  frame.size.height / source.height);
+    CXExpectedScale = frame.size.width / source.width;
+    canvas.transform = CGAffineTransformIdentity;
+    canvas.layer.sublayerTransform = CATransform3DMakeScale(CXExpectedScale, CXExpectedScale, 1.0);
     if (canvas.superview == card)
         canvas.center = CGPointMake(frame.size.width / 2.0, frame.size.height / 2.0);
     else if (canvas.superview)
@@ -638,7 +640,7 @@ static void CXSettleTick(NSInteger generation, CGRect target, NSInteger quiet, N
         }
         UIView *canvasNow = CXPXGetObject(entry ? CXEntryBridge(entry) : nil, @"canvas");
         if (![canvasNow isKindOfClass:UIView.class]) canvasNow = CXBoundCanvas;
-        CGFloat scaleDrift = fabs(canvasNow.transform.a - CXExpectedScale) > 0.02 ? 40.0 : 0.0;
+        CGFloat scaleDrift = fabs(canvasNow.layer.sublayerTransform.m11 - CXExpectedScale) > 0.02 ? 40.0 : 0.0;
         CGFloat drift = scaleDrift + fabs(card.frame.origin.x - target.origin.x) +
                         fabs(card.frame.origin.y - target.origin.y) +
                         fabs(card.frame.size.width - target.size.width) +
