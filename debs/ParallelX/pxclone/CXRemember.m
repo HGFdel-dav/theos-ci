@@ -512,6 +512,14 @@ static void CXApplyFrameToCard(UIView *card, id bridge, id entry, CGRect target)
     card.transform = CGAffineTransformIdentity;
     card.frame = target;
     card.bounds = (CGRect){ CGPointZero, target.size };
+    // ScreenCore 的做法：内容保持原始尺寸，用缩放变换套进容器，而不是改内容尺寸。
+    CGSize content = canvas.bounds.size;
+    if (content.width > 1 && content.height > 1) {
+        CGFloat sx = target.size.width / content.width;
+        CGFloat sy = target.size.height / content.height;
+        canvas.transform = CGAffineTransformMakeScale(sx, sy);
+        canvas.center = CGPointMake(target.size.width / 2.0, target.size.height / 2.0);
+    }
     [card.superview setNeedsLayout];
     [CATransaction commit];
     SEL preview = NSSelectorFromString(@"applyResizePreview");
@@ -675,6 +683,6 @@ static void CXInstallRememberHooks(void) {
 }
 
 void CXRememberStart(void) {
-    CXLog(@"[remember] memory-build=clone0.37 sha-marker=R037P");
+    CXLog(@"[remember] memory-build=clone0.38 sha-marker=R038T");
     CXInstallRememberHooks();
 }
