@@ -282,6 +282,12 @@ static void CXCapture(id entry) {
 static void CXApplyResizePreview(id self, SEL _cmd) {
     // 预览回调发生在原生手势中间，不写记忆，避免 frame 被回放造成跳动。
     if (CXOrigApplyResizePreview) CXOrigApplyResizePreview(self, _cmd);
+    // 手势过程中按当前卡片尺寸同步内容缩放，内容才会跟着变大变小。
+    UIView *card = CXEntryCard(self) ?: CXBoundHostCard();
+    id bridge = CXEntryBridge(self);
+    if ([card isKindOfClass:UIView.class] && card.window)
+        @try { CXSyncContentScale(card, bridge, self); }
+        @catch (__unused NSException *e) {}
 }
 
 static void CXCloseTapped(id self, SEL _cmd) {
@@ -554,6 +560,17 @@ static void CXRememberTickApply(NSInteger generation) {
     }
     CXLog(@"[remember] apply-once %@ %.0f,%.0f %.0fx%.0f", CXPendingBundle,
           target.origin.x, target.origin.y, target.size.width, target.size.height);
+    // PX 会在之后重排并清掉缩放；短时反复把缩放同步回当前尺寸。
+    for (NSInteger i = 1; i <= 10; i++) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(i * 0.15 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            if (generation != CXPendingGen || CXNativeGeometryOpen) return;
+            UIView *c = CXEntryCard(CXRememberEntry ?: CXFindPanelEntry());
+            if (![c isKindOfClass:UIView.class] || !c.window) return;
+            @try { CXSyncContentScale(c, CXEntryBridge(CXRememberEntry ?: CXFindPanelEntry()), CXRememberEntry); }
+            @catch (__unused NSException *e) {}
+        });
+    }
     // 卡片一直藏着，每 0.1s 看一次：被 PX 顶偏就按回去，连续两次没跑偏才显示。
     CXSettleTick(generation, target, 0, 0);
 }
