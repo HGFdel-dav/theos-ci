@@ -27,6 +27,7 @@
 #import "CXPrefs.h"
 #import "CXLog.h"
 #import "CXMenuInjector.h"
+#import "CXRemember.h"
 #import "CXArcWake.h"
 
 typedef void (*CXHookFn)(Class, SEL, IMP, IMP *);
@@ -347,6 +348,7 @@ static BOOL CXPromptForURL(NSString *bundleID, BOOL requireURL, void (^proceed)(
         CXInternalOpen = YES;
         [CXCraneBridge switchBundleID:bundleID toContainer:cid reload:running completion:^(BOOL ok) {
             if (!ok) { CXInternalOpen = wasInternal; CXLog(@"[url] %@ switch failed", bundleID); return; }
+            CXRememberNoteLaunch(bundleID, cid);
             if (proceed) proceed();
             if (!running) {
                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1.0 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
@@ -485,6 +487,7 @@ static BOOL CXHandleVirtualItem(NSDictionary *item) {
     [CXCraneBridge switchBundleID:bundleID toContainer:containerID reload:YES completion:^(BOOL ok) {
     CXLog(@"[hit] %@ switch=%d", bundleID, ok);
     if (!ok) { CXLog(@"[hit] switch failed, skip opening wrong account"); return; }
+    CXRememberNoteLaunch(bundleID, containerID);
         CXOpenInSplit(bundleID);
     }];
     return YES;
@@ -501,6 +504,7 @@ void CXOpenMenuItem(NSString *identifier) {
         CXPromptContainerThenOpen(identifier, nil);
         return;
     }
+    CXRememberNoteLaunch(identifier, @"DEFAULT");
     CXOpenInSplit(identifier);
 }
 
@@ -656,8 +660,11 @@ static void CXOpenAppHook(id self, SEL _cmd, id app, id view, id overlay, id com
     NSString *active = bundle.length ? [CXCraneBridge activeContainerForBundleID:bundle] : nil;
     NSString *container = active.length ? active : @"DEFAULT"; // 普通应用也要记忆
     CXLog(@"[trace] openApplication app=%@(%@)", app, NSStringFromClass([app class]));
+    if (bundle.length && [view isKindOfClass:UIView.class])
+        CXRememberBindOpen(self, view, bundle, container);
     if (CXOrigOpenApp) CXOrigOpenApp(self, _cmd, app, view, overlay, completion);
     // 原 completion 原样传回，不猜 block 内部签名；只在原开窗之后有限重试。
+    if (bundle.length) CXRememberApplySoon(bundle, container);
 }
 
 static void CXInstallBridgeHooks(void) {
@@ -752,6 +759,7 @@ static void CXInstallDragHandleHook(void) {
 }
 
 static void CXInstallAll(void) {
+    CXRememberStart();
     CXInstallURLHook();
     CXInstallPanelEntryHooks();
     CXInstallBridgeHooks();

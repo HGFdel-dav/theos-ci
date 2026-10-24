@@ -209,8 +209,6 @@ static void CXStoreFailure(NSString *reason) {
 
 #pragma mark - 捕获（缩放结束 / 关闭）
 
-static id CXRememberEntry = nil;
-
 static void (*CXOrigApplyResizePreview)(id, SEL);
 static void (*CXOrigCloseTapped)(id, SEL);
 static void (*CXOrigResizeHost)(id, SEL, id);
@@ -551,6 +549,6 @@ static void CXInstallRememberHooks(void) {
 }
 
 void CXRememberStart(void) {
-    CXLog(@"[remember] memory-build=clone0.30 sha-marker=R030C");
+    CXLog(@"[remember] memory-build=clone0.31 sha-marker=R031M");
     CXInstallRememberHooks();
 }
