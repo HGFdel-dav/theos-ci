@@ -250,8 +250,8 @@ static void CXCapture(id entry) {
     // 缩放手势停手后原版已把 transform 清零并 setFrame；记录完整 frame（含贴边位置）。
     if (!CGAffineTransformIsIdentity(card.transform) || !CXPendingApplied) return;
     CXStoreSize(bundle, CXEntryContainer(entry), card);
-    @try { CXSyncContentScale(card, bridge, entry); }
-    @catch (NSException *e) { CXLog(@"[remember] 同步缩放异常 %@", e.reason); }
+    // 原生缩放过程里 PX 自己会处理内容，这里不再补缩放，避免叠加。
+
 }
 
 static void CXApplyResizePreview(id self, SEL _cmd) {
