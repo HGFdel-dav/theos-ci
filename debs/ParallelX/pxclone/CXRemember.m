@@ -115,16 +115,23 @@ static void CXRememberHideInitialHost(void) {
     UIView *target = CXBoundHostCard();
     if (![target isKindOfClass:UIView.class]) target = CXBoundCanvas;
     if (![target isKindOfClass:UIView.class]) return;
-    objc_setAssociatedObject(target, &CXRememberHiddenKey, @(target.alpha), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if (!objc_getAssociatedObject(target, &CXRememberHiddenKey))   // 已经藏过就别把 0 当成原值
+        objc_setAssociatedObject(target, &CXRememberHiddenKey, @(target.alpha), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     target.alpha = 0.0;
 }
 
 static void CXRememberRevealHost(UIView *target) {
-    if (![target isKindOfClass:UIView.class]) target = CXBoundCanvas;
-    if (![target isKindOfClass:UIView.class]) return;
-    NSNumber *oldAlpha = objc_getAssociatedObject(target, &CXRememberHiddenKey);
-    target.alpha = oldAlpha ? oldAlpha.doubleValue : 1.0;
-    objc_setAssociatedObject(target, &CXRememberHiddenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    // 隐藏可能落在卡片上，也可能落在外层画布上，两处都要还原。
+    NSArray *targets = @[target ?: NSNull.null, CXBoundCanvas ?: NSNull.null,
+                         CXBoundHostCard() ?: NSNull.null];
+    for (id item in targets) {
+        if (item == NSNull.null) continue;
+        UIView *view = item;
+        NSNumber *oldAlpha = objc_getAssociatedObject(view, &CXRememberHiddenKey);
+        if (!oldAlpha) continue;
+        view.alpha = oldAlpha.doubleValue;
+        objc_setAssociatedObject(view, &CXRememberHiddenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
 }
 
 void CXRememberBindOpen(id bridge, UIView *canvas, NSString *bundleID, NSString *containerID) {
@@ -139,6 +146,7 @@ void CXRememberBindOpen(id bridge, UIView *canvas, NSString *bundleID, NSString 
     NSDictionary *context = @{@"bundle": bundleID, @"container": container};
     objc_setAssociatedObject(bridge, &CXRememberBindingKey, context, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     CXRememberNoteLaunch(bundleID, container);
+    CXRememberHideInitialHost();
     CXLog(@"[remember] bind %@#%@ canvas=%@", bundleID, container, NSStringFromClass(canvas.class));
     CXRememberApplySoon(bundleID, container);
 }
@@ -356,6 +364,7 @@ static CGRect CXSanitizedTarget(CGRect saved, CGRect current, CGRect screen) {
 }
 
 static void CXRememberLayoutApplied(void) {
+    CXRememberRevealHost(CXBoundHostCard());
     CXPendingApplied = YES;
     CXPendingKey = nil;
     CXPendingBridge = nil;
@@ -400,7 +409,7 @@ void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
     CXPendingPrepareAt = NO;
     CXPendingFallback = NO;
     NSInteger generation = CXPendingGen;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.6 * NSEC_PER_SEC)),
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         if (generation != CXPendingGen || CXPendingPrepareAt) return;
         CXPendingFallback = YES;
@@ -472,6 +481,7 @@ static void CXRememberTickApply(NSInteger generation) {
     if (![canvas isKindOfClass:UIView.class]) canvas = CXBoundCanvas;
     UIView *hostView = CXPXGetObject(bridge, @"hostView");
     if (![hostView isKindOfClass:UIView.class]) hostView = canvas;
+    CXRememberHideInitialHost();
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     [card.layer removeAllAnimations];
@@ -487,29 +497,36 @@ static void CXRememberTickApply(NSInteger generation) {
     if (CXPendingKey) [CXAppliedKeySet() addObject:CXPendingKey];
     CXLog(@"[remember] apply-once %@ %.0f,%.0f %.0fx%.0f", CXPendingBundle,
           target.origin.x, target.origin.y, target.size.width, target.size.height);
-    // 建窗后 PX 可能再布局一次；只在明显跑偏且用户没碰时修正一次。
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
+    // 卡片还藏着的时候把可能的跑偏修掉，然后才显示，避免看到第二次跳。
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.12 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        if (generation != CXPendingGen || CXUserTouching()) return;
         UIView *current = CXEntryCard(CXRememberEntry ?: CXFindPanelEntry());
-        if (![current isKindOfClass:UIView.class] || !current.window) return;
-        CGFloat dx = fabs(current.frame.origin.x - target.origin.x);
-        CGFloat dy = fabs(current.frame.origin.y - target.origin.y);
-        CGFloat dw = fabs(current.frame.size.width - target.size.width);
-        CGFloat dh = fabs(current.frame.size.height - target.size.height);
-        if (dx < 2 && dy < 2 && dw < 2 && dh < 2) return;
+        if ([current isKindOfClass:UIView.class] && current.window && generation == CXPendingGen) {
+            CGFloat dx = fabs(current.frame.origin.x - target.origin.x);
+            CGFloat dy = fabs(current.frame.origin.y - target.origin.y);
+            CGFloat dw = fabs(current.frame.size.width - target.size.width);
+            CGFloat dh = fabs(current.frame.size.height - target.size.height);
+            if (dx >= 2 || dy >= 2 || dw >= 2 || dh >= 2) {
+                [CATransaction begin];
+                [CATransaction setDisableActions:YES];
+                current.transform = CGAffineTransformIdentity;
+                current.frame = target;
+                current.bounds = (CGRect){ CGPointZero, target.size };
+                [CATransaction commit];
+                CXLog(@"[remember] corrected while hidden");
+            }
+        }
+        UIView *shown = [current isKindOfClass:UIView.class] ? current : card;
         [CATransaction begin];
         [CATransaction setDisableActions:YES];
-        current.transform = CGAffineTransformIdentity;
-        current.frame = target;
+        CXRememberRevealHost(shown);
         [CATransaction commit];
-        CXLog(@"[remember] corrected drift");
     });
 }
 
 static void CXRememberRetryLater(NSInteger generation) {
     if (generation != CXPendingGen || CXPendingApplied) return;
-    if (++CXPendingTries > 20) { CXLog(@"[remember] give up waiting hostCard"); return; }
+    if (++CXPendingTries > 20) { CXLog(@"[remember] give up waiting hostCard"); CXRememberRevealHost(CXBoundHostCard()); return; }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{ CXRememberTickApply(generation); });
 }
@@ -600,6 +617,6 @@ static void CXInstallRememberHooks(void) {
 }
 
 void CXRememberStart(void) {
-    CXLog(@"[remember] memory-build=clone0.33 sha-marker=R033G");
+    CXLog(@"[remember] memory-build=clone0.34 sha-marker=R034H");
     CXInstallRememberHooks();
 }
