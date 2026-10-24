@@ -12,3 +12,5 @@ FOUNDATION_EXPORT void CXRememberStart(void);
 FOUNDATION_EXPORT void CXRememberNoteLaunch(NSString *bundleID, NSString *containerID);
 // 打开窗口后调用：延迟应用该账号上次记住的大小
 FOUNDATION_EXPORT void CXRememberApplySoon(NSString *bundleID, NSString *containerID);
+// PX 真正开始建窗（prepareWindow）后调用：从这里开始等卡片挂载，只套一次
+FOUNDATION_EXPORT void CXRememberApplyAfterPrepare(NSString *bundleID);

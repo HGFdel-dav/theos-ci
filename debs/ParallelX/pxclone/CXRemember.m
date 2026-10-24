@@ -364,6 +364,14 @@ static void CXRememberLayoutApplied(void) {
     CXPendingRect = CGRectZero;
 }
 
+static void CXRememberTickApply(NSInteger generation);
+static void CXRememberRetryLater(NSInteger generation);
+static BOOL CXUserTouching(void);
+static NSInteger CXPendingTries = 0;
+static BOOL CXPendingPrepareAt = NO;
+static BOOL CXPendingFallback = NO;
+
+
 void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
     if (!bundleID.length || !CXRememberOn()) { CXRememberLayoutApplied(); return; }
     NSString *container = containerID.length ? containerID : @"DEFAULT";
@@ -379,88 +387,123 @@ void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
     CGFloat x = saved[@"x"] ? [saved[@"x"] doubleValue] : NAN;
     CGFloat y = saved[@"y"] ? [saved[@"y"] doubleValue] : NAN;
     CXPendingGen++;
+    CXPendingTries = 0;
     CXPendingBridge = CXBoundBridge;
     CXPendingBundle = [bundleID copy];
     CXPendingContainer = [container copy];
     CXPendingKey = [key copy];
     CXPendingRect = CGRectMake(x, y, w, h);
     CXPendingApplied = NO;
-    // PX alpha342 没有 layoutHost；在原生开窗完成后的多个布局窗口重试。
+    // 不再用多组延迟硬压 frame。等两件事都成立再套一次：
+    //   ① PX 真正开始建窗（prepareWindow 之后），或 2.6s 内没收到建窗信号才自己兜底；
+    //   ② hostCard 已挂到窗口、尺寸有效、用户没在拖。
+    CXPendingPrepareAt = NO;
+    CXPendingFallback = NO;
     NSInteger generation = CXPendingGen;
-    NSArray *delays = @[@0.20, @0.55, @1.00, @1.60, @2.40, @3.20, @4.00];
-    for (NSUInteger attempt = 0; attempt < delays.count; attempt++) {
-        NSNumber *delay = delays[attempt];
-        BOOL finalAttempt = (attempt + 1 == delays.count);
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay.doubleValue * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{
-            if (generation != CXPendingGen || CXPendingApplied) return;
-            id entry = CXRememberEntry ?: CXFindPanelEntry();
-            id bridge = entry ? CXEntryBridge(entry) : CXPendingBridge;
-            NSString *actualBundle = CXPXGetObject(bridge, @"bundleID");
-            if (![actualBundle isKindOfClass:NSString.class] ||
-                ![actualBundle isEqualToString:CXPendingBundle]) {
-                CXLog(@"[remember] retry bundle expected=%@ actual=%@", CXPendingBundle,
-                      [actualBundle isKindOfClass:NSString.class] ? actualBundle : @"<nil>");
-                return;
-            }
-            UIView *card = entry ? CXEntryCard(entry) : nil;
-            if (![card isKindOfClass:UIView.class] && bridge) {
-                id value = CXPXGetObject(bridge, @"hostCard");
-                if ([value isKindOfClass:UIView.class]) card = value;
-            }
-            if (![card isKindOfClass:UIView.class]) {
-                CXLog(@"[remember] retry hostCard unavailable %@", CXPendingBundle);
-                return;
-            }
-            if (!card.window || !card.superview) {
-                CXLog(@"[remember] retry hostCard detached %@ window=%d superview=%d",
-                      CXPendingBundle, card.window != nil, card.superview != nil);
-                return;
-            }
-            UIView *surface = card.superview;
-            CGRect screen = surface.bounds;
-            if (CGRectIsEmpty(screen)) {
-                CXLog(@"[remember] retry surface empty %@", CXPendingBundle);
-                return;
-            }
-            CGRect target = CXSanitizedTarget(CXResolvedGeometry(card), card.frame, screen);
-            UIView *canvas = CXPXGetObject(bridge, @"canvas");
-            if (![canvas isKindOfClass:UIView.class]) canvas = CXBoundCanvas;
-            UIView *hostView = CXPXGetObject(bridge, @"hostView");
-            if (![hostView isKindOfClass:UIView.class]) hostView = canvas;
-            [CATransaction begin];
-            [CATransaction setDisableActions:YES];
-            [card.layer removeAllAnimations];
-            [canvas.layer removeAllAnimations];
-            [hostView.layer removeAllAnimations];
-            card.transform = CGAffineTransformIdentity;
-            canvas.transform = CGAffineTransformIdentity;
-            hostView.transform = CGAffineTransformIdentity;
-            card.frame = target;
-            card.bounds = (CGRect){ CGPointZero, target.size };
-            if (canvas && canvas != card) {
-                canvas.frame = card.bounds;
-                canvas.bounds = (CGRect){ CGPointZero, card.bounds.size };
-            }
-            if (hostView && hostView != card && hostView != canvas) {
-                hostView.frame = card.bounds;
-                hostView.bounds = (CGRect){ CGPointZero, card.bounds.size };
-            }
-            [card setNeedsLayout];
-            [canvas setNeedsLayout];
-            [hostView setNeedsLayout];
-            [surface setNeedsLayout];
-            [card layoutIfNeeded];
-            [canvas layoutIfNeeded];
-            [hostView layoutIfNeeded];
-            [CATransaction commit];
-            CXPendingApplied = finalAttempt;
-            if (finalAttempt && CXPendingKey) [CXAppliedKeySet() addObject:CXPendingKey];
-            CXLog(@"[remember] apply-after-open %@ %.0f,%.0f %.0fx%.0f", CXPendingBundle,
-                  card.frame.origin.x, card.frame.origin.y,
-                  card.frame.size.width, card.frame.size.height);
-        });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.6 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        if (generation != CXPendingGen || CXPendingPrepareAt) return;
+        CXPendingFallback = YES;
+        if (CXPendingApplied) return;
+        CXRememberTickApply(generation);
+    });
+}
+
+void CXRememberApplyAfterPrepare(NSString *bundleID) {
+    if (!CXPendingBundle.length) return;
+    if (CXPendingApplied) {
+        if (!CXPendingFallback) return;
+        if (!CXUserTouching()) CXPendingApplied = NO;
+        else return;
     }
+    if (bundleID.length && ![bundleID isEqual:CXPendingBundle]) return;
+    CXPendingPrepareAt = 1;
+    CXLog(@"[remember] prepare seen %@", CXPendingBundle);
+    CXRememberTickApply(CXPendingGen);
+}
+
+static BOOL CXUserTouching(void) {
+    id entry = CXRememberEntry ?: CXFindPanelEntry();
+    if (!entry) return NO;
+    if ([objc_getAssociatedObject(entry, &CXResizeActiveKey) boolValue]) return YES;
+    return CXPXEntryFlag(entry, "fullscreenToWindowInProgress") ||
+           CXPXEntryFlag(entry, "fullscreenLaunchInProgress");
+}
+
+// 只负责把当前待恢复几何套到已挂载的卡片上，最多一次修正。
+static void CXRememberTickApply(NSInteger generation) {
+    if (generation != CXPendingGen || CXPendingApplied) return;
+    id entry = CXRememberEntry ?: CXFindPanelEntry();
+    id bridge = entry ? CXEntryBridge(entry) : CXPendingBridge;
+    NSString *actualBundle = CXPXGetObject(bridge, @"bundleID");
+    if (![actualBundle isKindOfClass:NSString.class] ||
+        ![actualBundle isEqualToString:CXPendingBundle]) return;
+    UIView *card = entry ? CXEntryCard(entry) : nil;
+    if (![card isKindOfClass:UIView.class] && bridge) {
+        id value = CXPXGetObject(bridge, @"hostCard");
+        if ([value isKindOfClass:UIView.class]) card = value;
+    }
+    UIView *surface = card.superview ?: card.window;
+    if (!card.window || !surface || CGRectIsEmpty(surface.bounds)) {
+        CXRememberRetryLater(generation);
+        return;
+    }
+    CGRect target = CXSanitizedTarget(CXResolvedGeometry(card), card.frame, surface.bounds);
+    if (CGRectGetMaxX(target) < 0) { CXRememberRetryLater(generation); return; }
+    CXPendingApplied = YES;
+    UIView *canvas = CXPXGetObject(bridge, @"canvas");
+    if (![canvas isKindOfClass:UIView.class]) canvas = CXBoundCanvas;
+    UIView *hostView = CXPXGetObject(bridge, @"hostView");
+    if (![hostView isKindOfClass:UIView.class]) hostView = canvas;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    [card.layer removeAllAnimations];
+    [canvas.layer removeAllAnimations];
+    [hostView.layer removeAllAnimations];
+    card.transform = CGAffineTransformIdentity;
+    canvas.transform = CGAffineTransformIdentity;
+    hostView.transform = CGAffineTransformIdentity;
+    card.frame = target;
+    card.bounds = (CGRect){ CGPointZero, target.size };
+    if (canvas && canvas != card) {
+        canvas.frame = card.bounds;
+        canvas.bounds = (CGRect){ CGPointZero, card.bounds.size };
+    }
+    if (hostView && hostView != card && hostView != canvas) {
+        hostView.frame = card.bounds;
+        hostView.bounds = (CGRect){ CGPointZero, card.bounds.size };
+    }
+    [surface setNeedsLayout];
+    [card layoutIfNeeded];
+    [CATransaction commit];
+    if (CXPendingKey) [CXAppliedKeySet() addObject:CXPendingKey];
+    CXLog(@"[remember] apply-once %@ %.0f,%.0f %.0fx%.0f", CXPendingBundle,
+          target.origin.x, target.origin.y, target.size.width, target.size.height);
+    // 建窗后 PX 可能再布局一次；只在明显跑偏且用户没碰时修正一次。
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        if (generation != CXPendingGen || CXUserTouching()) return;
+        UIView *current = CXEntryCard(CXRememberEntry ?: CXFindPanelEntry());
+        if (![current isKindOfClass:UIView.class] || !current.window) return;
+        CGFloat dx = fabs(current.frame.origin.x - target.origin.x);
+        CGFloat dy = fabs(current.frame.origin.y - target.origin.y);
+        CGFloat dw = fabs(current.frame.size.width - target.size.width);
+        CGFloat dh = fabs(current.frame.size.height - target.size.height);
+        if (dx < 2 && dy < 2 && dw < 2 && dh < 2) return;
+        [CATransaction begin];
+        [CATransaction setDisableActions:YES];
+        current.transform = CGAffineTransformIdentity;
+        current.frame = target;
+        [CATransaction commit];
+        CXLog(@"[remember] corrected drift");
+    });
+}
+
+static void CXRememberRetryLater(NSInteger generation) {
+    if (generation != CXPendingGen || CXPendingApplied) return;
+    if (++CXPendingTries > 20) { CXLog(@"[remember] give up waiting hostCard"); return; }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{ CXRememberTickApply(generation); });
 }
 
 static void CXApplyBeforeLayout(id self) {
@@ -549,6 +592,6 @@ static void CXInstallRememberHooks(void) {
 }
 
 void CXRememberStart(void) {
-    CXLog(@"[remember] memory-build=clone0.31 sha-marker=R031M");
+    CXLog(@"[remember] memory-build=clone0.32 sha-marker=R032W");
     CXInstallRememberHooks();
 }

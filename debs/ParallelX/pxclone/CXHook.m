@@ -537,19 +537,21 @@ static void CXPrepareWindow(id self, SEL _cmd, id bundleID, BOOL wasFullscreen, 
     NSDictionary *item = CXVirtualItemFromArgument(bundleID);
     if (!item) {
         NSString *real = [bundleID isKindOfClass:NSString.class] ? bundleID : nil;
-        if (CXPromptForURL(real, YES, ^{ CXOrigPrepareWindow(self, _cmd, bundleID, wasFullscreen, completion); })) return;
+        if (CXPromptForURL(real, YES, ^{ CXOrigPrepareWindow(self, _cmd, bundleID, wasFullscreen, completion); if (!wasFullscreen) CXRememberApplyAfterPrepare(real); })) return;
         CXOrigPrepareWindow(self, _cmd, bundleID, wasFullscreen, completion);
+        if (!wasFullscreen) CXRememberApplyAfterPrepare(real);
         return;
     }
     NSString *realBundle = item[@"bundleID"];
     NSString *containerID = item[@"containerID"];
     NSString *key = [NSString stringWithFormat:@"%@#%@", realBundle, containerID];
-    if (CXHandledRecently(key)) { CXOrigPrepareWindow(self, _cmd, realBundle, wasFullscreen, completion); return; }
+    if (CXHandledRecently(key)) { CXOrigPrepareWindow(self, _cmd, realBundle, wasFullscreen, completion); if (!wasFullscreen) CXRememberApplyAfterPrepare(realBundle); return; }
     CXMarkHandled(key);
     CXLog(@"[hook] prepareWindow virtual %@ -> %@ / %@", bundleID, realBundle, containerID);
     [CXCraneBridge prepareLaunchForBundleID:realBundle containerID:containerID completion:^(BOOL ok) {
         CXLog(@"[hook] prepareWindow %@ switch=%d, continue", realBundle, ok);
         CXOrigPrepareWindow(self, _cmd, realBundle, wasFullscreen, completion);
+        if (!wasFullscreen) CXRememberApplyAfterPrepare(realBundle);
     }];
 }
 
