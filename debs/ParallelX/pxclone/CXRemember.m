@@ -22,6 +22,20 @@ static NSString *const CXRememberKey = @"CXRememberSizes";   // { "bundle#contai
 NSString *const CXRememberEnabledKey = @"CXRememberEnabled"; // BOOL 默认 YES
 static NSString *const CXLastOpenKey  = @"CXLastOpen";       // { bundle, container, at }
 
+// 这些应用依赖 PX 自己的场景几何；外部恢复尺寸会导致内容黑屏，先走原版路径。
+static BOOL CXRememberTransformBlacklisted(NSString *bundleID) {
+    static NSSet *blacklist;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        blacklist = [NSSet setWithObjects:
+            @"com.pixelcyber.shu",          // Shu 文件
+            @"com.crossutility.quantumult-x", // Quantumult X
+            @"com.shanlian.pro",            // 闪连 VPN
+            nil];
+    });
+    return [blacklist containsObject:bundleID];
+}
+
 #pragma mark - 当前打开上下文
 
 static NSDictionary *CXLastOpen(void) {
@@ -115,6 +129,8 @@ static BOOL CXPendingRevealed;
 static CGFloat CXExpectedScale = 1.0;
 static UIView *CXBoundHostCard(void);
 static void CXSyncContentScale(UIView *card, id bridge, id entry);
+static void CXCancelPendingRestore(void);
+static BOOL CXNativeGeometryOpen = NO;
 static void CXNotifyHostedGeometry(id entry, id bridge, UIView *card);
 
 static void CXRememberHideInitialHost(void) {
@@ -146,6 +162,14 @@ static void CXRememberRevealHost(UIView *target) {
 
 void CXRememberBindOpen(id bridge, UIView *canvas, NSString *bundleID, NSString *containerID) {
     if (!bridge || ![canvas isKindOfClass:UIView.class] || !bundleID.length) return;
+    CXCancelPendingRestore();
+    CXNativeGeometryOpen = CXRememberTransformBlacklisted(bundleID);
+    if (CXNativeGeometryOpen) {
+        CXBoundBridge = nil;
+        CXBoundCanvas = nil;
+        CXLog(@"[remember] native bypass %@: no hide/restore/scale", bundleID);
+        return;
+    }
     NSString *container = containerID.length ? containerID : @"DEFAULT";
     CXBoundBridge = bridge;
     CXBoundCanvas = canvas;
@@ -244,6 +268,7 @@ static void CXCapture(id entry) {
         CXPXEntryFlag(entry, "fullscreenLaunchInProgress")) return;
     NSString *bundle = CXEntryBundle(entry);
     if (!bundle.length) { CXStoreFailure(@"activeBridge.bundleID unavailable"); return; }
+    if (CXNativeGeometryOpen || CXRememberTransformBlacklisted(bundle)) return;
     id bridge = nil;
     UIView *card = nil;
     if (!CXGetHost(entry, bundle, &bridge, &card)) { CXStoreFailure(@"hostCard unavailable"); return; }
@@ -384,6 +409,14 @@ static void CXRememberLayoutApplied(void) {
     CXPendingBundle = nil;
     CXPendingContainer = nil;
     CXPendingRect = CGRectZero;
+    CXPendingRecord = nil;
+}
+
+static void CXCancelPendingRestore(void) {
+    CXOpenGeneration++;
+    CXCaptureGeneration++;
+    CXPendingGen++;
+    CXRememberLayoutApplied();
 }
 
 static void CXRememberTickApply(NSInteger generation);
@@ -400,7 +433,11 @@ static BOOL CXPendingFallback = NO;
 
 
 void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
-    if (!bundleID.length || !CXRememberOn()) { CXRememberLayoutApplied(); return; }
+    if (!bundleID.length || !CXRememberOn() || CXNativeGeometryOpen ||
+        CXRememberTransformBlacklisted(bundleID)) {
+        CXCancelPendingRestore();
+        return;
+    }
     NSString *container = containerID.length ? containerID : @"DEFAULT";
     NSString *key = CXKey(bundleID, container);
     NSDictionary *saved = CXSizeFor(bundleID, container);
@@ -438,6 +475,7 @@ void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
 }
 
 void CXRememberApplyAfterPrepare(NSString *bundleID) {
+    if (CXNativeGeometryOpen || CXRememberTransformBlacklisted(bundleID)) return;
     if (!CXPendingBundle.length) return;
     if (CXPendingApplied) {
         if (!CXPendingFallback) return;
@@ -521,6 +559,7 @@ static void CXRememberTickApply(NSInteger generation) {
 }
 
 static void CXApplyFrameToCard(UIView *card, id bridge, id entry, CGRect target) {
+    if (CXNativeGeometryOpen || CXRememberTransformBlacklisted(CXPXGetObject(bridge, @"bundleID"))) return;
     UIView *canvas = CXPXGetObject(bridge, @"canvas");
     if (![canvas isKindOfClass:UIView.class]) canvas = CXBoundCanvas;
     [CATransaction begin];
@@ -562,6 +601,7 @@ static void CXApplyFrameToCard(UIView *card, id bridge, id entry, CGRect target)
 
 // 只把内容缩放同步到卡片当前尺寸，不动卡片本身（供缩放结束后用）。
 static void CXSyncContentScale(UIView *card, id bridge, id entry) {
+    if (CXNativeGeometryOpen || CXRememberTransformBlacklisted(CXPXGetObject(bridge, @"bundleID"))) return;
     UIView *canvas = CXPXGetObject(bridge, @"canvas");
     if (![canvas isKindOfClass:UIView.class]) canvas = CXBoundCanvas;
     if (![canvas isKindOfClass:UIView.class]) return;
@@ -630,6 +670,7 @@ static void CXSettleTick(NSInteger generation, CGRect target, NSInteger quiet, N
     }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.08 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
+        if (generation != CXPendingGen || CXNativeGeometryOpen) return;
         id entry = CXRememberEntry ?: CXFindPanelEntry();
         UIView *card = entry ? CXEntryCard(entry) : nil;
         if (![card isKindOfClass:UIView.class] || !card.window) {
@@ -655,19 +696,13 @@ static void CXSettleTick(NSInteger generation, CGRect target, NSInteger quiet, N
             CXRememberRevealHost(card);
             CXLog(@"[remember] shown after settle cardAlpha=%.2f", card.alpha);
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
-                           dispatch_get_main_queue(), ^{ CXRememberRevealHost(CXHiddenCard); });
-            // PX 在显示后还会再布局一次，把缩放清回 1；按当前尺寸再校几次，只改缩放不动位置。
-            for (NSNumber *d in @[@0.25, @0.7, @1.2]) {
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(d.doubleValue * NSEC_PER_SEC)),
-                               dispatch_get_main_queue(), ^{
-                    UIView *c = CXEntryCard(CXRememberEntry ?: CXFindPanelEntry());
-                    if (![c isKindOfClass:UIView.class] || !c.window) return;
-                    @try { CXSyncContentScale(c, CXEntryBridge(CXRememberEntry ?: CXFindPanelEntry()), CXRememberEntry); }
-                    @catch (NSException *e) { CXLog(@"[remember] 后校异常 %@", e.reason); }
-                });
-            }
+                           dispatch_get_main_queue(), ^{
+                if (generation != CXPendingGen || CXNativeGeometryOpen) return;
+                CXRememberRevealHost(card);
+            });
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.7 * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{
+                if (generation != CXPendingGen || CXNativeGeometryOpen) return;
                 UIView *c = CXEntryCard(CXRememberEntry ?: CXFindPanelEntry());
                 if (![c isKindOfClass:UIView.class]) return;
                 UIView *cv = c.subviews.firstObject;
@@ -736,8 +771,9 @@ static void CXLayoutHostHook(id self, SEL _cmd) {
 static void (*CXOrigDidMoveToWindow)(id, SEL);
 static void CXCardDidMoveToWindow(id self, SEL _cmd) {
     if (CXOrigDidMoveToWindow) CXOrigDidMoveToWindow(self, _cmd);
-    if (CXPendingApplied || CXPendingRevealed || !CXPendingBundle.length) return;
+    if (CXNativeGeometryOpen || CXPendingApplied || CXPendingRevealed || !CXPendingBundle.length) return;
     UIView *view = (UIView *)self;
+    if (!view.window || view != CXBoundHostCard()) return;
     if (!objc_getAssociatedObject(view, &CXRememberHiddenKey))
         objc_setAssociatedObject(view, &CXRememberHiddenKey, @(view.alpha), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     CXHiddenCard = view;
@@ -776,7 +812,9 @@ static void CXInstallRememberHooks(void) {
             CXRememberEntry = result;
             return result;
         });
-        origInit = (InitFn)method_setImplementation(initMethod, newInit);
+        origInit = (InitFn)method_getImplementation(initMethod);
+        if (!class_addMethod(cls, initSel, newInit, method_getTypeEncoding(initMethod)))
+            origInit = (InitFn)method_setImplementation(initMethod, newInit);
     }
 
     struct { const char *name; IMP imp; IMP *orig; } hooks[] = {
@@ -796,13 +834,18 @@ static void CXInstallRememberHooks(void) {
             (want == 3 && [sig getArgumentTypeAtIndex:2][0] != '@')) {
             CXLog(@"[remember] %s 签名不符", hooks[i].name); continue;
         }
-        *hooks[i].orig = (IMP)method_setImplementation(m, hooks[i].imp);
+        *hooks[i].orig = method_getImplementation(m);
+        if (!class_addMethod(cls, sel, hooks[i].imp, method_getTypeEncoding(m)))
+            *hooks[i].orig = method_setImplementation(m, hooks[i].imp);
         CXLog(@"[remember] hook %s ok", hooks[i].name);
     }
     Class cardCls = CXHostCardClass();
     Method didMove = cardCls ? class_getInstanceMethod(cardCls, NSSelectorFromString(@"didMoveToWindow")) : NULL;
     if (didMove) {
-        CXOrigDidMoveToWindow = (void *)method_setImplementation(didMove, (IMP)CXCardDidMoveToWindow);
+        SEL moveSel = NSSelectorFromString(@"didMoveToWindow");
+        CXOrigDidMoveToWindow = (void (*)(id, SEL))method_getImplementation(didMove);
+        if (!class_addMethod(cardCls, moveSel, (IMP)CXCardDidMoveToWindow, method_getTypeEncoding(didMove)))
+            CXOrigDidMoveToWindow = (void (*)(id, SEL))method_setImplementation(didMove, (IMP)CXCardDidMoveToWindow);
         CXLog(@"[remember] hook didMoveToWindow on %@", NSStringFromClass(cardCls));
     } else {
         CXLog(@"[remember] PXHostCard/didMoveToWindow 不可用");
