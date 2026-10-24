@@ -350,8 +350,10 @@ void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
     CXPendingApplied = NO;
     // PX alpha342 没有 layoutHost；在原生开窗完成后的多个布局窗口重试。
     NSInteger generation = CXPendingGen;
-    NSArray *delays = @[@0.20, @0.55, @1.00, @1.60];
-    for (NSNumber *delay in delays) {
+    NSArray *delays = @[@0.20, @0.55, @1.00, @1.60, @2.40, @3.20, @4.00];
+    for (NSUInteger attempt = 0; attempt < delays.count; attempt++) {
+        NSNumber *delay = delays[attempt];
+        BOOL finalAttempt = (attempt + 1 == delays.count);
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay.doubleValue * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
             if (generation != CXPendingGen || CXPendingApplied) return;
@@ -416,8 +418,8 @@ void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
             [hostView layoutIfNeeded];
             CXNormalizeContent(card, canvas, hostView);
             [CATransaction commit];
-            CXPendingApplied = YES;
-            if (CXPendingKey) [CXAppliedKeySet() addObject:CXPendingKey];
+            CXPendingApplied = finalAttempt;
+            if (finalAttempt && CXPendingKey) [CXAppliedKeySet() addObject:CXPendingKey];
             CXLog(@"[remember] apply-after-open %@ %.0f,%.0f %.0fx%.0f", CXPendingBundle,
                   card.frame.origin.x, card.frame.origin.y,
                   card.frame.size.width, card.frame.size.height);
@@ -510,6 +512,6 @@ static void CXInstallRememberHooks(void) {
 }
 
 void CXRememberStart(void) {
-    CXLog(@"[remember] memory-build=clone0.28 sha-marker=R027A");
+    CXLog(@"[remember] memory-build=clone0.29 sha-marker=R029B");
     CXInstallRememberHooks();
 }
