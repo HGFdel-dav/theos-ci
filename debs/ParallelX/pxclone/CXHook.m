@@ -177,6 +177,69 @@ static void CXInstallURLContextHook(void) {
     CXLog(@"[url] UIOpenURLContext hook ok");
 }
 
+// SpringBoard 内部一定有人接收场景 URL 上下文；运行期扫描这些选择器并挂钩，无需注入应用。
+static void (*CXOrigSetURLContexts)(id, SEL, id);
+static void (*CXOrigSetLaunchURL)(id, SEL, id);
+static void CXSetURLContextsHook(id self, SEL _cmd, id contexts) {
+    @try {
+        if ([contexts isKindOfClass:NSArray.class] || [contexts isKindOfClass:NSSet.class]) {
+            for (id ctx in contexts) {
+                id url = nil;
+                @try { url = [ctx valueForKey:@"URL"]; } @catch (__unused NSException *e) {}
+                CXCaptureExternalURL(url ?: ctx);
+            }
+        } else {
+            CXCaptureExternalURL(contexts);
+        }
+    } @catch (__unused NSException *e) {}
+    if (CXOrigSetURLContexts) CXOrigSetURLContexts(self, _cmd, contexts);
+}
+
+static void CXSetLaunchURLHook(id self, SEL _cmd, id url) {
+    CXCaptureExternalURL(url);
+    if (CXOrigSetLaunchURL) CXOrigSetLaunchURL(self, _cmd, url);
+}
+
+static void CXInstallURLContextScan(void) {
+    static BOOL done = NO;
+    if (done) return;
+    done = YES;
+    const char *names[] = {"setURLContexts:", "_setURLContexts:", "setLaunchURL:", "_setLaunchURL:"};
+    int count = objc_getClassList(NULL, 0);
+    if (count <= 0) return;
+    Class *classes = (Class *)calloc((size_t)count, sizeof(Class));
+    if (!classes) return;
+    objc_getClassList(classes, count);
+    int n = 0;
+    for (int i = 0; i < count; i++) {
+        Class c = classes[i];
+        const char *cname = class_getName(c);
+        if (!cname || !(strncmp(cname, "SB", 2) == 0 || strncmp(cname, "FB", 2) == 0 ||
+                        strncmp(cname, "_UI", 3) == 0 || strstr(cname, "Scene"))) continue;
+        for (size_t k = 0; k < sizeof(names)/sizeof(names[0]); k++) {
+            SEL sel = NSSelectorFromString([NSString stringWithUTF8String:names[k]]);
+            Method m = class_getInstanceMethod(c, sel);
+            if (!m) continue;
+            const char *t = method_getTypeEncoding(m);
+            if (!t || t[0] != 'v' || strchr(t, '@') == NULL) continue;
+            BOOL isLaunch = strstr(names[k], "LaunchURL") != NULL;
+            if (isLaunch) {
+                if (CXOrigSetLaunchURL) continue;
+                CXOrigSetLaunchURL = (void (*)(id, SEL, id))method_getImplementation(m);
+                method_setImplementation(m, (IMP)CXSetLaunchURLHook);
+            } else {
+                if (CXOrigSetURLContexts) continue;
+                CXOrigSetURLContexts = (void (*)(id, SEL, id))method_getImplementation(m);
+                method_setImplementation(m, (IMP)CXSetURLContextsHook);
+            }
+            CXLog(@"[url] context hook %s %s", cname, names[k]);
+            n++;
+        }
+    }
+    free(classes);
+    CXLog(@"[url] context hooks=%d", n);
+}
+
 static void CXInstallSceneURLHooks(void) {
     static BOOL done = NO;
     if (done) return;
@@ -232,6 +295,7 @@ static void CXInstallURLHook(void) {
         }
     }
     CXLog(@"[hook] openURL installed=%d legacy=%d", installed, CXOrigOpenURLLegacy != NULL);
+    CXInstallURLContextScan();
     CXInstallSceneURLHooks();
     CXInstallURLContextHook();
 
