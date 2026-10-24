@@ -112,6 +112,7 @@ static BOOL CXPendingApplied = YES;
 static char CXRememberHiddenKey;
 static __weak UIView *CXHiddenCard;
 static BOOL CXPendingRevealed;
+static CGFloat CXExpectedScale = 1.0;
 static UIView *CXBoundHostCard(void);
 static void CXSyncContentScale(UIView *card, id bridge, id entry);
 static void CXNotifyHostedGeometry(id entry, id bridge, UIView *card);
@@ -529,6 +530,8 @@ static void CXApplyFrameToCard(UIView *card, id bridge, id entry, CGRect target)
     card.transform = CGAffineTransformIdentity;
     card.frame = target;
     // ScreenCore 的做法：内容保持原始尺寸，用缩放变换套进容器，而不是改内容尺寸。
+    [card.superview setNeedsLayout];
+    [CATransaction commit];
     // 内容按“场景参考尺寸”摆放，再整体缩放到目标尺寸（ScreenCore 的参考尺寸模型）。
     CGSize source = CGSizeZero;
     SEL srcSel = NSSelectorFromString(@"hostedSourceSize");
@@ -545,8 +548,8 @@ static void CXApplyFrameToCard(UIView *card, id bridge, id entry, CGRect target)
             layerView.bounds = (CGRect){ CGPointZero, source };
             layerView.frame = (CGRect){ layerView.frame.origin, source };
         }
-        layerView.transform = CGAffineTransformMakeScale(target.size.width / source.width,
-                                                         target.size.height / source.height);
+        CXExpectedScale = target.size.width / source.width;
+        layerView.transform = CGAffineTransformMakeScale(CXExpectedScale, CXExpectedScale);
         if (layerView.superview == card) {
             layerView.center = CGPointMake(target.size.width / 2.0, target.size.height / 2.0);
         } else if (layerView.superview) {
@@ -554,13 +557,6 @@ static void CXApplyFrameToCard(UIView *card, id bridge, id entry, CGRect target)
                                                               CGRectGetMidY(card.bounds))
                                            toView:layerView.superview];
         }
-    }
-    [card.superview setNeedsLayout];
-    [CATransaction commit];
-    SEL preview = NSSelectorFromString(@"applyResizePreview");
-    if (entry && [entry respondsToSelector:preview]) {
-        @try { ((void (*)(id, SEL))objc_msgSend)(entry, preview); }
-        @catch (NSException *e) { CXLog(@"[remember] preview 异常 %@", e.reason); }
     }
     CXNotifyHostedGeometry(entry, bridge, card);
 }
@@ -640,7 +636,10 @@ static void CXSettleTick(NSInteger generation, CGRect target, NSInteger quiet, N
             CXRememberRevealHost(CXBoundHostCard());
             return;
         }
-        CGFloat drift = fabs(card.frame.origin.x - target.origin.x) +
+        UIView *canvasNow = CXPXGetObject(entry ? CXEntryBridge(entry) : nil, @"canvas");
+        if (![canvasNow isKindOfClass:UIView.class]) canvasNow = CXBoundCanvas;
+        CGFloat scaleDrift = fabs(canvasNow.transform.a - CXExpectedScale) > 0.02 ? 40.0 : 0.0;
+        CGFloat drift = scaleDrift + fabs(card.frame.origin.x - target.origin.x) +
                         fabs(card.frame.origin.y - target.origin.y) +
                         fabs(card.frame.size.width - target.size.width) +
                         fabs(card.frame.size.height - target.size.height);
