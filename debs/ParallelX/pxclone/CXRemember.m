@@ -430,6 +430,23 @@ static BOOL CXUserTouching(void) {
            CXPXEntryFlag(entry, "fullscreenLaunchInProgress");
 }
 
+// PX 的宿主用 sourceSize + scale 把内容缩放到卡片大小，
+// 只改 frame 不让它重算就会内容偏大/偏小。这里尽量走它自己的几何更新。
+static void CXNotifyHostedGeometry(id entry, id bridge, UIView *card) {
+    NSString *name = @"PXHostedGeometryChanged";
+    NSNotification *note = [NSNotification notificationWithName:name object:card];
+    NSArray *candidates = @[card ?: NSNull.null, bridge ?: NSNull.null, entry ?: NSNull.null];
+    SEL sel = NSSelectorFromString(@"hostedGeometryChanged:");
+    BOOL called = NO;
+    for (id target in candidates) {
+        if (target == NSNull.null || ![target respondsToSelector:sel]) continue;
+        ((void (*)(id, SEL, id))objc_msgSend)(target, sel, note);
+        called = YES;
+    }
+    if (!called) CXLog(@"[remember] hostedGeometryChanged: 不可用");
+    [NSNotificationCenter.defaultCenter postNotificationName:name object:card];
+}
+
 // 只负责把当前待恢复几何套到已挂载的卡片上，最多一次修正。
 static void CXRememberTickApply(NSInteger generation) {
     if (generation != CXPendingGen || CXPendingApplied) return;
@@ -461,21 +478,12 @@ static void CXRememberTickApply(NSInteger generation) {
     [canvas.layer removeAllAnimations];
     [hostView.layer removeAllAnimations];
     card.transform = CGAffineTransformIdentity;
-    canvas.transform = CGAffineTransformIdentity;
-    hostView.transform = CGAffineTransformIdentity;
     card.frame = target;
     card.bounds = (CGRect){ CGPointZero, target.size };
-    if (canvas && canvas != card) {
-        canvas.frame = card.bounds;
-        canvas.bounds = (CGRect){ CGPointZero, card.bounds.size };
-    }
-    if (hostView && hostView != card && hostView != canvas) {
-        hostView.frame = card.bounds;
-        hostView.bounds = (CGRect){ CGPointZero, card.bounds.size };
-    }
     [surface setNeedsLayout];
-    [card layoutIfNeeded];
     [CATransaction commit];
+    // 内容是否跟着缩放由 PX 自己的几何流程决定；改完 frame 通知它重算一次。
+    CXNotifyHostedGeometry(entry, bridge, card);
     if (CXPendingKey) [CXAppliedKeySet() addObject:CXPendingKey];
     CXLog(@"[remember] apply-once %@ %.0f,%.0f %.0fx%.0f", CXPendingBundle,
           target.origin.x, target.origin.y, target.size.width, target.size.height);
@@ -592,6 +600,6 @@ static void CXInstallRememberHooks(void) {
 }
 
 void CXRememberStart(void) {
-    CXLog(@"[remember] memory-build=clone0.32 sha-marker=R032W");
+    CXLog(@"[remember] memory-build=clone0.33 sha-marker=R033G");
     CXInstallRememberHooks();
 }
