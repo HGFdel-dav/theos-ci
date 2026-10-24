@@ -453,7 +453,8 @@ static void CXNotifyHostedGeometry(id entry, id bridge, UIView *card) {
     BOOL called = NO;
     for (id target in candidates) {
         if (target == NSNull.null || ![target respondsToSelector:sel]) continue;
-        ((void (*)(id, SEL, id))objc_msgSend)(target, sel, card);
+        @try { ((void (*)(id, SEL, id))objc_msgSend)(target, sel, note); }
+        @catch (NSException *e) { CXLog(@"[remember] geom 异常 %@", e.reason); }
         called = YES;
     }
     if (!called) {
@@ -489,10 +490,14 @@ static void CXRememberTickApply(NSInteger generation) {
     UIView *hostView = CXPXGetObject(bridge, @"hostView");
     if (![hostView isKindOfClass:UIView.class]) hostView = canvas;
     CXRememberHideInitialHost();
-    CXApplyFrameToCard(card, bridge, entry, target);
+    CXLogSelectorsOnce(entry, bridge, card);
+    @try {
+        CXApplyFrameToCard(card, bridge, entry, target);
+    } @catch (NSException *e) {
+        CXLog(@"[remember] apply 异常 %@ %@", e.name, e.reason);
+    }
     CXLog(@"[remember] apply-once %@ %.0f,%.0f %.0fx%.0f", CXPendingBundle,
           target.origin.x, target.origin.y, target.size.width, target.size.height);
-    CXLogSelectorsOnce(entry, bridge, card);
     // 卡片一直藏着，每 0.1s 看一次：被 PX 顶偏就按回去，连续两次没跑偏才显示。
     CXSettleTick(generation, target, 0, 0);
 }
@@ -549,7 +554,8 @@ static void CXSettleTick(NSInteger generation, CGRect target, NSInteger quiet, N
                         fabs(card.frame.size.height - target.size.height);
         if (drift > 1.5) {
             id bridge = entry ? CXEntryBridge(entry) : nil;
-            CXApplyFrameToCard(card, bridge, entry, target);
+            @try { CXApplyFrameToCard(card, bridge, entry, target); }
+            @catch (NSException *e) { CXLog(@"[remember] re-pin 异常 %@", e.reason); }
             CXLog(@"[remember] re-pin drift %.1f", drift);
             CXSettleTick(generation, target, 0, ticks + 1);
             return;
@@ -656,6 +662,6 @@ static void CXInstallRememberHooks(void) {
 }
 
 void CXRememberStart(void) {
-    CXLog(@"[remember] memory-build=clone0.35 sha-marker=R035S");
+    CXLog(@"[remember] memory-build=clone0.36 sha-marker=R036N");
     CXInstallRememberHooks();
 }
