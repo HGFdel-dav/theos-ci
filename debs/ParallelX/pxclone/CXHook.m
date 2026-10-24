@@ -71,8 +71,19 @@ static NSURL *CXLastURL;
 static NSTimeInterval CXLastURLAt;
 
 static BOOL CXFreshURL(NSURL **out) {
-    if (!CXLastURL || [NSDate date].timeIntervalSince1970 - CXLastURLAt > 6.0) return NO;
-    if (out) *out = CXLastURL;
+    if (CXLastURL && [NSDate date].timeIntervalSince1970 - CXLastURLAt <= 6.0) {
+        if (out) *out = CXLastURL;
+        return YES;
+    }
+    // 其他进程（发起方应用）抓到的链接放这里，供 SpringBoard 读取。
+    NSString *str = [CXPrefs.shared objectForKey:@"CXSharedURL"];
+    if (![str isKindOfClass:NSString.class] || !str.length) return NO;
+    double at = [CXPrefs.shared objectForKey:@"CXSharedURLAt"] ?
+                [[CXPrefs.shared objectForKey:@"CXSharedURLAt"] doubleValue] : 0;
+    if ([NSDate date].timeIntervalSince1970 - at > 8.0) return NO;
+    NSURL *url = [NSURL URLWithString:str];
+    if (!url) return NO;
+    if (out) *out = url;
     return YES;
 }
 
@@ -109,6 +120,8 @@ static void CXCaptureExternalURL(id url) {
     if (![url isKindOfClass:NSURL.class]) return;
     CXLastURL = [url copy];
     CXLastURLAt = [NSDate date].timeIntervalSince1970;
+    [CXPrefs.shared setObject:url.absoluteString forKey:@"CXSharedURL"];
+    [CXPrefs.shared setObject:@([[NSDate date] timeIntervalSince1970]) forKey:@"CXSharedURLAt"];
     CXLog(@"[url] captured scheme=%@ host=%@", CXLastURL.scheme ?: @"", CXLastURL.host ?: @"");
 }
 static void (*CXOrigWorkspaceOpen)(id, SEL, id, id);
@@ -941,6 +954,14 @@ __attribute__((constructor)) static void CXInitialize(void) {
               [CXCraneBridge isCraneAvailable],
               NSClassFromString(@"PXPanelEntry") != nil,
               NSClassFromString(@"PXSceneBridge") != nil);
+        NSString *bid = NSBundle.mainBundle.bundleIdentifier;
+        BOOL isSB = [bid isEqualToString:@"com.apple.springboard"];
+        if (!isSB) {
+            // 普通应用里只负责把外发链接记下来，交给 SpringBoard。
+            CXInstallURLHook();
+            CXLog(@"[init] app-side URL capture in %@", bid);
+            return;
+        }
         BOOL craneOK = [CXCraneBridge isCraneAvailable];
         [CXPrefs.shared setBool:craneOK forKey:CXKeyDiagCraneOK];
         if (!craneOK) CXLog(@"[diag] %@", [[CXCraneBridge diagnosticLines] componentsJoinedByString:@" | "]);
