@@ -7,7 +7,13 @@
 		<key>Bundles</key>
 		<array>
 			<string>com.apple.springboard</string>
-			<string>com.apple.UIKit</string>
+			<string>com.chinaunicom.mobilebusiness</string>
+			<string>com.eg.android.AlipayGphone</string>
+			<string>com.taobao.taobao4iphone</string>
+			<string>com.jingdong.app.mall</string>
+			<string>com.meituan.imeituan</string>
+			<string>me.ele.ios.eleme</string>
+			<string>com.ss.iphone.ugc.Aweme</string>
 		</array>
 	</dict>
 </dict>
