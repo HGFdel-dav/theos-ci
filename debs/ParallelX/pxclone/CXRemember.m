@@ -50,6 +50,13 @@ static NSMutableDictionary *CXAllSizes(void) {
     return [v isKindOfClass:NSDictionary.class] ? [v mutableCopy] : [NSMutableDictionary dictionary];
 }
 
+static NSString *CXGeometrySlot(UIView *card) {
+    CGSize host = card.superview ? card.superview.bounds.size : UIScreen.mainScreen.bounds.size;
+    CGSize content = card ? card.bounds.size : CGSizeZero;
+    return [NSString stringWithFormat:@"H%d-C%d", host.width > host.height,
+            content.width > content.height];
+}
+
 static NSDictionary *CXSizeFor(NSString *bundle, NSString *container) {
     NSString *key = CXKey(bundle, container);
     if (!key) return nil;
@@ -61,7 +68,8 @@ static BOOL CXRememberOn(void) {
     return [CXPrefs.shared boolForKey:CXRememberEnabledKey defaultValue:YES];
 }
 
-static void CXStoreSize(NSString *bundle, NSString *container, CGRect frame) {
+static void CXStoreSize(NSString *bundle, NSString *container, UIView *card) {
+    CGRect frame = card.frame;
     if (!CXRememberOn()) return;
     NSString *key = CXKey(bundle, container);
     if (!key || !isfinite(frame.origin.x) || !isfinite(frame.origin.y) ||
@@ -69,7 +77,10 @@ static void CXStoreSize(NSString *bundle, NSString *container, CGRect frame) {
         frame.size.width < 40 || frame.size.height < 40) return;
     if (frame.size.width > 5000 || frame.size.height > 5000) return;
     NSMutableDictionary *all = CXAllSizes();
-    NSDictionary *old = all[key];
+    NSDictionary *record = [all[key] isKindOfClass:NSDictionary.class] ? all[key] : @{};
+    NSMutableDictionary *slots = [record[@"slots"] isKindOfClass:NSDictionary.class] ? [record[@"slots"] mutableCopy] : [NSMutableDictionary dictionary];
+    NSString *slot = CXGeometrySlot(card);
+    NSDictionary *old = slots[slot];
     if ([old isKindOfClass:NSDictionary.class]) {
         double ox = old[@"x"] ? [old[@"x"] doubleValue] : NAN;
         double oy = old[@"y"] ? [old[@"y"] doubleValue] : NAN;
@@ -77,9 +88,12 @@ static void CXStoreSize(NSString *bundle, NSString *container, CGRect frame) {
         if (fabs(ow - frame.size.width) < 0.5 && fabs(oh - frame.size.height) < 0.5 &&
             fabs(ox - frame.origin.x) < 0.5 && fabs(oy - frame.origin.y) < 0.5) return; // 没变不写
     }
-    all[key] = @{@"x": @(frame.origin.x), @"y": @(frame.origin.y),
+    slots[slot] = @{@"referenceW": @(card.superview.bounds.size.width),
+                    @"referenceH": @(card.superview.bounds.size.height),
+                    @"x": @(frame.origin.x), @"y": @(frame.origin.y),
                  @"w": @(frame.size.width), @"h": @(frame.size.height),
                  @"updated": @([[NSDate date] timeIntervalSince1970])};
+    all[key] = @{@"version": @2, @"slots": slots};
     [CXPrefs.shared setObject:all forKey:CXRememberKey];
     CXLog(@"[remember] store %@ %.0f,%.0f %.0fx%.0f", key, frame.origin.x, frame.origin.y,
           frame.size.width, frame.size.height);
@@ -200,6 +214,7 @@ static id CXRememberEntry = nil;
 static void (*CXOrigApplyResizePreview)(id, SEL);
 static void (*CXOrigCloseTapped)(id, SEL);
 static void (*CXOrigResizeHost)(id, SEL, id);
+static void (*CXOrigMoveHost)(id, SEL, id);
 static NSInteger CXCaptureGeneration = 0;
 static char CXResizeActiveKey;
 
@@ -216,7 +231,8 @@ static void CXCapture(id entry) {
     UIView *card = nil;
     if (!CXGetHost(entry, bundle, &bridge, &card)) { CXStoreFailure(@"hostCard unavailable"); return; }
     // 缩放手势停手后原版已把 transform 清零并 setFrame；记录完整 frame（含贴边位置）。
-    CXStoreSize(bundle, CXEntryContainer(entry), card.frame);
+    if (!CGAffineTransformIsIdentity(card.transform) || !CXPendingApplied) return;
+    CXStoreSize(bundle, CXEntryContainer(entry), card);
 }
 
 static void CXApplyResizePreview(id self, SEL _cmd) {
@@ -267,6 +283,53 @@ static void CXResizeHostHook(id self, SEL _cmd, id gesture) {
     }
 }
 
+static void CXMoveHostHook(id self, SEL command, id gesture) {
+    CXRememberEntry = self;
+    UIGestureRecognizerState state = [gesture isKindOfClass:UIGestureRecognizer.class]
+        ? ((UIGestureRecognizer *)gesture).state : UIGestureRecognizerStatePossible;
+    if (state == UIGestureRecognizerStateBegan) {
+        CXPendingGen++;
+        CXPendingApplied = YES;
+        CXOpenGeneration++;
+    }
+    if (CXOrigMoveHost) CXOrigMoveHost(self, command, gesture);
+    if (state == UIGestureRecognizerStateEnded || state == UIGestureRecognizerStateCancelled)
+        CXScheduleCapture(self);
+}
+
+static NSDictionary *CXPendingRecord;
+static NSDictionary *CXSelectGeometry(NSDictionary *record, UIView *card) {
+    NSDictionary *slots = record[@"slots"];
+    if (![slots isKindOfClass:NSDictionary.class]) return record;
+    id selected = slots[CXGeometrySlot(card)];
+    if ([selected isKindOfClass:NSDictionary.class]) return selected;
+    CGSize host = card.superview ? card.superview.bounds.size : UIScreen.mainScreen.bounds.size;
+    NSString *prefix = [NSString stringWithFormat:@"H%d-", host.width > host.height];
+    NSDictionary *latest = nil;
+    for (NSString *key in slots) {
+        id candidate = slots[key];
+        if (![key hasPrefix:prefix] || ![candidate isKindOfClass:NSDictionary.class]) continue;
+        if (!latest || [candidate[@"updated"] doubleValue] > [latest[@"updated"] doubleValue]) latest = candidate;
+    }
+    return latest;
+}
+
+static CGRect CXResolvedGeometry(UIView *card) {
+    NSDictionary *saved = CXSelectGeometry(CXPendingRecord, card);
+    if (!saved) return card.frame;
+    CGFloat w = [saved[@"w"] doubleValue], h = [saved[@"h"] doubleValue];
+    CGFloat x = saved[@"x"] ? [saved[@"x"] doubleValue] : NAN;
+    CGFloat y = saved[@"y"] ? [saved[@"y"] doubleValue] : NAN;
+    CGSize reference = CGSizeMake([saved[@"referenceW"] doubleValue], [saved[@"referenceH"] doubleValue]);
+    CGSize current = card.superview.bounds.size;
+    if (!isfinite(w) || !isfinite(h) || w < 40 || h < 40) return card.frame;
+    if (isfinite(reference.width) && isfinite(reference.height) && reference.width > 0 && reference.height > 0) {
+        CGFloat sx = current.width / reference.width, sy = current.height / reference.height;
+        x *= sx; y *= sy; w *= sx; h *= sy;
+    }
+    return CGRectMake(x, y, w, h);
+}
+
 #pragma mark - 恢复
 
 static __weak id CXPendingBridge;
@@ -309,6 +372,10 @@ void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
     NSString *key = CXKey(bundleID, container);
     NSDictionary *saved = CXSizeFor(bundleID, container);
     if (!saved) { CXRememberLayoutApplied(); return; }
+    CXPendingRecord = saved;
+    NSDictionary *initial = CXSelectGeometry(saved, CXBoundHostCard());
+    if (!initial) { CXRememberLayoutApplied(); return; }
+    saved = initial;
     CGFloat w = [saved[@"w"] doubleValue], h = [saved[@"h"] doubleValue];
     if (!isfinite(w) || !isfinite(h) || w < 40 || h < 40) { CXRememberLayoutApplied(); return; }
     CGFloat x = saved[@"x"] ? [saved[@"x"] doubleValue] : NAN;
@@ -358,7 +425,7 @@ void CXRememberApplySoon(NSString *bundleID, NSString *containerID) {
                 CXLog(@"[remember] retry surface empty %@", CXPendingBundle);
                 return;
             }
-            CGRect target = CXSanitizedTarget(CXPendingRect, card.frame, screen);
+            CGRect target = CXSanitizedTarget(CXResolvedGeometry(card), card.frame, screen);
             UIView *canvas = CXPXGetObject(bridge, @"canvas");
             if (![canvas isKindOfClass:UIView.class]) canvas = CXBoundCanvas;
             UIView *hostView = CXPXGetObject(bridge, @"hostView");
@@ -409,7 +476,7 @@ static void CXApplyBeforeLayout(id self) {
     CXPendingApplied = YES;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
-    card.frame = CXSanitizedTarget(CXPendingRect, card.frame, screen);
+    card.frame = CXSanitizedTarget(CXResolvedGeometry(card), card.frame, screen);
     [CATransaction commit];
     [card setNeedsLayout];
     [surface setNeedsLayout];
@@ -464,6 +531,7 @@ static void CXInstallRememberHooks(void) {
         {"applyResizePreview", (IMP)CXApplyResizePreview, (IMP *)&CXOrigApplyResizePreview},
         {"closeTapped", (IMP)CXCloseTapped, (IMP *)&CXOrigCloseTapped},
         {"resizeHost:", (IMP)CXResizeHostHook, (IMP *)&CXOrigResizeHost},
+        {"moveHost:", (IMP)CXMoveHostHook, (IMP *)&CXOrigMoveHost},
         {"layoutHost", (IMP)CXLayoutHostHook, (IMP *)&CXOrigLayoutHost},
     };
     for (size_t i = 0; i < sizeof(hooks)/sizeof(hooks[0]); i++) {
