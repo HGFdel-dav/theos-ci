@@ -172,7 +172,7 @@ static void CXInstallURLContextHook(void) {
     SEL sel = NSSelectorFromString(@"initWithURL:options:");
     Method m = class_getInstanceMethod(cls, sel);
     if (!m) { CXLog(@"[url] initWithURL:options: 不存在"); return; }
-    CXOrigOpenURLContextInit = (void *)method_getImplementation(m);
+    CXOrigOpenURLContextInit = (id (*)(id, SEL, id, id))method_getImplementation(m);
     method_setImplementation(m, (IMP)CXOpenURLContextInit);
     CXLog(@"[url] UIOpenURLContext hook ok");
 }
@@ -193,14 +193,14 @@ static void CXInstallSceneURLHooks(void) {
         Class c = classes[i];
         Method m = class_getInstanceMethod(c, sceneSel);
         if (m) {
-            CXOrigSceneOpen = (void *)method_getImplementation(m);
+            CXOrigSceneOpen = (void (*)(id, SEL, id, id))method_getImplementation(m);
             method_setImplementation(m, (IMP)CXSceneOpenHook);
             n++;
             CXLog(@"[url] scene hook %s", class_getName(c));
         }
         Method a = class_getInstanceMethod(c, appSel);
         if (a) {
-            CXOrigAppOpenURL = (void *)method_getImplementation(a);
+            CXOrigAppOpenURL = (void (*)(id, SEL, id, id, id))method_getImplementation(a);
             method_setImplementation(a, (IMP)CXAppOpenURLHook);
             n++;
             CXLog(@"[url] appdelegate hook %s", class_getName(c));
