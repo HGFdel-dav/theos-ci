@@ -112,6 +112,16 @@ static void CXCaptureExternalURL(id url) {
     CXLastURLAt = [NSDate date].timeIntervalSince1970;
     CXLog(@"[url] captured scheme=%@ host=%@", CXLastURL.scheme ?: @"", CXLastURL.host ?: @"");
 }
+static void (*CXOrigWorkspaceOpen)(id, SEL, id, id);
+static void (*CXOrigWorkspaceSensitive)(id, SEL, id, id);
+static void CXWorkspaceOpenHook(id self, SEL _cmd, id url, id options) {
+    CXCaptureExternalURL(url);
+    if (CXOrigWorkspaceOpen) CXOrigWorkspaceOpen(self, _cmd, url, options);
+}
+static void CXWorkspaceSensitiveHook(id self, SEL _cmd, id url, id options) {
+    CXCaptureExternalURL(url);
+    if (CXOrigWorkspaceSensitive) CXOrigWorkspaceSensitive(self, _cmd, url, options);
+}
 static BOOL CXOpenURLLegacyHook(id self, SEL _cmd, id url) {
     CXCaptureExternalURL(url);
     return CXOrigOpenURLLegacy ? CXOrigOpenURLLegacy(self, _cmd, url) : NO;
@@ -143,6 +153,24 @@ static void CXInstallURLHook(void) {
         }
     }
     CXLog(@"[hook] openURL installed=%d legacy=%d", installed, CXOrigOpenURLLegacy != NULL);
+
+    // 支付、第三方跳转常常走 LSApplicationWorkspace，不走 UIApplication
+    Class workspace = NSClassFromString(@"LSApplicationWorkspace");
+    if (!workspace) { CXLog(@"[hook] 无 LSApplicationWorkspace"); return; }
+    struct { const char *sel; IMP imp; IMP *orig; } whooks[] = {
+        {"openURL:withOptions:", (IMP)CXWorkspaceOpenHook, (IMP *)&CXOrigWorkspaceOpen},
+        {"openSensitiveURL:withOptions:", (IMP)CXWorkspaceSensitiveHook, (IMP *)&CXOrigWorkspaceSensitive},
+    };
+    for (size_t i = 0; i < sizeof(whooks)/sizeof(whooks[0]); i++) {
+        SEL s = NSSelectorFromString([NSString stringWithUTF8String:whooks[i].sel]);
+        Method m = class_getInstanceMethod(workspace, s);
+        if (!m) { CXLog(@"[hook] %s 不存在", whooks[i].sel); continue; }
+        NSMethodSignature *sig = [NSMethodSignature signatureWithObjCTypes:method_getTypeEncoding(m)];
+        if (!sig || sig.numberOfArguments != 4 || [sig getArgumentTypeAtIndex:2][0] != '@') {
+            CXLog(@"[hook] %s 签名不符", whooks[i].sel); continue;
+        }
+        hook(workspace, s, whooks[i].imp, whooks[i].orig);
+    }
 }
 
 #pragma mark - 打开分屏窗口（真实 bundle）
@@ -162,11 +190,28 @@ static UIViewController *CXTopViewController(void) {
 static void CXOpenInSplitImpl(NSString *bundleID);
 
 // 菜单已指定账号，或 URL 已选择账号：内部开窗不再次弹选择。
+static void CXReplayRecentURL(void) {
+    NSURL *url = nil;
+    if (!CXFreshURL(&url)) return;
+    CXLastURL = nil;
+    CXLastURLAt = 0;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        BOOL wasInternal = CXInternalOpen;
+        CXInternalOpen = YES;
+        [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:^(BOOL ok) {
+            CXLog(@"[url] replay %@ ok=%d", url.scheme ?: @"", ok);
+        }];
+        CXInternalOpen = wasInternal;
+    });
+}
+
 static void CXOpenInSplit(NSString *bundleID) {
     BOOL wasInternal = CXInternalOpen;
     CXInternalOpen = YES;
     @try {
         CXOpenInSplitImpl(bundleID);
+        CXReplayRecentURL();
     } @finally {
         CXInternalOpen = wasInternal;
     }
