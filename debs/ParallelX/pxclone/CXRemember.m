@@ -594,6 +594,7 @@ static void CXApplyFrameToCard(UIView *card, id bridge, id entry, CGRect target)
     if (bridge && [bridge respondsToSelector:srcSel]) {
         source = ((CGSize (*)(id, SEL))objc_msgSend)(bridge, srcSel);
     }
+    if (source.width < 1 || source.height < 1) source = card.window.bounds.size;
     if (source.width < 1 || source.height < 1) source = canvas.bounds.size;
     if (source.width < 1 || source.height < 1) source = target.size;
     for (UIView *layerView in @[canvas]) {
@@ -634,6 +635,7 @@ static void CXSyncContentScale(UIView *card, id bridge, id entry) {
     SEL srcSel = NSSelectorFromString(@"hostedSourceSize");
     if (bridge && [bridge respondsToSelector:srcSel])
         source = ((CGSize (*)(id, SEL))objc_msgSend)(bridge, srcSel);
+    if (source.width < 1 || source.height < 1) source = card.window.bounds.size;
     if (source.width < 1 || source.height < 1) source = canvas.bounds.size;
     if (source.width < 1 || source.height < 1) return;
     CGRect frame = card.frame;
