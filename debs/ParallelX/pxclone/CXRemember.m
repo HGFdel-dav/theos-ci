@@ -540,9 +540,7 @@ static void CXApplyFrameToCard(UIView *card, id bridge, id entry, CGRect target)
     }
     if (source.width < 1 || source.height < 1) source = canvas.bounds.size;
     if (source.width < 1 || source.height < 1) source = target.size;
-    UIView *hostView = CXPXGetObject(bridge, @"hostView");
-    if (![hostView isKindOfClass:UIView.class]) hostView = canvas;
-    for (UIView *layerView in (hostView == canvas ? @[canvas] : @[canvas, hostView])) {
+    for (UIView *layerView in @[canvas]) {
         if (fabs(layerView.bounds.size.width - source.width) > 8 ||
             fabs(layerView.bounds.size.height - source.height) > 8) {
             layerView.bounds = (CGRect){ CGPointZero, source };
@@ -666,7 +664,7 @@ static void CXSettleTick(NSInteger generation, CGRect target, NSInteger quiet, N
                 CXLog(@"[post] card a=%.2f f=%.0fx%.0f win=%.0fx%.0f sub=%@ f=%.0fx%.0f sc=%.2f",
                       c.alpha, c.frame.size.width, c.frame.size.height,
                       c.window.bounds.size.width, c.window.bounds.size.height,
-                      NSStringFromClass(cv.class), cv.frame.size.width, cv.frame.size.height, cv.transform.a);
+                      NSStringFromClass(cv.class), cv.frame.size.width, cv.frame.size.height, cv.layer.sublayerTransform.m11);
             });
             return;
         }
