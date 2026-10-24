@@ -110,6 +110,7 @@ static NSInteger CXOpenGeneration = 0;
 static NSInteger CXPendingGen = 0;
 static BOOL CXPendingApplied = YES;
 static char CXRememberHiddenKey;
+static __weak UIView *CXHiddenCard;
 static UIView *CXBoundHostCard(void);
 
 static void CXRememberHideInitialHost(void) {
@@ -123,8 +124,8 @@ static void CXRememberHideInitialHost(void) {
 
 static void CXRememberRevealHost(UIView *target) {
     // 隐藏可能落在卡片上，也可能落在外层画布上，两处都要还原。
-    NSArray *targets = @[target ?: NSNull.null, CXBoundCanvas ?: NSNull.null,
-                         CXBoundHostCard() ?: NSNull.null];
+    NSArray *targets = @[target ?: NSNull.null, CXHiddenCard ?: NSNull.null,
+                         CXBoundCanvas ?: NSNull.null, CXBoundHostCard() ?: NSNull.null];
     for (id item in targets) {
         if (item == NSNull.null) continue;
         UIView *view = item;
@@ -132,6 +133,7 @@ static void CXRememberRevealHost(UIView *target) {
         if (!oldAlpha) continue;
         view.alpha = oldAlpha.doubleValue;
         objc_setAssociatedObject(view, &CXRememberHiddenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        if (view == CXHiddenCard) CXHiddenCard = nil;
     }
 }
 
@@ -474,7 +476,10 @@ static void CXRememberTickApply(NSInteger generation) {
     id bridge = entry ? CXEntryBridge(entry) : CXPendingBridge;
     NSString *actualBundle = CXPXGetObject(bridge, @"bundleID");
     if (![actualBundle isKindOfClass:NSString.class] ||
-        ![actualBundle isEqualToString:CXPendingBundle]) return;
+        ![actualBundle isEqualToString:CXPendingBundle]) {
+        CXRememberRevealHost(CXHiddenCard);
+        return;
+    }
     UIView *card = entry ? CXEntryCard(entry) : nil;
     if (![card isKindOfClass:UIView.class] && bridge) {
         id value = CXPXGetObject(bridge, @"hostCard");
@@ -526,12 +531,7 @@ static void CXApplyFrameToCard(UIView *card, id bridge, id entry, CGRect target)
             layerView.transform = CGAffineTransformMakeScale(sx, sy);
             layerView.center = CGPointMake(target.size.width / 2.0, target.size.height / 2.0);
         }
-        UIView *first = canvas.subviews.firstObject;
-        if ([first isKindOfClass:UIView.class] && first.bounds.size.width > 1) {
-            first.transform = CGAffineTransformMakeScale(
-                target.size.width / first.bounds.size.width,
-                target.size.height / first.bounds.size.height);
-        }
+
     }
     [card.superview setNeedsLayout];
     [CATransaction commit];
@@ -672,6 +672,7 @@ static void CXCardDidMoveToWindow(id self, SEL _cmd) {
     UIView *view = (UIView *)self;
     if (!objc_getAssociatedObject(view, &CXRememberHiddenKey))
         objc_setAssociatedObject(view, &CXRememberHiddenKey, @(view.alpha), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    CXHiddenCard = view;
     view.alpha = 0.0;
 }
 
