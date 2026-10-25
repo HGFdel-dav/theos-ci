@@ -12,12 +12,18 @@ CloneX_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-unused-variable -Wn
 CloneX_FRAMEWORKS = UIKit Foundation CoreGraphics QuartzCore
 
 # ------------------------------------------- 设置进程注入（分身页控制器，不跨 bundle）
-LIBRARY_NAME = CloneXPrefsUI
+LIBRARY_NAME = CloneXPrefsUI CloneXURLCapture
 CloneXPrefsUI_FILES = Prefs/CXRootListController.m Prefs/CXArcListController.m Prefs/CXWindowLevelController.m pxclone/CXCraneBridge.m pxclone/CXPrefs.m pxclone/CXLog.m
 CloneXPrefsUI_INSTALL_PATH = /Library/MobileSubstrate/DynamicLibraries
 CloneXPrefsUI_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-unused-variable -Wno-unused-function -Ipxclone -IPrefs
 CloneXPrefsUI_FRAMEWORKS = UIKit Foundation CoreGraphics
 CloneXPrefsUI_PRIVATE_FRAMEWORKS = Preferences
+
+# ------------------------------------------- 应用侧 URL 捕获（只记录 URL，不改 App UI）
+CloneXURLCapture_FILES = pxclone/CXURLCapture.m pxclone/CXLog.m
+CloneXURLCapture_INSTALL_PATH = /Library/MobileSubstrate/DynamicLibraries
+CloneXURLCapture_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-unused-variable -Ipxclone
+CloneXURLCapture_FRAMEWORKS = UIKit Foundation
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 include $(THEOS_MAKE_PATH)/library.mk
@@ -29,6 +35,7 @@ before-package::
 	install -m 644 vendor/PX/dylib/ParallelX.plist "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/ParallelX.plist"
 	install -m 755 vendor/PX/dylib/ParallelXCameraSupport.dylib "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/ParallelXCameraSupport.dylib"
 	install -m 644 vendor/PX/dylib/ParallelXCameraSupport.plist "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/ParallelXCameraSupport.plist"
+	install -m 644 CloneXURLCapture.plist "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/CloneXURLCapture.plist"
 	install -d "$(THEOS_STAGING_DIR)/Library/PreferenceBundles"
 	cp -a vendor/PX/ParallelXPrefs.bundle "$(THEOS_STAGING_DIR)/Library/PreferenceBundles/"
 	install -d "$(THEOS_STAGING_DIR)/Library/PreferenceLoader/Preferences"

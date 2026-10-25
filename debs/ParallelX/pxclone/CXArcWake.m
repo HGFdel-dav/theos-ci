@@ -313,14 +313,14 @@ static Class CXNativeDockGestureClass(void) {
     return cls;
 }
 
-static id CXNativeDockGestureCreate(UIView *host) {
+static id CXNativeDockGestureCreate(id target, UIView *host, SEL action) {
     Class cls = CXNativeDockGestureClass();
-    if (!cls) return nil;
+    if (!cls || !target || !action) return nil;
     id (*allocFn)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
     id (*initFn)(id, SEL, id, SEL) = (id (*)(id, SEL, id, SEL))objc_msgSend;
     id gesture = allocFn((id)cls, @selector(alloc));
     if (!gesture) return nil;
-    gesture = initFn(gesture, @selector(initWithTarget:action:), nil, NULL);
+    gesture = initFn(gesture, @selector(initWithTarget:action:), target, action);
     if (!gesture) return nil;
     if (host) [host addGestureRecognizer:gesture];
     return gesture;
@@ -465,13 +465,13 @@ static NSArray<NSString *> *CXMenuIDs(void) {
         CXActiveArc = self;
         _entry = entry;
         UIView *handle = CXPXEntryObject(entry, _left ? "leftHandle" : "handle", UIView.class);
-        _synth = CXNativeDockGestureCreate(handle);
+        _synth = CXNativeDockGestureCreate(entry, handle, nativeSelector);
         if (!_synth) {
             handle = CXPXEntryObject(entry, "handle", UIView.class);
-            _synth = CXNativeDockGestureCreate(handle);
+            _synth = CXNativeDockGestureCreate(entry, handle, nativeSelector);
         }
         if (!_synth) { CXLog(@"[arc] native corner panel no PX gesture host"); [self cleanup]; return; }
-        ((UIGestureRecognizer *)_synth).enabled = NO;
+        ((UIGestureRecognizer *)_synth).enabled = YES;
         CXPlaceNativePanelAtCorner(entry, _left);
         // dockSwiped: 是 PX 的离散滑动动作入口：真实 PX 手势识别后
         // 会以 Ended/Recognized 状态调用一次，而不是像 dragHandle:

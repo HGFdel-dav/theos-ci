@@ -1,0 +1,10 @@
+{
+    Filter = {
+        Bundles = (
+            "com.chinaunicom.mobilebusiness",
+            "com.alipay.iphoneclient",
+            "com.tencent.mqq",
+            "com.tencent.xin"
+        );
+    };
+}
