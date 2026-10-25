@@ -1,6 +1,7 @@
 // CXWindowLevelController.m - ParallelX 窗口层级设置面板
 #import <Preferences/PSListController.h>
 #import <Preferences/PSSpecifier.h>
+#import <UIKit/UIKit.h>
 #import "CXPrefs.h"
 #import "CXLog.h"
 
@@ -20,19 +21,16 @@
         [group1 setProperty:@"控制 ParallelX 菜单窗口的显示层级。高层级可以盖过 Dock、控制中心。" forKey:@"footerText"];
         [specs addObject:group1];
         
-        // 层级模式
+        // 层级模式使用本控制器自己的 action，避免 iOS 15 的
+        // PSListItemsController 读取动态 specifier 时崩溃。
         PSSpecifier *mode = [PSSpecifier preferenceSpecifierNamed:@"层级模式"
                                                            target:self
-                                                              set:@selector(setPreferenceValue:specifier:)
-                                                              get:@selector(readPreferenceValue:)
-                                                           detail:NSClassFromString(@"PSListItemsController")
-                                                             cell:PSLinkListCell edit:Nil];
+                                                              set:NULL get:NULL detail:nil
+                                                             cell:PSLinkCell edit:Nil];
         [mode setProperty:@"CXWindowLevelMode" forKey:@"key"];
-        [mode setProperty:@"com.niubiprass.clonex" forKey:@"defaults"];
-        [mode setProperty:@0 forKey:@"default"];
         [mode setProperty:@[@0, @1, @2] forKey:@"validValues"];
         [mode setProperty:@[@"普通 (0)", @"高层级 (2046)", @"自定义"] forKey:@"validTitles"];
-        [mode setProperty:@"com.niubiprass.clonex/changed" forKey:@"PostNotification"];
+        [mode setProperty:@YES forKey:@"cxWindowLevelChoice"];
         [specs addObject:mode];
         
         // 自定义层级组
@@ -80,12 +78,57 @@
 
 - (void)setPreferenceValue:(id)value specifier:(PSSpecifier *)specifier {
     NSString *key = [specifier propertyForKey:@"key"];
+    if (!key.length || !value) return;
     [CXPrefs.shared setObject:value forKey:key];
     
     // 发送通知
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
                                          CFSTR("com.niubiprass.clonex/changed"),
                                          NULL, NULL, YES);
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView
+         cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    PSSpecifier *spec = [self specifierAtIndexPath:indexPath];
+    UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];
+    if ([[spec propertyForKey:@"cxWindowLevelChoice"] boolValue]) {
+        NSArray *values = [spec propertyForKey:@"validValues"];
+        NSArray *titles = [spec propertyForKey:@"validTitles"];
+        id current = [self readPreferenceValue:spec];
+        NSUInteger index = [values indexOfObject:current];
+        cell.detailTextLabel.text = index < titles.count ? titles[index] : @"";
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    }
+    return cell;
+}
+
+- (void)tableView:(UITableView *)tableView
+ didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    PSSpecifier *spec = [self specifierAtIndexPath:indexPath];
+    if (![[spec propertyForKey:@"cxWindowLevelChoice"] boolValue]) {
+        [super tableView:tableView didSelectRowAtIndexPath:indexPath];
+        return;
+    }
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    NSArray *values = [spec propertyForKey:@"validValues"];
+    NSArray *titles = [spec propertyForKey:@"validTitles"];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:spec.name
+                                                                     message:nil
+                                                              preferredStyle:UIAlertControllerStyleAlert];
+    NSUInteger count = MIN(values.count, titles.count);
+    for (NSUInteger i = 0; i < count; i++) {
+        id value = values[i];
+        [alert addAction:[UIAlertAction actionWithTitle:titles[i]
+                                                  style:UIAlertActionStyleDefault
+                                                handler:^(__unused UIAlertAction *action) {
+            [self setPreferenceValue:value specifier:spec];
+            [self reloadSpecifier:spec animated:NO];
+        }]];
+    }
+    [alert addAction:[UIAlertAction actionWithTitle:@"取消"
+                                              style:UIAlertActionStyleCancel
+                                            handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 @end

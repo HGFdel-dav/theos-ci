@@ -89,19 +89,48 @@
     [shape setProperty:@YES forKey:@"cxArcChoice"];
     [specs addObject:shape];
     PSSpecifier *region = [PSSpecifier groupSpecifierWithName:@"触发区域"];
-    [region setProperty:@"扇形读取半径；矩形读取长度、高度与内侧圆角。调试显示和实际命中使用同一路径。设置立即生效，不创建遮挡点击的覆盖窗口。"
+    [region setProperty:@"这些参数只控制角落热区；菜单窗口、图标和动画仍由 ParallelX 原生面板负责。"
                 forKey:@"footerText"];
     [specs addObject:region];
     NSArray *sliders = @[
-        @[@"扇形半径", @"CXArcRadius", @1, @300],
+        @[@"触发扇形半径", @"CXArcRadius", @1, @300],
         @[@"矩形长度", @"CXArcRectangleLength", @1, @150],
         @[@"矩形高度", @"CXArcRectangleHeight", @1, @150],
         @[@"矩形内侧圆角", @"CXArcRectangleCornerRadius", @0, @150],
-        @[@"水平偏移", @"CXArcOffsetX", @0, @100],
-        @[@"垂直偏移", @"CXArcOffsetY", @0, @100]
+        @[@"触发区水平偏移", @"CXArcOffsetX", @0, @100],
+        @[@"触发区垂直偏移", @"CXArcOffsetY", @0, @100]
     ];
     NSMutableArray<NSString *> *sliderKeys = [NSMutableArray array];
     for (NSArray *row in sliders) {
+        [sliderKeys addObject:row[1]];
+        PSSpecifier *spec = [self row:row[0] key:row[1] cell:PSSliderCell];
+        [spec setProperty:row[2] forKey:@"min"];
+        [spec setProperty:row[3] forKey:@"max"];
+        [spec setProperty:@YES forKey:@"showValue"];
+        [spec setProperty:@64 forKey:@"height"];
+        [specs addObject:spec];
+    }
+
+    PSSpecifier *menuGroup = [PSSpecifier groupSpecifierWithName:@"ParallelX 菜单排布"];
+    [menuGroup setProperty:@"以下参数只调整 ParallelX 原生菜单中 PXPanelIcon 的位置和排布；ParallelX 菜单窗口、图标对象、动画和分屏逻辑不变。"
+                    forKey:@"footerText"];
+    [specs addObject:menuGroup];
+    PSSpecifier *mirror = [self row:@"镜像左侧菜单方向" key:@"CXArcMirror" cell:PSSwitchCell];
+    [specs addObject:mirror];
+
+    NSArray *menuSliders = @[
+        @[@"菜单展开半径", @"CXArcMenuRadius", @40, @600],
+        @[@"菜单排布图标尺寸", @"CXArcIconSize", @28, @80],
+        @[@"第一环图标数量", @"CXArcFirstRowItemCount", @1, @12],
+        @[@"图标间距", @"CXArcIconSpacing", @0, @40],
+        @[@"竖屏菜单缩放", @"CXArcMenuScalePercent", @50, @150],
+        @[@"横屏菜单缩放", @"CXArcLandscapeMenuScalePercent", @50, @400],
+        @[@"菜单贴边距离", @"CXArcMenuEdgeInset", @0, @160],
+        @[@"竖屏菜单偏移距离", @"CXArcPortraitOffsetDistance", @0, @200],
+        @[@"横屏菜单偏移距离", @"CXArcLandscapeOffsetDistance", @0, @200],
+        @[@"横屏水平偏移", @"CXArcLandscapeHorizontalOffset", @0, @200]
+    ];
+    for (NSArray *row in menuSliders) {
         [sliderKeys addObject:row[1]];
         PSSpecifier *spec = [self row:row[0] key:row[1] cell:PSSliderCell];
         [spec setProperty:row[2] forKey:@"min"];

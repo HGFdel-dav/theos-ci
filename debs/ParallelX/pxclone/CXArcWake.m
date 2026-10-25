@@ -71,13 +71,23 @@ static NSInteger CXArcSideAtPoint(CGPoint point) {
 
 static CGPoint CXArcTouchPoint(UITouch *touch) {
     UIWindow *window = touch.window;
+    if (!window) return [touch locationInView:nil];
     CGPoint point = [touch locationInView:window];
-    return window ? [window convertPoint:point toCoordinateSpace:UIScreen.mainScreen.coordinateSpace] : point;
+    return [window convertPoint:point toCoordinateSpace:UIScreen.mainScreen.coordinateSpace];
 }
 static CGPoint CXArcGesturePoint(UIPanGestureRecognizer *gesture) {
     UIWindow *window = gesture.view.window;
-    CGPoint point = [gesture locationInView:window];
-    return window ? [window convertPoint:point toCoordinateSpace:UIScreen.mainScreen.coordinateSpace] : point;
+    CGPoint point = window ? [gesture locationInView:window] : [gesture locationInView:nil];
+    if (window) point = [window convertPoint:point toCoordinateSpace:UIScreen.mainScreen.coordinateSpace];
+    // 系统通道上的 recognizer 可能没有 view/window；locationInView:nil
+    // 仍返回屏幕坐标，不能把该情况当成 (0,0)。
+    if (CGPointEqualToPoint(point, CGPointZero) && gesture.numberOfTouches > 0)
+        point = [gesture locationOfTouch:0 inView:nil];
+    return point;
+}
+
+static BOOL CXArcPointIsZero(CGPoint point) {
+    return point.x == 0 && point.y == 0;
 }
 
 #pragma mark - PX 对象查找
@@ -161,17 +171,19 @@ static UIWindow *CXReadEntryWindow(id entry, const char *name) {
 // 两个都读不到时再退回 PX 的所有窗口，交给扇形扫描去找 PXPanelIcon。
 static NSArray<UIWindow *> *CXMenuWindows(void) {
     NSMutableArray<UIWindow *> *list = [NSMutableArray array];
-    void (^add)(UIWindow *) = ^(UIWindow *w) {
+    void (^addVisible)(UIWindow *) = ^(UIWindow *w) {
         if (w && !w.hidden && ![list containsObject:w]) [list addObject:w];
     };
     id entry = CXFindPanelEntry();
-    add(CXReadPanelWindow(entry));
-    add(CXReadEntryWindow(entry, "panelWindow"));
-    add(CXPXEntryObject(entry, "handleWindow", UIWindow.class));
-    add(CXPXEntryObject(entry, "hostWindow", UIWindow.class));
+    // panelWindow can remain hidden while PX is constructing the menu. Keep it
+    // in the scan so its PXPanelIcon subviews can still be arranged.
+    UIWindow *panel = CXReadPanelWindow(entry) ?: CXReadEntryWindow(entry, "panelWindow");
+    if (panel && ![list containsObject:panel]) [list addObject:panel];
+    addVisible(CXPXEntryObject(entry, "handleWindow", UIWindow.class));
+    addVisible(CXPXEntryObject(entry, "hostWindow", UIWindow.class));
     if (!list.count) {
         for (UIWindow *w in UIApplication.sharedApplication.windows)
-            if ([NSStringFromClass(w.class) containsString:@"PX"]) add(w);
+            if ([NSStringFromClass(w.class) containsString:@"PX"]) addVisible(w);
     }
     return list;
 }
@@ -222,6 +234,7 @@ static NSArray<NSString *> *CXMenuIDs(void) {
     id _entry;
     NSArray<UIView *> *_icons;
     CGPoint _start;
+    CGPoint _lastPoint;
     BOOL _armed;
     BOOL _left;
     BOOL _rearranged;
@@ -249,6 +262,7 @@ static NSArray<NSString *> *CXMenuIDs(void) {
         if (side < 0 || CXPXEntryFlag(CXLiveEntry, "deviceLocked")) return NO;
         if (_synth || (CXActiveArc && CXActiveArc != self)) return NO;
         _start = point;
+        _lastPoint = point;
         _left = side == 1;
         _armed = YES;
         return YES;
@@ -279,6 +293,8 @@ static NSArray<NSString *> *CXMenuIDs(void) {
     _entry = nil;
     _icons = nil;
     _armed = NO;
+    _start = CGPointZero;
+    _lastPoint = CGPointZero;
     _rearranged = NO;
     if (CXActiveArc == self) CXActiveArc = nil;
 }
@@ -290,9 +306,15 @@ static NSArray<NSString *> *CXMenuIDs(void) {
     _lastArrange = CACurrentMediaTime();
     @try {
         NSArray<UIWindow *> *windows = CXMenuWindows();
-        if (!windows.count) return;
+        if (!windows.count) {
+            CXLog(@"[arc] rearrange no PX windows");
+            return;
+        }
         NSArray<UIView *> *icons = CXFanIconsInWindows(windows);
-        if (!icons.count) return;
+        if (!icons.count) {
+            CXLog(@"[arc] rearrange no PXPanelIcon windows=%lu", (unsigned long)windows.count);
+            return;
+        }
         UIWindow *window = icons.firstObject.window ?: windows.firstObject;
         _icons = icons;
         CXFanArrange(icons, window, _left);
@@ -308,6 +330,8 @@ static NSArray<NSString *> *CXMenuIDs(void) {
 - (void)handleUnsafe:(UIPanGestureRecognizer *)g {
     if (!CXArcEnabled()) { [self cleanup]; return; }
     CGPoint point = CXArcGesturePoint(g);
+    if (!CXArcPointIsZero(point)) _lastPoint = point;
+    else if (!CXArcPointIsZero(_lastPoint)) point = _lastPoint;
     if (g.state == UIGestureRecognizerStateBegan) {
         if (!_armed || (CXActiveArc && CXActiveArc != self)) return;
         id entry = CXFindPanelEntry();
@@ -333,7 +357,7 @@ static NSArray<NSString *> *CXMenuIDs(void) {
         @catch (__unused NSException *e) { [self cleanup]; return; }
         // 立刻排，并在 PX 入场动画期间持续压住，避免先露出边缘半圆
         [self rearrange];
-        for (NSNumber *delay in @[@0.03, @0.06, @0.10, @0.16, @0.24, @0.34, @0.46]) {
+        for (NSNumber *delay in @[@0.03, @0.06, @0.10, @0.16, @0.24, @0.34, @0.46, @0.70, @0.95]) {
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay.doubleValue * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{ if (_synth) [self rearrange]; });
         }
