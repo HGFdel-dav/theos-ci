@@ -39,7 +39,7 @@
         PSSpecifier *group2 = [PSSpecifier preferenceSpecifierNamed:@"自定义层级"
                                                               target:self set:NULL get:NULL
                                                               detail:Nil cell:PSGroupCell edit:Nil];
-        [group2 setProperty:@"仅"自定义"模式生效。常见层级：0=普通窗口 1040=Dock 1060=控制中心 2046=至高无上" 
+        [group2 setProperty:@"仅“自定义”模式生效。常见层级：0=普通窗口 1040=Dock 1060=控制中心 2046=至高无上"
                      forKey:@"footerText"];
         [specs addObject:group2];
         
@@ -62,15 +62,9 @@
         PSSpecifier *group3 = [PSSpecifier preferenceSpecifierNamed:@"测试"
                                                               target:self set:NULL get:NULL
                                                               detail:Nil cell:PSGroupCell edit:Nil];
-        [group3 setProperty:@"修改后注销，然后触发 PX 菜单并打开控制中心测试效果。" forKey:@"footerText"];
+        [group3 setProperty:@"修改后触发 PX 菜单并打开控制中心测试效果。" forKey:@"footerText"];
         [specs addObject:group3];
         
-        // 注销按钮
-        PSSpecifier *respring = [PSSpecifier preferenceSpecifierNamed:@"注销 SpringBoard"
-                                                               target:self set:NULL get:NULL
-                                                               detail:Nil cell:PSButtonCell edit:Nil];
-        [respring setProperty:@"respring:" forKey:@"action"];
-        [specs addObject:respring];
         
         _specifiers = [specs copy];
     }
@@ -92,17 +86,6 @@
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
                                          CFSTR("com.niubiprass.clonex/changed"),
                                          NULL, NULL, YES);
-}
-
-- (void)respring:(PSSpecifier *)specifier {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"注销"
-                                                                   message:@"确定要注销 SpringBoard 吗？"
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"注销" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *a) {
-        system("killall -9 SpringBoard");
-    }]];
-    [self presentViewController:alert animated:YES completion:nil];
 }
 
 @end
