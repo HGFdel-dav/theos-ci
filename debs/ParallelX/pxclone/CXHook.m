@@ -336,20 +336,22 @@ static UIViewController *CXTopViewController(void) {
 static void CXOpenInSplitImpl(NSString *bundleID);
 
 // 菜单已指定账号，或 URL 已选择账号：内部开窗不再次弹选择。
+static void CXReplayURL(NSURL *url) {
+    if (!url) return;
+    BOOL wasInternal = CXInternalOpen;
+    CXInternalOpen = YES;
+    [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:^(BOOL ok) {
+        CXLog(@"[url] replay %@ ok=%d", url.scheme ?: @"", ok);
+    }];
+    CXInternalOpen = wasInternal;
+}
 static void CXReplayRecentURL(void) {
     NSURL *url = nil;
     if (!CXFreshURL(&url)) return;
     CXLastURL = nil;
     CXLastURLAt = 0;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        BOOL wasInternal = CXInternalOpen;
-        CXInternalOpen = YES;
-        [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:^(BOOL ok) {
-            CXLog(@"[url] replay %@ ok=%d", url.scheme ?: @"", ok);
-        }];
-        CXInternalOpen = wasInternal;
-    });
+                   dispatch_get_main_queue(), ^{ CXReplayURL(url); });
 }
 
 static void CXOpenInSplit(NSString *bundleID) {
@@ -685,10 +687,26 @@ static BOOL CXHandleVirtualItem(NSDictionary *item) {
     // 必须重启应用：Crane 只改"下次启动"的容器，运行中的进程不会换数据
     NSString *activeNow = [CXCraneBridge activeContainerForBundleID:bundleID] ?: @"DEFAULT";
     BOOL sameNow = [activeNow isEqualToString:containerID];
+    BOOL running = CXAppRunning(bundleID);
     [CXCraneBridge switchBundleID:bundleID toContainer:containerID reload:!sameNow completion:^(BOOL ok) {
-    CXLog(@"[hit] %@ switch=%d", bundleID, ok);
-    if (!ok) { CXLog(@"[hit] switch failed, skip opening wrong account"); return; }
-        CXOpenInSplit(bundleID);
+        CXLog(@"[hit] %@ switch=%d same=%d running=%d", bundleID, ok, sameNow, running);
+        if (!ok) { CXLog(@"[hit] switch failed, skip opening wrong account"); return; }
+        // 先立即开窗
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((sameNow ? 0.05 : (running ? 1.0 : 0.2)) * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            CXOpenInSplit(bundleID);
+            // 分段补投 URL：避免进程重启时第一次丢链接
+            NSURL *incoming = nil;
+            if (!CXFreshURL(&incoming)) return;
+            NSArray *delays = sameNow ? @[@0.3, @1.0] : @[@1.5, @2.5, @3.5, @4.5];
+            for (NSNumber *d in delays) {
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(d.doubleValue * NSEC_PER_SEC)),
+                               dispatch_get_main_queue(), ^{ CXReplayURL(incoming); });
+            }
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5.0 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+                CXInternalOpen = NO;
+            });
+        });
     }];
     return YES;
 }
