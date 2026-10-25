@@ -1,2 +1,1 @@
-// 每次发版只改这一行
-#define CX_BUILD_TAG @"clone0.70"
+#define CX_BUILD_TAG "0.64"

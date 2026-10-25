@@ -72,7 +72,7 @@ static NSURL *CXLastURL;
 static NSTimeInterval CXLastURLAt;
 
 static BOOL CXFreshURL(NSURL **out) {
-    if (CXLastURL && [NSDate date].timeIntervalSince1970 - CXLastURLAt <= 6.0) {
+    if (CXLastURL && [NSDate date].timeIntervalSince1970 - CXLastURLAt <= 30.0) {
         if (out) *out = CXLastURL;
         return YES;
     }
@@ -81,7 +81,7 @@ static BOOL CXFreshURL(NSURL **out) {
     if (![str isKindOfClass:NSString.class] || !str.length) return NO;
     double at = [CXPrefs.shared objectForKey:@"CXSharedURLAt"] ?
                 [[CXPrefs.shared objectForKey:@"CXSharedURLAt"] doubleValue] : 0;
-    if ([NSDate date].timeIntervalSince1970 - at > 8.0) return NO;
+    if ([NSDate date].timeIntervalSince1970 - at > 30.0) return NO;
     NSURL *url = [NSURL URLWithString:str];
     if (!url) return NO;
     if (out) *out = url;
