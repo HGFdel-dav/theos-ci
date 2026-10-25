@@ -397,7 +397,8 @@ static NSArray<NSString *> *CXMenuIDs(void) {
 
 - (void)cleanup {
     id synth = _synth;
-    [synth.view removeGestureRecognizer:synth];
+    UIView *synthView = [(UIGestureRecognizer *)synth view];
+    [synthView removeGestureRecognizer:(UIGestureRecognizer *)synth];
     if (synth) {
         [CXSynthPool() addObject:synth];
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 6.0 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
