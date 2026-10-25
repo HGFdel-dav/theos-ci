@@ -1,9 +1,9 @@
 // CXArcWake.m
 //
-// ScreenCore 式角落拖拽唤醒 → 驱动 ParallelX 自己的手柄手势。
+// ScreenCore 参数语义的角落拖拽入口 → ParallelX 独立原生 dock 菜单动作。
 //
-// 从角落向内拖动 → 扇形菜单（PX 的菜单条目与应用本体图标）→ 松开选中，
-// 再走 PX 已验证的 externalOpenApplication 分屏链路。
+// 从角落向内拖动只负责触发 PX 自己的 dockSwiped:；菜单窗口、图标、动画、
+// 高亮和分屏打开全部由 ParallelX 原生状态机负责，ARC 层不再手动选图标开窗。
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
@@ -351,6 +351,7 @@ static NSArray<NSString *> *CXMenuIDs(void) {
     CGPoint _lastPoint;
     BOOL _armed;
     BOOL _left;
+    BOOL _nativePresented;
     BOOL _rearranged;
     CFTimeInterval _lastArrange;
 }
@@ -410,6 +411,7 @@ static NSArray<NSString *> *CXMenuIDs(void) {
     _start = CGPointZero;
     _lastPoint = CGPointZero;
     _rearranged = NO;
+    _nativePresented = NO;
     if (CXActiveArc == self) CXActiveArc = nil;
 }
 
@@ -454,7 +456,7 @@ static NSArray<NSString *> *CXMenuIDs(void) {
         SEL nativeSelector = NSSelectorFromString(@"dockSwiped:");
         if (!entry || !window || !CXPXVoidSelector(entry, @"dockSwiped:", 1)) {
             CXLog(@"[arc] native corner panel unavailable: entry=%d root=%d dockSwiped=%d",
-                  entry != nil, window.rootViewController != nil,
+                  entry != nil, window && window.rootViewController != nil,
                   entry && [entry respondsToSelector:nativeSelector]);
             _armed = NO;
             return;
@@ -470,27 +472,30 @@ static NSArray<NSString *> *CXMenuIDs(void) {
         if (!_synth) { CXLog(@"[arc] native corner panel no PX gesture host"); [self cleanup]; return; }
         ((UIGestureRecognizer *)_synth).enabled = NO;
         CXPlaceNativePanelAtCorner(entry, _left);
-        CXNativeSetValue(_synth, &CXNativeStateKey, @(UIGestureRecognizerStateBegan));
+        // dockSwiped: 是 PX 的离散滑动动作入口：真实 PX 手势识别后
+        // 会以 Ended/Recognized 状态调用一次，而不是像 dragHandle:
+        // 那样逐帧接收 Pan 状态。ARC 只触发这一次原生动作。
+        CXNativeSetValue(_synth, &CXNativeStateKey, @(UIGestureRecognizerStateEnded));
         CXNativeSetValue(_synth, &CXNativeDirectionKey,
                          @(_left ? UISwipeGestureRecognizerDirectionRight : UISwipeGestureRecognizerDirectionLeft));
         CXNativeSetValue(_synth, &CXNativeStartKey, [NSValue valueWithCGPoint:point]);
         CXNativeSetValue(_synth, &CXNativeLocationKey, [NSValue valueWithCGPoint:point]);
         CXNativeSetValue(_synth, &CXNativeTranslationKey, [NSValue valueWithCGPoint:CGPointZero]);
         CXNativeSetValue(_synth, &CXNativeVelocityKey, [NSValue valueWithCGPoint:CGPointZero]);
-        CXLog(@"[arc] native corner panel begin side=%@ %.0f,%.0f",
+        CXLog(@"[arc] native corner panel trigger side=%@ %.0f,%.0f",
               _left ? @"left" : @"right", point.x, point.y);
         @try { ((void (*)(id, SEL, id))objc_msgSend)(entry, nativeSelector, _synth); }
         @catch (NSException *e) {
             CXLog(@"[arc] native corner panel exception: %@", e.reason ?: @"unknown");
             [self cleanup]; return;
         }
+        _nativePresented = YES;
         // PX 可能在 dockSwiped: 内部才创建 panelWindow；补一次角落定位，
         // 但不改 PX 自己的窗口/图标/动画对象。
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.04 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
             if (_synth) CXPlaceNativePanelAtCorner(_entry, _left);
         });
-        // 立刻排，并在 PX 入场动画期间持续压住，避免先露出边缘半圆
         [self rearrange];
         for (NSNumber *delay in @[@0.03, @0.06, @0.10, @0.16, @0.24, @0.34, @0.46, @0.70, @0.95]) {
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay.doubleValue * NSEC_PER_SEC)),
@@ -499,25 +504,13 @@ static NSArray<NSString *> *CXMenuIDs(void) {
         return;
     }
     if (!_synth || !_entry) return;
-    CGPoint translation = CGPointMake(point.x - _start.x, point.y - _start.y);
-    BOOL ended = g.state == UIGestureRecognizerStateEnded || g.state == UIGestureRecognizerStateCancelled ||
-                 g.state == UIGestureRecognizerStateFailed;
-    CXNativeSetValue(_synth, &CXNativeTranslationKey, [NSValue valueWithCGPoint:translation]);
-    CXNativeSetValue(_synth, &CXNativeLocationKey, [NSValue valueWithCGPoint:point]);
-    CXNativeSetValue(_synth, &CXNativeVelocityKey, [NSValue valueWithCGPoint:[g velocityInView:nil]]);
-    CXNativeSetValue(_synth, &CXNativeStateKey, @(ended ? g.state : UIGestureRecognizerStateChanged));
-    SEL nativeSelector = NSSelectorFromString(@"dockSwiped:");
-    @try { ((void (*)(id, SEL, id))objc_msgSend)(_entry, nativeSelector, _synth); }
-    @catch (NSException *e) {
-        CXLog(@"[arc] native corner panel update exception: %@", e.reason ?: @"unknown");
-        [self cleanup]; return;
-    }
-    if (!ended && CACurrentMediaTime() - _lastArrange > 0.06) [self rearrange];
-    if (ended) {
-        // PX 自己处理高亮、命中、收起动画和选中后的打开；ARC 只负责
-        // 提供独立角落手势，不再重新实现一套点击/分屏逻辑。
-        CXLog(@"[arc] native corner panel end state=%ld", (long)g.state);
-        [self cleanup];
+    if (_nativePresented) {
+        if (g.state == UIGestureRecognizerStateEnded || g.state == UIGestureRecognizerStateCancelled ||
+            g.state == UIGestureRecognizerStateFailed) {
+            CXLog(@"[arc] native corner panel gesture finished state=%ld", (long)g.state);
+            [self cleanup];
+        }
+        return;
     }
 }
 
