@@ -188,6 +188,28 @@ static NSArray<UIWindow *> *CXMenuWindows(void) {
     return list;
 }
 
+// 角落 ARC 使用 PX 自己的 panelWindow，但把窗口的原生圆心移到
+// 左/右下角；菜单内容、图标和动画仍由 PX 的 dockSwiped: 状态机负责。
+static void CXPlaceNativePanelAtCorner(id entry, BOOL left) {
+    UIWindow *window = CXReadPanelWindow(entry) ?: CXReadEntryWindow(entry, "panelWindow");
+    if (![window isKindOfClass:UIWindow.class]) return;
+    CGPoint target = left ? CGPointMake(0.0, 1.0) : CGPointMake(1.0, 1.0);
+    @try {
+        CGRect frame = window.frame;
+        CGPoint old = window.layer.anchorPoint;
+        if (fabs(old.x - target.x) < 0.001 && fabs(old.y - target.y) < 0.001) return;
+        [CATransaction begin];
+        [CATransaction setDisableActions:YES];
+        window.layer.anchorPoint = target;
+        window.frame = frame;
+        [CATransaction commit];
+        CXLog(@"[arc] native PX panel anchor %@ -> %.1f,%.1f",
+              left ? @"left" : @"right", target.x, target.y);
+    } @catch (NSException *e) {
+        CXLog(@"[arc] native PX panel anchor exception: %@", e.reason ?: @"unknown");
+    }
+}
+
 #pragma mark - 手势
 
 @class CXArcWakeGesture;
@@ -198,24 +220,116 @@ static __weak CXArcWakeGesture *CXActiveArc;
 - (void)handleUnsafe:(UIPanGestureRecognizer *)gesture;
 @end
 
-// 合成手势：PX 只读这些方法驱动它自己的菜单与动画
-@interface CXSynthPan : UIPanGestureRecognizer
-@property (nonatomic, assign) UIGestureRecognizerState synthState;
-@property (nonatomic, assign) CGPoint synthTranslation;
-@property (nonatomic, assign) CGPoint synthLocation;
-@property (nonatomic, assign) CGPoint synthVelocity;
-@end
-@implementation CXSynthPan
-- (UIGestureRecognizerState)state { return self.synthState; }
-- (CGPoint)translationInView:(UIView *)view { return self.synthTranslation; }
-- (CGPoint)locationInView:(UIView *)view { return self.synthLocation; }
-- (CGPoint)velocityInView:(UIView *)view { return self.synthVelocity; }
-@end
+// PX 的 dockSwiped: 入口接收的是它自己的 PXDockTapGestureRecognizer。
+// 这里动态继承该真实类，只覆写 PX 读取的手势状态/坐标，避免传 nil
+// 或把普通 UIPanGestureRecognizer 冒充成未知对象。
+static char CXNativeStateKey;
+static char CXNativeDirectionKey;
+static char CXNativeStartKey;
+static char CXNativeLocationKey;
+static char CXNativeTranslationKey;
+static char CXNativeVelocityKey;
 
-// PX 的动画 block 在 dragHandle: 返回后可能仍引用合成手势，摘下后暂存以避免悬空指针。
-static NSMutableArray<CXSynthPan *> *CXSynthPool(void) {
-    static NSMutableArray<CXSynthPan *> *pool;
-    if (!pool) pool = [NSMutableArray array];
+static id CXNativeValue(id object, char *key) {
+    return objc_getAssociatedObject(object, key);
+}
+static void CXNativeSetValue(id object, char *key, id value) {
+    objc_setAssociatedObject(object, key, value, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+static UIGestureRecognizerState CXNativeState(id self, SEL _cmd) {
+    return [CXNativeValue(self, &CXNativeStateKey) integerValue];
+}
+static void CXNativeSetState(id self, SEL _cmd, UIGestureRecognizerState value) {
+    CXNativeSetValue(self, &CXNativeStateKey, @(value));
+}
+static void CXNativeSetDirection(id self, SEL _cmd, NSUInteger value) {
+    CXNativeSetValue(self, &CXNativeDirectionKey, @(value));
+}
+static void CXNativeSetPointValue(id self, SEL _cmd, CGPoint value, char *key) {
+    CXNativeSetValue(self, key, [NSValue valueWithCGPoint:value]);
+}
+static void CXNativeSetStartPoint(id self, SEL _cmd, CGPoint value) {
+    CXNativeSetPointValue(self, _cmd, value, &CXNativeStartKey);
+}
+static void CXNativeSetLocation(id self, SEL _cmd, CGPoint value) {
+    CXNativeSetPointValue(self, _cmd, value, &CXNativeLocationKey);
+}
+static void CXNativeSetTranslation(id self, SEL _cmd, CGPoint value) {
+    CXNativeSetPointValue(self, _cmd, value, &CXNativeTranslationKey);
+}
+static void CXNativeSetVelocity(id self, SEL _cmd, CGPoint value) {
+    CXNativeSetPointValue(self, _cmd, value, &CXNativeVelocityKey);
+}
+static NSUInteger CXNativeDirection(id self, SEL _cmd) {
+    return [CXNativeValue(self, &CXNativeDirectionKey) unsignedIntegerValue];
+}
+static NSUInteger CXNativeTouches(id self, SEL _cmd) { return 1; }
+static CGPoint CXNativePoint(id self, SEL _cmd, UIView *view, char *key) {
+    CGPoint screen = [CXNativeValue(self, key) CGPointValue];
+    if (!view || !view.window) return screen;
+    CGPoint inWindow = [view.window convertPoint:screen fromWindow:nil];
+    return [view convertPoint:inWindow fromView:view.window];
+}
+static CGPoint CXNativeStartPoint(id self, SEL _cmd) {
+    return CXNativePoint(self, _cmd, ((UIGestureRecognizer *)self).view, &CXNativeStartKey);
+}
+static CGPoint CXNativeLocationInView(id self, SEL _cmd, UIView *view) {
+    return CXNativePoint(self, _cmd, view, &CXNativeLocationKey);
+}
+static CGPoint CXNativeTranslationInView(id self, SEL _cmd, UIView *view) {
+    return [CXNativeValue(self, &CXNativeTranslationKey) CGPointValue];
+}
+static CGPoint CXNativeVelocityInView(id self, SEL _cmd, UIView *view) {
+    return [CXNativeValue(self, &CXNativeVelocityKey) CGPointValue];
+}
+
+static Class CXNativeDockGestureClass(void) {
+    static Class cls;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        Class base = NSClassFromString(@"PXDockTapGestureRecognizer");
+        if (!base) base = NSClassFromString(@"_TtC9ParallelXP33_0DBF5CFAFFA6A5591ECA11E7E8FF46AE26PXDockTapGestureRecognizer");
+        if (!base) {
+            CXLog(@"[arc] PXDockTapGestureRecognizer class unavailable");
+            return;
+        }
+        cls = objc_allocateClassPair(base, "CXNativePXDockGesture", 0);
+        if (!cls) return;
+        class_addMethod(cls, @selector(state), (IMP)CXNativeState, "q@:");
+        class_addMethod(cls, @selector(setState:), (IMP)CXNativeSetState, "v@:q");
+        class_addMethod(cls, @selector(direction), (IMP)CXNativeDirection, "Q@:");
+        class_addMethod(cls, @selector(setDirection:), (IMP)CXNativeSetDirection, "v@:Q");
+        class_addMethod(cls, @selector(numberOfTouches), (IMP)CXNativeTouches, "Q@:");
+        class_addMethod(cls, @selector(startPoint), (IMP)CXNativeStartPoint, "{CGPoint=dd}@:");
+        class_addMethod(cls, @selector(setStartPoint:), (IMP)CXNativeSetStartPoint, "v@:{CGPoint=dd}");
+        class_addMethod(cls, @selector(locationInView:), (IMP)CXNativeLocationInView, "{CGPoint=dd}@:@");
+        class_addMethod(cls, @selector(setLocationInView:), (IMP)CXNativeSetLocation, "v@:{CGPoint=dd}");
+        class_addMethod(cls, @selector(translationInView:), (IMP)CXNativeTranslationInView, "{CGPoint=dd}@:@");
+        class_addMethod(cls, @selector(setTranslationInView:), (IMP)CXNativeSetTranslation, "v@:{CGPoint=dd}");
+        class_addMethod(cls, @selector(velocityInView:), (IMP)CXNativeVelocityInView, "{CGPoint=dd}@:@");
+        class_addMethod(cls, @selector(setVelocityInView:), (IMP)CXNativeSetVelocity, "v@:{CGPoint=dd}");
+        objc_registerClassPair(cls);
+    });
+    return cls;
+}
+
+static id CXNativeDockGestureCreate(UIView *host) {
+    Class cls = CXNativeDockGestureClass();
+    if (!cls) return nil;
+    id (*allocFn)(id, SEL) = (id (*)(id, SEL))objc_msgSend;
+    id (*initFn)(id, SEL, id, SEL) = (id (*)(id, SEL, id, SEL))objc_msgSend;
+    id gesture = allocFn((id)cls, @selector(alloc));
+    if (!gesture) return nil;
+    gesture = initFn(gesture, @selector(initWithTarget:action:), nil, NULL);
+    if (!gesture) return nil;
+    if (host) [host addGestureRecognizer:gesture];
+    return gesture;
+}
+
+static NSMutableArray *CXSynthPool(void) {
+    static NSMutableArray *pool;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ pool = [NSMutableArray array]; });
     return pool;
 }
 
@@ -230,7 +344,7 @@ static NSArray<NSString *> *CXMenuIDs(void) {
 }
 
 @implementation CXArcWakeGesture {
-    CXSynthPan *_synth;
+    id _synth;
     id _entry;
     NSArray<UIView *> *_icons;
     CGPoint _start;
@@ -281,7 +395,7 @@ static NSArray<NSString *> *CXMenuIDs(void) {
 - (UIWindow *)handleWindow { return CXMenuWindows().firstObject; }
 
 - (void)cleanup {
-    CXSynthPan *synth = _synth;
+    id synth = _synth;
     [synth.view removeGestureRecognizer:synth];
     if (synth) {
         [CXSynthPool() addObject:synth];
@@ -337,24 +451,45 @@ static NSArray<NSString *> *CXMenuIDs(void) {
         id entry = CXFindPanelEntry();
         UIWindow *window = nil;
         for (UIWindow *w in CXMenuWindows()) if (w.rootViewController) { window = w; break; }
-        if (!entry || !window || !CXPXVoidSelector(entry, @"dragHandle:", 1)) {
-            CXLog(@"[arc] begin skipped: entry=%d root=%d", entry != nil, window.rootViewController != nil);
+        SEL nativeSelector = NSSelectorFromString(@"dockSwiped:");
+        if (!entry || !window || !CXPXVoidSelector(entry, @"dockSwiped:", 1)) {
+            CXLog(@"[arc] native corner panel unavailable: entry=%d root=%d dockSwiped=%d",
+                  entry != nil, window.rootViewController != nil,
+                  entry && [entry respondsToSelector:nativeSelector]);
             _armed = NO;
             return;
         }
         CXActiveArc = self;
         _entry = entry;
-        _synth = [CXSynthPan new];
-        _synth.enabled = NO;
-        [CXPXEntryObject(entry, _left ? "leftHandle" : "handle", UIView.class) addGestureRecognizer:_synth];
-        if (!_synth.view) [CXPXEntryObject(entry, "handle", UIView.class) addGestureRecognizer:_synth];
-        if (!_synth.view) { CXLog(@"[arc] begin skipped: no handle view"); [self cleanup]; return; }
-        _synth.synthState = UIGestureRecognizerStateBegan;
-        _synth.synthLocation = point;
-        _synth.synthTranslation = CGPointZero;
-        CXLog(@"[arc] begin side=%@ %.0f,%.0f", _left ? @"left" : @"right", point.x, point.y);
-        @try { ((void (*)(id, SEL, id))objc_msgSend)(entry, NSSelectorFromString(@"dragHandle:"), _synth); }
-        @catch (__unused NSException *e) { [self cleanup]; return; }
+        UIView *handle = CXPXEntryObject(entry, _left ? "leftHandle" : "handle", UIView.class);
+        _synth = CXNativeDockGestureCreate(handle);
+        if (!_synth) {
+            handle = CXPXEntryObject(entry, "handle", UIView.class);
+            _synth = CXNativeDockGestureCreate(handle);
+        }
+        if (!_synth) { CXLog(@"[arc] native corner panel no PX gesture host"); [self cleanup]; return; }
+        ((UIGestureRecognizer *)_synth).enabled = NO;
+        CXPlaceNativePanelAtCorner(entry, _left);
+        CXNativeSetValue(_synth, &CXNativeStateKey, @(UIGestureRecognizerStateBegan));
+        CXNativeSetValue(_synth, &CXNativeDirectionKey,
+                         @(_left ? UISwipeGestureRecognizerDirectionRight : UISwipeGestureRecognizerDirectionLeft));
+        CXNativeSetValue(_synth, &CXNativeStartKey, [NSValue valueWithCGPoint:point]);
+        CXNativeSetValue(_synth, &CXNativeLocationKey, [NSValue valueWithCGPoint:point]);
+        CXNativeSetValue(_synth, &CXNativeTranslationKey, [NSValue valueWithCGPoint:CGPointZero]);
+        CXNativeSetValue(_synth, &CXNativeVelocityKey, [NSValue valueWithCGPoint:CGPointZero]);
+        CXLog(@"[arc] native corner panel begin side=%@ %.0f,%.0f",
+              _left ? @"left" : @"right", point.x, point.y);
+        @try { ((void (*)(id, SEL, id))objc_msgSend)(entry, nativeSelector, _synth); }
+        @catch (NSException *e) {
+            CXLog(@"[arc] native corner panel exception: %@", e.reason ?: @"unknown");
+            [self cleanup]; return;
+        }
+        // PX 可能在 dockSwiped: 内部才创建 panelWindow；补一次角落定位，
+        // 但不改 PX 自己的窗口/图标/动画对象。
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.04 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            if (_synth) CXPlaceNativePanelAtCorner(_entry, _left);
+        });
         // 立刻排，并在 PX 入场动画期间持续压住，避免先露出边缘半圆
         [self rearrange];
         for (NSNumber *delay in @[@0.03, @0.06, @0.10, @0.16, @0.24, @0.34, @0.46, @0.70, @0.95]) {
@@ -364,28 +499,25 @@ static NSArray<NSString *> *CXMenuIDs(void) {
         return;
     }
     if (!_synth || !_entry) return;
-    _synth.synthTranslation = CGPointMake(point.x - _start.x, point.y - _start.y);
-    _synth.synthLocation = point;
-    _synth.synthVelocity = [g velocityInView:nil];
+    CGPoint translation = CGPointMake(point.x - _start.x, point.y - _start.y);
     BOOL ended = g.state == UIGestureRecognizerStateEnded || g.state == UIGestureRecognizerStateCancelled ||
                  g.state == UIGestureRecognizerStateFailed;
-    _synth.synthState = ended ? g.state : UIGestureRecognizerStateChanged;
-    @try { ((void (*)(id, SEL, id))objc_msgSend)(_entry, NSSelectorFromString(@"dragHandle:"), _synth); }
-    @catch (__unused NSException *e) { [self cleanup]; return; }
+    CXNativeSetValue(_synth, &CXNativeTranslationKey, [NSValue valueWithCGPoint:translation]);
+    CXNativeSetValue(_synth, &CXNativeLocationKey, [NSValue valueWithCGPoint:point]);
+    CXNativeSetValue(_synth, &CXNativeVelocityKey, [NSValue valueWithCGPoint:[g velocityInView:nil]]);
+    CXNativeSetValue(_synth, &CXNativeStateKey, @(ended ? g.state : UIGestureRecognizerStateChanged));
+    SEL nativeSelector = NSSelectorFromString(@"dockSwiped:");
+    @try { ((void (*)(id, SEL, id))objc_msgSend)(_entry, nativeSelector, _synth); }
+    @catch (NSException *e) {
+        CXLog(@"[arc] native corner panel update exception: %@", e.reason ?: @"unknown");
+        [self cleanup]; return;
+    }
     if (!ended && CACurrentMediaTime() - _lastArrange > 0.06) [self rearrange];
     if (ended) {
-        UIWindow *window = _icons.firstObject.window ?: [self handleWindow];
-        CGPoint local = window ? [window convertPoint:point fromCoordinateSpace:UIScreen.mainScreen.coordinateSpace] : point;
-        NSInteger index = g.state == UIGestureRecognizerStateEnded ? CXFanNearest(_icons, local) : -1;
-        NSArray *ids = CXMenuIDs();
-        NSString *picked = (index >= 0 && index < (NSInteger)ids.count) ? ids[index] : nil;
-        CXLog(@"[arc] end state=%ld index=%ld picked=%@", (long)g.state, (long)index, picked ?: @"(none)");
-        // 让 PX 收起菜单但不用它的半圆命中；选中由扇形结果决定
-        _synth.synthState = UIGestureRecognizerStateCancelled;
-        @try { ((void (*)(id, SEL, id))objc_msgSend)(_entry, NSSelectorFromString(@"dragHandle:"), _synth); }
-        @catch (__unused NSException *e) { }
+        // PX 自己处理高亮、命中、收起动画和选中后的打开；ARC 只负责
+        // 提供独立角落手势，不再重新实现一套点击/分屏逻辑。
+        CXLog(@"[arc] native corner panel end state=%ld", (long)g.state);
         [self cleanup];
-        if (picked.length) CXOpenMenuItem(picked);
     }
 }
 

@@ -157,6 +157,63 @@ static BOOL CXAppRunning(NSString *bundle) {
     return ((BOOL (*)(id, SEL, id))objc_msgSend)(bridge, sel, bundle) != 0;
 }
 
+// Crane reload 完成只代表“配置已写入并发出 reload”，不代表 PX 的
+// 新 scene 已经能接收 URL。切换账号时先等旧 scene 消失，再等新
+// scene 出现并留出一小段稳定时间，避免第一次请求落到旧进程/空 scene。
+static void CXWaitForApplicationReady(NSString *bundleID, BOOL expectRestart,
+                                      BOOL wasRunning, NSInteger phase,
+                                      NSInteger tries, void (^completion)(void)) {
+    if (!completion) return;
+    BOOL running = CXAppRunning(bundleID);
+    if (!expectRestart) {
+        if (running || tries >= 16) {
+            if (!running) CXLog(@"[ready] %@ 未观察到 scene，超时继续", bundleID);
+            else CXLog(@"[ready] %@ scene ready", bundleID);
+            completion();
+            return;
+        }
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            CXWaitForApplicationReady(bundleID, expectRestart, wasRunning, phase,
+                                      tries + 1, completion);
+        });
+        return;
+    }
+
+    if (phase == 0) { // wait for the old scene to disappear
+        if (!running || tries >= 12) {
+            if (running) CXLog(@"[ready] %@ old scene did not disappear, continue waiting", bundleID);
+            CXWaitForApplicationReady(bundleID, YES, wasRunning, 1, 0, completion);
+            return;
+        }
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            CXWaitForApplicationReady(bundleID, YES, wasRunning, 0,
+                                      tries + 1, completion);
+        });
+        return;
+    }
+
+    if (phase == 1) { // wait for the new scene to appear
+        if (running) {
+            CXLog(@"[ready] %@ new scene appeared, settling", bundleID);
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), completion);
+            return;
+        }
+        if (tries >= 20) {
+            CXLog(@"[ready] %@ new scene timeout, continue", bundleID);
+            completion();
+            return;
+        }
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            CXWaitForApplicationReady(bundleID, YES, wasRunning, 1,
+                                      tries + 1, completion);
+        });
+    }
+}
+
 static void (*CXOrigOpenURL)(id, SEL, id, id, id);
 static BOOL (*CXOrigOpenURLLegacy)(id, SEL, id);
 static void CXCaptureExternalURL(id url) {
@@ -780,24 +837,23 @@ static BOOL CXPromptForURL(NSString *bundleID, BOOL requireURL, void (^proceed)(
         CXInternalOpen = YES;
         [CXCraneBridge switchBundleID:bundleID toContainer:cid reload:!same completion:^(BOOL ok) {
             if (!ok) { CXInternalOpen = wasInternal; CXLog(@"[url] %@ switch failed", bundleID); return; }
-            // 重载后进程要重新起来，立刻开窗会开到旧账号的进程上，所以先等一拍。
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((same ? 0.05 : (running ? 1.0 : 0.2)) * NSEC_PER_SEC)),
-                           dispatch_get_main_queue(), ^{
+            // Crane completion 只代表配置写入；等待 PX 目标 scene
+            // 真正消失/重建并稳定后，再继续原开窗链和 URL 补投。
+            CXWaitForApplicationReady(bundleID, !same, running, 0, 0, ^{
                 if (proceed) proceed();
                 if (!incoming) {
-                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.8 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-                        CXInternalOpen = wasInternal; });
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.8 * NSEC_PER_SEC),
+                                   dispatch_get_main_queue(), ^{ CXInternalOpen = wasInternal; });
                     return;
                 }
-                // 重启后进程要几秒才可收链接；多补几次，避免第一次打开丢链接。
-                NSArray *delays = same ? @[@0.3, @1.0] : @[@1.5, @2.5, @3.5, @4.5];
-                BOOL wasInt = CXInternalOpen;
+                // 只在目标 scene 已经出现后补投，避免第一次打开落到空 scene。
+                NSArray *delays = same ? @[@0.3, @1.0] : @[@0.8, @1.8, @3.0];
                 for (NSNumber *d in delays) {
                     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(d.doubleValue * NSEC_PER_SEC)),
                                    dispatch_get_main_queue(), ^{ CXReplayURL(incoming); });
                 }
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((same ? 1.5 : 5.0) * NSEC_PER_SEC)),
-                               dispatch_get_main_queue(), ^{ CXInternalOpen = wasInt; });
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((same ? 1.5 : 4.0) * NSEC_PER_SEC)),
+                               dispatch_get_main_queue(), ^{ CXInternalOpen = wasInternal; });
             });
         }];
     };
@@ -928,19 +984,18 @@ static BOOL CXHandleVirtualItem(NSDictionary *item) {
     [CXCraneBridge switchBundleID:bundleID toContainer:containerID reload:!sameNow completion:^(BOOL ok) {
         CXLog(@"[hit] %@ switch=%d same=%d running=%d", bundleID, ok, sameNow, running);
         if (!ok) { CXLog(@"[hit] switch failed, skip opening wrong account"); return; }
-        // 先立即开窗
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((sameNow ? 0.05 : (running ? 1.0 : 0.2)) * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{
+        // 切换完成不等于目标 scene 已经能接收请求；先等 PX scene
+        // 稳定，再开窗和补投 URL，避免“第一次失败、第二次成功”。
+        CXWaitForApplicationReady(bundleID, !sameNow, running, 0, 0, ^{
             CXOpenInSplit(bundleID);
-            // 分段补投 URL：避免进程重启时第一次丢链接
             NSURL *incoming = nil;
             if (!CXFreshURL(&incoming)) return;
-            NSArray *delays = sameNow ? @[@0.3, @1.0] : @[@1.5, @2.5, @3.5, @4.5];
+            NSArray *delays = sameNow ? @[@0.3, @1.0] : @[@0.8, @1.8, @3.0];
             for (NSNumber *d in delays) {
                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(d.doubleValue * NSEC_PER_SEC)),
                                dispatch_get_main_queue(), ^{ CXReplayURL(incoming); });
             }
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5.0 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 4.0 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
                 CXInternalOpen = NO;
             });
         });
