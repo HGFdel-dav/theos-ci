@@ -669,9 +669,14 @@ static void CXForwardSystemRequest(id self, SEL _cmd, id service, id request, id
 static void CXSystemRequestHook(id self, SEL _cmd, id service, id request, id completion) {
     if (!CXOrigSystemRequest) return;
     NSString *bundleID = CXRequestTargetBundle(request);
+    BOOL hasPayload = CXRequestHasURLPayload(request);
     NSArray<NSDictionary *> *containers = bundleID.length ? [CXCraneBridge containersForBundleID:bundleID] : @[];
+    if (bundleID.length) {
+        CXLog(@"[route] request target=%@ payload=%d containers=%lu main=%d",
+              bundleID, hasPayload, (unsigned long)containers.count, [NSThread isMainThread]);
+    }
     if (CXInternalOpen || CXShowingChooser || !bundleID.length ||
-        !CXRequestHasURLPayload(request) || containers.count < 2) {
+        !hasPayload || containers.count < 2) {
         CXOrigSystemRequest(self, _cmd, service, request, completion);
         return;
     }
@@ -1210,9 +1215,6 @@ static void CXInstallDragHandleHook(void) {
 }
 
 static void CXInstallAll(void) {
-    // 先挂完整 request 入口，确保 PX 后续 externalOpen/dispatchOpen
-    // 仍在同一次原始请求链上运行；菜单 Hook 保持在后面。
-    CXInstallSystemRequestHook();
     CXInstallURLHook();
     CXInstallPanelEntryHooks();
     CXInstallBridgeHooks();
@@ -1301,6 +1303,12 @@ __attribute__((constructor)) static void CXInitialize(void) {
         [CXPrefs.shared setBool:craneOK forKey:CXKeyDiagCraneOK];
         if (!craneOK) CXLog(@"[diag] %@", [[CXCraneBridge diagnosticLines] componentsJoinedByString:@" | "]);
         CXInstallAll();
+        // PX 自己可能在加载后重挂 SBMainWorkspace 同一 selector；
+        // 等 PX 的类/入口稳定后再安装 request Hook，避免被覆盖。
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            CXInstallSystemRequestHook();
+        });
         CXArcWakeInstall();
         CXLastSignature = CXContainerSignature();
         CXSyncMenu();
