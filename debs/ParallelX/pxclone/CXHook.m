@@ -28,6 +28,7 @@
 #import "CXLog.h"
 #import "CXMenuInjector.h"
 #import "CXArcWake.h"
+#import "CXWindowLevel.h"  // ← 新增：窗口层级
 
 typedef void (*CXHookFn)(Class, SEL, IMP, IMP *);
 
@@ -997,6 +998,16 @@ static void CXPreferencesChanged(CFNotificationCenterRef center, void *observer,
     dispatch_async(dispatch_get_main_queue(), ^{
         CXSyncMenu();
         CXArcWakeSync(); // 与旧版一样：设置变更即时刷新手势与调试热区
+        
+        // ========== 窗口层级配置变化处理 ==========
+        CXLog(@"[CXWindowLevel] 配置已变化，更新所有 PX 窗口层级");
+        for (UIWindow *window in UIApplication.sharedApplication.windows) {
+            NSString *className = NSStringFromClass(window.class);
+            if ([className hasPrefix:@"PX"] || [className containsString:@"Handle"] || 
+                [className containsString:@"Panel"] || [className containsString:@"Overlay"]) {
+                CXApplyWindowLevel(window);
+            }
+        }
     });
 }
 
@@ -1042,5 +1053,20 @@ __attribute__((constructor)) static void CXInitialize(void) {
                                         NULL, CXPreferencesChanged,
                                         CFSTR("com.niubiprass.clonex/changed"),
                                         NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+        
+        // ========== 窗口层级功能初始化 ==========
+        // 延迟3秒应用层级，确保 PX 窗口已创建
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            CXLog(@"[CXWindowLevel] 开始应用窗口层级");
+            for (UIWindow *window in UIApplication.sharedApplication.windows) {
+                NSString *className = NSStringFromClass(window.class);
+                if ([className hasPrefix:@"PX"] || [className containsString:@"Handle"] || 
+                    [className containsString:@"Panel"] || [className containsString:@"Overlay"]) {
+                    CXApplyWindowLevel(window);
+                    CXLog(@"[CXWindowLevel] 已应用到 %@: level=%.0f", className, window.windowLevel);
+                }
+            }
+        });
     });
 }

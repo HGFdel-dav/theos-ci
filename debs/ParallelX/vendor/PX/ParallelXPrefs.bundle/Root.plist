@@ -76,6 +76,22 @@
 		</dict>
 		<dict>
 			<key>cell</key>
+			<string>PSLinkCell</string>
+			<key>detail</key>
+			<string>CXWindowLevelController</string>
+			<key>id</key>
+			<string>cxwindowlevel</string>
+			<key>isController</key>
+			<true/>
+			<key>label</key>
+			<string>窗口层级</string>
+			<key>sfColor</key>
+			<string>red</string>
+			<key>sfSymbol</key>
+			<string>square.stack.3d.up</string>
+		</dict>
+		<dict>
+			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>label</key>
 			<string>分身</string>
