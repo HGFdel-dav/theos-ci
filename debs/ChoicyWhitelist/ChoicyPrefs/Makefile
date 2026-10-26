@@ -9,7 +9,7 @@ ChoicyWhitelistPrefs_FRAMEWORKS = UIKit QuartzCore
 ChoicyWhitelistPrefs_PRIVATE_FRAMEWORKS = Preferences MobileCoreServices
 ChoicyWhitelistPrefs_CFLAGS += -I../external/SDKHeaders
 ChoicyWhitelistPrefs_LIBRARIES += substrate
-ChoicyWhitelistPrefs_CFLAGS += -I../external -fobjc-arc -Wno-deprecated-declarations -I../external/ChOma/src -I../external/litehook/src -I../external/litehook/external/include
+ChoicyWhitelistPrefs_CFLAGS += -I../external -fobjc-arc -Wno-deprecated-declarations -Wno-tautological-pointer-compare -I../external/ChOma/src -I../external/litehook/src -I../external/litehook/external/include
 
 ChoicyWhitelistPrefs_LDFLAGS += -Wl,-rpath,@loader_path/.jbroot/Library/Frameworks
 
