@@ -1178,10 +1178,10 @@ static BOOL CXPerformAction(id self, SEL _cmd, id argument) {
     // 所以先自己调 PX 的应用入口 applicationActivated:（分屏路径），
     // 再保险地补一次原 performConfiguredAction。
     NSString *realBundle = item[@"bundleID"];
-    void (^cont)(void) = ^{
-        if (realBundle.length) CXOpenInSplit(realBundle);
-    };
-    if (!CXHandleVirtualItemThen(item, cont)) cont();
+    // 面板还开着时先让 PX 建卡片（applicationActivated 依赖面板会话），
+    // 卡片起来后再切容器，让它重启到目标容器。
+    if (realBundle.length) CXOpenViaActivated(realBundle);
+    CXHandleVirtualItemThen(item, ^{});
     return YES;
 }
 
