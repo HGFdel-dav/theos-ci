@@ -1039,6 +1039,9 @@ static UIView *CXLastPXHostView = nil;
 static UIView *CXLastPXOverlay = nil;
 static BOOL CXOpenCallFromUs = NO;
 
+static BOOL CXHandleVirtualItemThen(NSDictionary *item, void (^open)(void));
+static BOOL CXHandleVirtualItem(NSDictionary *item);
+
 // 兜底：直接调 ParallelX 自己的 applicationActivated: 分屏入口
 static void CXOpenViaActivated(NSString *bundleID) {
     Class entry = NSClassFromString(@"PXPanelEntry");
@@ -1231,9 +1234,6 @@ static NSDictionary *CXVirtualItemFromArgument(id argument) {
 #pragma mark - ① performConfiguredAction:（菜单点击动作 / 自定义条目）
 
 static BOOL (*CXOrigPerformAction)(id, SEL, id);
-
-static BOOL CXHandleVirtualItemThen(NSDictionary *item, void (^open)(void));
-static BOOL CXHandleVirtualItem(NSDictionary *item);
 
 static BOOL CXPerformAction(id self, SEL _cmd, id argument) {
     NSDictionary *item = CXVirtualItemFromArgument(argument);
