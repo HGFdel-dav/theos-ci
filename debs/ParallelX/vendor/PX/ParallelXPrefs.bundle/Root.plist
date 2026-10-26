@@ -89,6 +89,10 @@
 			<true/>
 			<key>label</key>
 			<string>分身应用与容器</string>
+			<key>sfColor</key>
+			<string>mint</string>
+			<key>sfSymbol</key>
+			<string>square.on.square</string>
 		</dict>
 		<dict>
 			<key>cell</key>
