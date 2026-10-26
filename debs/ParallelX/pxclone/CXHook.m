@@ -1034,6 +1034,10 @@ static void CXPromptContainerThenOpen(NSString *bundleID, void (^cancel)(void)) 
 }
 
 static NSInteger CXOpenToken = 0;
+// PX 自己点图标时传进来的宿主视图/遮罩，分身条目复用同一套，避免自己猜
+static __weak UIView *CXLastPXHostView = nil;
+static __weak UIView *CXLastPXOverlay = nil;
+static BOOL CXOpenCallFromUs = NO;
 
 // 兜底：直接调 ParallelX 自己的 applicationActivated: 分屏入口
 static void CXOpenViaActivated(NSString *bundleID) {
@@ -1091,10 +1095,15 @@ static void CXOpenInSplitImpl(NSString *bundleID) {
     SEL overlaySel = NSSelectorFromString(@"keyboardOverlay");
     if ([bridge respondsToSelector:hostSel])
         view = ((id (*)(id, SEL))objc_msgSend)(bridge, hostSel);
+    if (!CXAnyView(view) && CXLastPXHostView) {
+        view = CXLastPXHostView;
+        viewSource = @"lastPXView";
+    }
     if (!CXAnyView(view) && entryObject) {
         view = CXPXEntryObject(entryObject, "hostCanvas", UIView.class);
         viewSource = @"hostCanvas";
     }
+    if (!overlay && CXLastPXOverlay) overlay = CXLastPXOverlay;
     if ([bridge respondsToSelector:overlaySel])
         overlay = ((id (*)(id, SEL))objc_msgSend)(bridge, overlaySel);
     if (!CXAnyView(view)) {
@@ -1119,14 +1128,17 @@ static void CXOpenInSplitImpl(NSString *bundleID) {
             });
         }
     };
+    CXOpenCallFromUs = YES;
     @try {
         ((void (*)(id, SEL, id, id, id, id))objc_msgSend)(bridge, openSel, bundleID, view, overlay, done);
     } @catch (__unused NSException *e) {
+        CXOpenCallFromUs = NO;
         CXLog(@"[open] openApplication 异常，回退 applicationActivated %@", bundleID);
         CXOpenViaActivated(bundleID);
         return;
     }
-    // 老版本设备上 completion 可能永不回调，1.2s 没有结果就兜底，避免“点了没反应”
+    CXOpenCallFromUs = NO;
+    // completion 永不回调时兜底，1.2s 没有结果就兜底，避免“点了没反应”
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
         if (settled || token != CXOpenToken) return;
@@ -1341,7 +1353,13 @@ static void CXOpenAppHook(id self, SEL _cmd, id app, id view, id overlay, id com
     NSString *bundle = [app isKindOfClass:NSString.class] ? app : nil;
     NSString *active = bundle.length ? [CXCraneBridge activeContainerForBundleID:bundle] : nil;
     NSString *container = active.length ? active : @"DEFAULT"; // 普通应用也要记忆
-    CXLog(@"[trace] openApplication app=%@(%@)", app, NSStringFromClass([app class]));
+    if (!CXOpenCallFromUs) {
+        if ([view isKindOfClass:UIView.class]) CXLastPXHostView = view;
+        if ([overlay isKindOfClass:UIView.class]) CXLastPXOverlay = overlay;
+    }
+    CXLog(@"[trace] openApplication app=%@(%@) view=%@(%@) fromUs=%d", app,
+          NSStringFromClass([app class]), NSStringFromClass([view class]),
+          NSStringFromClass([overlay class]), CXOpenCallFromUs);
     if (CXOrigOpenApp) CXOrigOpenApp(self, _cmd, app, view, overlay, completion);
     // 原 completion 原样传回，不猜 block 内部签名；只在原开窗之后有限重试。
 }
