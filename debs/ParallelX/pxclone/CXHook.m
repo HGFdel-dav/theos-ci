@@ -1090,25 +1090,7 @@ static void CXOpenInSplitImpl(NSString *bundleID) {
     } else {
         CXLog(@"[open] sharedBridge 不存在，回退 applicationActivated:");
     }
-    // ② 只有原生分屏入口不可用时，才回退到 externalOpenApplication:。
-    // 这条路径可能先激活全屏，因此绝不能作为付款分屏的首选。
-    Class externalEntry = NSClassFromString(@"PXPanelEntry");
-    SEL externalSel = NSSelectorFromString(@"externalOpenApplication:");
-    if (externalEntry && [externalEntry respondsToSelector:externalSel]) {
-        NSMethodSignature *externalSig = [externalEntry methodSignatureForSelector:externalSel];
-        if (externalSig && externalSig.numberOfArguments == 3 &&
-            strcmp(externalSig.methodReturnType, @encode(void)) == 0 &&
-            [externalSig getArgumentTypeAtIndex:2][0] == '@') {
-            @try {
-                ((void (*)(id, SEL, id))objc_msgSend)(externalEntry, externalSel, bundleID);
-                CXLog(@"[open] %@ via externalOpenApplication fallback", bundleID);
-                return;
-            } @catch (__unused NSException *e) {
-                CXLog(@"[open] externalOpenApplication fallback exception %@", bundleID);
-            }
-        }
-    }
-    // ③ 最后兜底：类方法 applicationActivated:
+    // ② 最后兜底：ParallelX 的 applicationActivated: 分屏入口。
     Class entry = NSClassFromString(@"PXPanelEntry");
     SEL sel = NSSelectorFromString(@"applicationActivated:");
     if (!entry) return;
@@ -1256,8 +1238,8 @@ static void CXExternalOpen(Class cls, SEL _cmd, id argument) {
         NSString *bundle = argument;
         NSDictionary *virtualItem = CXVirtualItemFromArgument(argument);
         if (!virtualItem && CXRequestBypassActive(bundle)) {
-            CXLog(@"[route] %@ 已完成系统 request 选择，externalOpen 透传", bundle);
-            CXOrigExternalOpen(cls, _cmd, argument);
+            CXLog(@"[route] %@ 已完成账号选择，改走分屏入口", bundle);
+            CXOpenInSplit(bundle);
             return;
         }
         if (!virtualItem && [CXCraneBridge containersForBundleID:bundle].count >= 2) {
