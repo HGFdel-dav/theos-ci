@@ -13,7 +13,7 @@ TWEAK_NAME = ChoicyWhitelist
 ChoicyWhitelist_FILES = Tweak.c gen.c nextstep_plist.c $(wildcard external/litehook/src/*.c)
 ChoicyWhitelist_CFLAGS = -DTHEOS_LEAN_AND_MEAN -I./external/litehook/src -I./external/litehook/external/include -I./external/SDKHeaders
 include $(THEOS_MAKE_PATH)/tweak.mk
-SUBPROJECTS += external/AltList ChoicyPrefs ChoicySB
+SUBPROJECTS += ChoicyPrefs ChoicySB
 include $(THEOS_MAKE_PATH)/aggregate.mk
 internal-stage::
 	$(ECHO_NOTHING)mv "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/ChoicyWhitelist.dylib" "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/   ChoicyWhitelist.dylib" $(ECHO_END)
