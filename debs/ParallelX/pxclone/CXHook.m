@@ -28,6 +28,7 @@
 #import "CXLog.h"
 #import "CXMenuInjector.h"
 #import "CXArcWake.h"
+#import "CXPXRuntime.h"
 #import "CXWindowLevel.h"  // ← 新增：窗口层级
 
 typedef void (*CXHookFn)(Class, SEL, IMP, IMP *);
@@ -1037,7 +1038,10 @@ static void CXOpenInSplitImpl(NSString *bundleID) {
     //    这是 ParallelX 普通分屏条目使用的入口，避免先走全屏 externalOpenApplication:。
     Class bridgeCls = NSClassFromString(@"PXSceneBridge");
     id bridge = nil;
-    if (bridgeCls && [bridgeCls respondsToSelector:NSSelectorFromString(@"sharedBridge")])
+    id entryObject = CXArcWakeEntry();
+    if (bridgeCls && entryObject)
+        bridge = CXPXEntryObject(entryObject, "activeBridge", bridgeCls);
+    if (!bridge && bridgeCls && [bridgeCls respondsToSelector:NSSelectorFromString(@"sharedBridge")])
         bridge = ((id (*)(id, SEL))objc_msgSend)(bridgeCls, NSSelectorFromString(@"sharedBridge"));
     if (bridge) {
         SEL openSel = NSSelectorFromString(@"openApplication:inView:keyboardOverlay:completion:");
@@ -1053,6 +1057,8 @@ static void CXOpenInSplitImpl(NSString *bundleID) {
             SEL overlaySel = NSSelectorFromString(@"keyboardOverlay");
             if ([bridge respondsToSelector:hostSel])
                 view = ((id (*)(id, SEL))objc_msgSend)(bridge, hostSel);
+            if (!view && entryObject)
+                view = CXPXEntryObject(entryObject, "hostCanvas", UIView.class);
             if ([bridge respondsToSelector:overlaySel])
                 overlay = ((id (*)(id, SEL))objc_msgSend)(bridge, overlaySel);
             if (view) {
