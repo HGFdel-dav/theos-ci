@@ -27,9 +27,7 @@
 #import "CXPrefs.h"
 #import "CXLog.h"
 #import "CXMenuInjector.h"
-#import "CXArcWake.h"
 #import "CXPXRuntime.h"
-#import "CXWindowLevel.h"  // ← 新增：窗口层级
 
 typedef void (*CXHookFn)(Class, SEL, IMP, IMP *);
 
@@ -1038,6 +1036,7 @@ static NSInteger CXOpenToken = 0;
 static UIView *CXLastPXHostView = nil;
 static UIView *CXLastPXOverlay = nil;
 static BOOL CXOpenCallFromUs = NO;
+static id CXLastBridge = nil;
 
 static BOOL CXHandleVirtualItemThen(NSDictionary *item, void (^open)(void));
 static BOOL CXHandleVirtualItem(NSDictionary *item);
@@ -1087,7 +1086,7 @@ static void CXOpenInSplitImpl(NSString *bundleID) {
     //    这是 ParallelX 普通分屏条目使用的入口，避免先走全屏 externalOpenApplication:。
     Class bridgeCls = NSClassFromString(@"PXSceneBridge");
     id bridge = nil;
-    id entryObject = CXArcWakeEntry();
+    id entryObject = CXLastBridge;
     if (bridgeCls && entryObject)
         bridge = CXPXEntryObject(entryObject, "activeBridge", bridgeCls);
     if (!bridge && bridgeCls && [bridgeCls respondsToSelector:NSSelectorFromString(@"sharedBridge")])
@@ -1388,8 +1387,7 @@ static void (*CXOrigOpenApp)(id, SEL, id, id, id, id);
 
 static void CXOpenAppHook(id self, SEL _cmd, id app, id view, id overlay, id completion) {
     NSString *bundle = [app isKindOfClass:NSString.class] ? app : nil;
-    NSString *active = bundle.length ? [CXCraneBridge activeContainerForBundleID:bundle] : nil;
-    NSString *container = active.length ? active : @"DEFAULT"; // 普通应用也要记忆
+    CXLastBridge = self;
     if (!CXOpenCallFromUs) {
         if ([view isKindOfClass:UIView.class]) CXLastPXHostView = view;
         if ([overlay isKindOfClass:UIView.class]) CXLastPXOverlay = overlay;
@@ -1397,8 +1395,32 @@ static void CXOpenAppHook(id self, SEL _cmd, id app, id view, id overlay, id com
     CXLog(@"[trace] openApplication app=%@(%@) view=%@(%@) fromUs=%d", app,
           NSStringFromClass([app class]), NSStringFromClass([view class]),
           NSStringFromClass([overlay class]), CXOpenCallFromUs);
-    if (CXOrigOpenApp) CXOrigOpenApp(self, _cmd, app, view, overlay, completion);
-    // 原 completion 原样传回，不猜 block 内部签名；只在原开窗之后有限重试。
+    if (!CXOrigOpenApp) return;
+
+    // 分身条目是以“虚拟 bundleID”放在 applications 里的：
+    // 先切容器，再用真实 bundle 继续交给 PX，之后 PX 会按普通应用走分屏。
+    NSDictionary *item = CXVirtualItemFromArgument(app);
+    if (item) {
+        NSString *realBundle = item[@"bundleID"];
+        NSString *containerID = item[@"containerID"];
+        NSString *key = [NSString stringWithFormat:@"%@#%@", realBundle, containerID];
+        if (realBundle.length && containerID.length && !CXHandledRecently(key)) {
+            CXMarkHandled(key);
+            NSString *activeNow = [CXCraneBridge activeContainerForBundleID:realBundle] ?: @"DEFAULT";
+            BOOL sameNow = [activeNow isEqualToString:containerID];
+            CXLog(@"[hit] %@ -> container %@ (openApplication)", realBundle, containerID);
+            [CXCraneBridge switchBundleID:realBundle toContainer:containerID reload:!sameNow completion:^(BOOL ok) {
+                CXLog(@"[hit] %@ switch=%d, continue openApplication", realBundle, ok);
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    CXOrigOpenApp(self, _cmd, realBundle, view, overlay, completion);
+                });
+            }];
+            return;
+        }
+        if (realBundle.length) { CXOrigOpenApp(self, _cmd, realBundle, view, overlay, completion); return; }
+    }
+    (void)bundle;
+    CXOrigOpenApp(self, _cmd, app, view, overlay, completion);
 }
 
 static void CXInstallBridgeHooks(void) {
@@ -1470,7 +1492,7 @@ static void CXInstallBridgeHooks(void) {
 static void (*CXOrigDragHandle)(id, SEL, id);
 
 static void CXDragHandleHook(id self, SEL _cmd, id gesture) {
-    CXArcWakeCaptureEntry(self); // 捕获原版真正运行的实例，不再猜响应链
+    CXLastBridge = self; // 记下真正在跑的 PXSceneBridge 实例
     CXSyncIfNeeded(@"dragHandle");
     if (CXOrigDragHandle) CXOrigDragHandle(self, _cmd, gesture);
 }
@@ -1541,17 +1563,6 @@ static void CXPreferencesChanged(CFNotificationCenterRef center, void *observer,
                                  CFDictionaryRef userInfo) {
     dispatch_async(dispatch_get_main_queue(), ^{
         CXSyncMenu();
-        CXArcWakeSync(); // 与旧版一样：设置变更即时刷新手势与调试热区
-        
-        // ========== 窗口层级配置变化处理 ==========
-        CXLog(@"[CXWindowLevel] 配置已变化，更新所有 PX 窗口层级");
-        for (UIWindow *window in UIApplication.sharedApplication.windows) {
-            NSString *className = NSStringFromClass(window.class);
-            // 只认 ParallelX 自己的窗口，避免把别的插件的 Overlay/Panel 一起改层级
-            if ([className hasPrefix:@"PX"] || [className hasPrefix:@"CloneX"]) {
-                CXApplyWindowLevel(window);
-            }
-        }
     });
 }
 
@@ -1593,7 +1604,6 @@ __attribute__((constructor)) static void CXInitialize(void) {
                        dispatch_get_main_queue(), ^{
             CXInstallSystemRequestHook();
         });
-        CXArcWakeInstall();
         CXLastSignature = CXContainerSignature();
         CXSyncMenu();
         [NSTimer scheduledTimerWithTimeInterval:5.0 repeats:YES block:^(NSTimer *timer) {
@@ -1608,19 +1618,5 @@ __attribute__((constructor)) static void CXInitialize(void) {
                                         CFSTR("com.niubiprass.clonex/url"),
                                         NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
         CXImportSharedAppURL();
-        
-        // ========== 窗口层级功能初始化 ==========
-        // 延迟3秒应用层级，确保 PX 窗口已创建
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{
-            CXLog(@"[CXWindowLevel] 开始应用窗口层级");
-            for (UIWindow *window in UIApplication.sharedApplication.windows) {
-                NSString *className = NSStringFromClass(window.class);
-                if ([className hasPrefix:@"PX"] || [className hasPrefix:@"CloneX"]) {
-                    CXApplyWindowLevel(window);
-                    CXLog(@"[CXWindowLevel] 已应用到 %@: level=%.0f", className, window.windowLevel);
-                }
-            }
-        });
     });
 }

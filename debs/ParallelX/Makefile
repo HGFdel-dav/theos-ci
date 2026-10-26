@@ -7,13 +7,13 @@ include $(THEOS)/makefiles/common.mk
 
 # ---------------------------------------------------------------- SpringBoard 注入
 TWEAK_NAME = CloneX
-CloneX_FILES = pxclone/CXHook.m pxclone/CXCraneBridge.m pxclone/CXMenuInjector.m pxclone/CXArcWake.m pxclone/CXArcMenu.m pxclone/CXPrefs.m pxclone/CXLog.m pxclone/CXWindowLevel.m
+CloneX_FILES = pxclone/CXHook.m pxclone/CXCraneBridge.m pxclone/CXMenuInjector.m pxclone/CXPrefs.m pxclone/CXLog.m
 CloneX_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-unused-variable -Wno-unused-function -Ipxclone
 CloneX_FRAMEWORKS = UIKit Foundation CoreGraphics QuartzCore
 
 # ------------------------------------------- 设置进程注入（分身页控制器，不跨 bundle）
 LIBRARY_NAME = CloneXPrefsUI CloneXURLCapture
-CloneXPrefsUI_FILES = Prefs/CXRootListController.m Prefs/CXArcListController.m Prefs/CXWindowLevelController.m pxclone/CXCraneBridge.m pxclone/CXPrefs.m pxclone/CXLog.m
+CloneXPrefsUI_FILES = Prefs/CXRootListController.m pxclone/CXCraneBridge.m pxclone/CXPrefs.m pxclone/CXLog.m
 CloneXPrefsUI_INSTALL_PATH = /Library/MobileSubstrate/DynamicLibraries
 CloneXPrefsUI_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-unused-variable -Wno-unused-function -Ipxclone -IPrefs
 CloneXPrefsUI_FRAMEWORKS = UIKit Foundation CoreGraphics

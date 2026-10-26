@@ -60,56 +60,6 @@
 		</dict>
 		<dict>
 			<key>cell</key>
-			<string>PSLinkCell</string>
-			<key>detail</key>
-			<string>CXArcListController</string>
-			<key>id</key>
-			<string>cxarc</string>
-			<key>isController</key>
-			<true/>
-			<key>label</key>
-			<string>ARC 角落唤醒</string>
-			<key>sfColor</key>
-			<string>orange</string>
-			<key>sfSymbol</key>
-			<string>hand.draw</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSLinkCell</string>
-			<key>detail</key>
-			<string>CXWindowLevelController</string>
-			<key>id</key>
-			<string>cxwindowlevel</string>
-			<key>isController</key>
-			<true/>
-			<key>label</key>
-			<string>窗口层级</string>
-			<key>sfColor</key>
-			<string>red</string>
-			<key>sfSymbol</key>
-			<string>square.stack.3d.up</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSGroupCell</string>
-			<key>label</key>
-			<string>分身</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSLinkCell</string>
-			<key>detail</key>
-			<string>CXRootListController</string>
-			<key>id</key>
-			<string>clonex</string>
-			<key>isController</key>
-			<true/>
-			<key>label</key>
-			<string>分身应用与容器</string>
-		</dict>
-		<dict>
-			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>label</key>
 			<string>窗口与交互</string>
@@ -127,6 +77,18 @@
 			<string>blue</string>
 			<key>sfSymbol</key>
 			<string>rectangle.on.rectangle</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSLinkCell</string>
+			<key>detail</key>
+			<string>CXRootListController</string>
+			<key>id</key>
+			<string>clonex</string>
+			<key>isController</key>
+			<true/>
+			<key>label</key>
+			<string>分身应用与容器</string>
 		</dict>
 		<dict>
 			<key>cell</key>

@@ -207,16 +207,9 @@ static UIImage *CXBadgedIcon(NSString *bundleID, BOOL isDefault) {
             BOOL exists = NO;
             for (NSDictionary *record in customActions)
                 if ([record[@"id"] isEqual:itemID]) { exists = YES; break; }
-            if (!exists) {
-                [customActions addObject:@{
-                    @"id": itemID,
-                    @"title": names[itemID],
-                    @"app": bundle,
-                    @"appTitle": appName,
-                    @"kind": @"quick",
-                    @"type": @"clonex.open",
-                }];
-            }
+            // 不再塞进 customActions：快捷动作会被 PX 按全屏打开。
+            // 只留在 applications 里，让 PX 当普通应用走 prepareWindow(fullscreen=0)。
+            (void)exists;
             if (!symbols[itemID]) symbols[itemID] = @"square.on.square";
             UIImage *icon = CXBadgedIcon(bundle, isDefault);
             if (icon) {
