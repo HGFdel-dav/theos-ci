@@ -1167,7 +1167,7 @@ static void CXOpenInSplitImpl(NSString *bundleID) {
 }
 
 // 截获一个虚拟条目：切容器 → 打开真实应用
-static BOOL CXHandleVirtualItem(NSDictionary *item) {
+static BOOL CXHandleVirtualItemThen(NSDictionary *item, void (^open)(void)) {
     NSString *bundleID = item[@"bundleID"];
     NSString *containerID = item[@"containerID"];
     if (!bundleID.length || !containerID.length) return NO;
@@ -1185,7 +1185,7 @@ static BOOL CXHandleVirtualItem(NSDictionary *item) {
         // 切换完成不等于目标 scene 已经能接收请求；先等 PX scene
         // 稳定，再开窗和补投 URL，避免“第一次失败、第二次成功”。
         CXWaitForApplicationReady(bundleID, !sameNow, running, 0, 0, ^{
-            CXOpenInSplit(bundleID);
+            if (open) open(); else CXOpenInSplit(bundleID);
             NSURL *incoming = nil;
             if (!CXFreshURL(&incoming)) return;
             NSArray *delays = sameNow ? @[@0.3, @1.0] : @[@0.8, @1.8, @3.0];
@@ -1215,6 +1215,10 @@ void CXOpenMenuItem(NSString *identifier) {
     CXOpenInSplit(identifier);
 }
 
+static BOOL CXHandleVirtualItem(NSDictionary *item) {
+    return CXHandleVirtualItemThen(item, nil);
+}
+
 static NSDictionary *CXVirtualItemFromArgument(id argument) {
     if ([argument isKindOfClass:NSString.class]) return CXVirtualItemForID(argument);
     if ([argument isKindOfClass:NSDictionary.class]) {
@@ -1230,8 +1234,20 @@ static BOOL (*CXOrigPerformAction)(id, SEL, id);
 
 static BOOL CXPerformAction(id self, SEL _cmd, id argument) {
     NSDictionary *item = CXVirtualItemFromArgument(argument);
-    if (item && CXHandleVirtualItem(item)) return YES;
-    return CXOrigPerformAction ? CXOrigPerformAction(self, _cmd, argument) : NO;
+    if (!item || !CXOrigPerformAction) return CXOrigPerformAction ? CXOrigPerformAction(self, _cmd, argument) : NO;
+    // 容器切换完成后，把记录改回真实 bundle 再交回 PX，
+    // 让 PX 用它自己的 performConfiguredAction 完整开窗（含 prepareWindow 上下文）。
+    NSMutableDictionary *record = [argument isKindOfClass:NSDictionary.class]
+        ? [argument mutableCopy] : [NSMutableDictionary dictionary];
+    if (item[@"bundleID"]) {
+        record[@"id"] = item[@"bundleID"];
+        record[@"app"] = item[@"bundleID"];
+        if (item[@"bundleID"]) record[@"appTitle"] = record[@"appTitle"] ?: item[@"bundleID"];
+    }
+    [record removeObjectForKey:@"containerID"];
+    void (^cont)(void) = ^{ CXOrigPerformAction(self, _cmd, record); };
+    if (!CXHandleVirtualItemThen(item, cont)) cont();
+    return YES;
 }
 
 #pragma mark - ② prepareWindowForBundleID（条目被当作应用打开时）
