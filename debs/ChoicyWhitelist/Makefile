@@ -3,7 +3,7 @@ THEOS_PACKAGE_SCHEME ?= roothide
 ifneq ($(THEOS_PACKAGE_SCHEME),roothide)
 $(error Choicy-Whitelist supports roothide only)
 endif
-export TARGET = iphone:clang:16.5:15.0
+export TARGET = iphone:clang:15.5:15.0
 export ARCHS = arm64e
 export DEBUG = 0
 export FINALPACKAGE = 1
