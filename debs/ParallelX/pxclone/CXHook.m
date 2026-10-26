@@ -1184,9 +1184,10 @@ static BOOL CXHandleVirtualItemThen(NSDictionary *item, void (^open)(void)) {
     [CXCraneBridge switchBundleID:bundleID toContainer:containerID reload:!sameNow completion:^(BOOL ok) {
         CXLog(@"[hit] %@ switch=%d same=%d running=%d", bundleID, ok, sameNow, running);
         if (!ok) { CXLog(@"[hit] switch failed, skip opening wrong account"); return; }
-        // 切换完成不等于目标 scene 已经能接收请求；先等 PX scene
-        // 稳定，再开窗和补投 URL，避免“第一次失败、第二次成功”。
-        CXWaitForApplicationReady(bundleID, !sameNow, running, 0, 0, ^{
+        // 场景等待在这台机器上不回调，改固定延时；再开窗和补投 URL
+        (void)running;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
             if (open) open(); else CXOpenInSplit(bundleID);
             NSURL *incoming = nil;
             if (!CXFreshURL(&incoming)) return;
@@ -1247,7 +1248,15 @@ static BOOL CXPerformAction(id self, SEL _cmd, id argument) {
         if (item[@"bundleID"]) record[@"appTitle"] = record[@"appTitle"] ?: item[@"bundleID"];
     }
     [record removeObjectForKey:@"containerID"];
-    void (^cont)(void) = ^{ CXOrigPerformAction(self, _cmd, record); };
+    // 交回去的 `record` 仍带 type=clonex.open，会被 PX 当快捷动作全屏打开。
+    // 所以先自己调 PX 的应用入口 applicationActivated:（分屏路径），
+    // 再保险地补一次原 performConfiguredAction。
+    NSString *realBundle = item[@"bundleID"];
+    void (^cont)(void) = ^{
+        if (realBundle.length) CXOpenViaActivated(realBundle);
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{ CXOrigPerformAction(self, _cmd, record); });
+    };
     if (!CXHandleVirtualItemThen(item, cont)) cont();
     return YES;
 }

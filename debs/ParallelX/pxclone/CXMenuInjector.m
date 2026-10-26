@@ -167,12 +167,10 @@ static UIImage *CXBadgedIcon(NSString *bundleID, BOOL isDefault) {
         [symbols removeObjectForKey:entry];
         [images removeObjectForKey:entry];
     }
-    // 全部分身记录都从 customActions 移除：旧版本残留的也要清掉，
-    // 否则 PX 仍按“快捷动作”走全屏。
-    NSMutableArray<NSDictionary *> *keptActions = [NSMutableArray array];
-    for (NSDictionary *record in customActions)
-        if (![record[@"type"] isEqual:@"clonex.open"]) [keptActions addObject:record];
-    [customActions setArray:keptActions];
+    [customActions filterUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSDictionary *record, id bindings) {
+        if (![record[@"type"] isEqual:@"clonex.open"]) return YES;
+        return [desiredIDs containsObject:record[@"id"] ?: @""];
+    }]];
 
     // 3) 全自动：Crane 里有几个容器就注入几条
     NSMutableDictionary<NSString *, NSDictionary *> *idMap = CXIDMap();
@@ -209,9 +207,16 @@ static UIImage *CXBadgedIcon(NSString *bundleID, BOOL isDefault) {
             BOOL exists = NO;
             for (NSDictionary *record in customActions)
                 if ([record[@"id"] isEqual:itemID]) { exists = YES; break; }
-            // 不再塞进 customActions：快捷动作会被 PX 按全屏打开。
-            // 只留在 applications 里，让 PX 当普通应用走 prepareWindow(fullscreen=0)。
-            (void)exists;
+            if (!exists) {
+                [customActions addObject:@{
+                    @"id": itemID,
+                    @"title": names[itemID],
+                    @"app": bundle,
+                    @"appTitle": appName,
+                    @"kind": @"quick",
+                    @"type": @"clonex.open",
+                }];
+            }
             if (!symbols[itemID]) symbols[itemID] = @"square.on.square";
             UIImage *icon = CXBadgedIcon(bundle, isDefault);
             if (icon) {
