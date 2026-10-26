@@ -167,10 +167,12 @@ static UIImage *CXBadgedIcon(NSString *bundleID, BOOL isDefault) {
         [symbols removeObjectForKey:entry];
         [images removeObjectForKey:entry];
     }
-    [customActions filterUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSDictionary *record, id bindings) {
-        if (![record[@"type"] isEqual:@"clonex.open"]) return YES;
-        return [desiredIDs containsObject:record[@"id"] ?: @""];
-    }]];
+    // 全部分身记录都从 customActions 移除：旧版本残留的也要清掉，
+    // 否则 PX 仍按“快捷动作”走全屏。
+    NSMutableArray<NSDictionary *> *keptActions = [NSMutableArray array];
+    for (NSDictionary *record in customActions)
+        if (![record[@"type"] isEqual:@"clonex.open"]) [keptActions addObject:record];
+    [customActions setArray:keptActions];
 
     // 3) 全自动：Crane 里有几个容器就注入几条
     NSMutableDictionary<NSString *, NSDictionary *> *idMap = CXIDMap();
