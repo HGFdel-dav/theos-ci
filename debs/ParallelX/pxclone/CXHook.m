@@ -1453,6 +1453,38 @@ static void CXInstallDragHandleHook(void) {
     CXLog(@"[hook] dragHandle installed=%d", installed);
 }
 
+
+#pragma mark - 探针：图标类方法枚举
+
+static void CXProbeIconClasses(void) {
+    int count = objc_getClassList(NULL, 0);
+    if (count <= 0) return;
+    Class *classes = (Class *)calloc((size_t)count, sizeof(Class));
+    if (!classes) return;
+    objc_getClassList(classes, count);
+    for (int i = 0; i < count; i++) {
+        const char *name = class_getName(classes[i]);
+        if (!name) continue;
+        if (!strstr(name, "PXPanelIcon") && !strstr(name, "PXPanelButton") &&
+            !strstr(name, "PXIconView") && !strstr(name, "PXLauncherIcon")) continue;
+        CXLog(@"[probe] class %s super=%s", name, class_getName(class_getSuperclass(classes[i])));
+        unsigned int mc = 0;
+        Method *methods = class_copyMethodList(classes[i], &mc);
+        for (unsigned int m = 0; m < mc && m < 40; m++)
+            CXLog(@"[probe]   -%s  %s", sel_getName(method_getName(methods[m])),
+                  method_getTypeEncoding(methods[m]));
+        free(methods);
+        // 类方法
+        Class meta = object_getClass(classes[i]);
+        methods = class_copyMethodList(meta, &mc);
+        for (unsigned int m = 0; m < mc && m < 20; m++)
+            CXLog(@"[probe]   +%s  %s", sel_getName(method_getName(methods[m])),
+                  method_getTypeEncoding(methods[m]));
+        free(methods);
+    }
+    free(classes);
+}
+
 static void CXInstallAll(void) {
     CXInstallURLHook();
     CXInstallPanelEntryHooks();
@@ -1557,5 +1589,7 @@ __attribute__((constructor)) static void CXInitialize(void) {
                                         CFSTR("com.niubiprass.clonex/url"),
                                         NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
         CXImportSharedAppURL();
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{ CXProbeIconClasses(); });
     });
 }
