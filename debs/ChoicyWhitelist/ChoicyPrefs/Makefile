@@ -8,9 +8,9 @@ ChoicyWhitelistPrefs_INSTALL_PATH = /Library/PreferenceBundles
 ChoicyWhitelistPrefs_FRAMEWORKS = UIKit QuartzCore
 ChoicyWhitelistPrefs_PRIVATE_FRAMEWORKS = Preferences MobileCoreServices
 ChoicyWhitelistPrefs_EXTRA_FRAMEWORKS = AltList
-ChoicyWhitelistPrefs_CFLAGS += -F$(THEOS_PROJECT_DIR)/external/AltList/.theos/obj -I../external/SDKHeaders
-ChoicyWhitelistPrefs_LDFLAGS += -F$(THEOS_PROJECT_DIR)/external/AltList/.theos/obj
-ChoicyWhitelistPrefs_CFLAGS += -fobjc-arc -Wno-deprecated-declarations -I../external/ChOma/src -I../external/litehook/src -I../external/litehook/external/include
+ChoicyWhitelistPrefs_CFLAGS += -F../external/AltList/.theos/obj -I../external/SDKHeaders
+ChoicyWhitelistPrefs_LDFLAGS += -F../external/AltList/.theos/obj
+ChoicyWhitelistPrefs_CFLAGS += -I../external -fobjc-arc -Wno-deprecated-declarations -I../external/ChOma/src -I../external/litehook/src -I../external/litehook/external/include
 
 ChoicyWhitelistPrefs_LDFLAGS += -Wl,-rpath,@loader_path/.jbroot/Library/Frameworks
 
