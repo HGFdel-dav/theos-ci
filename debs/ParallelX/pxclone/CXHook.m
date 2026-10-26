@@ -489,11 +489,26 @@ static void CXInstallURLHook(void) {
 #pragma mark - 打开分屏窗口（真实 bundle）
 
 static BOOL CXShowingChooser = NO;
+static __strong UIWindow *CXChooserWindow;
+static __weak UIWindow *CXChooserPreviousKeyWindow;
+static void CXCloseChooser(void);
+
+static BOOL CXChooserHostWindow(UIWindow *window) {
+    if (!window || window.hidden || !window.userInteractionEnabled || !window.rootViewController) return NO;
+    if (!window.windowScene) return NO;
+    NSString *name = NSStringFromClass(window.class);
+    // These overlay windows are drawn above SpringBoard but are not reliable
+    // presenters for interactive controls (the payment chooser used one).
+    for (NSString *token in @[@"PX", @"Panel", @"Overlay", @"Handle", @"Pill", @"CXArc", @"Debug"]) {
+        if ([name containsString:token]) return NO;
+    }
+    return YES;
+}
 
 static UIViewController *CXTopViewController(void) {
     UIViewController *vc = nil;
     for (UIWindow *window in UIApplication.sharedApplication.windows.reverseObjectEnumerator) {
-        if (window.hidden || !window.rootViewController) continue;
+        if (!CXChooserHostWindow(window)) continue;
         vc = window.rootViewController; break;
     }
     while (vc.presentedViewController) vc = vc.presentedViewController;
@@ -636,14 +651,48 @@ static void CXOpenInSplit(NSString *bundleID) {
     if (self.finishing || sender.tag < 0 || sender.tag >= (NSInteger)self.containers.count) return;
     self.finishing = YES;
     NSDictionary *entry = self.containers[sender.tag];
-    [self dismissViewControllerAnimated:YES completion:^{ if (self.pick) self.pick(entry[@"containerID"]); }];
+    NSString *containerID = entry[@"containerID"];
+    CXLog(@"[url] chooser tapped index=%ld container=%@", (long)sender.tag, containerID ?: @"?");
+    CXCloseChooser();
+    if (self.pick) self.pick(containerID);
 }
 - (void)cancelled {
     if (self.finishing) return;
     self.finishing = YES;
-    [self dismissViewControllerAnimated:YES completion:^{ if (self.cancel) self.cancel(); }];
+    CXCloseChooser();
+    if (self.cancel) self.cancel();
 }
 @end
+
+static void CXCloseChooser(void) {
+    UIWindow *window = CXChooserWindow;
+    CXChooserWindow = nil;
+    CXShowingChooser = NO;
+    if (window) {
+        window.hidden = YES;
+        window.rootViewController = nil;
+    }
+    UIWindow *previous = CXChooserPreviousKeyWindow;
+    CXChooserPreviousKeyWindow = nil;
+    if (previous && !previous.hidden) [previous makeKeyWindow];
+}
+
+static BOOL CXPresentChooserInOwnWindow(CXChooserController *chooser, UIWindow *hostWindow) {
+    UIWindowScene *scene = hostWindow.windowScene;
+    if (!scene || !chooser) return NO;
+    CXChooserPreviousKeyWindow = UIApplication.sharedApplication.keyWindow ?: hostWindow;
+    UIWindow *window = [[UIWindow alloc] initWithWindowScene:scene];
+    window.frame = scene.coordinateSpace.bounds;
+    window.windowLevel = UIWindowLevelAlert + 1;
+    window.backgroundColor = UIColor.clearColor;
+    window.userInteractionEnabled = YES;
+    window.rootViewController = chooser;
+    CXChooserWindow = window;
+    [window makeKeyAndVisible];
+    CXLog(@"[url] chooser own-window shown scene=%@ level=%.0f interactive=%d",
+          scene.session.persistentIdentifier ?: @"?", window.windowLevel, window.userInteractionEnabled);
+    return YES;
+}
 
 #pragma mark - 系统打开请求 continuation
 
@@ -738,9 +787,14 @@ static void CXPresentSystemRequestChooser(NSString *bundleID,
         if (pick) pick(containerID);
     };
     @try {
-        [host presentViewController:chooser animated:YES completion:nil];
+        UIWindow *hostWindow = host.viewIfLoaded.window ?: host.view.window;
+        if (!CXPresentChooserInOwnWindow(chooser, hostWindow)) {
+            CXShowingChooser = NO;
+            CXLog(@"[route] chooser own-window unavailable");
+            if (cancel) cancel();
+        }
     } @catch (NSException *e) {
-        CXShowingChooser = NO;
+        CXCloseChooser();
         CXLog(@"[route] present chooser 异常: %@", e.reason ?: @"unknown");
         if (cancel) cancel();
     }
@@ -887,14 +941,14 @@ static BOOL CXPromptForURL(NSString *bundleID, BOOL requireURL, void (^proceed)(
         }];
     };
     @try {
-        if (!host.viewIfLoaded.window && host.view.window == nil) {
+        UIWindow *hostWindow = host.viewIfLoaded.window ?: host.view.window;
+        if (!CXPresentChooserInOwnWindow(chooser, hostWindow)) {
             CXShowingChooser = NO;
-            CXLog(@"[url] chooser host 无有效窗口");
+            CXLog(@"[url] chooser own-window unavailable");
             return NO;
         }
-        [host presentViewController:chooser animated:YES completion:nil];
     } @catch (NSException *e) {
-        CXShowingChooser = NO;
+        CXCloseChooser();
         CXLog(@"[url] present chooser 异常: %@", e.reason ?: @"unknown");
         return NO;
     }
