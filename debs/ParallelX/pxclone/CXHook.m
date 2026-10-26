@@ -1035,8 +1035,8 @@ static void CXPromptContainerThenOpen(NSString *bundleID, void (^cancel)(void)) 
 
 static NSInteger CXOpenToken = 0;
 // PX 自己点图标时传进来的宿主视图/遮罩，分身条目复用同一套，避免自己猜
-static __weak UIView *CXLastPXHostView = nil;
-static __weak UIView *CXLastPXOverlay = nil;
+static UIView *CXLastPXHostView = nil;
+static UIView *CXLastPXOverlay = nil;
 static BOOL CXOpenCallFromUs = NO;
 
 // 兜底：直接调 ParallelX 自己的 applicationActivated: 分屏入口

@@ -1,1 +1,1 @@
-#define CX_BUILD_TAG @"0.86"
+#define CX_BUILD_TAG @"0.87"
