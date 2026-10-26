@@ -1052,9 +1052,9 @@ static void CXOpenViaActivated(NSString *bundleID) {
     }
 }
 
-static BOOL CXUsableView(id view) {
-    return [view isKindOfClass:UIView.class] && ((UIView *)view).window != nil &&
-           !CGRectIsEmpty(((UIView *)view).bounds);
+// hostView 来自 PX，经常还没挂到窗口上，只要求是 UIView 且有尺寸
+static BOOL CXAnyView(id view) {
+    return [view isKindOfClass:UIView.class] && !CGRectIsEmpty(((UIView *)view).bounds);
 }
 
 static void CXOpenInSplitImpl(NSString *bundleID) {
@@ -1091,13 +1091,13 @@ static void CXOpenInSplitImpl(NSString *bundleID) {
     SEL overlaySel = NSSelectorFromString(@"keyboardOverlay");
     if ([bridge respondsToSelector:hostSel])
         view = ((id (*)(id, SEL))objc_msgSend)(bridge, hostSel);
-    if (!CXUsableView(view) && entryObject) {
+    if (!CXAnyView(view) && entryObject) {
         view = CXPXEntryObject(entryObject, "hostCanvas", UIView.class);
         viewSource = @"hostCanvas";
     }
     if ([bridge respondsToSelector:overlaySel])
         overlay = ((id (*)(id, SEL))objc_msgSend)(bridge, overlaySel);
-    if (!CXUsableView(view)) {
+    if (!CXAnyView(view)) {
         CXLog(@"[open] hostView/hostCanvas 均不可用，回退 applicationActivated: %@", bundleID);
         CXOpenViaActivated(bundleID);
         return;

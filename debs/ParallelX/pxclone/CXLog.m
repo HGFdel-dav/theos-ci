@@ -30,6 +30,7 @@ void CXLog(NSString *format, ...) {
     NSFileManager *fm = NSFileManager.defaultManager;
     [fm createDirectoryAtPath:CXLogDirectory() withIntermediateDirectories:YES attributes:nil error:nil];
     NSString *path = CXLogPath();
+    NSLog(@"[CloneX] %@", message);
     NSDictionary *attrs = [fm attributesOfItemAtPath:path error:nil];
     if (attrs && [attrs[NSFileSize] unsignedLongLongValue] > CX_LOG_MAX) {
         [fm removeItemAtPath:path error:nil];
