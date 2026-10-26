@@ -1409,9 +1409,12 @@ static void CXOpenAppHook(id self, SEL _cmd, id app, id view, id overlay, id com
             NSString *activeNow = [CXCraneBridge activeContainerForBundleID:realBundle] ?: @"DEFAULT";
             BOOL sameNow = [activeNow isEqualToString:containerID];
             CXLog(@"[hit] %@ -> container %@ (openApplication)", realBundle, containerID);
+            BOOL running = CXAppRunning(realBundle);
             [CXCraneBridge switchBundleID:realBundle toContainer:containerID reload:!sameNow completion:^(BOOL ok) {
-                CXLog(@"[hit] %@ switch=%d, continue openApplication", realBundle, ok);
-                dispatch_async(dispatch_get_main_queue(), ^{
+                CXLog(@"[hit] %@ switch=%d, wait scene", realBundle, ok);
+                if (!ok) { CXLog(@"[hit] switch failed"); return; }
+                // 等目标容器里的进程/scene 就绪，否则 PX 看不到 scene 会按全屏拉起
+                CXWaitForApplicationReady(realBundle, !sameNow, running, 0, 0, ^{
                     CXOrigOpenApp(self, _cmd, realBundle, view, overlay, completion);
                 });
             }];
