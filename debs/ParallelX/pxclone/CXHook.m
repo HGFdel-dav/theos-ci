@@ -1413,8 +1413,11 @@ static void CXOpenAppHook(id self, SEL _cmd, id app, id view, id overlay, id com
             [CXCraneBridge switchBundleID:realBundle toContainer:containerID reload:!sameNow completion:^(BOOL ok) {
                 CXLog(@"[hit] %@ switch=%d, wait scene", realBundle, ok);
                 if (!ok) { CXLog(@"[hit] switch failed"); return; }
-                // 等目标容器里的进程/scene 就绪，否则 PX 看不到 scene 会按全屏拉起
-                CXWaitForApplicationReady(realBundle, !sameNow, running, 0, 0, ^{
+                // 等容器切换后的进程起一点再来（scene 等待在这台上会卡住，改固定延时）
+                (void)running;
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
+                               dispatch_get_main_queue(), ^{
+                    CXLog(@"[hit] %@ delay done, hand back", realBundle);
                     CXOrigOpenApp(self, _cmd, realBundle, view, overlay, completion);
                 });
             }];
