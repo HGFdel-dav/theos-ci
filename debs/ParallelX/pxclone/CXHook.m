@@ -1456,6 +1456,34 @@ static void CXInstallDragHandleHook(void) {
 
 #pragma mark - 探针：图标类方法枚举
 
+
+static void CXProbeGesturesRecursive(UIView *view, int depth) {
+    if (!view || depth > 12) return;
+    for (UIGestureRecognizer *g in view.gestureRecognizers) {
+        NSMutableString *tg = [NSMutableString string];
+        @try {
+            NSArray *targets = [g valueForKey:@"_targets"];
+            for (id t in targets) {
+                id target = [t valueForKey:@"target"];
+                NSString *action = [t valueForKey:@"_action"] ?: [t valueForKey:@"action"];
+                [tg appendFormat:@" %@->%@", NSStringFromClass([target class]), action];
+            }
+        } @catch (__unused NSException *e) { [tg appendString:@" ?"]; }
+        CXLog(@"[probe] gesture %@ on %@ (depth %d) targets:%@",
+              NSStringFromClass([g class]), NSStringFromClass([view class]), depth, tg);
+    }
+    for (UIView *sub in view.subviews) CXProbeGesturesRecursive(sub, depth + 1);
+}
+
+static void CXProbeGestures(void) {
+    for (UIWindow *w in UIApplication.sharedApplication.windows) {
+        NSString *cn = NSStringFromClass(w.class);
+        if (!([cn hasPrefix:@"PX"] || [cn containsString:@"Panel"])) continue;
+        CXLog(@"[probe] window %@ level=%.0f", cn, w.windowLevel);
+        CXProbeGesturesRecursive(w, 0);
+    }
+}
+
 static void CXProbeIconClasses(void) {
     int count = objc_getClassList(NULL, 0);
     if (count <= 0) return;
@@ -1590,6 +1618,6 @@ __attribute__((constructor)) static void CXInitialize(void) {
                                         NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
         CXImportSharedAppURL();
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{ CXProbeIconClasses(); });
+                       dispatch_get_main_queue(), ^{ CXProbeIconClasses(); CXProbeGestures(); });
     });
 }
