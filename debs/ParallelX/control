@@ -1,8 +1,8 @@
 Package: com.moxuan.parallelx
 Name: ParallelX
-Version: 0.1.0~alpha377+clone1.07
+Version: 0.1.0~alpha377+clone1.09
 Architecture: iphoneos-arm64
-Description: 分屏而已（内置分身菜单、ARC角落唤醒设置与每账号窗口大小记忆）。
+Description: 分屏而已（内置 Crane 分身菜单；修复分身完整原生开窗入口）。
 Author: moxuan
 Maintainer: Niubiprass <maintainer@localhost>
 Section: Tweaks

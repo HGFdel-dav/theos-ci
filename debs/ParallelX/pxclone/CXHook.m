@@ -8,12 +8,12 @@
 //   B. 截住这些条目的点击：先切 Crane 容器，再让 PX 用真实 bundleID
 //      走它自己的开窗流程。全部走运行时签名核验，不符只记日志。
 //
-// 依据（alpha342 反汇编）：
+// 依据（alpha377 反汇编）：
 //   -[PXSceneBridge performConfiguredAction:]  B24@0:8@16   （动作执行入口）
 //   -[PXSceneBridge prepareWindowForBundleID:wasFullscreen:completion:]
-//                                              v36@0:8@16B24@?28（开窗准备）
-//   +[PXPanelEntry applicationActivated:]      v24@0:8@16   （分屏打开）
-//   +[PXPanelEntry externalOpenApplication:]   v24@0:8@16   （全屏打开）
+//                                              v36@0:8@16B24@?28（开窗准备阶段）
+//   +[PXPanelEntry applicationActivated:]      v24@0:8@16   （前台激活通知）
+//   +[PXPanelEntry externalOpenApplication:]   v24@0:8@16   （PX 完整原生建窗入口）
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
@@ -1031,66 +1031,32 @@ static void CXPromptContainerThenOpen(NSString *bundleID, void (^cancel)(void)) 
     if (cancel) cancel();
 }
 
-static NSInteger CXOpenToken = 0;
-// PX 自己点图标时传进来的宿主视图/遮罩，分身条目复用同一套，避免自己猜
-static UIView *CXLastPXHostView = nil;
-static UIView *CXLastPXOverlay = nil;
-static BOOL CXOpenCallFromUs = NO;
-static id CXLastBridge = nil;
-
 static BOOL CXHandleVirtualItemThen(NSDictionary *item, void (^open)(void));
 static BOOL CXHandleVirtualItem(NSDictionary *item);
 
-// 兜底：直接调 ParallelX 自己的 applicationActivated: 分屏入口
-static void CXOpenViaActivated(NSString *bundleID) {
+// alpha377 的完整建窗入口。由 PX 自己创建 hostCard/canvas/keyboardOverlay、
+// 设置活动 bridge，并把自己的非空 continuation 传给开窗准备阶段。
+// applicationActivated: 是前台激活通知，不能拿来请求建窗；
+// prepareWindow(..., nil) 在原生 0x5c43c 直接返回，也不是建窗接口。
+static void CXOpenInSplitImpl(NSString *bundleID) {
     Class entry = NSClassFromString(@"PXPanelEntry");
-    SEL sel = NSSelectorFromString(@"applicationActivated:");
-    if (!entry) return;
-    NSMethodSignature *entrySig = [entry methodSignatureForSelector:sel];
-    if (!entrySig || entrySig.numberOfArguments != 3 ||
-        strcmp(entrySig.methodReturnType, @encode(void)) != 0 ||
-        [entrySig getArgumentTypeAtIndex:2][0] != '@') return;
-    CXLog(@"[open] %@ 走 applicationActivated", bundleID);
-    @try {
-        ((void (*)(id, SEL, id))objc_msgSend)(entry, sel, bundleID);
-    } @catch (__unused NSException *e) {
-        CXLog(@"[open] %@ 打开异常", bundleID);
-    }
-}
-
-// hostView 来自 PX，经常还没挂到窗口上，只要求是 UIView 且有尺寸
-static BOOL CXAnyView(id view) {
-    return [view isKindOfClass:UIView.class] && !CGRectIsEmpty(((UIView *)view).bounds);
-}
-
-// 真正建窗的一步：PX 真实点击时 openApplication 之后紧跟着它
-static BOOL CXCallPrepareWindow(id bridge, NSString *bundleID) {
-    SEL sel = NSSelectorFromString(@"prepareWindowForBundleID:wasFullscreen:completion:");
-    NSMethodSignature *sig = [bridge methodSignatureForSelector:sel];
-    if (!sig || sig.numberOfArguments != 5 ||
+    SEL sel = NSSelectorFromString(@"externalOpenApplication:");
+    NSMethodSignature *sig = [entry methodSignatureForSelector:sel];
+    if (!entry || ![entry respondsToSelector:sel] || !sig || sig.numberOfArguments != 3 ||
         strcmp(sig.methodReturnType, @encode(void)) != 0 ||
         [sig getArgumentTypeAtIndex:2][0] != '@' ||
-        [sig getArgumentTypeAtIndex:4][0] != '@') return NO;
-    @try {
-        ((void (*)(id, SEL, id, BOOL, id))objc_msgSend)(bridge, sel, bundleID, NO, nil);
-        CXLog(@"[open] %@ prepareWindow 已调用", bundleID);
-        return YES;
-    } @catch (__unused NSException *e) {
-        CXLog(@"[open] %@ prepareWindow 异常", bundleID);
-        return NO;
+        [sig getArgumentTypeAtIndex:2][1] == '?') {
+        CXLog(@"[open] %@ native window entry unavailable; not calling notification/prepare fallback", bundleID);
+        return;
     }
-}
-
-static void CXOpenInSplitImpl(NSString *bundleID) {
-    // 早期能分屏的做法：只调 PXSceneBridge 的 prepareWindow(wasFullscreen=NO)。
-    // 一旦先走 openApplication，PX 会落到全屏路径，所以这里不再调它。
-    Class bridgeCls = NSClassFromString(@"PXSceneBridge");
-    id bridge = CXLastBridge;
-    if (!bridge && bridgeCls && [bridgeCls respondsToSelector:NSSelectorFromString(@"sharedBridge")])
-        bridge = ((id (*)(id, SEL))objc_msgSend)(bridgeCls, NSSelectorFromString(@"sharedBridge"));
-    if (bridge && CXCallPrepareWindow(bridge, bundleID)) return;
-    CXLog(@"[open] %@ prepareWindow 不可用，回退 applicationActivated", bundleID);
-    CXOpenViaActivated(bundleID);
+    // 账号已由菜单/chooser 选定。PX 的异步 prepare/激活回调不应再次弹选择。
+    CXMarkRequestBypass(bundleID);
+    CXLog(@"[open] %@ native-window request (PX owns canvas and completion)", bundleID);
+    @try {
+        ((void (*)(id, SEL, id))objc_msgSend)(entry, sel, bundleID);
+    } @catch (NSException *e) {
+        CXLog(@"[open] %@ native-window exception: %@", bundleID, e.reason ?: @"unknown");
+    }
 }
 
 // 截获一个虚拟条目：切容器 → 打开真实应用
@@ -1161,28 +1127,9 @@ static NSDictionary *CXVirtualItemFromArgument(id argument) {
 static BOOL (*CXOrigPerformAction)(id, SEL, id);
 
 static BOOL CXPerformAction(id self, SEL _cmd, id argument) {
-    CXLastBridge = self;   // self 就是正在运行的 PXSceneBridge
     NSDictionary *item = CXVirtualItemFromArgument(argument);
-    if (!item || !CXOrigPerformAction) return CXOrigPerformAction ? CXOrigPerformAction(self, _cmd, argument) : NO;
-    // 容器切换完成后，把记录改回真实 bundle 再交回 PX，
-    // 让 PX 用它自己的 performConfiguredAction 完整开窗（含 prepareWindow 上下文）。
-    NSMutableDictionary *record = [argument isKindOfClass:NSDictionary.class]
-        ? [argument mutableCopy] : [NSMutableDictionary dictionary];
-    if (item[@"bundleID"]) {
-        record[@"id"] = item[@"bundleID"];
-        record[@"app"] = item[@"bundleID"];
-        if (item[@"bundleID"]) record[@"appTitle"] = record[@"appTitle"] ?: item[@"bundleID"];
-    }
-    [record removeObjectForKey:@"containerID"];
-    // 交回去的 `record` 仍带 type=clonex.open，会被 PX 当快捷动作全屏打开。
-    // 所以先自己调 PX 的应用入口 applicationActivated:（分屏路径），
-    // 再保险地补一次原 performConfiguredAction。
-    NSString *realBundle = item[@"bundleID"];
-    // 面板还开着时先让 PX 建卡片（applicationActivated 依赖面板会话），
-    // 卡片起来后再切容器，让它重启到目标容器。
-    if (realBundle.length) CXOpenViaActivated(realBundle);
-    CXHandleVirtualItemThen(item, ^{});
-    return YES;
+    if (item && CXHandleVirtualItem(item)) return YES;
+    return CXOrigPerformAction ? CXOrigPerformAction(self, _cmd, argument) : NO;
 }
 
 #pragma mark - ② prepareWindowForBundleID（条目被当作应用打开时）
@@ -1319,19 +1266,13 @@ static void CXInstallPanelEntryHooks(void) {
 static void (*CXOrigOpenApp)(id, SEL, id, id, id, id);
 
 static void CXOpenAppHook(id self, SEL _cmd, id app, id view, id overlay, id completion) {
-    NSString *bundle = [app isKindOfClass:NSString.class] ? app : nil;
-    CXLastBridge = self;
-    if (!CXOpenCallFromUs) {
-        if ([view isKindOfClass:UIView.class]) CXLastPXHostView = view;
-        if ([overlay isKindOfClass:UIView.class]) CXLastPXOverlay = overlay;
-    }
-    CXLog(@"[trace] openApplication app=%@(%@) view=%@(%@) fromUs=%d", app,
+    CXLog(@"[trace] openApplication app=%@(%@) view=%@(%@)", app,
           NSStringFromClass([app class]), NSStringFromClass([view class]),
-          NSStringFromClass([overlay class]), CXOpenCallFromUs);
+          NSStringFromClass([overlay class]));
     if (!CXOrigOpenApp) return;
 
-    // 分身条目是以“虚拟 bundleID”放在 applications 里的：
-    // 先切容器，再用真实 bundle 继续交给 PX，之后 PX 会按普通应用走分屏。
+    // Normally virtual entries are consumed by performConfiguredAction:.
+    // Keep this guard for PX versions that forward the virtual record further.
     NSDictionary *item = CXVirtualItemFromArgument(app);
     if (item) {
         NSString *realBundle = item[@"bundleID"];
@@ -1342,23 +1283,21 @@ static void CXOpenAppHook(id self, SEL _cmd, id app, id view, id overlay, id com
             NSString *activeNow = [CXCraneBridge activeContainerForBundleID:realBundle] ?: @"DEFAULT";
             BOOL sameNow = [activeNow isEqualToString:containerID];
             CXLog(@"[hit] %@ -> container %@ (openApplication)", realBundle, containerID);
-            BOOL running = CXAppRunning(realBundle);
             [CXCraneBridge switchBundleID:realBundle toContainer:containerID reload:!sameNow completion:^(BOOL ok) {
-                CXLog(@"[hit] %@ switch=%d, wait scene", realBundle, ok);
-                if (!ok) { CXLog(@"[hit] switch failed"); return; }
-                // 等容器切换后的进程起一点再来（scene 等待在这台上会卡住，改固定延时）
-                (void)running;
+                CXLog(@"[hit] %@ switch=%d, hand back", realBundle, ok);
+                if (!ok) return;
                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
                                dispatch_get_main_queue(), ^{
-                    CXLog(@"[hit] %@ delay done, hand back", realBundle);
                     CXOrigOpenApp(self, _cmd, realBundle, view, overlay, completion);
                 });
             }];
             return;
         }
-        if (realBundle.length) { CXOrigOpenApp(self, _cmd, realBundle, view, overlay, completion); return; }
+        if (realBundle.length) {
+            CXOrigOpenApp(self, _cmd, realBundle, view, overlay, completion);
+            return;
+        }
     }
-    (void)bundle;
     CXOrigOpenApp(self, _cmd, app, view, overlay, completion);
 }
 
@@ -1431,7 +1370,6 @@ static void CXInstallBridgeHooks(void) {
 static void (*CXOrigDragHandle)(id, SEL, id);
 
 static void CXDragHandleHook(id self, SEL _cmd, id gesture) {
-    CXLastBridge = self; // 记下真正在跑的 PXSceneBridge 实例
     CXSyncIfNeeded(@"dragHandle");
     if (CXOrigDragHandle) CXOrigDragHandle(self, _cmd, gesture);
 }
@@ -1659,14 +1597,16 @@ __attribute__((constructor)) static void CXInitialize(void) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
         CXProbeIconClasses();
+        __block __weak void (^weakTick)(int);
         __block void (^tick)(int);
         tick = ^(int n) {
             if (n > 45) return;
             CXProbeGestures();
             CXProbePanelDeep();
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
-                           dispatch_get_main_queue(), ^{ tick(n + 1); });
+                           dispatch_get_main_queue(), ^{ if (weakTick) weakTick(n + 1); });
         };
+        weakTick = tick;
         tick(0);
     });
     });
