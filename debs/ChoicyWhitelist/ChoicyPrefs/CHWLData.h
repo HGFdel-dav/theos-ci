@@ -1,4 +1,5 @@
 #import <Foundation/Foundation.h>
+#import <CoreGraphics/CoreGraphics.h>
 @class CHPTweakInfo;
 enum { CHWLProcessCacheSchemaVersion = 4 };
 enum { CHWLProcessBundleIdentifierVersion = 1 };
