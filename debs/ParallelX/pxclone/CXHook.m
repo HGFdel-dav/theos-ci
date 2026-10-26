@@ -1061,6 +1061,24 @@ static BOOL CXAnyView(id view) {
     return [view isKindOfClass:UIView.class] && !CGRectIsEmpty(((UIView *)view).bounds);
 }
 
+// 真正建窗的一步：PX 真实点击时 openApplication 之后紧跟着它
+static BOOL CXCallPrepareWindow(id bridge, NSString *bundleID) {
+    SEL sel = NSSelectorFromString(@"prepareWindowForBundleID:wasFullscreen:completion:");
+    NSMethodSignature *sig = [bridge methodSignatureForSelector:sel];
+    if (!sig || sig.numberOfArguments != 5 ||
+        strcmp(sig.methodReturnType, @encode(void)) != 0 ||
+        [sig getArgumentTypeAtIndex:2][0] != '@' ||
+        [sig getArgumentTypeAtIndex:4][0] != '@') return NO;
+    @try {
+        ((void (*)(id, SEL, id, BOOL, id))objc_msgSend)(bridge, sel, bundleID, NO, nil);
+        CXLog(@"[open] %@ prepareWindow 已调用", bundleID);
+        return YES;
+    } @catch (__unused NSException *e) {
+        CXLog(@"[open] %@ prepareWindow 异常", bundleID);
+        return NO;
+    }
+}
+
 static void CXOpenInSplitImpl(NSString *bundleID) {
     // ① 首选：PXSceneBridge.openApplication:inView:keyboardOverlay:completion:
     //    这是 ParallelX 普通分屏条目使用的入口，避免先走全屏 externalOpenApplication:。
@@ -1122,11 +1140,11 @@ static void CXOpenInSplitImpl(NSString *bundleID) {
         if (settled) return;
         settled = YES;
         CXLog(@"[open] openApplication %@ done=%d", bundleID, ok);
-        if (!ok) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if (token == CXOpenToken) CXOpenViaActivated(bundleID);
-            });
-        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (token != CXOpenToken) return;
+            if (!ok) { CXOpenViaActivated(bundleID); return; }
+            CXCallPrepareWindow(bridge, bundleID);
+        });
     };
     CXOpenCallFromUs = YES;
     @try {
@@ -1143,8 +1161,8 @@ static void CXOpenInSplitImpl(NSString *bundleID) {
                    dispatch_get_main_queue(), ^{
         if (settled || token != CXOpenToken) return;
         settled = YES;
-        CXLog(@"[open] openApplication %@ 无回调，回退 applicationActivated", bundleID);
-        CXOpenViaActivated(bundleID);
+        CXLog(@"[open] openApplication %@ 无回调，直接 prepareWindow", bundleID);
+        if (!CXCallPrepareWindow(bridge, bundleID)) CXOpenViaActivated(bundleID);
     });
 }
 
