@@ -1063,30 +1063,14 @@ static void CXOpenInSplitImpl(NSString *bundleID) {
                     ((void (*)(id, SEL, id, id, id, id))objc_msgSend)(bridge, openSel, bundleID, view, overlay, done);
                     return;
                 } @catch (__unused NSException *e) {
-                    CXLog(@"[open] openApplication 异常，回退 prepareWindow %@", bundleID);
+                    CXLog(@"[open] openApplication 异常，继续 applicationActivated %@", bundleID);
                 }
             } else {
-                CXLog(@"[open] sharedBridge.hostView 为空，回退 prepareWindow");
+                CXLog(@"[open] sharedBridge.hostView 为空，继续 applicationActivated");
             }
         }
-        SEL prep = NSSelectorFromString(@"prepareWindowForBundleID:wasFullscreen:completion:");
-        NSMethodSignature *prepSig = [bridge methodSignatureForSelector:prep];
-        if (prepSig && prepSig.numberOfArguments == 5 &&
-            strcmp(prepSig.methodReturnType, @encode(void)) == 0 &&
-            [prepSig getArgumentTypeAtIndex:2][0] == '@' &&
-            [prepSig getArgumentTypeAtIndex:3][0] == 'B' &&
-            [prepSig getArgumentTypeAtIndex:4][0] == '@') {
-            @try {
-                void (^done)(BOOL) = ^(BOOL ok) { CXLog(@"[open] prepareWindow %@ done=%d", bundleID, ok); };
-                ((void (*)(id, SEL, id, BOOL, id))objc_msgSend)(bridge, prep, bundleID, NO, done);
-                CXLog(@"[open] %@ via sharedBridge.prepareWindow", bundleID);
-                return;
-            } @catch (__unused NSException *e) {
-                CXLog(@"[open] sharedBridge.prepareWindow 异常，回退 %@", bundleID);
-            }
-        } else {
-            CXLog(@"[open] sharedBridge 存在但签名不符，回退");
-        }
+        // hostView 为空时不能调用 prepareWindowForBundleID:：那条路径会
+        // 把应用作为全屏窗口拉起。继续走下面的原生分屏兜底。
     } else {
         CXLog(@"[open] sharedBridge 不存在，回退 applicationActivated:");
     }
