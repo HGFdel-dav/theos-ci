@@ -39,7 +39,7 @@
 
 + (void)sendChoicyPrefsPostNotification
 {
-	CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), CFSTR("com.crctdd.choicy-whitelist/ReloadPrefs"), NULL, NULL, YES);
+	CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), CFSTR("com.niubiprass.choicywl/ReloadPrefs"), NULL, NULL, YES);
 }
 
 + (NSString *)previewStringForProcessPreferences:(NSDictionary *)processPreferences

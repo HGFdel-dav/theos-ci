@@ -22,9 +22,9 @@
 			<key>default</key>
 			<false/>
 			<key>defaults</key>
-			<string>com.crctdd.choicy-whitelist</string>
+			<string>com.niubiprass.choicywl</string>
 			<key>PostNotification</key>
-			<string>com.crctdd.choicy-whitelist/ReloadPrefs</string>
+			<string>com.niubiprass.choicywl/ReloadPrefs</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -44,9 +44,9 @@
 			<key>default</key>
 			<false/>
 			<key>defaults</key>
-			<string>com.crctdd.choicy-whitelist</string>
+			<string>com.niubiprass.choicywl</string>
 			<key>PostNotification</key>
-			<string>com.crctdd.choicy-whitelist/ReloadPrefs</string>
+			<string>com.niubiprass.choicywl/ReloadPrefs</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -104,9 +104,9 @@
 			<key>default</key>
 			<false/>
 			<key>defaults</key>
-			<string>com.crctdd.choicy-whitelist</string>
+			<string>com.niubiprass.choicywl</string>
 			<key>PostNotification</key>
-			<string>com.crctdd.choicy-whitelist/ReloadPrefs</string>
+			<string>com.niubiprass.choicywl/ReloadPrefs</string>
 		</dict>
 	</array>
 </dict>

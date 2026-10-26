@@ -176,9 +176,9 @@ void presentNotLoadingFirstWarning(PSListController *plc, BOOL showDontShowAgain
 					cell:0
 					edit:nil];
 
-	[dontShowAgainSpecifier setProperty:@"com.crctdd.choicy-whitelist" forKey:@"defaults"];
+	[dontShowAgainSpecifier setProperty:@"com.niubiprass.choicywl" forKey:@"defaults"];
 	[dontShowAgainSpecifier setProperty:@"dontShowWarningAgain" forKey:@"key"];
-	[dontShowAgainSpecifier setProperty:@"com.crctdd.choicy-whitelist/ReloadPrefs" forKey:@"PostNotification"];
+	[dontShowAgainSpecifier setProperty:@"com.niubiprass.choicywl/ReloadPrefs" forKey:@"PostNotification"];
 
 	NSNumber *dontShowAgainNum = nil;
 	if (showDontShowAgainOption) {
@@ -229,11 +229,11 @@ void presentNotLoadingFirstWarning(PSListController *plc, BOOL showDontShowAgain
 	[super viewDidLoad];
     UIAction *respringAction = [UIAction actionWithTitle:localize(@"RESPRING") image:nil identifier:nil handler:^(__kindof UIAction *action) {
         CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
-            CFSTR("com.crctdd.choicy-whitelist/respring"), NULL, NULL, YES);
+            CFSTR("com.niubiprass.choicywl/respring"), NULL, NULL, YES);
     }];
     UIAction *restartAction = [UIAction actionWithTitle:localize(@"RESTART_SPRINGBOARD") image:nil identifier:nil handler:^(__kindof UIAction *action) {
         CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
-            CFSTR("com.crctdd.choicy-whitelist/restartSpringBoard"), NULL, NULL, YES);
+            CFSTR("com.niubiprass.choicywl/restartSpringBoard"), NULL, NULL, YES);
     }];
     UIMenu *menu = [UIMenu menuWithTitle:@"" children:@[respringAction, restartAction]];
     UIBarButtonItem *actionsButton = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"ellipsis.circle"]
@@ -315,6 +315,6 @@ __attribute__((constructor))
 static void init(void)
 {
 	choicy_reloadPreferences();
-	CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)choicy_reloadPreferences, CFSTR("com.crctdd.choicy-whitelist/ReloadPrefs"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+	CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)choicy_reloadPreferences, CFSTR("com.niubiprass.choicywl/ReloadPrefs"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
 	determineLoadingOrder();
 }

@@ -21,7 +21,7 @@ static void CHWLPrepareFrameworkState(void)
         changedPaths = [NSMutableSet new];
         epochs = [NSMutableDictionary new];
         lastChecks = [NSMutableDictionary new];
-        analysisQueue = dispatch_queue_create("com.crctdd.choicy-whitelist.frameworks",
+        analysisQueue = dispatch_queue_create("com.niubiprass.choicywl.frameworks",
             dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_UTILITY, 0));
     });
 }

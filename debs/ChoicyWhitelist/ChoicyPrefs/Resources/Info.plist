@@ -7,7 +7,7 @@
 	<key>CFBundleExecutable</key>
 	<string>ChoicyWhitelistPrefs</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.crctdd.choicy-whitelist</string>
+	<string>com.niubiprass.choicywl</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundlePackageType</key>

@@ -31,8 +31,8 @@
 #include <unistd.h>
 
 NSBundle *CHBundle;
-static NSString *const CHShortcutWithout = @"com.crctdd.choicy-whitelist.launchWithoutAllTweaksOnce";
-static NSString *const CHShortcutWith = @"com.crctdd.choicy-whitelist.launchWithAllTweaksOnce";
+static NSString *const CHShortcutWithout = @"com.niubiprass.choicywl.launchWithoutAllTweaksOnce";
+static NSString *const CHShortcutWith = @"com.niubiprass.choicywl.launchWithAllTweaksOnce";
 
 static NSMutableDictionary *CHPendingLaunchModes(void)
 {
@@ -273,8 +273,8 @@ void choicy_initSpringBoard(void)
 	%init();
 
 	CHBundle = [NSBundle bundleWithPath:jbroot(@"/Library/Application Support/ChoicyWhitelist.bundle")];
-	CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, respring, CFSTR("com.crctdd.choicy-whitelist/respring"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
-    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, restartSpringBoard, CFSTR("com.crctdd.choicy-whitelist/restartSpringBoard"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+	CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, respring, CFSTR("com.niubiprass.choicywl/respring"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, restartSpringBoard, CFSTR("com.niubiprass.choicywl/restartSpringBoard"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
 
 	if (kCFCoreFoundationVersionNumber >= kCFCoreFoundationVersionNumber_iOS_13_0) {
 		%init(Shortcut_iOS13Up);

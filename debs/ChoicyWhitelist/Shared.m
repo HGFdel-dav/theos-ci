@@ -33,12 +33,12 @@ static NSString *CHPrivatePath(NSString *name)
 
 NSString *CHPreferencesPath(void)
 {
-    return CHPrivatePath(@"com.crctdd.choicy-whitelist.plist");
+    return CHPrivatePath(@"com.niubiprass.choicywl.plist");
 }
 
 NSString *CHProcessCachePath(void)
 {
-    return CHPrivatePath(@"com.crctdd.choicy-whitelist-processpage.plist");
+    return CHPrivatePath(@"com.niubiprass.choicywl-processpage.plist");
 }
 
 NSString *CHExecutablePathForApplication(NSString *identifier)

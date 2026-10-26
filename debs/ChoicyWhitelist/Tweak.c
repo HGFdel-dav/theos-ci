@@ -51,7 +51,7 @@ extern xpc_object_t xpc_create_from_plist(const void *buf, size_t len);
 #define kEnvDeniedTweaksOverride "CHOICY_DENIED_TWEAKS_OVERRIDE"
 #define kEnvAllowedTweaksOverride "CHOICY_ALLOWED_TWEAKS_OVERRIDE"
 #define kEnvOverwriteGlobalConfigurationOverride "CHOICY_OVERWRITE_GLOBAL_TWEAK_CONFIGURATION_OVERRIDE"
-#define kChoicyPrefsPlistPath jbroot("/var/mobile/Library/Preferences/com.crctdd.choicy-whitelist.plist")
+#define kChoicyPrefsPlistPath jbroot("/var/mobile/Library/Preferences/com.niubiprass.choicywl.plist")
 #define kChoicyPrefsKeyGlobalDeniedTweaks "globalDeniedTweaks"
 #define kChoicyPrefsKeyPrivilegedTweaks CH_PRIVILEGED_TWEAKS_KEY
 #define kChoicyPrefsKeyAppSettings "appSettings"
@@ -76,6 +76,7 @@ char *gBundleIdentifier = NULL;
 int gProcessType = 0;
 
 bool gTweakInjectionDisabled = true;
+bool gDaemonExplicitlyConfigured = false;
 bool gDisablePrivilegedTweaks = false;
 bool gPrivilegeScopeAllowed = false;
 CHLaunchMode gLaunchMode = CHLaunchNormal;
@@ -271,6 +272,7 @@ void load_process_preferences(xpc_object_t preferencesXdict, xpc_object_t proces
         valid = value == 0.0 || value == 1.0; enabledValue = value == 1.0;
     }
     gTweakInjectionDisabled = !CHResolveInjection(forced, jailbreakApp, valid, enabledValue);
+    if (gProcessType == PROCESS_TYPE_BINARY && valid) gDaemonExplicitlyConfigured = true;
     if (getenv("_ChoicyInjectionEnabledFromSpringBoard")) gTweakInjectionDisabled = false;
     gDisablePrivilegedTweaks = CHProcessDisablesPrivilege(!gTweakInjectionDisabled,
         processPreferencesXdict && xpc_dictionary_get_bool(processPreferencesXdict, CH_DISABLE_PRIVILEGED_TWEAKS_KEY));
@@ -508,6 +510,15 @@ bool should_load_dylib(const char *dylibPath)
 		bool tweakIsAllowed = xpc_array_contains_string(gAllowedTweaks, dylibName);
 		bool tweakIsDenied = xpc_array_contains_string(gDeniedTweaks, dylibName);
 		bool tweakIsGloballyDenied = xpc_array_contains_string(gGlobalDeniedTweaks, dylibName);
+
+		// 守护进程（非 .app/.appex 进程）：与原版一致，默认放行。
+		// 仅当该守护进程在“守护进程”列表里被显式配置、或命中了全局/自定义拒绝名单时才拦截。
+		if (gProcessType == PROCESS_TYPE_BINARY && !gDaemonExplicitlyConfigured &&
+			!gAllowedTweaks && !tweakIsGloballyDenied && !tweakIsDenied) {
+			os_log_dbg("%{public}s.dylib ✅ (daemon default allow)", dylibName);
+			return true;
+		}
+
         bool privileged = gPrivilegeScopeAllowed &&
             CHPrivilegeApplies(isUIKit, xpc_array_contains_string(gManualPrivilegedTweaks, dylibName),
                 xpc_array_contains_string(gPrivilegedTweaks, dylibName));

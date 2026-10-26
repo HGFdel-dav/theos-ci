@@ -173,14 +173,14 @@ void choicy_applyEnvironmentChangesToExecutionContext(FBProcessExecutionContext 
 %ctor
 {
 	choicy_reloadPreferences();
-	CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)choicy_reloadPreferences, CFSTR("com.crctdd.choicy-whitelist/ReloadPrefs"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+	CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)choicy_reloadPreferences, CFSTR("com.niubiprass.choicywl/ReloadPrefs"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
 
 	if (preferences && [ChoicyPrefsMigrator preferencesNeedMigration:preferences]) {
 		NSMutableDictionary *preferencesM = preferences.mutableCopy;
 		[ChoicyPrefsMigrator migratePreferences:preferencesM];
 		[ChoicyPrefsMigrator updatePreferenceVersion:preferencesM];
 		[preferencesM writeToFile:kChoicyPrefsPlistPath atomically:NO];
-		CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), CFSTR("com.crctdd.choicy-whitelist/ReloadPrefs"), NULL, NULL, YES);
+		CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), CFSTR("com.niubiprass.choicywl/ReloadPrefs"), NULL, NULL, YES);
 	}
 
 	NSString *executablePath = safe_getExecutablePath();

@@ -110,7 +110,7 @@
 
 - (void)respring
 {
-	CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), CFSTR("com.crctdd.choicy-whitelist/respring"), NULL, NULL, YES);
+	CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), CFSTR("com.niubiprass.choicywl/respring"), NULL, NULL, YES);
 }
 
 - (void)viewDidLoad
