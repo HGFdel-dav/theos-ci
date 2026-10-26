@@ -1161,6 +1161,7 @@ static NSDictionary *CXVirtualItemFromArgument(id argument) {
 static BOOL (*CXOrigPerformAction)(id, SEL, id);
 
 static BOOL CXPerformAction(id self, SEL _cmd, id argument) {
+    CXLastBridge = self;   // self 就是正在运行的 PXSceneBridge
     NSDictionary *item = CXVirtualItemFromArgument(argument);
     if (!item || !CXOrigPerformAction) return CXOrigPerformAction ? CXOrigPerformAction(self, _cmd, argument) : NO;
     // 容器切换完成后，把记录改回真实 bundle 再交回 PX，
