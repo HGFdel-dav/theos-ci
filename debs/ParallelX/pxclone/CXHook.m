@@ -1232,6 +1232,9 @@ static NSDictionary *CXVirtualItemFromArgument(id argument) {
 
 static BOOL (*CXOrigPerformAction)(id, SEL, id);
 
+static BOOL CXHandleVirtualItemThen(NSDictionary *item, void (^open)(void));
+static BOOL CXHandleVirtualItem(NSDictionary *item);
+
 static BOOL CXPerformAction(id self, SEL _cmd, id argument) {
     NSDictionary *item = CXVirtualItemFromArgument(argument);
     if (!item || !CXOrigPerformAction) return CXOrigPerformAction ? CXOrigPerformAction(self, _cmd, argument) : NO;
