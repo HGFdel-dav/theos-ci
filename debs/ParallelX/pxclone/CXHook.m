@@ -1469,8 +1469,8 @@ static void CXProbeGesturesRecursive(UIView *view, int depth) {
                 [tg appendFormat:@" %@->%@", NSStringFromClass([target class]), action];
             }
         } @catch (__unused NSException *e) { [tg appendString:@" ?"]; }
-        CXLog(@"[probe] gesture %@ on %@ (depth %d) targets:%@",
-              NSStringFromClass([g class]), NSStringFromClass([view class]), depth, tg);
+        CXLog(@"[probe] gesture %@ on %@ (depth %d) targets:%@ desc=%@",
+              NSStringFromClass([g class]), NSStringFromClass([view class]), depth, tg, g);
     }
     for (UIView *sub in view.subviews) CXProbeGesturesRecursive(sub, depth + 1);
 }
@@ -1478,16 +1478,15 @@ static void CXProbeGesturesRecursive(UIView *view, int depth) {
 
 static void CXProbeTree(UIView *v, int d) {
     if (!v || d > 18) return;
-    if (d < 6 || [NSStringFromClass(v.class) containsString:@"Icon"] ||
-        [NSStringFromClass(v.class) hasPrefix:@"SD"] || [NSStringFromClass(v.class) hasPrefix:@"PX"])
-        CXLog(@"[probe] %*s%@ frame=%@ gr=%lu", d * 2, "", NSStringFromClass(v.class),
-              NSStringFromCGRect(v.frame), (unsigned long)v.gestureRecognizers.count);
+    CXLog(@"[probe] %*s%@ frame=%@ gr=%lu", d * 2, "", NSStringFromClass(v.class),
+          NSStringFromCGRect(v.frame), (unsigned long)v.gestureRecognizers.count);
     for (UIView *sub in v.subviews) CXProbeTree(sub, d + 1);
 }
 
 static void CXProbePanelDeep(void) {
     for (UIWindow *w in UIApplication.sharedApplication.windows) {
         if (![NSStringFromClass(w.class) containsString:@"Panel"]) continue;
+        if (w.subviews.count < 3) continue;   // 面板没展开就不打
         Class c = w.class; int n = 0;
         while (c && n++ < 8) { CXLog(@"[probe] chain %@", NSStringFromClass(c)); c = class_getSuperclass(c); }
         id r = w.nextResponder; n = 0;
