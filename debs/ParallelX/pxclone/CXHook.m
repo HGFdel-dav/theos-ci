@@ -126,11 +126,47 @@ static void CXReleaseRequestRoute(id request) {
 
 static NSURL *CXLastURL;
 static NSTimeInterval CXLastURLAt;
+static NSString *CXConsumedURLString;
 static NSTimeInterval CXConsumedURLAt;
 static NSTimeInterval CXLastSharedURLScanAt;
+static NSMutableDictionary<NSString *, NSDictionary *> *CXRecentContainerSelections;
+
+static NSMutableDictionary<NSString *, NSDictionary *> *CXRecentSelections(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ CXRecentContainerSelections = [NSMutableDictionary dictionary]; });
+    return CXRecentContainerSelections;
+}
+
+static void CXRememberContainerSelection(NSString *bundleID, NSString *containerID) {
+    if (!bundleID.length || !containerID.length) return;
+    @synchronized (CXRecentSelections()) {
+        CXRecentSelections()[bundleID] = @{ @"container": containerID, @"date": NSDate.date };
+    }
+}
+
+static NSString *CXRecentContainerSelection(NSString *bundleID) {
+    if (!bundleID.length) return nil;
+    @synchronized (CXRecentSelections()) {
+        NSDictionary *entry = CXRecentSelections()[bundleID];
+        NSDate *date = entry[@"date"];
+        if (![date isKindOfClass:NSDate.class] || -[date timeIntervalSinceNow] > 20.0) {
+            [CXRecentSelections() removeObjectForKey:bundleID];
+            return nil;
+        }
+        return [entry[@"container"] isKindOfClass:NSString.class] ? entry[@"container"] : nil;
+    }
+}
+
+static void CXForgetRecentContainerSelection(NSString *bundleID) {
+    if (!bundleID.length) return;
+    @synchronized (CXRecentSelections()) { [CXRecentSelections() removeObjectForKey:bundleID]; }
+}
 
 static void CXMarkCurrentURLConsumed(void) {
-    if (CXLastURLAt > CXConsumedURLAt) CXConsumedURLAt = CXLastURLAt;
+    if (CXLastURLAt > CXConsumedURLAt) {
+        CXConsumedURLAt = CXLastURLAt;
+        CXConsumedURLString = [CXLastURL.absoluteString copy];
+    }
     CXLastURL = nil;
     CXLastURLAt = 0;
 }
@@ -164,6 +200,8 @@ static void CXImportSharedAppURL(void) {
         NSString *sourceBundle = prefs[@"CXSharedURLBundle"];
         NSTimeInterval at = [atValue respondsToSelector:@selector(doubleValue)] ? atValue.doubleValue : 0;
         if (![value isKindOfClass:NSString.class] || !value.length || at <= bestAt || now - at > 30.0) continue;
+        if (CXConsumedURLString && [value isEqualToString:CXConsumedURLString] &&
+            now - CXConsumedURLAt < 30.0) continue;
         NSURL *url = [NSURL URLWithString:value];
         if (!url) continue;
         bestAt = at;
@@ -192,7 +230,10 @@ static BOOL CXFreshURL(NSURL **out) {
     if (![str isKindOfClass:NSString.class] || !str.length) return NO;
     double at = [CXPrefs.shared objectForKey:@"CXSharedURLAt"] ?
                 [[CXPrefs.shared objectForKey:@"CXSharedURLAt"] doubleValue] : 0;
-    if ([NSDate date].timeIntervalSince1970 - at > 30.0 || at <= CXConsumedURLAt) return NO;
+    NSTimeInterval now = [NSDate date].timeIntervalSince1970;
+    if (now - at > 30.0 || at <= CXConsumedURLAt) return NO;
+    if (CXConsumedURLString && [str isEqualToString:CXConsumedURLString] &&
+        now - CXConsumedURLAt < 30.0) return NO;
     NSURL *url = [NSURL URLWithString:str];
     if (!url) return NO;
     CXLastURL = url;
@@ -848,6 +889,7 @@ static void CXSystemRequestHook(id self, SEL _cmd, id service, id request, id co
         CXPresentSystemRequestChooser(bundleID, containers, ^(NSString *containerID) {
             NSString *active = [CXCraneBridge activeContainerForBundleID:bundleID] ?: @"DEFAULT";
             BOOL same = [active isEqualToString:containerID];
+            CXRememberContainerSelection(bundleID, containerID);
             CXLog(@"[route] %@ selected=%@ same=%d", bundleID, containerID, same);
             [CXCraneBridge switchBundleID:bundleID toContainer:containerID reload:!same completion:^(BOOL ok) {
                 if (!ok) CXLog(@"[route] %@ switch failed, forward unchanged", bundleID);
@@ -878,6 +920,33 @@ static void CXPollReloadedURL(NSString *bundleID, NSURL *incoming, BOOL wasInter
     });
 }
 
+// 付款 URL 有时在来源 App 写入沙盒后才到达 SpringBoard；如果用户刚刚
+// 选过账号，就把迟到的 URL 投进已打开的目标分屏，不再重新弹选择。
+static BOOL CXRouteRecentSelectedURL(NSString *bundleID, NSURL *incoming) {
+    if (!bundleID.length || !incoming) return NO;
+    NSString *containerID = CXRecentContainerSelection(bundleID);
+    if (!containerID.length) return NO;
+    NSString *active = [CXCraneBridge activeContainerForBundleID:bundleID] ?: @"DEFAULT";
+    if (![active isEqualToString:containerID]) {
+        CXForgetRecentContainerSelection(bundleID);
+        return NO;
+    }
+    BOOL running = CXAppRunning(bundleID);
+    CXLog(@"[url] %@ late URL -> recent container %@ running=%d", bundleID, containerID, running);
+    CXMarkCurrentURLConsumed();
+    CXInternalOpen = YES;
+    if (!running) CXOpenInSplit(bundleID);
+    NSTimeInterval delay = running ? 0.35 : 1.0;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{ CXReplayURL(incoming); });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        CXInternalOpen = NO;
+        CXForgetRecentContainerSelection(bundleID);
+    });
+    return YES;
+}
+
 // 任何开窗入口（URL/快捷/激活）通用：有分身且有新鲜 URL 就弹；proceed 由调用方继续原流程
 static BOOL CXPromptForURL(NSString *bundleID, BOOL requireURL, void (^proceed)(void)) {
     if (CXInternalOpen || CXShowingChooser || !bundleID.length) return NO;
@@ -890,6 +959,7 @@ static BOOL CXPromptForURL(NSString *bundleID, BOOL requireURL, void (^proceed)(
     NSURL *incoming = nil;
     BOOL fresh = CXFreshURL(&incoming);
     if (requireURL && !fresh) return NO;
+    if (fresh && CXRouteRecentSelectedURL(bundleID, incoming)) return YES;
     UIViewController *host = CXTopViewController();
     if (!host) return NO;
     CXShowingChooser = YES;
@@ -914,6 +984,7 @@ static BOOL CXPromptForURL(NSString *bundleID, BOOL requireURL, void (^proceed)(
         BOOL running = CXAppRunning(bundleID);
         NSString *active = [CXCraneBridge activeContainerForBundleID:bundleID] ?: @"DEFAULT";
         BOOL same = [active isEqualToString:cid];
+        CXRememberContainerSelection(bundleID, cid);
         CXLog(@"[url] %@ selected=%@ same=%d running=%d", bundleID, cid, same, running);
         BOOL wasInternal = CXInternalOpen;
         if (incoming) CXMarkCurrentURLConsumed();
@@ -962,25 +1033,8 @@ static void CXPromptContainerThenOpen(NSString *bundleID, void (^cancel)(void)) 
 }
 
 static void CXOpenInSplitImpl(NSString *bundleID) {
-    // ① 首选：+[PXPanelEntry externalOpenApplication:] —— PX 自己会创建桥与容器视图，
-    //    日志证实它随后调用 openApplication，视图为 312x675（分屏尺寸）。
-    Class entryCls = NSClassFromString(@"PXPanelEntry");
-    SEL extSel = NSSelectorFromString(@"externalOpenApplication:");
-    if (entryCls && [entryCls respondsToSelector:extSel]) {
-        NSMethodSignature *extSig = [entryCls methodSignatureForSelector:extSel];
-        if (extSig && extSig.numberOfArguments == 3 &&
-            strcmp(extSig.methodReturnType, @encode(void)) == 0 &&
-            [extSig getArgumentTypeAtIndex:2][0] == '@') {
-            @try {
-                ((void (*)(id, SEL, id))objc_msgSend)(entryCls, extSel, bundleID);
-                CXLog(@"[open] %@ via externalOpenApplication", bundleID);
-                return;
-            } @catch (__unused NSException *e) {
-                CXLog(@"[open] externalOpenApplication 异常，回退 %@", bundleID);
-            }
-        }
-    }
-    // ② 照抄普通应用的路径 openApplication:inView:keyboardOverlay:completion:
+    // ① 首选：PXSceneBridge.openApplication:inView:keyboardOverlay:completion:
+    //    这是 ParallelX 普通分屏条目使用的入口，避免先走全屏 externalOpenApplication:。
     Class bridgeCls = NSClassFromString(@"PXSceneBridge");
     id bridge = nil;
     if (bridgeCls && [bridgeCls respondsToSelector:NSSelectorFromString(@"sharedBridge")])
@@ -1036,7 +1090,25 @@ static void CXOpenInSplitImpl(NSString *bundleID) {
     } else {
         CXLog(@"[open] sharedBridge 不存在，回退 applicationActivated:");
     }
-    // ② 兜底：类方法 applicationActivated:
+    // ② 只有原生分屏入口不可用时，才回退到 externalOpenApplication:。
+    // 这条路径可能先激活全屏，因此绝不能作为付款分屏的首选。
+    Class externalEntry = NSClassFromString(@"PXPanelEntry");
+    SEL externalSel = NSSelectorFromString(@"externalOpenApplication:");
+    if (externalEntry && [externalEntry respondsToSelector:externalSel]) {
+        NSMethodSignature *externalSig = [externalEntry methodSignatureForSelector:externalSel];
+        if (externalSig && externalSig.numberOfArguments == 3 &&
+            strcmp(externalSig.methodReturnType, @encode(void)) == 0 &&
+            [externalSig getArgumentTypeAtIndex:2][0] == '@') {
+            @try {
+                ((void (*)(id, SEL, id))objc_msgSend)(externalEntry, externalSel, bundleID);
+                CXLog(@"[open] %@ via externalOpenApplication fallback", bundleID);
+                return;
+            } @catch (__unused NSException *e) {
+                CXLog(@"[open] externalOpenApplication fallback exception %@", bundleID);
+            }
+        }
+    }
+    // ③ 最后兜底：类方法 applicationActivated:
     Class entry = NSClassFromString(@"PXPanelEntry");
     SEL sel = NSSelectorFromString(@"applicationActivated:");
     if (!entry) return;
