@@ -45,6 +45,10 @@ jobs:
           FAILED=""
           for dir in debs/*/; do
             [ -f "$dir/Makefile" ] || continue
+            if grep -q "roothide only" "$dir/Makefile"; then
+              echo "==> rootless arm64: $dir（roothide only，跳过）"
+              continue
+            fi
             echo "==> rootless arm64: $dir"
             ( cd "$dir" && make clean || true )
             if ! ( cd "$dir" && make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless ); then
