@@ -3,7 +3,7 @@ Name: Choicy
 Depends: mobilesubstrate, com.opa334.altlist (>= 1.0.4), preferenceloader
 Conflicts: com.opa334.choicy, com.crctdd.choicy-whitelist, com.crctdd.choicy-patch
 Replaces: com.opa334.choicy, com.crctdd.choicy-whitelist, com.crctdd.choicy-patch
-Version: 1.0.0
+Version: 1.0.1
 Architecture: iphoneos-arm64e
 Description: Choicy 白名单模式：App 默认禁止注入、可单独放行；关闭时整进程 safe mode；后台服务默认放行
 Maintainer: niubi

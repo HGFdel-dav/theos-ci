@@ -75,13 +75,20 @@ NSDictionary *choicy_applyEnvironmentChanges(NSDictionary *originalEnvironment, 
 	}
 	if (thisAppSettings) {
 		id injectionValue = [thisAppSettings objectForKey:@"tweakInjectionEnabled"];
-		BOOL explicitlyDisabled = [injectionValue isKindOfClass:[NSNumber class]] && ![injectionValue boolValue];
-		if (explicitlyDisabled && !CHInjectionIsForced(bundleIdentifier, CHExecutablePathForApplication(bundleIdentifier))) {
+		BOOL explicitlyEnabled = [injectionValue isKindOfClass:[NSNumber class]] && [injectionValue boolValue];
+		// 白名单：只有显式开启注入的 App 才放行，没配置过的 App 与显式关闭的 App 一律整进程 safe mode
+		if (!explicitlyEnabled && !CHInjectionIsForced(bundleIdentifier, CHExecutablePathForApplication(bundleIdentifier))) {
 			NSMutableDictionary *safeModeEnvironment = originalEnvironment.mutableCopy ?: [NSMutableDictionary new];
 			[safeModeEnvironment setObject:@(1) forKey:@"_MSSafeMode"];
 			[safeModeEnvironment setObject:@(1) forKey:@"_SafeMode"];
 			return safeModeEnvironment;
 		}
+	}
+	else if (!CHInjectionIsForced(bundleIdentifier, CHExecutablePathForApplication(bundleIdentifier))) {
+		NSMutableDictionary *safeModeEnvironment = originalEnvironment.mutableCopy ?: [NSMutableDictionary new];
+		[safeModeEnvironment setObject:@(1) forKey:@"_MSSafeMode"];
+		[safeModeEnvironment setObject:@(1) forKey:@"_SafeMode"];
+		return safeModeEnvironment;
 	}
 
 	if (originalEnvironment[@"_MSSafeMode"] || originalEnvironment[@"_SafeMode"]) {
