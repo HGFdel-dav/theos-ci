@@ -1,5 +1,5 @@
 ifneq ($(filter rootless roothide,$(THEOS_PACKAGE_SCHEME)),)
-TARGET := iphone:clang:16.5:15.0
+TARGET := iphone:clang:15.5:15.0
 else
 TARGET := iphone:clang:14.5:7.0
 endif

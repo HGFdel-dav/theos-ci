@@ -3,9 +3,9 @@ Name: Choicy-Whitelist
 Depends: mobilesubstrate, com.opa334.altlist (>= 1.0.4), preferenceloader
 Conflicts: com.opa334.choicy, com.crctdd.choicy-patch
 Replaces: com.opa334.choicy, com.crctdd.choicy-patch
-Version: 1.5.4-11+rb1
+Version: 1.5.4-11+rb2
 Architecture: iphoneos-arm64e
-Description: Choicy白名单 (runningboardd 强制放行修复版)
+Description: Choicy白名单 (runningboardd 放行 + 关闭时整进程 safe mode)
 Maintainer: crctdd
 Author: crctdd
 Section: Tweaks

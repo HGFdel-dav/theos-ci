@@ -64,6 +64,26 @@ NSDictionary *choicy_applyEnvironmentChanges(NSDictionary *originalEnvironment, 
     CHLaunchMode launchMode = CHLaunchModeForProcess([originalEnvironment[@CH_LAUNCH_MODE_ENV] UTF8String],
         [originalEnvironment[@CH_LAUNCH_TARGET_ENV] UTF8String], bundleIdentifier.UTF8String, true);
     if (launchMode != CHLaunchNormal) return CHEnvironmentForLaunchMode(originalEnvironment, bundleIdentifier, launchMode);
+
+	// 白名单模式：用户显式关闭该 App 的注入时，用与原版 Choicy 相同的手段整进程关闭注入
+	// （写入 _MSSafeMode，让 dyldhook 直接跳过全部 dylib，而不是靠逐个拒绝加载）
+	NSDictionary *appSettingsMap = [preferences objectForKey:kChoicyPrefsKeyAppSettings];
+	NSDictionary *thisAppSettings = nil;
+	if (appSettingsMap) {
+		id candidateSettings = [appSettingsMap objectForKey:bundleIdentifier];
+		if ([candidateSettings isKindOfClass:[NSDictionary class]]) thisAppSettings = candidateSettings;
+	}
+	if (thisAppSettings) {
+		id injectionValue = [thisAppSettings objectForKey:@"tweakInjectionEnabled"];
+		BOOL explicitlyDisabled = [injectionValue isKindOfClass:[NSNumber class]] && ![injectionValue boolValue];
+		if (explicitlyDisabled && !CHInjectionIsForced(bundleIdentifier, CHExecutablePathForApplication(bundleIdentifier))) {
+			NSMutableDictionary *safeModeEnvironment = originalEnvironment.mutableCopy ?: [NSMutableDictionary new];
+			[safeModeEnvironment setObject:@(1) forKey:@"_MSSafeMode"];
+			[safeModeEnvironment setObject:@(1) forKey:@"_SafeMode"];
+			return safeModeEnvironment;
+		}
+	}
+
 	if (originalEnvironment[@"_MSSafeMode"] || originalEnvironment[@"_SafeMode"]) {
 		                                                 
 		return originalEnvironment;
