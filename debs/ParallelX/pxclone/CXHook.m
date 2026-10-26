@@ -1451,8 +1451,8 @@ static void CXPreferencesChanged(CFNotificationCenterRef center, void *observer,
         CXLog(@"[CXWindowLevel] 配置已变化，更新所有 PX 窗口层级");
         for (UIWindow *window in UIApplication.sharedApplication.windows) {
             NSString *className = NSStringFromClass(window.class);
-            if ([className hasPrefix:@"PX"] || [className containsString:@"Handle"] || 
-                [className containsString:@"Panel"] || [className containsString:@"Overlay"]) {
+            // 只认 ParallelX 自己的窗口，避免把别的插件的 Overlay/Panel 一起改层级
+            if ([className hasPrefix:@"PX"] || [className hasPrefix:@"CloneX"]) {
                 CXApplyWindowLevel(window);
             }
         }
@@ -1520,8 +1520,7 @@ __attribute__((constructor)) static void CXInitialize(void) {
             CXLog(@"[CXWindowLevel] 开始应用窗口层级");
             for (UIWindow *window in UIApplication.sharedApplication.windows) {
                 NSString *className = NSStringFromClass(window.class);
-                if ([className hasPrefix:@"PX"] || [className containsString:@"Handle"] || 
-                    [className containsString:@"Panel"] || [className containsString:@"Overlay"]) {
+                if ([className hasPrefix:@"PX"] || [className hasPrefix:@"CloneX"]) {
                     CXApplyWindowLevel(window);
                     CXLog(@"[CXWindowLevel] 已应用到 %@: level=%.0f", className, window.windowLevel);
                 }

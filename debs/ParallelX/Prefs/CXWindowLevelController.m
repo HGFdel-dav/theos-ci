@@ -18,7 +18,7 @@
         PSSpecifier *group1 = [PSSpecifier preferenceSpecifierNamed:@"窗口层级设置"
                                                               target:self set:NULL get:NULL
                                                               detail:Nil cell:PSGroupCell edit:Nil];
-        [group1 setProperty:@"控制 ParallelX 菜单窗口的显示层级。高层级可以盖过 Dock、控制中心。" forKey:@"footerText"];
+        [group1 setProperty:@"“跟随原生”不改动窗口层级，保留 ParallelX 原本的浮层高度，进 App 也不会被盖住。只有需要盖过 Dock/控制中心时才选高层级。" forKey:@"footerText"];
         [specs addObject:group1];
         
         // 层级模式使用本控制器自己的 action，避免 iOS 15 的
@@ -29,7 +29,7 @@
                                                              cell:PSLinkCell edit:Nil];
         [mode setProperty:@"CXWindowLevelMode" forKey:@"key"];
         [mode setProperty:@[@0, @1, @2] forKey:@"validValues"];
-        [mode setProperty:@[@"普通 (0)", @"高层级 (2046)", @"自定义"] forKey:@"validTitles"];
+        [mode setProperty:@[@"跟随原生（推荐）", @"高层级 (2046)", @"自定义"] forKey:@"validTitles"];
         [mode setProperty:@YES forKey:@"cxWindowLevelChoice"];
         [specs addObject:mode];
         
@@ -37,7 +37,7 @@
         PSSpecifier *group2 = [PSSpecifier preferenceSpecifierNamed:@"自定义层级"
                                                               target:self set:NULL get:NULL
                                                               detail:Nil cell:PSGroupCell edit:Nil];
-        [group2 setProperty:@"仅“自定义”模式生效。常见层级：0=普通窗口 1040=Dock 1060=控制中心 2046=至高无上"
+        [group2 setProperty:@"仅“自定义”模式生效。注意 0 等于普通窗口层级，会被 App 窗口盖住。常见层级：1040=Dock 1060=控制中心 2046=至高无上"
                      forKey:@"footerText"];
         [specs addObject:group2];
         

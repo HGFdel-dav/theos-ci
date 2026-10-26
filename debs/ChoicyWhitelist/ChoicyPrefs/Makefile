@@ -3,13 +3,12 @@ include $(THEOS)/makefiles/common.mk
 
 BUNDLE_NAME = ChoicyWhitelistPrefs
 
-ChoicyWhitelistPrefs_FILES = $(wildcard *.m) $(wildcard *.x) ../Shared.m ../ChoicyPrefsMigrator.m $(wildcard ../external/litehook/src/*.c) $(wildcard ../external/ChOma/src/*.c)
+ChoicyWhitelistPrefs_FILES = $(wildcard *.m) $(wildcard *.x) ../Shared.m ../ChoicyPrefsMigrator.m $(wildcard ../external/AltList/*.m) $(wildcard ../external/AltList/*.x) $(wildcard ../external/litehook/src/*.c) $(wildcard ../external/ChOma/src/*.c)
 ChoicyWhitelistPrefs_INSTALL_PATH = /Library/PreferenceBundles
 ChoicyWhitelistPrefs_FRAMEWORKS = UIKit QuartzCore
 ChoicyWhitelistPrefs_PRIVATE_FRAMEWORKS = Preferences MobileCoreServices
-ChoicyWhitelistPrefs_EXTRA_FRAMEWORKS = AltList
-ChoicyWhitelistPrefs_CFLAGS += -F../external/AltList/.theos/obj -I../external/SDKHeaders
-ChoicyWhitelistPrefs_LDFLAGS += -F../external/AltList/.theos/obj
+ChoicyWhitelistPrefs_CFLAGS += -I../external/SDKHeaders
+ChoicyWhitelistPrefs_LIBRARIES += substrate
 ChoicyWhitelistPrefs_CFLAGS += -I../external -fobjc-arc -Wno-deprecated-declarations -I../external/ChOma/src -I../external/litehook/src -I../external/litehook/external/include
 
 ChoicyWhitelistPrefs_LDFLAGS += -Wl,-rpath,@loader_path/.jbroot/Library/Frameworks

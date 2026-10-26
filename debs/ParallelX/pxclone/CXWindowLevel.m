@@ -42,7 +42,12 @@ CGFloat CXGetWindowLevel(void) {
 
 void CXApplyWindowLevel(UIWindow *window) {
     if (!window) return;
-    
+
+    // 默认「普通」= 完全不动，保留 PX 原生层级。
+    // 早期实现把“普通”当成 level 0，会把 PX 的悬浮面板压到 App 窗口下面，
+    // 表现就是回桌面有、一进 App 全部消失且点不到。
+    if (CXGetWindowLevelMode() == CXWindowLevelModeNormal) return;
+
     CGFloat targetLevel = CXGetWindowLevel();
     CGFloat currentLevel = window.windowLevel;
     
