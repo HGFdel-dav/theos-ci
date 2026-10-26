@@ -1475,6 +1475,41 @@ static void CXProbeGesturesRecursive(UIView *view, int depth) {
     for (UIView *sub in view.subviews) CXProbeGesturesRecursive(sub, depth + 1);
 }
 
+
+static void CXProbeTree(UIView *v, int d) {
+    if (!v || d > 18) return;
+    if (d < 6 || [NSStringFromClass(v.class) containsString:@"Icon"] ||
+        [NSStringFromClass(v.class) hasPrefix:@"SD"] || [NSStringFromClass(v.class) hasPrefix:@"PX"])
+        CXLog(@"[probe] %*s%@ frame=%@ gr=%lu", d * 2, "", NSStringFromClass(v.class),
+              NSStringFromCGRect(v.frame), (unsigned long)v.gestureRecognizers.count);
+    for (UIView *sub in v.subviews) CXProbeTree(sub, d + 1);
+}
+
+static void CXProbePanelDeep(void) {
+    for (UIWindow *w in UIApplication.sharedApplication.windows) {
+        if (![NSStringFromClass(w.class) containsString:@"Panel"]) continue;
+        Class c = w.class; int n = 0;
+        while (c && n++ < 8) { CXLog(@"[probe] chain %@", NSStringFromClass(c)); c = class_getSuperclass(c); }
+        id r = w.nextResponder; n = 0;
+        while (r && n++ < 8) { CXLog(@"[probe] responder %@", NSStringFromClass([r class])); r = [r nextResponder]; }
+        CXProbeTree(w, 0);
+        // 图标父视图的方法表
+        for (UIView *v in w.subviews) {
+            for (UIView *g in v.subviews) {
+                NSString *cn = NSStringFromClass(g.class);
+                if (![cn containsString:@"Icon"]) continue;
+                UIView *host = g.superview;
+                CXLog(@"[probe] iconHost %@", NSStringFromClass(host.class));
+                unsigned int mc = 0;
+                Method *ms = class_copyMethodList(host.class, &mc);
+                for (unsigned int i = 0; i < mc && i < 60; i++)
+                    CXLog(@"[probe]   -%s %s", sel_getName(method_getName(ms[i])), method_getTypeEncoding(ms[i]));
+                free(ms);
+            }
+        }
+    }
+}
+
 static void CXProbeGestures(void) {
     for (UIWindow *w in UIApplication.sharedApplication.windows) {
         NSString *cn = NSStringFromClass(w.class);
@@ -1618,6 +1653,6 @@ __attribute__((constructor)) static void CXInitialize(void) {
                                         NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
         CXImportSharedAppURL();
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{ CXProbeIconClasses(); CXProbeGestures(); });
+                       dispatch_get_main_queue(), ^{ CXProbeIconClasses(); CXProbeGestures(); CXProbePanelDeep(); });
     });
 }
