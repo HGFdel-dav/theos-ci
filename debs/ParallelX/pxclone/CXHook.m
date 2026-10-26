@@ -1033,6 +1033,30 @@ static void CXPromptContainerThenOpen(NSString *bundleID, void (^cancel)(void)) 
     if (cancel) cancel();
 }
 
+static NSInteger CXOpenToken = 0;
+
+// 兜底：直接调 ParallelX 自己的 applicationActivated: 分屏入口
+static void CXOpenViaActivated(NSString *bundleID) {
+    Class entry = NSClassFromString(@"PXPanelEntry");
+    SEL sel = NSSelectorFromString(@"applicationActivated:");
+    if (!entry) return;
+    NSMethodSignature *entrySig = [entry methodSignatureForSelector:sel];
+    if (!entrySig || entrySig.numberOfArguments != 3 ||
+        strcmp(entrySig.methodReturnType, @encode(void)) != 0 ||
+        [entrySig getArgumentTypeAtIndex:2][0] != '@') return;
+    CXLog(@"[open] %@ 走 applicationActivated", bundleID);
+    @try {
+        ((void (*)(id, SEL, id))objc_msgSend)(entry, sel, bundleID);
+    } @catch (__unused NSException *e) {
+        CXLog(@"[open] %@ 打开异常", bundleID);
+    }
+}
+
+static BOOL CXUsableView(id view) {
+    return [view isKindOfClass:UIView.class] && ((UIView *)view).window != nil &&
+           !CGRectIsEmpty(((UIView *)view).bounds);
+}
+
 static void CXOpenInSplitImpl(NSString *bundleID) {
     // ① 首选：PXSceneBridge.openApplication:inView:keyboardOverlay:completion:
     //    这是 ParallelX 普通分屏条目使用的入口，避免先走全屏 externalOpenApplication:。
@@ -1043,56 +1067,73 @@ static void CXOpenInSplitImpl(NSString *bundleID) {
         bridge = CXPXEntryObject(entryObject, "activeBridge", bridgeCls);
     if (!bridge && bridgeCls && [bridgeCls respondsToSelector:NSSelectorFromString(@"sharedBridge")])
         bridge = ((id (*)(id, SEL))objc_msgSend)(bridgeCls, NSSelectorFromString(@"sharedBridge"));
-    if (bridge) {
-        SEL openSel = NSSelectorFromString(@"openApplication:inView:keyboardOverlay:completion:");
-        NSMethodSignature *sig = [bridge methodSignatureForSelector:openSel];
-        if (sig && sig.numberOfArguments == 6 &&
-            strcmp(sig.methodReturnType, @encode(void)) == 0 &&
-            [sig getArgumentTypeAtIndex:2][0] == '@' &&
-            [sig getArgumentTypeAtIndex:3][0] == '@' &&
-            [sig getArgumentTypeAtIndex:4][0] == '@' &&
-            [sig getArgumentTypeAtIndex:5][0] == '@') {
-            id view = nil, overlay = nil;
-            SEL hostSel = NSSelectorFromString(@"hostView");
-            SEL overlaySel = NSSelectorFromString(@"keyboardOverlay");
-            if ([bridge respondsToSelector:hostSel])
-                view = ((id (*)(id, SEL))objc_msgSend)(bridge, hostSel);
-            if (!view && entryObject)
-                view = CXPXEntryObject(entryObject, "hostCanvas", UIView.class);
-            if ([bridge respondsToSelector:overlaySel])
-                overlay = ((id (*)(id, SEL))objc_msgSend)(bridge, overlaySel);
-            if (view) {
-                CXLog(@"[open] %@ via sharedBridge.openApplication view=%@ overlay=%@",
-                      bundleID, NSStringFromClass([view class]), NSStringFromClass([overlay class]));
-                void (^done)(BOOL) = ^(BOOL ok) { CXLog(@"[open] openApplication %@ done=%d", bundleID, ok); };
-                @try {
-                    ((void (*)(id, SEL, id, id, id, id))objc_msgSend)(bridge, openSel, bundleID, view, overlay, done);
-                    return;
-                } @catch (__unused NSException *e) {
-                    CXLog(@"[open] openApplication 异常，继续 applicationActivated %@", bundleID);
-                }
-            } else {
-                CXLog(@"[open] sharedBridge.hostView 为空，继续 applicationActivated");
-            }
+    if (!bridge) {
+        CXLog(@"[open] 无可用 bridge，回退 applicationActivated:");
+        CXOpenViaActivated(bundleID);
+        return;
+    }
+    SEL openSel = NSSelectorFromString(@"openApplication:inView:keyboardOverlay:completion:");
+    NSMethodSignature *sig = [bridge methodSignatureForSelector:openSel];
+    if (!sig || sig.numberOfArguments != 6 ||
+        strcmp(sig.methodReturnType, @encode(void)) != 0 ||
+        [sig getArgumentTypeAtIndex:2][0] != '@' ||
+        [sig getArgumentTypeAtIndex:3][0] != '@' ||
+        [sig getArgumentTypeAtIndex:4][0] != '@' ||
+        [sig getArgumentTypeAtIndex:5][0] != '@') {
+        CXLog(@"[open] openApplication 签名不符，回退 applicationActivated:");
+        CXOpenViaActivated(bundleID);
+        return;
+    }
+
+    NSString *viewSource = @"hostView";
+    id view = nil, overlay = nil;
+    SEL hostSel = NSSelectorFromString(@"hostView");
+    SEL overlaySel = NSSelectorFromString(@"keyboardOverlay");
+    if ([bridge respondsToSelector:hostSel])
+        view = ((id (*)(id, SEL))objc_msgSend)(bridge, hostSel);
+    if (!CXUsableView(view) && entryObject) {
+        view = CXPXEntryObject(entryObject, "hostCanvas", UIView.class);
+        viewSource = @"hostCanvas";
+    }
+    if ([bridge respondsToSelector:overlaySel])
+        overlay = ((id (*)(id, SEL))objc_msgSend)(bridge, overlaySel);
+    if (!CXUsableView(view)) {
+        CXLog(@"[open] hostView/hostCanvas 均不可用，回退 applicationActivated: %@", bundleID);
+        CXOpenViaActivated(bundleID);
+        return;
+    }
+
+    NSInteger token = ++CXOpenToken;
+    __block BOOL settled = NO;
+    CXLog(@"[open] %@ via openApplication bridge=%@ view=%@(%@) overlay=%@",
+          bundleID, NSStringFromClass([bridge class]), NSStringFromClass([view class]),
+          viewSource, NSStringFromClass([overlay class]));
+
+    void (^done)(BOOL) = ^(BOOL ok) {
+        if (settled) return;
+        settled = YES;
+        CXLog(@"[open] openApplication %@ done=%d", bundleID, ok);
+        if (!ok) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (token == CXOpenToken) CXOpenViaActivated(bundleID);
+            });
         }
-        // hostView 为空时不能调用 prepareWindowForBundleID:：那条路径会
-        // 把应用作为全屏窗口拉起。继续走下面的原生分屏兜底。
-    } else {
-        CXLog(@"[open] sharedBridge 不存在，回退 applicationActivated:");
-    }
-    // ② 最后兜底：ParallelX 的 applicationActivated: 分屏入口。
-    Class entry = NSClassFromString(@"PXPanelEntry");
-    SEL sel = NSSelectorFromString(@"applicationActivated:");
-    if (!entry) return;
-    NSMethodSignature *entrySig = [entry methodSignatureForSelector:sel];
-    if (!entrySig || entrySig.numberOfArguments != 3 ||
-        strcmp(entrySig.methodReturnType, @encode(void)) != 0 ||
-        [entrySig getArgumentTypeAtIndex:2][0] != '@') return;
+    };
     @try {
-        ((void (*)(id, SEL, id))objc_msgSend)(entry, sel, bundleID);
+        ((void (*)(id, SEL, id, id, id, id))objc_msgSend)(bridge, openSel, bundleID, view, overlay, done);
     } @catch (__unused NSException *e) {
-        CXLog(@"[open] %@ 打开异常", bundleID);
+        CXLog(@"[open] openApplication 异常，回退 applicationActivated %@", bundleID);
+        CXOpenViaActivated(bundleID);
+        return;
     }
+    // 老版本设备上 completion 可能永不回调，1.2s 没有结果就兜底，避免“点了没反应”
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        if (settled || token != CXOpenToken) return;
+        settled = YES;
+        CXLog(@"[open] openApplication %@ 无回调，回退 applicationActivated", bundleID);
+        CXOpenViaActivated(bundleID);
+    });
 }
 
 // 截获一个虚拟条目：切容器 → 打开真实应用
