@@ -1123,9 +1123,11 @@ static void CXOpenInSplitImpl(NSString *bundleID) {
         view = CXPXEntryObject(entryObject, "hostCanvas", UIView.class);
         viewSource = @"hostCanvas";
     }
+    if ([bridge respondsToSelector:overlaySel]) {
+        id bridgeOverlay = ((id (*)(id, SEL))objc_msgSend)(bridge, overlaySel);
+        if (bridgeOverlay) overlay = bridgeOverlay;
+    }
     if (!overlay && CXLastPXOverlay) overlay = CXLastPXOverlay;
-    if ([bridge respondsToSelector:overlaySel])
-        overlay = ((id (*)(id, SEL))objc_msgSend)(bridge, overlaySel);
     if (!CXAnyView(view)) {
         CXLog(@"[open] hostView/hostCanvas 均不可用，回退 applicationActivated: %@", bundleID);
         CXOpenViaActivated(bundleID);
@@ -1253,8 +1255,8 @@ static BOOL CXPerformAction(id self, SEL _cmd, id argument) {
     // 再保险地补一次原 performConfiguredAction。
     NSString *realBundle = item[@"bundleID"];
     void (^cont)(void) = ^{
-        if (realBundle.length) CXOpenViaActivated(realBundle);
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)),
+        if (realBundle.length) CXOpenInSplit(realBundle);
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.4 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{ CXOrigPerformAction(self, _cmd, record); });
     };
     if (!CXHandleVirtualItemThen(item, cont)) cont();
