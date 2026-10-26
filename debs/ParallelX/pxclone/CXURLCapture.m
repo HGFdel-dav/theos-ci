@@ -7,6 +7,7 @@
 #import <CoreFoundation/CoreFoundation.h>
 #include <string.h>
 #include <dlfcn.h>
+#include <notify.h>
 #import "CXLog.h"
 
 typedef void (*CXURLHookFn)(Class, SEL, IMP, IMP *);
@@ -23,11 +24,14 @@ static void CXURLStore(id value) {
     NSURL *url = value;
     CXLog(@"[url] app-captured bundle=%@ scheme=%@ host=%@",
           NSBundle.mainBundle.bundleIdentifier ?: @"?", url.scheme ?: @"", url.host ?: @"");
-    CFPreferencesSetAppValue(CFSTR("CXSharedURL"), (__bridge CFStringRef)url.absoluteString,
-                             (__bridge CFStringRef)CXURLDomain);
-    CFPreferencesSetAppValue(CFSTR("CXSharedURLAt"), (__bridge CFPropertyListRef)@([NSDate date].timeIntervalSince1970),
-                             (__bridge CFStringRef)CXURLDomain);
-    CFPreferencesAppSynchronize((__bridge CFStringRef)CXURLDomain);
+    CFStringRef domain = (__bridge CFStringRef)CXURLDomain;
+    CFPreferencesSetAppValue(CFSTR("CXSharedURL"), (__bridge CFStringRef)url.absoluteString, domain);
+    CFPreferencesSetAppValue(CFSTR("CXSharedURLAt"),
+                              (__bridge CFPropertyListRef)@([NSDate date].timeIntervalSince1970), domain);
+    NSString *bundleID = NSBundle.mainBundle.bundleIdentifier ?: @"";
+    CFPreferencesSetAppValue(CFSTR("CXSharedURLBundle"), (__bridge CFStringRef)bundleID, domain);
+    CFPreferencesAppSynchronize(domain);
+    notify_post("com.niubiprass.clonex/url");
 }
 
 static void CXURLOpen(id self, SEL cmd, id url, id options, id completion) {
@@ -78,6 +82,7 @@ __attribute__((constructor)) static void CXURLCaptureInit(void) {
             method_setImplementation(m, (IMP)CXURLOpenURLContextInit);
         }
 
+        if (!sym) CXLog(@"[url] app hook unavailable bundle=%@", NSBundle.mainBundle.bundleIdentifier ?: @"?");
         Class workspace = NSClassFromString(@"LSApplicationWorkspace");
         if (!sym || !workspace) return;
         SEL selectors[] = { NSSelectorFromString(@"openURL:withOptions:"),

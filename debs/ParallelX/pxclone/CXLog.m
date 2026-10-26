@@ -5,6 +5,12 @@
 #define CX_LOG_MAX (256 * 1024)
 
 static NSString *CXLogDirectory(void) {
+    NSString *bundleID = NSBundle.mainBundle.bundleIdentifier;
+    if (bundleID.length && ![bundleID isEqualToString:@"com.apple.springboard"]) {
+        NSString *support = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory,
+                                                                 NSUserDomainMask, YES).firstObject;
+        if (support.length) return [support stringByAppendingPathComponent:@"CloneX"];
+    }
     return @"/var/mobile/Library/Application Support/CloneX";
 }
 

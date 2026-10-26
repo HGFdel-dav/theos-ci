@@ -126,8 +126,63 @@ static void CXReleaseRequestRoute(id request) {
 
 static NSURL *CXLastURL;
 static NSTimeInterval CXLastURLAt;
+static NSTimeInterval CXConsumedURLAt;
+static NSTimeInterval CXLastSharedURLScanAt;
+
+static void CXMarkCurrentURLConsumed(void) {
+    if (CXLastURLAt > CXConsumedURLAt) CXConsumedURLAt = CXLastURLAt;
+    CXLastURL = nil;
+    CXLastURLAt = 0;
+}
+
+
+// App 注入库只能写入各自沙盒的偏好域。SpringBoard 通过 RootHide 映射后的
+// Data/Application 目录读取最新一份，不依赖不存在的 AppSupport/rocketbootstrap。
+static void CXImportSharedAppURL(void) {
+    NSTimeInterval now = [NSDate date].timeIntervalSince1970;
+    if (now - CXLastSharedURLScanAt < 0.25) return;
+    CXLastSharedURLScanAt = now;
+    NSTimeInterval bestAt = MAX(CXLastURLAt, CXConsumedURLAt);
+    NSString *bestURL = nil;
+    NSString *bestBundle = nil;
+    NSArray<NSString *> *allowed = @[@"com.chinaunicom.mobilebusiness", @"com.alipay.iphoneclient",
+                                     @"com.tencent.mqq", @"com.tencent.xin"];
+    Class proxyClass = NSClassFromString(@"LSApplicationProxy");
+    SEL proxySel = NSSelectorFromString(@"applicationProxyForIdentifier:");
+    SEL dataSel = NSSelectorFromString(@"dataContainerURL");
+    for (NSString *bundleID in allowed) {
+        if (!proxyClass || ![proxyClass respondsToSelector:proxySel]) continue;
+        id proxy = ((id (*)(id, SEL, id))objc_msgSend)(proxyClass, proxySel, bundleID);
+        if (!proxy || ![proxy respondsToSelector:dataSel]) continue;
+        id dataURL = ((id (*)(id, SEL))objc_msgSend)(proxy, dataSel);
+        NSString *container = [dataURL isKindOfClass:NSURL.class] ? [dataURL path] : nil;
+        if (!container.length) continue;
+        NSString *path = [container stringByAppendingPathComponent:@"Library/Preferences/com.niubiprass.clonex.plist"];
+        NSDictionary *prefs = [NSDictionary dictionaryWithContentsOfFile:path];
+        NSString *value = prefs[@"CXSharedURL"];
+        NSNumber *atValue = prefs[@"CXSharedURLAt"];
+        NSString *sourceBundle = prefs[@"CXSharedURLBundle"];
+        NSTimeInterval at = [atValue respondsToSelector:@selector(doubleValue)] ? atValue.doubleValue : 0;
+        if (![value isKindOfClass:NSString.class] || !value.length || at <= bestAt || now - at > 30.0) continue;
+        NSURL *url = [NSURL URLWithString:value];
+        if (!url) continue;
+        bestAt = at;
+        bestURL = value;
+        bestBundle = [sourceBundle isKindOfClass:NSString.class] ? sourceBundle : bundleID;
+    }
+    if (!bestURL) return;
+    CXLastURL = [NSURL URLWithString:bestURL];
+    CXLastURLAt = bestAt;
+    CFStringRef domain = CFSTR("com.niubiprass.clonex");
+    CFPreferencesSetAppValue(CFSTR("CXSharedURL"), (__bridge CFStringRef)bestURL, domain);
+    CFPreferencesSetAppValue(CFSTR("CXSharedURLAt"), (__bridge CFPropertyListRef)@(bestAt), domain);
+    CFPreferencesAppSynchronize(domain);
+    CXLog(@"[url] imported app plist bundle=%@ scheme=%@ host=%@", bestBundle,
+          CXLastURL.scheme ?: @"", CXLastURL.host ?: @"");
+}
 
 static BOOL CXFreshURL(NSURL **out) {
+    CXImportSharedAppURL();
     if (CXLastURL && [NSDate date].timeIntervalSince1970 - CXLastURLAt <= 30.0) {
         if (out) *out = CXLastURL;
         return YES;
@@ -137,9 +192,11 @@ static BOOL CXFreshURL(NSURL **out) {
     if (![str isKindOfClass:NSString.class] || !str.length) return NO;
     double at = [CXPrefs.shared objectForKey:@"CXSharedURLAt"] ?
                 [[CXPrefs.shared objectForKey:@"CXSharedURLAt"] doubleValue] : 0;
-    if ([NSDate date].timeIntervalSince1970 - at > 30.0) return NO;
+    if ([NSDate date].timeIntervalSince1970 - at > 30.0 || at <= CXConsumedURLAt) return NO;
     NSURL *url = [NSURL URLWithString:str];
     if (!url) return NO;
+    CXLastURL = url;
+    CXLastURLAt = at;
     if (out) *out = url;
     return YES;
 }
@@ -157,9 +214,8 @@ static BOOL CXAppRunning(NSString *bundle) {
     return ((BOOL (*)(id, SEL, id))objc_msgSend)(bridge, sel, bundle) != 0;
 }
 
-// Crane reload 完成只代表“配置已写入并发出 reload”，不代表 PX 的
-// 新 scene 已经能接收 URL。切换账号时先等旧 scene 消失，再等新
-// scene 出现并留出一小段稳定时间，避免第一次请求落到旧进程/空 scene。
+// Crane reload 完成只代表“配置已写入并发出 reload”。切换账号时只等旧
+// scene 退出，然后立即让 PX 创建目标 scene；新 scene 不会在 PX 开窗前自行出现。
 static void CXWaitForApplicationReady(NSString *bundleID, BOOL expectRestart,
                                       BOOL wasRunning, NSInteger phase,
                                       NSInteger tries, void (^completion)(void)) {
@@ -180,10 +236,14 @@ static void CXWaitForApplicationReady(NSString *bundleID, BOOL expectRestart,
         return;
     }
 
-    if (phase == 0) { // wait for the old scene to disappear
+    if (phase == 0) { // wait only for the old scene to disappear
+        // Reloading the app does not create the replacement scene by itself;
+        // PX creates it when externalOpenApplication: is called. Waiting for
+        // a new scene here therefore deadlocks the first open for six seconds.
         if (!running || tries >= 12) {
-            if (running) CXLog(@"[ready] %@ old scene did not disappear, continue waiting", bundleID);
-            CXWaitForApplicationReady(bundleID, YES, wasRunning, 1, 0, completion);
+            if (running) CXLog(@"[ready] %@ old scene still present, open now", bundleID);
+            else CXLog(@"[ready] %@ old scene gone, open now", bundleID);
+            completion();
             return;
         }
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
@@ -193,31 +253,12 @@ static void CXWaitForApplicationReady(NSString *bundleID, BOOL expectRestart,
         });
         return;
     }
-
-    if (phase == 1) { // wait for the new scene to appear
-        if (running) {
-            CXLog(@"[ready] %@ new scene appeared, settling", bundleID);
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)),
-                           dispatch_get_main_queue(), completion);
-            return;
-        }
-        if (tries >= 20) {
-            CXLog(@"[ready] %@ new scene timeout, continue", bundleID);
-            completion();
-            return;
-        }
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{
-            CXWaitForApplicationReady(bundleID, YES, wasRunning, 1,
-                                      tries + 1, completion);
-        });
-    }
 }
 
 static void (*CXOrigOpenURL)(id, SEL, id, id, id);
 static BOOL (*CXOrigOpenURLLegacy)(id, SEL, id);
 static void CXCaptureExternalURL(id url) {
-    if (![url isKindOfClass:NSURL.class]) return;
+    if (CXInternalOpen || ![url isKindOfClass:NSURL.class]) return;
     CXLastURL = [url copy];
     CXLastURLAt = [NSDate date].timeIntervalSince1970;
     [CXPrefs.shared setObject:((NSURL *)url).absoluteString forKey:@"CXSharedURL"];
@@ -471,24 +512,11 @@ static void CXReplayURL(NSURL *url) {
     }];
     CXInternalOpen = wasInternal;
 }
-static void CXReplayRecentURL(void) {
-    NSURL *url = nil;
-    if (!CXFreshURL(&url)) return;
-    CXLastURL = nil;
-    CXLastURLAt = 0;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{ CXReplayURL(url); });
-}
-
 static void CXOpenInSplit(NSString *bundleID) {
     BOOL wasInternal = CXInternalOpen;
     CXInternalOpen = YES;
-    @try {
-        CXOpenInSplitImpl(bundleID);
-        CXReplayRecentURL();
-    } @finally {
-        CXInternalOpen = wasInternal;
-    }
+    @try { CXOpenInSplitImpl(bundleID); }
+    @finally { CXInternalOpen = wasInternal; }
 }
 
 // 外部 URL 且应用有多容器：带图标的容器选择（参照 ScreenCore 的深色选择条）
@@ -834,6 +862,7 @@ static BOOL CXPromptForURL(NSString *bundleID, BOOL requireURL, void (^proceed)(
         BOOL same = [active isEqualToString:cid];
         CXLog(@"[url] %@ selected=%@ same=%d running=%d", bundleID, cid, same, running);
         BOOL wasInternal = CXInternalOpen;
+        if (incoming) CXMarkCurrentURLConsumed();
         CXInternalOpen = YES;
         [CXCraneBridge switchBundleID:bundleID toContainer:cid reload:!same completion:^(BOOL ok) {
             if (!ok) { CXInternalOpen = wasInternal; CXLog(@"[url] %@ switch failed", bundleID); return; }
@@ -1307,6 +1336,12 @@ static void CXSyncIfNeeded(NSString *reason) {
     CXSyncMenu();
 }
 
+static void CXSharedURLChanged(CFNotificationCenterRef center, void *observer,
+                                CFStringRef name, const void *object,
+                                CFDictionaryRef userInfo) {
+    dispatch_async(dispatch_get_main_queue(), ^{ CXImportSharedAppURL(); });
+}
+
 static void CXPreferencesChanged(CFNotificationCenterRef center, void *observer,
                                  CFStringRef name, const void *object,
                                  CFDictionaryRef userInfo) {
@@ -1374,6 +1409,11 @@ __attribute__((constructor)) static void CXInitialize(void) {
                                         NULL, CXPreferencesChanged,
                                         CFSTR("com.niubiprass.clonex/changed"),
                                         NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
+                                        NULL, CXSharedURLChanged,
+                                        CFSTR("com.niubiprass.clonex/url"),
+                                        NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+        CXImportSharedAppURL();
         
         // ========== 窗口层级功能初始化 ==========
         // 延迟3秒应用层级，确保 PX 窗口已创建
