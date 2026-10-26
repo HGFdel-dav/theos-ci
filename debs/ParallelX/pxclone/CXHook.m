@@ -1486,7 +1486,12 @@ static void CXProbeTree(UIView *v, int d) {
 static void CXProbePanelDeep(void) {
     for (UIWindow *w in UIApplication.sharedApplication.windows) {
         if (![NSStringFromClass(w.class) containsString:@"Panel"]) continue;
-        if (w.subviews.count < 3) continue;   // 面板没展开就不打
+        if (w.subviews.count < 1) continue;   // 面板没展开就不打
+        if ([w respondsToSelector:NSSelectorFromString(@"recursiveDescription")]) {
+            NSString *desc = ((id (*)(id, SEL))objc_msgSend)(w, NSSelectorFromString(@"recursiveDescription"));
+            for (NSString *line in [desc componentsSeparatedByString:@"\n"])
+                if (line.length) CXLog(@"[tree] %@", line);
+        }
         Class c = w.class; int n = 0;
         while (c && n++ < 8) { CXLog(@"[probe] chain %@", NSStringFromClass(c)); c = class_getSuperclass(c); }
         id r = w.nextResponder; n = 0;
@@ -1652,6 +1657,17 @@ __attribute__((constructor)) static void CXInitialize(void) {
                                         NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
         CXImportSharedAppURL();
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{ CXProbeIconClasses(); CXProbeGestures(); CXProbePanelDeep(); });
+                       dispatch_get_main_queue(), ^{
+        CXProbeIconClasses();
+        __block void (^tick)(int);
+        tick = ^(int n) {
+            if (n > 45) return;
+            CXProbeGestures();
+            CXProbePanelDeep();
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{ tick(n + 1); });
+        };
+        tick(0);
+    });
     });
 }
