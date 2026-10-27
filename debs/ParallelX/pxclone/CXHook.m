@@ -599,11 +599,17 @@ static void CXReplayURL(NSURL *url) {
     }];
     CXInternalOpen = wasInternal;
 }
+// 冷启动重试模块（必须在 CXSystemRoutePending / CXShowingChooser / CXAppRunning
+// 之后、CXOpenInSplit 之前引入）
+#include "CXColdRetry.inc"
+
 static void CXOpenInSplit(NSString *bundleID) {
     BOOL wasInternal = CXInternalOpen;
     CXInternalOpen = YES;
     @try { CXOpenInSplitImpl(bundleID); }
     @finally { CXInternalOpen = wasInternal; }
+    // 只在冷启动时生效；热启动/选择器未关/容器切换未完成都会自行跳过
+    CXStartColdRetryIfNeeded(bundleID);
 }
 
 // 外部 URL 且应用有多容器：带图标的容器选择（参照 ScreenCore 的深色选择条）
@@ -1221,6 +1227,8 @@ static void (*CXOrigPrepareWindow)(id, SEL, id, BOOL, id);
 static void CXPrepareWindow(id self, SEL _cmd, id bundleID, BOOL wasFullscreen, id completion) {
     if (!CXOrigPrepareWindow) return;
     CXLog(@"[trace] prepareWindow %@ fullscreen=%d", bundleID, wasFullscreen);
+    // 建窗到了 = 分屏开窗路径成功，停掉这条 bundle 上所有重试轮询
+    if ([bundleID isKindOfClass:NSString.class]) CXCancelColdRetry(bundleID);
     NSDictionary *item = CXVirtualItemFromArgument(bundleID);
     if (!item) {
         // Account selection belongs to the complete system request/externalOpen,
@@ -1231,6 +1239,7 @@ static void CXPrepareWindow(id self, SEL _cmd, id bundleID, BOOL wasFullscreen, 
     completion = [completion copy]; // The virtual path below escapes asynchronously.
     NSString *realBundle = item[@"bundleID"];
     NSString *containerID = item[@"containerID"];
+    if (realBundle.length) CXCancelColdRetry(realBundle);
     NSString *key = [NSString stringWithFormat:@"%@#%@", realBundle, containerID];
     if (CXHandledRecently(key)) { CXOrigPrepareWindow(self, _cmd, realBundle, wasFullscreen, completion); return; }
     CXMarkHandled(key);

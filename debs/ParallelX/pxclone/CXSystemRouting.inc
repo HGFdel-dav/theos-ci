@@ -6,8 +6,6 @@
 #include <errno.h>
 #include <stdbool.h>
 
-#import "CXDiagnostic.inc"
-
 static void CXForwardNextSystemRequest(CXSystemRoute *route);
 
 static NSError *CXRouteError(NSInteger code, NSString *description) {
@@ -57,8 +55,6 @@ static void CXForwardNextSystemRequest(CXSystemRoute *route) {
     CXMarkRequestBypass(route.bundleID);
     CXLog(@"[route] %@ forward queued request=%p index=%lu total=%lu", route.bundleID,
           item.request, (unsigned long)route.nextIndex, (unsigned long)route.items.count);
-    CXLogRequestOptions(route.bundleID, item.request, "before-forward");
-    CXLogFrontmostTimeline(route.bundleID);
     __weak CXSystemRoute *weakRoute = route;
     CXSystemCompletion result = [^(NSError *error) {
         // Also handles a synchronous result: finish only after original IMP returns.
@@ -77,9 +73,7 @@ static void CXForwardNextSystemRequest(CXSystemRoute *route) {
             else CXForwardNextSystemRequest(current);
         });
     } copy];
-    id forwardedRequest = item.request; // result 可能同步回调并清空 item.request。
-    CXOrigSystemRequest(item.receiver, item.selector, item.service, forwardedRequest, result);
-    CXLogRequestOptions(route.bundleID, forwardedRequest, "after-forward");
+    CXOrigSystemRequest(item.receiver, item.selector, item.service, item.request, result);
     // A broken downstream plugin must not retain the entire global queue forever.
     // Timeout completes once with failure; it never retries or launches another account.
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 20 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
@@ -191,11 +185,7 @@ static void CXSystemRequestHook(id self, SEL _cmd, id service, id request, CXSys
               (unsigned long)containers.count, NSThread.isMainThread);
     }
     if (CXInternalOpen || !bundleID.length || !hasPayload || containers.count < 2) {
-        BOOL diag = bundleID.length && hasPayload && !CXInternalOpen;
-        if (diag) CXLogRequestOptions(bundleID, request, "passthrough-before");
         CXOrigSystemRequest(self, _cmd, service, request, completion);
-        // PX 若拦截，会在调用原函数前同步改写 options，此处能看到改动结果。
-        if (diag) CXLogRequestOptions(bundleID, request, "passthrough-after");
         return;
     }
     // Copy BEFORE returning from this hook, regardless of incoming queue.

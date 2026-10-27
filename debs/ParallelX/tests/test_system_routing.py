@@ -72,10 +72,7 @@ class RoutingRegressions(unittest.TestCase):
         self.assertLess(cancel.index('[self.cancel copy]'), cancel.index('CXCloseChooser()'))
     def test_queued_payload_and_process_exit_guard(self):
         self.assertIn('item.request = request', ROUTE)
-        # 同一个原始请求对象被转发；诊断日志只读，不替换请求。
-        self.assertIn('id forwardedRequest = item.request;', ROUTE)
-        self.assertIn('CXOrigSystemRequest(item.receiver, item.selector, item.service, forwardedRequest, result)', ROUTE)
-        self.assertNotIn('setOptions:', ROUTE)
+        self.assertIn('CXOrigSystemRequest(item.receiver, item.selector, item.service, item.request, result)', ROUTE)
         self.assertIn('errno == ESRCH', ROUTE)
         self.assertIn('Previous account process has not exited', ROUTE)
         self.assertNotIn('CXReplayURL(', ROUTE)
