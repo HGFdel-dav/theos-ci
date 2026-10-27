@@ -1387,16 +1387,20 @@ static void CXOpenAppHook(id self, SEL _cmd, id app, id view, id overlay, id com
                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
                                dispatch_get_main_queue(), ^{
                     CXOrigOpenApp(self, _cmd, realBundle, view, overlay, completion);
+                    CXStartColdRetryIfNeeded(realBundle);
                 });
             }];
             return;
         }
         if (realBundle.length) {
             CXOrigOpenApp(self, _cmd, realBundle, view, overlay, completion);
+            CXStartColdRetryIfNeeded(realBundle);
             return;
         }
     }
     CXOrigOpenApp(self, _cmd, app, view, overlay, completion);
+    // 真正的主路径：分屏面板点普通 App 图标也走到这里。
+    if ([app isKindOfClass:NSString.class]) CXStartColdRetryIfNeeded(app);
 }
 
 static void CXInstallBridgeHooks(void) {

@@ -131,11 +131,18 @@ class ColdStartRetryContract(unittest.TestCase):
 
 
 class ColdStartRetrySource(unittest.TestCase):
-    def test_armed_only_from_split_open(self):
-        # 唯一启动点：CXOpenInSplit 调完 impl 之后；定义在 .inc 里
-        self.assertEqual(HOOK.count('CXStartColdRetryIfNeeded('), 1)
+    def test_armed_from_every_split_entry(self):
+        # 分屏开窗有两个入口：CXOpenInSplit（分身/URL）与 openApplication 钩子
+        # （面板点普通图标的主路径）。四个挂点，定义只在 .inc。
+        self.assertEqual(HOOK.count('CXStartColdRetryIfNeeded('), 4)
         self.assertEqual(RETRY.count('static void CXStartColdRetryIfNeeded('), 1)
         self.assertRegex(HOOK, r'CXInternalOpen = wasInternal;\s*\}\s*\n\s*//[^\n]*\n\s*CXStartColdRetryIfNeeded\(bundleID\);')
+
+    def test_open_application_arms_after_forwarding(self):
+        # 必须先把请求转交给 PX，再挂重试；普通图标那支还要先判字符串
+        body = re.search(r'static void CXOpenAppHook.*?\n\}', HOOK, re.S).group(0)
+        self.assertEqual(body.count('CXStartColdRetryIfNeeded'), 3)
+        self.assertRegex(body, r'CXOrigOpenApp\(self, _cmd, app, view, overlay, completion\);\s*\n\s*//[^\n]*\n\s*if \(\[app isKindOfClass:NSString\.class\]\) CXStartColdRetryIfNeeded\(app\);')
 
     def test_payment_and_chooser_paths_untouched(self):
         # 选账号函数体里不应出现 retry 调用
