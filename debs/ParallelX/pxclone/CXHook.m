@@ -33,8 +33,12 @@ typedef void (*CXHookFn)(Class, SEL, IMP, IMP *);
 
 static void CXSyncIfNeeded(NSString *reason);
 static CXHookFn CXMSHookMessageEx(void);
-static void (*CXOrigSystemRequest)(id, SEL, id, id, id);
-static void CXSystemRequestHook(id self, SEL _cmd, id service, id request, id completion);
+// iOS 15.5 FBSystemServiceDelegate: withCompletion:(void (^)(NSError *))
+// A retained id is NOT a copied Block. Keep the true type across async routing.
+typedef void (^CXSystemCompletion)(NSError *error);
+static void (*CXOrigSystemRequest)(id, SEL, id, id, CXSystemCompletion);
+static void CXSystemRequestHook(id self, SEL _cmd, id service, id request, CXSystemCompletion completion);
+static void CXDrainSystemRoutes(void);
 static void CXInstallSystemRequestHook(void);
 
 #pragma mark - 防重复处理
@@ -100,27 +104,50 @@ static BOOL CXRequestBypassActive(NSString *bundleID) {
     }
 }
 
-static NSMutableSet *CXActiveRequestRoutes(void) {
-    static NSMutableSet *set;
+// Every incoming call owns its payload and copied completion. Same bundle does
+// not mean same request: queue calls, never discard them as URL duplicates.
+@interface CXSystemRequestItem : NSObject
+@property (nonatomic, strong) id receiver;
+@property (nonatomic, strong) id service;
+@property (nonatomic, strong) id request;
+@property (nonatomic, assign) SEL selector;
+@property (nonatomic, copy) CXSystemCompletion completion;
+@property (nonatomic, assign) BOOL forwarded;
+@property (nonatomic, assign) BOOL finished;
+@end
+@implementation CXSystemRequestItem
+@end
+
+@interface CXSystemRoute : NSObject
+@property (nonatomic, copy) NSString *bundleID;
+@property (nonatomic, copy) NSArray<NSDictionary *> *containers;
+@property (nonatomic, strong) NSMutableArray<CXSystemRequestItem *> *items;
+@property (nonatomic, copy) NSString *containerID;
+@property (nonatomic, assign) NSUInteger nextIndex;
+@property (nonatomic, assign) BOOL waitingForResult;
+@property (nonatomic, assign) BOOL finished;
+@property (nonatomic, assign) BOOL selected;
+@end
+@implementation CXSystemRoute
+@end
+
+static NSMutableArray<CXSystemRoute *> *CXSystemRoutes(void) {
+    static NSMutableArray *routes;
     static dispatch_once_t once;
-    dispatch_once(&once, ^{ set = [NSMutableSet set]; });
-    return set;
+    dispatch_once(&once, ^{ routes = [NSMutableArray array]; });
+    return routes;
 }
-
-static BOOL CXClaimRequestRoute(id request) {
-    if (!request) return NO;
-    @synchronized (CXActiveRequestRoutes()) {
-        if ([CXActiveRequestRoutes() containsObject:request]) return NO;
-        [CXActiveRequestRoutes() addObject:request];
-        return YES;
-    }
+static CXSystemRoute *CXActiveSystemRoute;
+static CXSystemRoute *CXChooserRoute;
+static CXSystemRoute *CXRouteForBundle(NSString *bundleID) {
+    if (!bundleID.length) return nil;
+    for (CXSystemRoute *route in CXSystemRoutes())
+        if (!route.finished && [route.bundleID isEqualToString:bundleID]) return route;
+    return nil;
 }
-
-static void CXReleaseRequestRoute(id request) {
-    if (!request) return;
-    @synchronized (CXActiveRequestRoutes()) {
-        [CXActiveRequestRoutes() removeObject:request];
-    }
+static BOOL CXSystemRoutePending(NSString *bundleID) {
+    CXSystemRoute *route = CXRouteForBundle(bundleID);
+    return route && !route.selected;
 }
 
 #pragma mark - 最近一次外部 URL（重载后补投，否则只落到主界面）
@@ -471,9 +498,12 @@ static void CXInstallSystemRequestHook(void) {
                  strcmp(sig.methodReturnType, @encode(void)) == 0 &&
                  [sig getArgumentTypeAtIndex:2][0] == '@' &&
                  [sig getArgumentTypeAtIndex:3][0] == '@' &&
-                 [sig getArgumentTypeAtIndex:4][0] == '@';
+                 strcmp([sig getArgumentTypeAtIndex:4], @encode(CXSystemCompletion)) == 0;
+    // The completion's NSError * ABI is checked against iOS 15.5 headers.
+    // Do not apply this cancellation implementation to unreviewed OS majors.
+    valid = valid && NSProcessInfo.processInfo.operatingSystemVersion.majorVersion == 15;
     if (!valid) {
-        CXLog(@"[route] request selector 签名不符: %@", sig);
+        CXLog(@"[route] request selector 签名/系统版本不符: %@", sig);
         return;
     }
     CXHookFn hook = CXMSHookMessageEx();
@@ -693,16 +723,22 @@ static void CXOpenInSplit(NSString *bundleID) {
     if (self.finishing || sender.tag < 0 || sender.tag >= (NSInteger)self.containers.count) return;
     self.finishing = YES;
     NSDictionary *entry = self.containers[sender.tag];
-    NSString *containerID = entry[@"containerID"];
+    NSString *containerID = [entry[@"containerID"] copy];
+    void (^pick)(NSString *) = [self.pick copy];
+    self.pick = nil;
+    self.cancel = nil;
     CXLog(@"[url] chooser tapped index=%ld container=%@", (long)sender.tag, containerID ?: @"?");
     CXCloseChooser();
-    if (self.pick) self.pick(containerID);
+    if (pick) pick(containerID);
 }
 - (void)cancelled {
     if (self.finishing) return;
     self.finishing = YES;
+    void (^cancel)(void) = [self.cancel copy];
+    self.pick = nil;
+    self.cancel = nil;
     CXCloseChooser();
-    if (self.cancel) self.cancel();
+    if (cancel) cancel();
 }
 @end
 
@@ -710,7 +746,13 @@ static void CXCloseChooser(void) {
     UIWindow *window = CXChooserWindow;
     CXChooserWindow = nil;
     CXShowingChooser = NO;
+    CXChooserRoute = nil;
     if (window) {
+        CXChooserController *chooser = [window.rootViewController isKindOfClass:CXChooserController.class] ?
+                                      (CXChooserController *)window.rootViewController : nil;
+        chooser.finishing = YES;
+        chooser.pick = nil;
+        chooser.cancel = nil;
         window.hidden = YES;
         window.rootViewController = nil;
     }
@@ -898,76 +940,7 @@ static void CXPresentSystemRequestChooser(NSString *bundleID,
     }
 }
 
-static void CXForwardSystemRequest(id self, SEL _cmd, id service, id request, id completion) {
-    CXReleaseRequestRoute(request);
-    if (CXOrigSystemRequest) CXOrigSystemRequest(self, _cmd, service, request, completion);
-}
-
-static void CXSystemRequestHook(id self, SEL _cmd, id service, id request, id completion) {
-    if (!CXOrigSystemRequest) return;
-    NSString *bundleID = CXRequestTargetBundle(request);
-    BOOL hasPayload = CXRequestHasURLPayload(request);
-    NSArray<NSDictionary *> *containers = bundleID.length ? [CXCraneBridge containersForBundleID:bundleID] : @[];
-    if (bundleID.length || hasPayload) {
-        CXLog(@"[route] request class=%@ target=%@ payload=%d containers=%lu main=%d",
-              NSStringFromClass([request class]), bundleID ?: @"?", hasPayload,
-              (unsigned long)containers.count, [NSThread isMainThread]);
-    }
-    if (CXInternalOpen || CXShowingChooser || !bundleID.length ||
-        !hasPayload || containers.count < 2) {
-        CXOrigSystemRequest(self, _cmd, service, request, completion);
-        return;
-    }
-    // PX 的该系统服务入口在 SpringBoard 主队列处理；若系统版本改变了
-    // 调用队列，保持原调用不搬线程，避免 completion 超时。
-    if (![NSThread isMainThread]) {
-        CXLog(@"[route] %@ request 非主队列，透传", bundleID);
-        CXOrigSystemRequest(self, _cmd, service, request, completion);
-        return;
-    }
-    if (!CXClaimRequestRoute(request)) {
-        CXOrigSystemRequest(self, _cmd, service, request, completion);
-        return;
-    }
-
-    NSObject *gate = [NSObject new];
-    __block BOOL forwarded = NO;
-    void (^forward)(void) = ^{
-        @synchronized (gate) {
-            if (forwarded) return;
-            forwarded = YES;
-        }
-        // 把同一个 request + completion 原样续传给 PX；禁止降级成仅 bundleID 开窗。
-        CXMarkRequestBypass(bundleID);
-        CXLog(@"[route] %@ forward original request", bundleID);
-        CXForwardSystemRequest(self, _cmd, service, request, completion);
-    };
-
-    void (^present)(void) = ^{
-        CXPresentSystemRequestChooser(bundleID, containers, ^(NSString *containerID) {
-            NSString *active = [CXCraneBridge activeContainerForBundleID:bundleID] ?: @"DEFAULT";
-            BOOL same = [active isEqualToString:containerID];
-            BOOL running = CXAppRunning(bundleID);
-            CXRememberContainerSelection(bundleID, containerID);
-            CXLog(@"[route] %@ selected=%@ same=%d running=%d", bundleID, containerID, same, running);
-            [CXCraneBridge switchBundleID:bundleID toContainer:containerID reload:!same completion:^(BOOL ok) {
-                if (!ok) {
-                    CXLog(@"[route] %@ switch failed, forward unchanged", bundleID);
-                    forward();
-                    return;
-                }
-                // reload completion 只表示已发出重载。必须先等旧 scene 消失，
-                // 再续传完整支付 request，避免它落入即将退出的旧账号进程。
-                CXWaitForApplicationReady(bundleID, !same, running, 0, 0, forward);
-            }];
-        }, ^{
-            CXLog(@"[route] %@ cancelled, forward unchanged", bundleID);
-            forward();
-        });
-    };
-
-    present();
-}
+#include "CXSystemRouting.inc"
 
 // 主队列定时任务持有每次重试参数，不使用自引用 block。
 static void CXPollReloadedURL(NSString *bundleID, NSURL *incoming, BOOL wasInternal, NSInteger tries) {
@@ -1016,6 +989,8 @@ static void CXReplayLateURLForSelection(NSString *bundleID, NSString *containerI
                                         NSTimeInterval promptAt, NSInteger attempt);
 
 static BOOL CXPromptForURL(NSString *bundleID, BOOL requireURL, void (^proceed)(void)) {
+    // A pending full request owns this jump; do not open before selection.
+    if (NSThread.isMainThread && CXSystemRoutePending(bundleID)) return YES;
     if (CXInternalOpen || CXShowingChooser || !bundleID.length) return NO;
     if (CXRequestBypassActive(bundleID)) {
         CXLog(@"[route] %@ 已由系统 request 入口处理，跳过晚期 chooser", bundleID);
@@ -1046,7 +1021,12 @@ static BOOL CXPromptForURL(NSString *bundleID, BOOL requireURL, void (^proceed)(
     chooser.appName = appName;
     chooser.bundleID = bundleID;
     chooser.modalPresentationStyle = UIModalPresentationOverFullScreen;
-    chooser.cancel = ^{ CXShowingChooser = NO; if (proceed) proceed(); };
+    chooser.cancel = ^{
+        CXShowingChooser = NO;
+        CXForgetRecentContainerSelection(bundleID);
+        CXMarkCurrentURLConsumed();
+        CXLog(@"[url] %@ cancelled, no open/no replay", bundleID);
+    };
     chooser.pick = ^(NSString *cid) {
         CXShowingChooser = NO;
         BOOL running = CXAppRunning(bundleID);
@@ -1243,11 +1223,12 @@ static void CXPrepareWindow(id self, SEL _cmd, id bundleID, BOOL wasFullscreen, 
     CXLog(@"[trace] prepareWindow %@ fullscreen=%d", bundleID, wasFullscreen);
     NSDictionary *item = CXVirtualItemFromArgument(bundleID);
     if (!item) {
-        NSString *real = [bundleID isKindOfClass:NSString.class] ? bundleID : nil;
-        if (CXPromptForURL(real, YES, ^{ CXOrigPrepareWindow(self, _cmd, bundleID, wasFullscreen, completion); })) return;
+        // Account selection belongs to the complete system request/externalOpen,
+        // not this already-started native window continuation.
         CXOrigPrepareWindow(self, _cmd, bundleID, wasFullscreen, completion);
         return;
     }
+    completion = [completion copy]; // The virtual path below escapes asynchronously.
     NSString *realBundle = item[@"bundleID"];
     NSString *containerID = item[@"containerID"];
     NSString *key = [NSString stringWithFormat:@"%@#%@", realBundle, containerID];
@@ -1293,6 +1274,11 @@ static void CXActivated(Class cls, SEL _cmd, id argument) {
 
 static void CXExternalOpen(Class cls, SEL _cmd, id argument) {
     if (!CXOrigExternalOpen) return;
+    if ([argument isKindOfClass:NSString.class] && NSThread.isMainThread &&
+        CXSystemRoutePending(argument)) {
+        CXLog(@"[route] %@ hold late externalOpen until account selected", argument);
+        return;
+    }
     // 我们自己发起的打开：直接放行
     if (CXInternalOpen || CXShowingChooser) { CXOrigExternalOpen(cls, _cmd, argument); return; }
     if ([argument isKindOfClass:NSString.class]) {
@@ -1381,6 +1367,7 @@ static void CXOpenAppHook(id self, SEL _cmd, id app, id view, id overlay, id com
         NSString *containerID = item[@"containerID"];
         NSString *key = [NSString stringWithFormat:@"%@#%@", realBundle, containerID];
         if (realBundle.length && containerID.length && !CXHandledRecently(key)) {
+            completion = [completion copy]; // Do not capture a borrowed stack block as id.
             CXMarkHandled(key);
             NSString *activeNow = [CXCraneBridge activeContainerForBundleID:realBundle] ?: @"DEFAULT";
             BOOL sameNow = [activeNow isEqualToString:containerID];

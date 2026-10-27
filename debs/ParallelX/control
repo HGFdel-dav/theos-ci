@@ -1,6 +1,6 @@
 Package: com.moxuan.parallelx
 Name: ParallelX
-Version: 0.1.0~alpha377+clone1.10
+Version: 0.1.0~alpha377+clone1.11
 Architecture: iphoneos-arm64
 Description: 分屏而已（内置 Crane 分身菜单；修复分身完整原生开窗入口）。
 Author: moxuan
