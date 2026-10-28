@@ -47,6 +47,9 @@
 		C9A000000000000000000006 /* POCraneBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = C9A000000000000000000005; };
 		C9B000000000000000000003 /* POSplitPanelView.m in Sources */ = {isa = PBXBuildFile; fileRef = C9B000000000000000000002; };
 		C9C000000000000000003 /* POSplitXLog.m in Sources */ = {isa = PBXBuildFile; fileRef = C9C000000000000000002; };
+		C9D000000000000000001 /* POCraneBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = C9A000000000000000005; };
+		C9D000000000000000002 /* POSplitTarget.m in Sources */ = {isa = PBXBuildFile; fileRef = C9A000000000000000002; };
+		C9D000000000000000003 /* POSplitXLog.m in Sources */ = {isa = PBXBuildFile; fileRef = C9C000000000000000002; };
 		C9C000000000000000006 /* POSplitXSettings.m in Sources */ = {isa = PBXBuildFile; fileRef = C9C000000000000000005; };
 /* End PBXBuildFile section */
 
@@ -395,6 +398,9 @@
 				A200000000000000000001 /* POSearchPresentation.m in Sources */,
 				A200000000000000000002 /* POApplicationWhitelistController.m in Sources */,
 				C7151715225C73440021ADB8 /* POApplicationHelper.m in Sources */,
+				C9D000000000000000001 /* POCraneBridge.m in Sources */,
+				C9D000000000000000002 /* POSplitTarget.m in Sources */,
+				C9D000000000000000003 /* POSplitXLog.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

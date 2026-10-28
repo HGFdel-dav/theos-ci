@@ -100,6 +100,45 @@ static BOOL POCranePidExited(pid_t pid) {
     return kill(pid, 0) == -1 && errno == ESRCH;
 }
 
+/// settings 可能是字典，也可能是应用设置对象；两种都取 containers。
+static id POCRaneContainersFromSettings(id settings) {
+    if (!settings) return nil;
+    if ([settings isKindOfClass:NSDictionary.class]) {
+        NSDictionary *dict = settings;
+        return dict[@"Containers"] ?: dict[@"containers"];
+    }
+    for (NSString *key in @[@"containers", @"Containers"]) {
+        SEL sel = NSSelectorFromString(key);
+        if ([settings respondsToSelector:sel]) {
+            return ((id (*)(id, SEL))objc_msgSend)(settings, sel);
+        }
+        if ([settings respondsToSelector:@selector(valueForKey:)]) {
+            id value = ((id (*)(id, SEL, id))objc_msgSend)(settings, @selector(valueForKey:), key);
+            if (value) return value;
+        }
+    }
+    return nil;
+}
+
+/// 行可能是字典或对象。
+static NSString *POCRaneRowString(id row, NSString *key) {
+    if (!row) return nil;
+    if ([row isKindOfClass:NSDictionary.class]) {
+        id value = ((NSDictionary *)row)[key];
+        return [value isKindOfClass:NSString.class] ? value : nil;
+    }
+    SEL sel = NSSelectorFromString(key);
+    if ([row respondsToSelector:sel]) {
+        id value = ((id (*)(id, SEL))objc_msgSend)(row, sel);
+        return [value isKindOfClass:NSString.class] ? value : nil;
+    }
+    if ([row respondsToSelector:@selector(valueForKey:)]) {
+        id value = ((id (*)(id, SEL, id))objc_msgSend)(row, @selector(valueForKey:), key);
+        return [value isKindOfClass:NSString.class] ? value : nil;
+    }
+    return nil;
+}
+
 @implementation POCraneBridge
 
 + (BOOL)isAvailable {
@@ -135,13 +174,15 @@ static BOOL POCranePidExited(pid_t pid) {
     }
     id settings = ((id (*)(id, SEL, id))objc_msgSend)(
         manager, NSSelectorFromString(@"applicationSettingsForApplicationWithIdentifier:"), bundleIdentifier);
-    id rows = [settings isKindOfClass:NSDictionary.class] ? ((NSDictionary *)settings)[@"Containers"] : nil;
+    id rows = POCRaneContainersFromSettings(settings);
+    PXLog(@"clone", @"%@ settings=%@ containers=%@", bundleIdentifier,
+          settings ? NSStringFromClass([settings class]) : @"nil",
+          [rows isKindOfClass:NSArray.class] ? [NSString stringWithFormat:@"%lu", (unsigned long)[rows count]] : @"nil");
     if (![rows isKindOfClass:NSArray.class]) return targets;
     NSMutableSet<NSString *> *seen = [NSMutableSet setWithObject:POSplitDefaultContainerIdentifier];
     for (id row in rows) {
-        if (![row isKindOfClass:NSDictionary.class]) continue;
-        NSString *identifier = row[@"identifier"];
-        NSString *name = row[@"name"];
+        NSString *identifier = POCraneRowString(row, @"identifier");
+        NSString *name = POCraneRowString(row, @"name");
         if (!POCraneString(identifier) || [seen containsObject:identifier]) continue;
         [seen addObject:identifier];
         [targets addObject:[POSplitTarget targetWithBundleIdentifier:bundleIdentifier

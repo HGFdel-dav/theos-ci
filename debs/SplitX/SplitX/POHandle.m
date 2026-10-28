@@ -27,6 +27,9 @@
     UIPanGestureRecognizer *_panelPanGestureRecognizer;
     CGPoint tapTouchStartPoint;
     BOOL hasTapTouchStartPoint;
+    NSInteger _lastLongPressState;
+    NSInteger _lastPanState;
+    NSTimeInterval _lastPanLogTime;
 }
 
 -(void)applyCurrentPresentationAnimated:(BOOL)animated;
@@ -292,15 +295,24 @@
 }
 
 -(void)longPress:(UIGestureRecognizer *)recognizer{
-    PXLog(@"gesture", @"handle longpress state=%ld", (long)recognizer.state);
+    if (recognizer.state != _lastLongPressState) {
+        _lastLongPressState = recognizer.state;
+        PXLog(@"gesture", @"handle longpress state=%ld", (long)recognizer.state);
+    }
     [self.delegate handle:self didLongPress:recognizer];
 }
 
 -(void)panelPan:(UIPanGestureRecognizer *)recognizer{
-    CGPoint p = [recognizer locationInView:self];
-    CGPoint v = [recognizer velocityInView:self];
-    PXLog(@"gesture", @"handle pan state=%ld p=%.0f,%.0f v=%.0f,%.0f nubbed=%d",
-          (long)recognizer.state, p.x, p.y, v.x, v.y, self.isNubbed);
+    NSTimeInterval now = NSDate.timeIntervalSinceReferenceDate;
+    BOOL stateChanged = recognizer.state != _lastPanState;
+    if (stateChanged || now - _lastPanLogTime > 0.12) {
+        _lastPanState = recognizer.state;
+        _lastPanLogTime = now;
+        CGPoint p = [recognizer locationInView:self];
+        CGPoint v = [recognizer velocityInView:self];
+        PXLog(@"gesture", @"handle pan state=%ld p=%.0f,%.0f v=%.0f,%.0f nubbed=%d",
+              (long)recognizer.state, p.x, p.y, v.x, v.y, self.isNubbed);
+    }
     [self.delegate handle:self didPanPanel:recognizer];
 }
 

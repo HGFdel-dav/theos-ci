@@ -344,22 +344,25 @@ static const NSUInteger PQMaxItems = 12;
     if (recognizer.state == UIGestureRecognizerStateBegan) {
         CGRect handleFrame = [handle convertRect:handle.bounds toView:coordinateView];
         CGPoint center = CGPointMake(CGRectGetMidX(handleFrame), CGRectGetMidY(handleFrame));
-        self.expandsRight = center.x <= CGRectGetMidX(coordinateView.bounds);
+        // 手柄在左就往右长，在右就往左长。
+        BOOL handleOnLeft = center.x <= CGRectGetMidX(coordinateView.bounds);
+        self.expandsRight = handleOnLeft;
 
         [self buildItems];
-        PXLog(@"panel", @"present items=%lu expandsRight=%d frame=%@",
-              (unsigned long)self.items.count, self.expandsRight, NSStringFromCGRect(self.frame));
         if (self.items.count == 0) return NO;
 
         CGSize size = self.bounds.size;
-        CGFloat x = self.expandsRight ? CGRectGetMinX(handleFrame) - 6
-                                      : CGRectGetMaxX(handleFrame) - size.width + 6;
+        CGFloat x = handleOnLeft ? CGRectGetMaxX(handleFrame) + 6
+                                 : CGRectGetMinX(handleFrame) - size.width - 6;
         CGFloat y = center.y - size.height / 2;
         y = MAX(8, MIN(y, CGRectGetHeight(coordinateView.bounds) - size.height - 8));
         self.frame = CGRectMake(x, y, size.width, size.height);
 
-        self.layer.anchorPoint = CGPointMake(self.expandsRight ? 0 : 1, 0.5);
-        self.layer.position = CGPointMake(x + (self.expandsRight ? 0 : size.width), center.y);
+        self.layer.anchorPoint = CGPointMake(handleOnLeft ? 0 : 1, 0.5);
+        self.layer.position = CGPointMake(handleOnLeft ? x : x + size.width, center.y);
+        PXLog(@"panel", @"present items=%lu left=%d frame=%@ anchor=%.0f",
+              (unsigned long)self.items.count, handleOnLeft, NSStringFromCGRect(self.frame),
+              self.layer.anchorPoint.x);
 
         self.hidden = NO;
         self.alpha = 0;
