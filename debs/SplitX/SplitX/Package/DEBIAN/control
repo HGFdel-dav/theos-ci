@@ -1,0 +1,13 @@
+Package: com.niubiprass.splitx
+Name: SplitX
+Version: 0.1.0~dev1
+Description: 分屏多任务窗口与分身（Crane）支持；交互基于 ParallelX，容器切换逻辑基于 ScreenCore 验证顺序，基座为 PullOver X（GPL-3.0）。
+Section: Tweaks
+Depends: firmware (>= 15.0), firmware (<< 16.0), mobilesubstrate, preferenceloader, com.opa334.altlist
+Conflicts: com.mlgm.pulloverx, com.dao.pulloverpro, com.c1d3r.pulloverpro
+Replaces: com.mlgm.pulloverx, com.dao.pulloverpro, com.c1d3r.pulloverpro
+Priority: optional
+Architecture: iphoneos-arm
+Author: Niubiprass
+Maintainer: Niubiprass
+dev: Niubiprass

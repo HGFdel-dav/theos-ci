@@ -1,0 +1,51 @@
+name: SplitX Build
+
+on:
+  push:
+    branches: ['splitx-*']
+    paths: ['debs/SplitX/**', '.github/workflows/build-splitx.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        scheme: [rootless, roothide]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            debs/SplitX
+      - name: Toolchain
+        run: |
+          set -euo pipefail
+          brew install ldid xz
+          git clone --depth 1 --recursive https://github.com/roothide/theos.git "$HOME/theos"
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/xybp888/iOS-SDKs.git "$HOME/sdks"
+          (cd "$HOME/sdks" && git sparse-checkout set iPhoneOS15.5.sdk)
+      - name: Static checks
+        working-directory: debs/SplitX
+        run: python3 check.py
+      - name: Build
+        working-directory: debs/SplitX
+        run: |
+          set -euo pipefail
+          export THEOS="$HOME/theos"
+          export SDK_PATH="$HOME/sdks/iPhoneOS15.5.sdk"
+          ./build.sh "${{ matrix.scheme }}" release 2>&1 | tee build.log
+          mkdir -p out
+          cp packages/*.deb out/
+          (cd out && shasum -a 256 *.deb > SHA256SUMS)
+          cp build.log out/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: splitx-${{ matrix.scheme }}
+          path: debs/SplitX/out/
+          if-no-files-found: warn

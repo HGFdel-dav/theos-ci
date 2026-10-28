@@ -1,0 +1,686 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 50;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A200000000000000000001 /* POSearchPresentation.m in Sources */ = {isa = PBXBuildFile; fileRef = A200000000000000000011 /* POSearchPresentation.m */; };
+		A200000000000000000002 /* POApplicationWhitelistController.m in Sources */ = {isa = PBXBuildFile; fileRef = A200000000000000000013 /* POApplicationWhitelistController.m */; };
+		C715168B225BC4000021ADB8 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C715168A225BC4000021ADB8 /* Foundation.framework */; };
+		C7151696225BC4000021ADB8 /* SplitX.mm in Sources */ = {isa = PBXBuildFile; fileRef = C7151695225BC4000021ADB8 /* SplitX.mm */; };
+		C71516A3225BC55F0021ADB8 /* POXWindow.m in Sources */ = {isa = PBXBuildFile; fileRef = C71516A1225BC55F0021ADB8 /* POXWindow.m */; };
+		C71516A8225BC62B0021ADB8 /* BaseScrollView.m in Sources */ = {isa = PBXBuildFile; fileRef = C71516A6225BC62B0021ADB8 /* BaseScrollView.m */; };
+		C71516AC225BC6500021ADB8 /* SplitViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = C71516AA225BC6500021ADB8 /* SplitViewController.m */; };
+		C71516B1225BC7800021ADB8 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C71516B0225BC7800021ADB8 /* UIKit.framework */; };
+		C71516B7225BDD6A0021ADB8 /* QuickSwitchTableView.m in Sources */ = {isa = PBXBuildFile; fileRef = C71516B5225BDD6A0021ADB8 /* QuickSwitchTableView.m */; };
+		C71516BB225BE3A20021ADB8 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C71516BA225BE3A20021ADB8 /* CoreGraphics.framework */; };
+		C71516BF225BF12C0021ADB8 /* POApplicationHelper.m in Sources */ = {isa = PBXBuildFile; fileRef = C71516BD225BF12C0021ADB8 /* POApplicationHelper.m */; };
+		C71516C7225BFEFD0021ADB8 /* QuickSwitchTableViewCell.m in Sources */ = {isa = PBXBuildFile; fileRef = C71516C5225BFEFD0021ADB8 /* QuickSwitchTableViewCell.m */; };
+		C71516D9225C676A0021ADB8 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C715168A225BC4000021ADB8 /* Foundation.framework */; };
+		C71516DA225C676A0021ADB8 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C71516B0225BC7800021ADB8 /* UIKit.framework */; };
+		C71516E8225C676A0021ADB8 /* SplitXPreferencesController.m in Sources */ = {isa = PBXBuildFile; fileRef = C71516E7225C676A0021ADB8 /* SplitXPreferencesController.m */; };
+		C715170B225C72770021ADB8 /* POHandle.m in Sources */ = {isa = PBXBuildFile; fileRef = C71516AD225BC6C00021ADB8 /* POHandle.m */; };
+		C7151715225C73440021ADB8 /* POApplicationHelper.m in Sources */ = {isa = PBXBuildFile; fileRef = C71516BD225BF12C0021ADB8 /* POApplicationHelper.m */; };
+		C72445E1225D3743001E1330 /* QSFavoritesPickerController.m in Sources */ = {isa = PBXBuildFile; fileRef = C72445E0225D3743001E1330 /* QSFavoritesPickerController.m */; };
+		C72445E4225D480B001E1330 /* POStepperTableCell.m in Sources */ = {isa = PBXBuildFile; fileRef = C72445E3225D480B001E1330 /* POStepperTableCell.m */; };
+		C774843F2496A7EF00272DB5 /* POTimeStepperTableCell.m in Sources */ = {isa = PBXBuildFile; fileRef = C774843E2496A7EF00272DB5 /* POTimeStepperTableCell.m */; };
+		C77E05E0229B2B5E003A59C9 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C77E05DF229B2B5E003A59C9 /* QuartzCore.framework */; };
+		C77E05E1229B2B62003A59C9 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C77E05DF229B2B5E003A59C9 /* QuartzCore.framework */; };
+		C7E559C7238B5FA500B70489 /* ContextHostManager.mm in Sources */ = {isa = PBXBuildFile; fileRef = C71516C9225C1AA10021ADB8 /* ContextHostManager.mm */; };
+		C900000000000000000001 /* POLocalization.m in Sources */ = {isa = PBXBuildFile; fileRef = C900000000000000000010 /* POLocalization.m */; };
+		C900000000000000000002 /* POLocalization.m in Sources */ = {isa = PBXBuildFile; fileRef = C900000000000000000010 /* POLocalization.m */; };
+		C900000000000000000100 /* SplitXPreferences/Package/Library/PreferenceBundles/SplitXPreferences.bundle/SplitXPreferences.plist in Resources */ = {isa = PBXBuildFile; fileRef = C900000000000000000020 /* SplitXPreferences/Package/Library/PreferenceBundles/SplitXPreferences.bundle/SplitXPreferences.plist */; };
+		C900000000000000000101 /* SplitXPreferences.strings in Resources */ = {isa = PBXBuildFile; fileRef = C900000000000000000030 /* SplitXPreferences.strings */; };
+		C900000000000000000102 /* Tweak.strings in Resources */ = {isa = PBXBuildFile; fileRef = C900000000000000000031 /* Tweak.strings */; };
+		D100000000000000000001 /* POHostSessionController.mm in Sources */ = {isa = PBXBuildFile; fileRef = D100000000000000000011 /* POHostSessionController.mm */; };
+		DE00000000000000000041 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C71516BA225BE3A20021ADB8 /* CoreGraphics.framework */; };
+		E200000000000000000001 /* QuickSwitchHorizontalBarView.m in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000011 /* QuickSwitchHorizontalBarView.m */; };
+		E300000000000000000001 /* POQuickSwitchDragCoordinator.m in Sources */ = {isa = PBXBuildFile; fileRef = E300000000000000000011 /* POQuickSwitchDragCoordinator.m */; };
+		E400000000000000000001 /* POExternalActivationCoordinator.m in Sources */ = {isa = PBXBuildFile; fileRef = E400000000000000000011 /* POExternalActivationCoordinator.m */; };
+		E500000000000000000001 /* POHammerItCompatibility.m in Sources */ = {isa = PBXBuildFile; fileRef = E500000000000000000011 /* POHammerItCompatibility.m */; };
+		E600000000000000000001 /* POXExternalAPI.m in Sources */ = {isa = PBXBuildFile; fileRef = E600000000000000000011 /* POXExternalAPI.m */; };
+		F100000000000000000001 /* POSplitSessionController.m in Sources */ = {isa = PBXBuildFile; fileRef = F100000000000000000011 /* POSplitSessionController.m */; };
+		C9A000000000000000000003 /* POSplitTarget.m in Sources */ = {isa = PBXBuildFile; fileRef = C9A000000000000000000002; };
+		C9A000000000000000000006 /* POCraneBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = C9A000000000000000000005; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		C71516FD225C679D0021ADB8 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = C715167D225BC4000021ADB8 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C71516D7225C676A0021ADB8;
+			remoteInfo = SplitXPreferences;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		A200000000000000000010 /* POSearchPresentation.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = POSearchPresentation.h; sourceTree = "<group>"; };
+		A200000000000000000011 /* POSearchPresentation.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POSearchPresentation.m; sourceTree = "<group>"; };
+		A200000000000000000012 /* POApplicationWhitelistController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = POApplicationWhitelistController.h; sourceTree = "<group>"; };
+		A200000000000000000013 /* POApplicationWhitelistController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POApplicationWhitelistController.m; sourceTree = "<group>"; };
+		73DCBED3306EF51400AA037E /* POXExternalAPI.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = POXExternalAPI.h; sourceTree = "<group>"; };
+		A100000000000000000010 /* POQuickSwitchMetrics.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = POQuickSwitchMetrics.h; sourceTree = "<group>"; };
+		C7151687225BC4000021ADB8 /* SplitX.dylib */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.dylib"; includeInIndex = 0; path = SplitX.dylib; sourceTree = BUILT_PRODUCTS_DIR; };
+		C715168A225BC4000021ADB8 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
+		C7151693225BC4000021ADB8 /* SplitX-Prefix.pch */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "SplitX-Prefix.pch"; sourceTree = "<group>"; };
+		C7151695225BC4000021ADB8 /* SplitX.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = SplitX.mm; sourceTree = "<group>"; };
+		C715169A225BC4000021ADB8 /* SplitX.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = SplitX.plist; path = Package/Library/MobileSubstrate/DynamicLibraries/SplitX.plist; sourceTree = "<group>"; };
+		C71516A0225BC55F0021ADB8 /* POXWindow.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = POXWindow.h; sourceTree = "<group>"; };
+		C71516A1225BC55F0021ADB8 /* POXWindow.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POXWindow.m; sourceTree = "<group>"; };
+		C71516A5225BC62B0021ADB8 /* BaseScrollView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BaseScrollView.h; sourceTree = "<group>"; };
+		C71516A6225BC62B0021ADB8 /* BaseScrollView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = BaseScrollView.m; sourceTree = "<group>"; };
+		C71516A9225BC6500021ADB8 /* SplitViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SplitViewController.h; sourceTree = "<group>"; };
+		C71516AA225BC6500021ADB8 /* SplitViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SplitViewController.m; sourceTree = "<group>"; };
+		C71516AD225BC6C00021ADB8 /* POHandle.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POHandle.m; sourceTree = "<group>"; };
+		C71516AE225BC6C00021ADB8 /* POHandle.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = POHandle.h; sourceTree = "<group>"; };
+		C71516B0225BC7800021ADB8 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
+		C71516B4225BDD6A0021ADB8 /* QuickSwitchTableView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QuickSwitchTableView.h; sourceTree = "<group>"; };
+		C71516B5225BDD6A0021ADB8 /* QuickSwitchTableView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QuickSwitchTableView.m; sourceTree = "<group>"; };
+		C71516BA225BE3A20021ADB8 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		C71516BC225BF12C0021ADB8 /* POApplicationHelper.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = POApplicationHelper.h; sourceTree = "<group>"; };
+		C71516BD225BF12C0021ADB8 /* POApplicationHelper.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POApplicationHelper.m; sourceTree = "<group>"; };
+		C71516C3225BF2350021ADB8 /* headers.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = headers.h; sourceTree = "<group>"; };
+		C71516C4225BFEFD0021ADB8 /* QuickSwitchTableViewCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QuickSwitchTableViewCell.h; sourceTree = "<group>"; };
+		C71516C5225BFEFD0021ADB8 /* QuickSwitchTableViewCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QuickSwitchTableViewCell.m; sourceTree = "<group>"; };
+		C71516C8225C1AA10021ADB8 /* ContextHostManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ContextHostManager.h; sourceTree = "<group>"; };
+		C71516C9225C1AA10021ADB8 /* ContextHostManager.mm */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.objcpp; path = ContextHostManager.mm; sourceTree = "<group>"; };
+		C71516D8225C676A0021ADB8 /* SplitXPreferences.bundle */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SplitXPreferences.bundle; sourceTree = BUILT_PRODUCTS_DIR; };
+		C71516E4225C676A0021ADB8 /* SplitXPreferences-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "SplitXPreferences-Info.plist"; sourceTree = "<group>"; };
+		C71516E5225C676A0021ADB8 /* SplitXPreferencesController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SplitXPreferencesController.h; sourceTree = "<group>"; };
+		C71516E7225C676A0021ADB8 /* SplitXPreferencesController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SplitXPreferencesController.m; sourceTree = "<group>"; };
+		C71516F7225C676A0021ADB8 /* SplitXPreferences-Prefix.pch */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "SplitXPreferences-Prefix.pch"; sourceTree = "<group>"; };
+		C72445DF225D3743001E1330 /* QSFavoritesPickerController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QSFavoritesPickerController.h; sourceTree = "<group>"; };
+		C72445E0225D3743001E1330 /* QSFavoritesPickerController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QSFavoritesPickerController.m; sourceTree = "<group>"; };
+		C72445E3225D480B001E1330 /* POStepperTableCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POStepperTableCell.m; sourceTree = "<group>"; };
+		C774843E2496A7EF00272DB5 /* POTimeStepperTableCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POTimeStepperTableCell.m; sourceTree = "<group>"; };
+		C77E05DF229B2B5E003A59C9 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		C7A168DA23B126B100451FA7 /* ContextInterfaces.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ContextInterfaces.h; sourceTree = "<group>"; };
+		C900000000000000000010 /* POLocalization.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POLocalization.m; sourceTree = "<group>"; };
+		C900000000000000000011 /* POLocalization.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = POLocalization.h; sourceTree = "<group>"; };
+		C900000000000000000012 /* POPPath.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = POPPath.h; sourceTree = "<group>"; };
+		C900000000000000000020 /* SplitXPreferences/Package/Library/PreferenceBundles/SplitXPreferences.bundle/SplitXPreferences.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = SplitXPreferences/Package/Library/PreferenceBundles/SplitXPreferences.bundle/SplitXPreferences.plist; sourceTree = SOURCE_ROOT; };
+		C900000000000000000021 /* SplitXPreferences/Package/Library/PreferenceBundles/SplitXPreferences.bundle/en.lproj/SplitXPreferences.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = SplitXPreferences/Package/Library/PreferenceBundles/SplitXPreferences.bundle/en.lproj/SplitXPreferences.strings; sourceTree = SOURCE_ROOT; };
+		C900000000000000000022 /* SplitXPreferences/Package/Library/PreferenceBundles/SplitXPreferences.bundle/zh-Hans.lproj/SplitXPreferences.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = "SplitXPreferences/Package/Library/PreferenceBundles/SplitXPreferences.bundle/zh-Hans.lproj/SplitXPreferences.strings"; sourceTree = SOURCE_ROOT; };
+		C900000000000000000023 /* SplitXPreferences/Package/Library/PreferenceBundles/SplitXPreferences.bundle/en.lproj/Tweak.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = SplitXPreferences/Package/Library/PreferenceBundles/SplitXPreferences.bundle/en.lproj/Tweak.strings; sourceTree = SOURCE_ROOT; };
+		C900000000000000000024 /* SplitXPreferences/Package/Library/PreferenceBundles/SplitXPreferences.bundle/zh-Hans.lproj/Tweak.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = "SplitXPreferences/Package/Library/PreferenceBundles/SplitXPreferences.bundle/zh-Hans.lproj/Tweak.strings"; sourceTree = SOURCE_ROOT; };
+		D100000000000000000010 /* POHostSessionController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = POHostSessionController.h; sourceTree = "<group>"; };
+		D100000000000000000011 /* POHostSessionController.mm */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.objcpp; path = POHostSessionController.mm; sourceTree = "<group>"; };
+		E200000000000000000010 /* QuickSwitchHorizontalBarView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QuickSwitchHorizontalBarView.h; sourceTree = "<group>"; };
+		E200000000000000000011 /* QuickSwitchHorizontalBarView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QuickSwitchHorizontalBarView.m; sourceTree = "<group>"; };
+		E300000000000000000010 /* POQuickSwitchDragCoordinator.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = POQuickSwitchDragCoordinator.h; sourceTree = "<group>"; };
+		E300000000000000000011 /* POQuickSwitchDragCoordinator.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POQuickSwitchDragCoordinator.m; sourceTree = "<group>"; };
+		E400000000000000000010 /* POExternalActivationCoordinator.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = POExternalActivationCoordinator.h; sourceTree = "<group>"; };
+		E400000000000000000011 /* POExternalActivationCoordinator.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POExternalActivationCoordinator.m; sourceTree = "<group>"; };
+		E500000000000000000011 /* POHammerItCompatibility.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POHammerItCompatibility.m; sourceTree = "<group>"; };
+		E600000000000000000011 /* POXExternalAPI.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POXExternalAPI.m; sourceTree = "<group>"; };
+		F100000000000000000010 /* POSplitSessionController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = POSplitSessionController.h; sourceTree = "<group>"; };
+		F100000000000000000011 /* POSplitSessionController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POSplitSessionController.m; sourceTree = "<group>"; };
+		C9A000000000000000000001 /* POSplitTarget.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = POSplitTarget.h; sourceTree = "<group>"; };
+		C9A000000000000000000002 /* POSplitTarget.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POSplitTarget.m; sourceTree = "<group>"; };
+		C9A000000000000000000004 /* POCraneBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = POCraneBridge.h; sourceTree = "<group>"; };
+		C9A000000000000000000005 /* POCraneBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POCraneBridge.m; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		C7151683225BC4000021ADB8 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C77E05E0229B2B5E003A59C9 /* QuartzCore.framework in Frameworks */,
+				C71516BB225BE3A20021ADB8 /* CoreGraphics.framework in Frameworks */,
+				C71516B1225BC7800021ADB8 /* UIKit.framework in Frameworks */,
+				C715168B225BC4000021ADB8 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C71516D4225C676A0021ADB8 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C77E05E1229B2B62003A59C9 /* QuartzCore.framework in Frameworks */,
+				DE00000000000000000041 /* CoreGraphics.framework in Frameworks */,
+				C71516DA225C676A0021ADB8 /* UIKit.framework in Frameworks */,
+				C71516D9225C676A0021ADB8 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		C715167C225BC4000021ADB8 = {
+			isa = PBXGroup;
+			children = (
+				C900000000000000000011 /* POLocalization.h */,
+				C900000000000000000010 /* POLocalization.m */,
+				C900000000000000000012 /* POPPath.h */,
+				C715168C225BC4000021ADB8 /* SplitX */,
+				C71516DD225C676A0021ADB8 /* SplitXPreferences */,
+				C7151689225BC4000021ADB8 /* Frameworks */,
+				C7151688225BC4000021ADB8 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		C7151688225BC4000021ADB8 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				C7151687225BC4000021ADB8 /* SplitX.dylib */,
+				C71516D8225C676A0021ADB8 /* SplitXPreferences.bundle */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		C7151689225BC4000021ADB8 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				C77E05DF229B2B5E003A59C9 /* QuartzCore.framework */,
+				C71516BA225BE3A20021ADB8 /* CoreGraphics.framework */,
+				C71516B0225BC7800021ADB8 /* UIKit.framework */,
+				C715168A225BC4000021ADB8 /* Foundation.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		C715168C225BC4000021ADB8 /* SplitX */ = {
+			isa = PBXGroup;
+			children = (
+				C7151695225BC4000021ADB8 /* SplitX.mm */,
+				C9A000000000000000000001 /* POSplitTarget.h */,
+				C9A000000000000000000002 /* POSplitTarget.m */,
+				C9A000000000000000000004 /* POCraneBridge.h */,
+				C9A000000000000000000005 /* POCraneBridge.m */,
+				C71516C8225C1AA10021ADB8 /* ContextHostManager.h */,
+				C71516C9225C1AA10021ADB8 /* ContextHostManager.mm */,
+				D100000000000000000010 /* POHostSessionController.h */,
+				D100000000000000000011 /* POHostSessionController.mm */,
+				E400000000000000000010 /* POExternalActivationCoordinator.h */,
+				E400000000000000000011 /* POExternalActivationCoordinator.m */,
+				73DCBED3306EF51400AA037E /* POXExternalAPI.h */,
+				E600000000000000000011 /* POXExternalAPI.m */,
+				C7A168DA23B126B100451FA7 /* ContextInterfaces.h */,
+				C71516A0225BC55F0021ADB8 /* POXWindow.h */,
+				C71516A1225BC55F0021ADB8 /* POXWindow.m */,
+				E500000000000000000011 /* POHammerItCompatibility.m */,
+				C71516A9225BC6500021ADB8 /* SplitViewController.h */,
+				C71516AA225BC6500021ADB8 /* SplitViewController.m */,
+				C71516AE225BC6C00021ADB8 /* POHandle.h */,
+				C71516AD225BC6C00021ADB8 /* POHandle.m */,
+				C71516B4225BDD6A0021ADB8 /* QuickSwitchTableView.h */,
+				C71516B5225BDD6A0021ADB8 /* QuickSwitchTableView.m */,
+				E200000000000000000010 /* QuickSwitchHorizontalBarView.h */,
+				E200000000000000000011 /* QuickSwitchHorizontalBarView.m */,
+				E300000000000000000010 /* POQuickSwitchDragCoordinator.h */,
+				E300000000000000000011 /* POQuickSwitchDragCoordinator.m */,
+				A100000000000000000010 /* POQuickSwitchMetrics.h */,
+				F100000000000000000010 /* POSplitSessionController.h */,
+				F100000000000000000011 /* POSplitSessionController.m */,
+				C71516C4225BFEFD0021ADB8 /* QuickSwitchTableViewCell.h */,
+				C71516C5225BFEFD0021ADB8 /* QuickSwitchTableViewCell.m */,
+				C71516A5225BC62B0021ADB8 /* BaseScrollView.h */,
+				C71516A6225BC62B0021ADB8 /* BaseScrollView.m */,
+				C71516C3225BF2350021ADB8 /* headers.h */,
+				C71516BC225BF12C0021ADB8 /* POApplicationHelper.h */,
+				C71516BD225BF12C0021ADB8 /* POApplicationHelper.m */,
+				C715169A225BC4000021ADB8 /* SplitX.plist */,
+				C7151693225BC4000021ADB8 /* SplitX-Prefix.pch */,
+			);
+			path = SplitX;
+			sourceTree = "<group>";
+		};
+		C71516DD225C676A0021ADB8 /* SplitXPreferences */ = {
+			isa = PBXGroup;
+			children = (
+				C71516E5225C676A0021ADB8 /* SplitXPreferencesController.h */,
+				C71516E7225C676A0021ADB8 /* SplitXPreferencesController.m */,
+				C72445DF225D3743001E1330 /* QSFavoritesPickerController.h */,
+				C72445E0225D3743001E1330 /* QSFavoritesPickerController.m */,
+				A200000000000000000010 /* POSearchPresentation.h */,
+				A200000000000000000011 /* POSearchPresentation.m */,
+				A200000000000000000012 /* POApplicationWhitelistController.h */,
+				A200000000000000000013 /* POApplicationWhitelistController.m */,
+				C72445E3225D480B001E1330 /* POStepperTableCell.m */,
+				C774843E2496A7EF00272DB5 /* POTimeStepperTableCell.m */,
+				C71516E4225C676A0021ADB8 /* SplitXPreferences-Info.plist */,
+				C71516F7225C676A0021ADB8 /* SplitXPreferences-Prefix.pch */,
+				C900000000000000000020 /* SplitXPreferences/Package/Library/PreferenceBundles/SplitXPreferences.bundle/SplitXPreferences.plist */,
+				C900000000000000000030 /* SplitXPreferences.strings */,
+				C900000000000000000031 /* Tweak.strings */,
+			);
+			path = SplitXPreferences;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		C7151686225BC4000021ADB8 /* SplitX */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C715169D225BC4000021ADB8 /* Build configuration list for PBXNativeTarget "SplitX" */;
+			buildPhases = (
+				C7151682225BC4000021ADB8 /* Sources */,
+				C7151683225BC4000021ADB8 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C71516FE225C679D0021ADB8 /* PBXTargetDependency */,
+			);
+			name = SplitX;
+			productName = SplitX;
+			productReference = C7151687225BC4000021ADB8 /* SplitX.dylib */;
+			productType = "com.apple.product-type.library.dynamic";
+		};
+		C71516D7225C676A0021ADB8 /* SplitXPreferences */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C71516FA225C676A0021ADB8 /* Build configuration list for PBXNativeTarget "SplitXPreferences" */;
+			buildPhases = (
+				C71516D3225C676A0021ADB8 /* Sources */,
+				C71516D4225C676A0021ADB8 /* Frameworks */,
+				C900000000000000000040 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SplitXPreferences;
+			productName = SplitXPreferences;
+			productReference = C71516D8225C676A0021ADB8 /* SplitXPreferences.bundle */;
+			productType = "com.apple.product-type.bundle";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		C715167D225BC4000021ADB8 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 1620;
+				TargetAttributes = {
+					C7151686225BC4000021ADB8 = {
+						CreatedOnToolsVersion = 10.1;
+					};
+					C71516D7225C676A0021ADB8 = {
+						CreatedOnToolsVersion = 10.1;
+					};
+				};
+			};
+			buildConfigurationList = C7151680225BC4000021ADB8 /* Build configuration list for PBXProject "SplitX" */;
+			compatibilityVersion = "Xcode 9.3";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+				"zh-Hans",
+			);
+			mainGroup = C715167C225BC4000021ADB8;
+			productRefGroup = C7151688225BC4000021ADB8 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				C7151686225BC4000021ADB8 /* SplitX */,
+				C71516D7225C676A0021ADB8 /* SplitXPreferences */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		C900000000000000000040 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C900000000000000000100 /* SplitXPreferences/Package/Library/PreferenceBundles/SplitXPreferences.bundle/SplitXPreferences.plist in Resources */,
+				C900000000000000000101 /* SplitXPreferences.strings in Resources */,
+				C900000000000000000102 /* Tweak.strings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		C7151682225BC4000021ADB8 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C900000000000000000001 /* POLocalization.m in Sources */,
+				C7E559C7238B5FA500B70489 /* ContextHostManager.mm in Sources */,
+				D100000000000000000001 /* POHostSessionController.mm in Sources */,
+				E400000000000000000001 /* POExternalActivationCoordinator.m in Sources */,
+				E600000000000000000001 /* POXExternalAPI.m in Sources */,
+				C715170B225C72770021ADB8 /* POHandle.m in Sources */,
+				C71516A3225BC55F0021ADB8 /* POXWindow.m in Sources */,
+				E500000000000000000001 /* POHammerItCompatibility.m in Sources */,
+				C71516A8225BC62B0021ADB8 /* BaseScrollView.m in Sources */,
+				C71516BF225BF12C0021ADB8 /* POApplicationHelper.m in Sources */,
+				C71516B7225BDD6A0021ADB8 /* QuickSwitchTableView.m in Sources */,
+				E200000000000000000001 /* QuickSwitchHorizontalBarView.m in Sources */,
+				E300000000000000000001 /* POQuickSwitchDragCoordinator.m in Sources */,
+				F100000000000000000001 /* POSplitSessionController.m in Sources */,
+				C7151696225BC4000021ADB8 /* SplitX.mm in Sources */,
+				C9A000000000000000000003 /* POSplitTarget.m in Sources */,
+				C9A000000000000000000006 /* POCraneBridge.m in Sources */,
+				C71516AC225BC6500021ADB8 /* SplitViewController.m in Sources */,
+				C71516C7225BFEFD0021ADB8 /* QuickSwitchTableViewCell.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C71516D3225C676A0021ADB8 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C900000000000000000002 /* POLocalization.m in Sources */,
+				C71516E8225C676A0021ADB8 /* SplitXPreferencesController.m in Sources */,
+				C774843F2496A7EF00272DB5 /* POTimeStepperTableCell.m in Sources */,
+				C72445E4225D480B001E1330 /* POStepperTableCell.m in Sources */,
+				C72445E1225D3743001E1330 /* QSFavoritesPickerController.m in Sources */,
+				A200000000000000000001 /* POSearchPresentation.m in Sources */,
+				A200000000000000000002 /* POApplicationWhitelistController.m in Sources */,
+				C7151715225C73440021ADB8 /* POApplicationHelper.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		C71516FE225C679D0021ADB8 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C71516D7225C676A0021ADB8 /* SplitXPreferences */;
+			targetProxy = C71516FD225C679D0021ADB8 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
+		C900000000000000000030 /* SplitXPreferences.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				C900000000000000000021 /* SplitXPreferences/Package/Library/PreferenceBundles/SplitXPreferences.bundle/en.lproj/SplitXPreferences.strings */,
+				C900000000000000000022 /* SplitXPreferences/Package/Library/PreferenceBundles/SplitXPreferences.bundle/zh-Hans.lproj/SplitXPreferences.strings */,
+			);
+			name = SplitXPreferences.strings;
+			sourceTree = "<group>";
+		};
+		C900000000000000000031 /* Tweak.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				C900000000000000000023 /* SplitXPreferences/Package/Library/PreferenceBundles/SplitXPreferences.bundle/en.lproj/Tweak.strings */,
+				C900000000000000000024 /* SplitXPreferences/Package/Library/PreferenceBundles/SplitXPreferences.bundle/zh-Hans.lproj/Tweak.strings */,
+			);
+			name = Tweak.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		C715169B225BC4000021ADB8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				THEOS = "/opt/theos";
+				DEVKIT = "$(SRCROOT)/roothide-devkit";
+				POP_SCHEME_LIBRARY_DIR = "$(THEOS)/vendor/lib/iphone/roothide";
+				POP_ALTLIST_FRAMEWORK_DIR = "$(SRCROOT)/SplitXPreferences/Frameworks/_roothide";
+				POP_ROOTHIDE_LDFLAGS = "-lroothide";
+				POP_ROOTLESS_LDFLAGS = "";
+				SDKROOT = "iphoneos";
+				TARGETED_DEVICE_FAMILY = "1,2";
+				IPHONEOS_DEPLOYMENT_TARGET = "15.0";
+				ARCHS = "arm64e";
+				VALID_ARCHS = "arm64 arm64e";
+				ENABLE_BITCODE = "NO";
+				CLANG_ENABLE_OBJC_ARC = "YES";
+				ALWAYS_SEARCH_USER_PATHS = "NO";
+				GCC_PRECOMPILE_PREFIX_HEADER = "YES";
+				VERSIONING_SYSTEM = "apple-generic";
+				DYLIB_COMPATIBILITY_VERSION = "1";
+				DYLIB_CURRENT_VERSION = "1";
+				CODE_SIGN_IDENTITY = "";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
+				CODE_SIGNING_REQUIRED = "NO";
+				CODE_SIGNING_ALLOWED = "NO";
+				CODE_SIGN_STYLE = "Manual";
+				DEVELOPMENT_TEAM = "";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				AD_HOC_CODE_SIGNING_ALLOWED = "YES";
+				HEADER_SEARCH_PATHS = "$(inherited) $(DEVKIT) $(THEOS)/vendor/include $(THEOS)/include";
+				FRAMEWORK_SEARCH_PATHS = "$(inherited) $(POP_SCHEME_LIBRARY_DIR) $(POP_ALTLIST_FRAMEWORK_DIR) $(THEOS)/vendor/lib";
+				LIBRARY_SEARCH_PATHS = "$(inherited) $(POP_SCHEME_LIBRARY_DIR) $(DEVKIT)/roothide $(THEOS)/vendor/lib";
+				POP_SCHEME_DEFS = "THEOS_PACKAGE_SCHEME_ROOTHIDE=1";
+				GCC_PREPROCESSOR_DEFINITIONS = "$(inherited) $(POP_SCHEME_DEFS)";
+				OTHER_LDFLAGS = "$(inherited) -undefined dynamic_lookup -Wl,-w";
+				GCC_GENERATE_DEBUGGING_SYMBOLS = "NO";
+				GCC_SYMBOLS_PRIVATE_EXTERN = "YES";
+				DEPLOYMENT_POSTPROCESSING = "YES";
+				COPY_PHASE_STRIP = "NO";
+				DEAD_CODE_STRIPPING = "YES";
+				SUPPORTED_PLATFORMS = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_MISSING_LOCALIZATIONS = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				ONLY_ACTIVE_ARCH = YES;
+			};
+			name = Debug;
+		};
+		C715169C225BC4000021ADB8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				THEOS = "/opt/theos";
+				DEVKIT = "$(SRCROOT)/roothide-devkit";
+				POP_SCHEME_LIBRARY_DIR = "$(THEOS)/vendor/lib/iphone/roothide";
+				POP_ALTLIST_FRAMEWORK_DIR = "$(SRCROOT)/SplitXPreferences/Frameworks/_roothide";
+				POP_ROOTHIDE_LDFLAGS = "-lroothide";
+				POP_ROOTLESS_LDFLAGS = "";
+				SDKROOT = "iphoneos";
+				TARGETED_DEVICE_FAMILY = "1,2";
+				IPHONEOS_DEPLOYMENT_TARGET = "15.0";
+				ARCHS = "arm64e";
+				VALID_ARCHS = "arm64 arm64e";
+				ENABLE_BITCODE = "NO";
+				CLANG_ENABLE_OBJC_ARC = "YES";
+				ALWAYS_SEARCH_USER_PATHS = "NO";
+				GCC_PRECOMPILE_PREFIX_HEADER = "YES";
+				VERSIONING_SYSTEM = "apple-generic";
+				DYLIB_COMPATIBILITY_VERSION = "1";
+				DYLIB_CURRENT_VERSION = "1";
+				CODE_SIGN_IDENTITY = "";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
+				CODE_SIGNING_REQUIRED = "NO";
+				CODE_SIGNING_ALLOWED = "NO";
+				CODE_SIGN_STYLE = "Manual";
+				DEVELOPMENT_TEAM = "";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				AD_HOC_CODE_SIGNING_ALLOWED = "YES";
+				HEADER_SEARCH_PATHS = "$(inherited) $(DEVKIT) $(THEOS)/vendor/include $(THEOS)/include";
+				FRAMEWORK_SEARCH_PATHS = "$(inherited) $(POP_SCHEME_LIBRARY_DIR) $(POP_ALTLIST_FRAMEWORK_DIR) $(THEOS)/vendor/lib";
+				LIBRARY_SEARCH_PATHS = "$(inherited) $(POP_SCHEME_LIBRARY_DIR) $(DEVKIT)/roothide $(THEOS)/vendor/lib";
+				POP_SCHEME_DEFS = "THEOS_PACKAGE_SCHEME_ROOTHIDE=1";
+				GCC_PREPROCESSOR_DEFINITIONS = "$(inherited) $(POP_SCHEME_DEFS)";
+				OTHER_LDFLAGS = "$(inherited) -undefined dynamic_lookup -Wl,-w";
+				GCC_GENERATE_DEBUGGING_SYMBOLS = "NO";
+				GCC_SYMBOLS_PRIVATE_EXTERN = "YES";
+				DEPLOYMENT_POSTPROCESSING = "YES";
+				COPY_PHASE_STRIP = "NO";
+				DEAD_CODE_STRIPPING = "YES";
+				SUPPORTED_PLATFORMS = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_MISSING_LOCALIZATIONS = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+			};
+			name = Release;
+		};
+		C715169E225BC4000021ADB8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = "$(ARCHS_STANDARD)";
+				GCC_PREFIX_HEADER = "SplitX/SplitX-Prefix.pch";
+				INFOPLIST_FILE = "$(SRCROOT)/SplitX/Package/Library/MobileSubstrate/DynamicLibraries/SplitX.plist";
+				INSTALL_PATH = /Library/MobileSubstrate/DynamicLibraries;
+				ONLY_ACTIVE_ARCH = YES;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+					"-lsubstrate",
+					"$(POP_ROOTHIDE_LDFLAGS)",
+					"$(POP_ROOTLESS_LDFLAGS)",
+				);
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		C715169F225BC4000021ADB8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = "$(ARCHS_STANDARD)";
+				GCC_PREFIX_HEADER = "SplitX/SplitX-Prefix.pch";
+				INFOPLIST_FILE = "$(SRCROOT)/SplitX/Package/Library/MobileSubstrate/DynamicLibraries/SplitX.plist";
+				INSTALL_PATH = /Library/MobileSubstrate/DynamicLibraries;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+					"-lsubstrate",
+					"$(POP_ROOTHIDE_LDFLAGS)",
+					"$(POP_ROOTLESS_LDFLAGS)",
+				);
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+		C71516F8225C676A0021ADB8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = "$(ARCHS_STANDARD)";
+				GCC_PREFIX_HEADER = "SplitXPreferences/SplitXPreferences-Prefix.pch";
+				INFOPLIST_FILE = "SplitXPreferences/SplitXPreferences-Info.plist";
+				INSTALL_PATH = /Library/PreferenceBundles;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+					"-framework",
+					AltList,
+					"-Wl,-needed_framework,AltList",
+					"$(POP_ROOTHIDE_LDFLAGS)",
+					"$(POP_ROOTLESS_LDFLAGS)",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.niubiprass.splitx.preferences;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				WRAPPER_EXTENSION = bundle;
+			};
+			name = Debug;
+		};
+		C71516F9225C676A0021ADB8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = "$(ARCHS_STANDARD)";
+				GCC_PREFIX_HEADER = "SplitXPreferences/SplitXPreferences-Prefix.pch";
+				INFOPLIST_FILE = "SplitXPreferences/SplitXPreferences-Info.plist";
+				INSTALL_PATH = /Library/PreferenceBundles;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+					"-framework",
+					AltList,
+					"-Wl,-needed_framework,AltList",
+					"$(POP_ROOTHIDE_LDFLAGS)",
+					"$(POP_ROOTLESS_LDFLAGS)",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.niubiprass.splitx.preferences;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				WRAPPER_EXTENSION = bundle;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		C7151680225BC4000021ADB8 /* Build configuration list for PBXProject "SplitX" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C715169B225BC4000021ADB8 /* Debug */,
+				C715169C225BC4000021ADB8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C715169D225BC4000021ADB8 /* Build configuration list for PBXNativeTarget "SplitX" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C715169E225BC4000021ADB8 /* Debug */,
+				C715169F225BC4000021ADB8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C71516FA225C676A0021ADB8 /* Build configuration list for PBXNativeTarget "SplitXPreferences" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C71516F8225C676A0021ADB8 /* Debug */,
+				C71516F9225C676A0021ADB8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = C715167D225BC4000021ADB8 /* Project object */;
+}
