@@ -25,7 +25,7 @@ jobs:
       - name: Toolchain
         run: |
           set -euo pipefail
-          brew install ldid xz
+          brew install ldid xz dpkg
           git clone --depth 1 --recursive https://github.com/roothide/theos.git "$HOME/theos"
           git clone --depth 1 --filter=blob:none --sparse https://github.com/xybp888/iOS-SDKs.git "$HOME/sdks"
           (cd "$HOME/sdks" && git sparse-checkout set iPhoneOS15.5.sdk)

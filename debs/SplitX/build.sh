@@ -18,6 +18,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 # --- 固定 SDK：必须是 iPhoneOS15.5，绝不悄悄跟 Xcode 默认版本走 -------------
+THEOS="${THEOS:-/opt/theos}"
 SDK_VERSION="${SDK_VERSION:-15.5}"
 SDK_PATH="${SDK_PATH:-$(xcrun --sdk iphoneos --show-sdk-path)}"
 SDK_PLIST="$SDK_PATH/SDKSettings.plist"
@@ -31,7 +32,6 @@ if [ "$ACTUAL_SDK" != "$SDK_VERSION" ]; then
 	exit 1
 fi
 MIN_IOS="15.0"
-THEOS="${THEOS:-/opt/theos}"
 
 SCHEME="${1:-roothide}"
 CONFIG_ARG="${2:-release}"
@@ -47,7 +47,7 @@ POP_ROOTHIDE_LDFLAGS="-lroothide"
 POP_ROOTLESS_LDFLAGS=""
 POP_SCHEME_DEFS="THEOS_PACKAGE_SCHEME_ROOTHIDE=1"
 POP_RPATHS=""
-POP_SCHEME_LIBRARY_DIR="/opt/theos/vendor/lib/iphone/roothide"
+POP_SCHEME_LIBRARY_DIR="$THEOS/vendor/lib/iphone/roothide"
 POP_ALTLIST_FRAMEWORK_DIR="$PWD/SplitXPreferences/Frameworks/_roothide"
 ARCHS="arm64e"
 
@@ -72,7 +72,7 @@ case "$SCHEME" in
 		POP_ROOTHIDE_LDFLAGS=""
 		POP_ROOTLESS_LDFLAGS="-lroot"
 		POP_SCHEME_DEFS="POP_PACKAGE_SCHEME_ROOTLESS=1"
-		POP_SCHEME_LIBRARY_DIR="/opt/theos/vendor/lib/iphone/rootless"
+		POP_SCHEME_LIBRARY_DIR="$THEOS/vendor/lib/iphone/rootless"
 		POP_ALTLIST_FRAMEWORK_DIR="$PWD/SplitXPreferences/Frameworks/_rootless"
 		# Rootless v2 supports both the conventional and relocated jbroot rpaths.
 		POP_RPATHS="/var/jb/usr/lib /var/jb/Library/Frameworks @loader_path/.jbroot/usr/lib @loader_path/.jbroot/Library/Frameworks"
@@ -83,7 +83,7 @@ case "$SCHEME" in
 		ARCHS="arm64"
 		POP_ROOTHIDE_LDFLAGS=""
 		POP_SCHEME_DEFS="POP_PACKAGE_SCHEME_ROOTFUL=1"
-		POP_SCHEME_LIBRARY_DIR="/opt/theos/vendor/lib"
+		POP_SCHEME_LIBRARY_DIR="$THEOS/vendor/lib"
 		POP_ALTLIST_FRAMEWORK_DIR="$PWD/SplitXPreferences/Frameworks"
 		POP_RPATHS="/usr/lib /Library/Frameworks"
 		;;
