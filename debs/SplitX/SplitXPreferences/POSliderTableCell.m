@@ -1,6 +1,6 @@
 #import "POSliderTableCell.h"
 
-@interface UIViewController (POPrivate)
+@interface POSliderTableCell ()
 - (UIViewController *)_viewControllerForAncestor;
 @end
 
@@ -110,7 +110,7 @@
         CGFloat value = [alert.textFields.firstObject.text floatValue];
         if (minimum) value = MAX(value, minimum.floatValue);
         if (maximum) value = MIN(value, maximum.floatValue);
-        strongSelf.control.value = value;
+        strongSelf.slider.value = value;
         [strongSelf controlChanged:strongSelf.slider];
     }]];
     [host presentViewController:alert animated:YES completion:nil];
