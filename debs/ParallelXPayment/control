@@ -1,0 +1,10 @@
+Package: com.niubiprass.parallelxpayment
+Name: ParallelX Payment (Review Source)
+Version: 0.0.1~review1
+Architecture: iphoneos-arm
+Description: Isolated account payment routing candidate; review build is inert and not ready for installation.
+Maintainer: Niubiprass
+Author: Niubiprass
+Section: Tweaks
+Depends: mobilesubstrate, firmware (>= 15.5), firmware (<< 15.6), com.moxuan.parallelx (= 0.1.0~alpha377), com.wkk.crane
+Conflicts: com.niubiprass.clonex
