@@ -37,7 +37,10 @@ jobs:
         run: |
           set -euo pipefail
           export THEOS="$HOME/theos"
-          export SDK_PATH="$HOME/sdks/iPhoneOS15.5.sdk"
+          SDK_PATH="$(find "$HOME/sdks" -maxdepth 3 -type d -name 'iPhoneOS15.5.sdk' -print -quit)"
+          if [ -z "$SDK_PATH" ]; then echo 'SDK not found:'; ls -la "$HOME/sdks"; exit 1; fi
+          export SDK_PATH
+          echo "using SDK $SDK_PATH"
           ./build.sh "${{ matrix.scheme }}" release 2>&1 | tee build.log
           mkdir -p out
           cp packages/*.deb out/
