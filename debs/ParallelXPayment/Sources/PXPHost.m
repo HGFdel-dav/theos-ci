@@ -3,7 +3,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import "PXPHostState.h"
 
-static IMP PXPOpenOriginal,PXPLookupOriginal,PXPCloseOriginal;
+static IMP PXPOpenOriginal,PXPLookupOriginal,PXPCloseOriginal,PXPBridgeInitOriginal;
 static const char PXPHostKey;
 static BOOL PXPHostReady;
 @interface PXPHostLease : NSObject {
@@ -26,6 +26,14 @@ static BOOL PXPHostReady;
 static PXPHostLease *PXPStartingLease;
 static NSHashTable *PXPBridges;
 static NSMapTable<PXPRoute *,PXPHostLease *> *PXPPendingHosts;
+typedef id (*PXPBridgeInitIMP)(__attribute__((ns_consumed)) id,SEL) __attribute__((ns_returns_retained));
+static id PXPBridgeInit(__attribute__((ns_consumed)) id self,SEL cmd) __attribute__((ns_returns_retained));
+static id PXPBridgeInit(__attribute__((ns_consumed)) id self,SEL cmd) {
+    PXPBridgeInitIMP original=(PXPBridgeInitIMP)PXPBridgeInitOriginal;
+    id bridge=original(self,cmd);
+    if(bridge) dispatch_async(dispatch_get_main_queue(),^{ [PXPBridges addObject:bridge]; });
+    return bridge;
+}
 static uint64_t PXPGeneration(id bridge,BOOL *valid) {
     SEL sel=NSSelectorFromString(@"generation");
     *valid=PXPSignature(bridge,sel,"Q",@[]);
@@ -95,6 +103,7 @@ static void PXPClose(id self,SEL cmd) {
     ((void(*)(id,SEL))PXPCloseOriginal)(self,cmd);
 }
 static void PXPOpen(id self,SEL cmd,NSString *bundle,UIView *canvas,UIView *keyboard,void (^completion)(BOOL)) {
+    if(NSThread.isMainThread) [PXPBridges addObject:self];
     PXPHostLease *lease=PXPStartingLease;
     if(!lease || ![bundle isEqual:lease.bundle]) {
         PXPHostLease *old=objc_getAssociatedObject(self,&PXPHostKey);
@@ -157,7 +166,29 @@ static void PXPAttemptHost(PXPHostLease *lease,NSTimeInterval end) {
     @try { ((void(*)(id,SEL,id))objc_msgSend)(entry,open,lease.bundle); }
     @catch(__unused NSException *e) { PXPHostFinish(lease,NO,PXPError(68,@"PX host creation raised an exception")); }
     @finally { PXPStartingLease=previous; }
-    if(!lease.opened) PXPHostFinish(lease,NO,PXPError(69,@"Existing or docked PX host reuse is not supported in this candidate"));
+    if(!lease.opened && !lease.completed) {
+        // Native PX may restore an already-visible/docked host without calling
+        // openApplication again. Resolve the actual bridge, never sharedBridge
+        // by assumption, and reuse its own canvas/keyboard after native restore.
+        id candidate=nil;
+        for(id bridge in PXPBridges.allObjects) {
+            if(![PXPString(PXPGet(bridge,@"bundleID")) isEqual:lease.bundle] ||
+               !PXPViewUsable(PXPGet(bridge,@"canvas"))) continue;
+            if(candidate) { candidate=nil; break; } // Ambiguous target: do not guess.
+            candidate=bridge;
+        }
+        if(candidate) {
+            UIView *canvas=PXPGet(candidate,@"canvas");
+            UIView *keyboard=PXPGet(candidate,@"keyboardOverlay");
+            PXPHostLease *old=PXPStartingLease; PXPStartingLease=lease;
+            @try {
+                PXPOpen(candidate,NSSelectorFromString(@"openApplication:inView:keyboardOverlay:completion:"),
+                    lease.bundle,canvas,keyboard,^(BOOL ok){ (void)ok; });
+            } @finally { PXPStartingLease=old; }
+        }
+    }
+    if(!lease.opened && !lease.completed)
+        PXPHostFinish(lease,NO,PXPError(69,@"No unique usable native PX host after restore"));
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,3*NSEC_PER_SEC),dispatch_get_main_queue(),^{
         PXPHostFinish(lease,NO,PXPError(70,@"PX host readiness timed out"));
     });
@@ -196,8 +227,10 @@ BOOL PXPInstallHostAdapter(void) {
     PXPBridges=[NSHashTable weakObjectsHashTable];
     PXPPendingHosts=[NSMapTable weakToStrongObjectsMapTable];
     Class cls=NSClassFromString(@"PXSceneBridge");
+    if(!PXPInstanceSignature(cls,@"init","@",@[])) return NO;
+    BOOL initialized=PXPHook(cls,@"init",(IMP)PXPBridgeInit,&PXPBridgeInitOriginal,"@",@[]);
     BOOL a=PXPHook(cls,@"sceneForBundleID:",(IMP)PXPLookup,&PXPLookupOriginal,"@",@[@"@"]);
     BOOL b=PXPHook(cls,@"close",(IMP)PXPClose,&PXPCloseOriginal,"v",@[]);
     BOOL c=PXPHook(cls,@"openApplication:inView:keyboardOverlay:completion:",(IMP)PXPOpen,&PXPOpenOriginal,"v",@[@"@",@"@",@"@",@"@?"]);
-    PXPHostReady=a&&b&&c; return PXPHostReady;
+    PXPHostReady=initialized&&a&&b&&c; return PXPHostReady;
 }

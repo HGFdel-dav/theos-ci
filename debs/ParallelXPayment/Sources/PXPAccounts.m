@@ -490,3 +490,54 @@ void PXPPrepareAccount(NSString *bundle, NSString *containerID, BOOL (^isCurrent
         [request start];
     });
 }
+
+void PXPVerifyRunningAccount(NSString *bundle,NSString *containerID,BOOL (^isCurrent)(void),void (^completion)(BOOL,NSError *)) {
+    dispatch_async(dispatch_get_main_queue(),^{
+        if(!completion) return;
+        if(!isCurrent || !isCurrent()) { completion(NO,PXPError(PXPAccountsCancelled,@"Payment route expired before process verification")); return; }
+        NSError *error=nil; pid_t pid=0; BOOL running=NO;
+        if(!PXPReadProcess(bundle,&pid,&running,&error) || !running || pid<=0) {
+            completion(NO,error ?: PXPError(PXPAccountsVerificationFailed,@"Payment process is not running")); return;
+        }
+        @try {
+            id manager=PXPManager();
+            // Device CraneSupport calls the same CRHGlobalServiceProtocol method.
+            // Protocol method: v28@0:8i16@?20. Nested reply descriptor:
+            // 0x20d30 -> 0x1c4fe: v20@?0@\"NSString\"8i16.
+            Protocol *protocol=objc_getProtocol("CRHGlobalServiceProtocol");
+            SEL query=NSSelectorFromString(@"fetchActiveContainerIDForProcessWithPid:reply:");
+            if(!protocol) { completion(NO,PXPError(PXPAccountsUnavailable,@"Crane process query protocol is not loaded")); return; }
+            struct objc_method_description md=protocol_getMethodDescription(protocol,query,YES,YES);
+            NSMethodSignature *sig=md.types ? [NSMethodSignature signatureWithObjCTypes:md.types] : nil;
+            if(!sig || sig.numberOfArguments!=4 || strcmp(sig.methodReturnType,"v") ||
+               strcmp([sig getArgumentTypeAtIndex:2],@encode(int)) || strcmp([sig getArgumentTypeAtIndex:3],"@?")) {
+                completion(NO,PXPError(PXPAccountsUnsupportedABI,@"Unsupported Crane process query ABI")); return;
+            }
+            id proxy=PXPObject0(manager,@"cranehelperdGlobalAsyncRemoteObjectProxy");
+            if(!proxy || ![proxy respondsToSelector:query]) {
+                completion(NO,PXPError(PXPAccountsUnavailable,@"Crane process verification service unavailable")); return;
+            }
+            __block BOOL replied=NO;
+            void (^reply)(BOOL,NSError *)=^(BOOL ok,NSError *failure){
+                if(replied) return; replied=YES;
+                completion(ok,failure);
+            };
+            void (^handler)(NSString *,int)=[^(NSString *actual,int auxiliary){
+                // Actual cranehelperd 0x10000483c..86c: auxiliary=1 means
+                // Crane injection missing for the queried PID; it is not a PID.
+                dispatch_async(dispatch_get_main_queue(),^{
+                    if(replied) return;
+                    if(!isCurrent()) { reply(NO,PXPError(PXPAccountsCancelled,@"Payment route expired during process verification")); return; }
+                    NSError *readError=nil; pid_t currentPID=0; BOOL alive=NO;
+                    BOOL same=PXPReadProcess(bundle,&currentPID,&alive,&readError) && alive && currentPID==pid;
+                    BOOL matches=same && auxiliary==0 && PXPString(actual) && [actual isEqualToString:containerID] && PXPAccountStillMatches(bundle,containerID);
+                    reply(matches,matches ? nil : (readError ?: PXPError(PXPAccountsVerificationFailed,@"Running process account does not match selected payment account")));
+                });
+            } copy];
+            ((void(*)(id,SEL,int,void(^)(NSString *,int)))objc_msgSend)(proxy,query,(int)pid,handler);
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW,2*NSEC_PER_SEC),dispatch_get_main_queue(),^{
+                reply(NO,PXPError(PXPAccountsTimedOut,@"Crane process verification timed out"));
+            });
+        } @catch(NSException *exception) { completion(NO,PXPException(exception)); }
+    });
+}

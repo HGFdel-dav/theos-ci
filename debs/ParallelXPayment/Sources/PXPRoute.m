@@ -7,6 +7,12 @@ static PXPRoute *PXPActive;
 static uint64_t PXPNextToken;
 static IMP PXPRequestOriginal;
 static void PXPDrain(void);
+PXPRoute *PXPRouteForForwardedResult(id workspace,id result) {
+    // Device iOS15.5 systemService IMP passes the exact supplied result Block
+    // to its trusted handler. Identity equality is independent of queue delay.
+    if(!NSThread.isMainThread || !PXPActive || !result) return nil;
+    return PXPActive.receiver==workspace && PXPActive.forwardedCompletion==result ? PXPActive : nil;
+}
 static void PXPClearRoute(PXPRoute *r) {
     PXPClearProvenance(r);
     // Break associated-object cycles only after original system processing has
@@ -20,7 +26,7 @@ static void PXPClearRoute(PXPRoute *r) {
     r.nativeDelegate=nil; r.receiver=nil; r.service=nil; r.request=nil;
     r.transitionRequest=nil; r.transitionContext=nil;
     r.workspaceTransaction=nil; r.sceneUpdateTransaction=nil; r.sceneHandle=nil;
-    r.completion=nil;
+    r.completion=nil; r.forwardedCompletion=nil;
     [PXPQueue removeObjectIdenticalTo:r];
     if(PXPActive==r) PXPActive=nil;
     dispatch_async(dispatch_get_main_queue(),^{ PXPDrain(); });
@@ -75,6 +81,17 @@ static void PXPFinish(PXPRoute *r,NSError *error) {
     if(!PXPCanHost(&state)) return;
     if(!PXPAccountStillMatches(self.bundle,self.container)) {
         [self fail:PXPError(2,@"Selected payment account changed")]; return;
+    }
+    if(!self.processAccountVerified) {
+        if(self.processVerificationStarted) return;
+        self.processVerificationStarted=YES;
+        PXPVerifyRunningAccount(self.bundle,self.container,^BOOL{ return [self isCurrent]; },^(BOOL verified,NSError *error){
+            if(![self isCurrent]) return;
+            if(!verified) { [self fail:error ?: PXPError(12,@"Cannot verify running payment account")]; return; }
+            self.processAccountVerified=YES;
+            [self advance];
+        });
+        return;
     }
     if(!PXPClaimHost(&state)) return;
     PXPHostScene(self,^(BOOL ready,NSError *error){
@@ -144,6 +161,7 @@ static void PXPForward(PXPRoute *r) {
             if(error) [r fail:error]; else [r advance];
         });
     } copy];
+    r.forwardedCompletion=result;
     @try {
         ((void(*)(id,SEL,id,id,PXPSystemCompletion))PXPRequestOriginal)(
             r.receiver,r.selector,r.service,r.request,result);

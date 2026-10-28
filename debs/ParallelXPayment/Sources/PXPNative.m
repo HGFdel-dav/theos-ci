@@ -82,8 +82,18 @@ static void PXPWorkspaceBegin(id self,SEL cmd) {
     } else if(!PXPSetObject(self,@"addChildTransaction:",r.sceneUpdateTransaction)) {
         PXPSetObject(self,@"failWithReason:",@"Unable to attach payment scene update");
         [r fail:PXPError(41,@"Unable to attach payment scene update")];
+    } else {
+        // ScreenCore 2.0.5 0x53450..0x53464: addChildTransaction alone
+        // is not treated as proof of start. Check hasStarted; begin exactly once.
+        BOOL known=NO;
+        BOOL started=PXPBool(r.sceneUpdateTransaction,@"hasStarted",&known);
+        if(!known || (!started && !PXPCall(r.sceneUpdateTransaction,@"begin"))) {
+            PXPSetObject(self,@"failWithReason:",@"Cannot start payment scene update");
+            [r fail:PXPError(42,@"Cannot start payment scene update")];
+        }
     }
-    ((void(*)(id,SEL,id))objc_msgSend)(self,satisfy,milestone);
+    if(!PXPBool(self,@"isComplete",NULL))
+        ((void(*)(id,SEL,id))objc_msgSend)(self,satisfy,milestone);
 }
 static BOOL PXPWorkspaceShouldFail(id self,SEL cmd,id child) {
     PXPRoute *r=PXPAssociatedRoute(self);
@@ -154,10 +164,14 @@ static id PXPSelectTransaction(id self,SEL cmd,id request) {
 static BOOL PXPExecute(id self,SEL cmd,id request,NSUInteger options,id validator) {
     // The evidenced options encoding is Q (scalar flags), NEVER an object.
     PXPRoute *r=PXPAssociatedRoute(request);
-    if(r && !PXPBindTransition(r,request)) {
-        [r fail:PXPError(37,@"Cannot bind payment transition")]; return NO;
+    // Source identity exists before scene resolution. The original executor is
+    // allowed to populate/finalize the context; the selection hook below must
+    // bind the exact scene before it can choose our custom transaction.
+    if(r && (![r isCurrent] || !PXPHasExactProvenance(r,request))) {
+        [r fail:PXPError(37,@"Cannot authenticate payment transition source")]; return NO;
     }
     BOOL accepted=((BOOL(*)(id,SEL,id,NSUInteger,id))PXPExecuteOriginal)(self,cmd,request,options,validator);
+    if(!r) r=PXPAssociatedRoute(request);
     if(r && [r isCurrent]) {
         r->state.executed=true; r->state.accepted=accepted;
         if(!accepted) [r fail:PXPError(38,@"Payment activation rejected")];
@@ -211,6 +225,8 @@ BOOL PXPInstallNativeRouting(void) {
        !PXPCheckInstance(base,@"isInterrupted","B",@[]) ||
        !PXPCheckInstance(scene,@"initWithApplicationSceneEntity:transitionRequest:","@",@[@"@",@"@"]) ||
        !PXPCheckInstance(scene,@"sceneIdentifier","@",@[]) ||
+       !PXPCheckInstance(scene,@"hasStarted","B",@[]) ||
+       !PXPCheckInstance(scene,@"begin","v",@[]) ||
        !PXPCheckInstance(scene,@"setShouldSendActivationResult:","v",@[@"B"]) ||
        !PXPCheckInstance(scene,@"setSynchronizationDelegate:","v",@[@"@"]) ||
        !PXPCheckInstance(scene,@"performSynchronizedCommit","v",@[]) ||
@@ -258,6 +274,11 @@ void PXPTeardownNative(PXPRoute *r,void (^completion)(BOOL)) {
     // its synchronization delegate. Keep ownership and global serialization
     // until both evidenced transaction terminal states can be observed.
     id parent=r.workspaceTransaction,child=r.sceneUpdateTransaction;
+    if(r->state.forwarded && !parent && !child) {
+        // The original open may still own asynchronous work. No native objects
+        // observed is NOT proof of cancellation: keep the account queue fenced.
+        completion(NO); return;
+    }
     if(parent) PXPSetObject(parent,@"failWithReason:",@"Payment routing cancelled");
     if(child) PXPSetObject(child,@"failWithReason:",@"Payment routing cancelled");
     if(PXPBool(r.transitionContext,@"needsToSendActivationResult",NULL))

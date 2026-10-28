@@ -38,9 +38,18 @@ jobs:
           "$RUNNER_TEMP/pxp-state"
           /usr/bin/clang -std=c11 -Wall -Wextra -Werror tests/test_host_state.c -o "$RUNNER_TEMP/pxp-host-state"
           "$RUNNER_TEMP/pxp-host-state"
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=${{ matrix.scheme }} 2>&1 | tee ci-output/build.log
-          cp packages/*.deb ci-output/
-          shasum -a 256 ci-output/*.deb > ci-output/SHA256SUMS
+          # Compile the live code path to validate ARC/ABI code generation.
+          # This run does NOT package, install or publish a payment test DEB.
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('Makefile')
+          s=p.read_text()
+          assert '-DPXP_ENABLE_CANDIDATE=0' in s
+          p.write_text(s.replace('-DPXP_ENABLE_CANDIDATE=0','-DPXP_ENABLE_CANDIDATE=1'))
+          PY
+          make all FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=${{ matrix.scheme }} 2>&1 | tee ci-output/build.log
+          test -n "$(find .theos -name 'ParallelXPayment.dylib' -print -quit)"
+          echo 'Live code path compile only. No DEB was packaged. Not a functional-test result.' > ci-output/BUILD-SCOPE.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -40,5 +40,10 @@ FOUNDATION_EXPORT BOOL PXPAccountStillMatches(NSString *bundle, NSString *contai
 FOUNDATION_EXPORT BOOL PXPAccountsAvailable(void);
 // Main-thread only; the serialized route owns the only picker.
 FOUNDATION_EXPORT void PXPCancelAccountSelection(void);
+// Queries Crane helper for the actual running PID, then rechecks process identity.
+// It does not treat the active-container preference as running-process proof.
+FOUNDATION_EXPORT void PXPVerifyRunningAccount(
+    NSString *bundle, NSString *containerID, BOOL (^isCurrent)(void),
+    void (^completion)(BOOL verified, NSError * _Nullable error));
 
 NS_ASSUME_NONNULL_END
