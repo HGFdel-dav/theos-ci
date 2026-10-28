@@ -8,6 +8,8 @@
 #import "SplitViewController.h"
 #import "POCraneBridge.h"
 #import "POSplitPanelView.h"
+#import "POSplitXSettings.h"
+#import "POSplitXLog.h"
 #import "POSplitTarget.h"
 #import "POHostSessionController.h"
 #import "POQuickSwitchDragCoordinator.h"
@@ -165,6 +167,8 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     CGFloat panelVerticalMoveStartAnchorY;
     BOOL scrollSnapAnimationInProgress;
     BOOL quickSwitchOpeningApp;
+    BOOL targetSwitchInFlight;
+    NSUInteger targetSwitchGeneration;
     QuickSwitchHorizontalBarView *quickSwitchHorizontalBarView;
     UIView *quickSwitchInteractionOverlayView;
     UIView<POQuickSwitchMenuPresenting> *presentedQuickSwitchMenu;
@@ -226,6 +230,12 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
 -(void)hideQuickSwitchBackdropImmediately;
 -(void)refreshHandleIconIfNeeded;
 -(void)resetAutoNubTimerWithMinimumDelay:(NSTimeInterval)minimumDelay;
+-(BOOL)targetMatchesActiveHost:(POSplitTarget *)target;
+-(POSplitTarget *)currentHostTarget;
+-(void)showTargetSwitchFailure:(NSError *)error;
+-(void)recoverFromTargetSwitchFailure:(NSError *)error
+                             previous:(POSplitTarget *)previous
+                           sameBundle:(BOOL)sameBundle;
 
 @end
 
@@ -587,7 +597,7 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
         : (mode == POInteractionModeDrawerModal ? 0.5 * [self horizontalOpenProgress] : 0);
     CGFloat quickSwitchTargetAlpha = scaledProgrammaticCloseAnimating
         ? 0
-        : (mode == POInteractionModeQuickSwitchModal ? 0.5 : 0);
+        : (mode == POInteractionModeQuickSwitchModal ? 0.22 : 0);
 
     if (mode == POInteractionModeQuickSwitchModal) {
         [scrollView bringSubviewToFront:quickSwitchBackdropView];
@@ -599,7 +609,7 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
         self->quickSwitchBackdropView.alpha = quickSwitchTargetAlpha;
     };
     if (animated) {
-        [UIView animateWithDuration:0.20
+        [UIView animateWithDuration:0.24
                               delay:0
                             options:(UIViewAnimationOptionCurveEaseOut |
                                      UIViewAnimationOptionBeginFromCurrentState |
@@ -3069,8 +3079,10 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
 }
 
 -(void)open{
+    PXLog(@"ui", @"open pinned=%@ state=%ld", pinnedBundleId ?: @"-", (long)panelState);
     if (pinnedBundleId.length == 0 || scaledProgrammaticCloseAnimating ||
         panelState == POPanelStateOpening || panelState == POPanelStateOpen) {
+        PXLog(@"ui", @"open 跳过 state=%ld pin=%@", (long)panelState, pinnedBundleId ?: @"-");
         return;
     }
     deferredOpenGeneration += 1;
@@ -3089,6 +3101,7 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
 }
 
 -(void)close{
+    PXLog(@"ui", @"close state=%ld", (long)panelState);
     if (panelState == POPanelStateClosed || panelState == POPanelStateClosing) {
         return;
     }
@@ -3576,8 +3589,21 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     }
 }
 
--(void)routeExternalApplicationInsidePullOver:(NSString *)bundleId{
-    if (bundleId.length == 0 || [bundleId isEqualToString:pinnedBundleId] ||
+-(void)prepareForContainerSwitchToBundleId:(NSString *)bundleId{
+    if (bundleId.length == 0) return;
+    if ([hostSession.activeBundleId isEqualToString:bundleId]) {
+        [self capturePresentationSnapshotIfPossible];
+        PXLog(@"route", @"host already %@, snapshot before container switch", bundleId);
+    }
+}
+
+-(NSString *)diagnosticStateDescription{
+    return [NSString stringWithFormat:@"panel=%ld host=%@ pinned=%@ switch=%d overlay=%@",
+            (long)panelState, hostSession.activeBundleId ?: @"-", pinnedBundleId ?: @"-",
+            targetSwitchInFlight, quickSwitchInteractionOverlayView.hidden ? @"hidden" : @"shown"];
+}
+
+-(void)routeExternalApplicationInsidePullOver:(NSString *)bundleId{    if (bundleId.length == 0 || [bundleId isEqualToString:pinnedBundleId] ||
         ![POApplicationHelper isUserFacingApplicationBundleId:bundleId]) {
         return;
     }
@@ -4333,6 +4359,8 @@ hostedInterfaceOrientationDidChange:(UIInterfaceOrientation)orientation
                  sceneStack:(UIView *)sceneStack
                    bundleId:(NSString *)bundleId
                  generation:(NSUInteger)generation{
+    PXLog(@"scene", @"published %@ gen=%lu scene=%p stack=%p", bundleId, (unsigned long)generation,
+          (__bridge void *)scene, (__bridge void *)sceneStack);
     if (!sceneStack || generation != controller.currentGeneration ||
         ![bundleId isEqualToString:controller.requestedBundleId]) {
         return;
@@ -4518,6 +4546,8 @@ hostedInterfaceOrientationDidChange:(UIInterfaceOrientation)orientation
 -(void)hostSessionController:(POHostSessionController *)controller
 cannotHostFrontmostBundleId:(NSString *)bundleId
                   generation:(NSUInteger)generation{
+    PXLogW(@"host", @"cannotHost %@ gen=%lu pinned=%@ external=%@", bundleId, (unsigned long)generation,
+           pinnedBundleId ?: @"-", externallyActivatedBundleId ?: @"-");
     if ([externallyActivatedBundleId isEqualToString:bundleId]) {
         [self restoreExternallyActivatedApplicationNatively:bundleId];
         return;
@@ -4570,7 +4600,48 @@ cannotHostFrontmostBundleId:(NSString *)bundleId
             isEqualToString:target.containerIdentifier];
 }
 
+/// 当前窗口真正托管的 (应用, 容器)，用于切换失败时回到原状。
+-(POSplitTarget *)currentHostTarget{
+    NSString *bundle = hostSession.activeBundleId;
+    if (!bundle.length) return nil;
+    NSString *container = [POCraneBridge activeContainerForBundleIdentifier:bundle]
+        ?: POSplitDefaultContainerIdentifier;
+    return [POSplitTarget targetWithBundleIdentifier:bundle container:container displayName:nil];
+}
+
+-(void)showTargetSwitchFailure:(NSError *)error{
+    NSString *text = error.localizedDescription.length ? error.localizedDescription : @"切换分身失败";
+    PXLog(@"scene", @"switch failure toast: %@", text);
+    UILabel *toast = [[UILabel alloc] init];
+    toast.text = text;
+    toast.font = [UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
+    toast.textColor = UIColor.whiteColor;
+    toast.textAlignment = NSTextAlignmentCenter;
+    toast.numberOfLines = 2;
+    toast.backgroundColor = [UIColor colorWithWhite:0 alpha:0.78];
+    toast.layer.cornerRadius = 12;
+    toast.layer.cornerCurve = kCACornerCurveContinuous;
+    toast.clipsToBounds = YES;
+    toast.alpha = 0;
+    toast.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:toast];
+    [NSLayoutConstraint activateConstraints:@[
+        [toast.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+        [toast.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:12],
+        [toast.widthAnchor constraintEqualToConstant:220],
+        [toast.heightAnchor constraintGreaterThanOrEqualToConstant:36],
+    ]];
+    [UIView animateWithDuration:0.18 animations:^{ toast.alpha = 1; }];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.2 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        [UIView animateWithDuration:0.25 animations:^{ toast.alpha = 0; } completion:^(BOOL finished) {
+            [toast removeFromSuperview];
+        }];
+    });
+}
+
 -(void)pinTarget:(POSplitTarget *)target{
+    PXLog(@"scene", @"pin target=%@ active=%@ inFlight=%d", target, hostSession.activeBundleId, targetSwitchInFlight);
     if (!target.bundleIdentifier.length ||
         ![POApplicationHelper isUserFacingApplicationBundleId:target.bundleIdentifier]) {
         return;
@@ -4582,6 +4653,18 @@ cannotHostFrontmostBundleId:(NSString *)bundleId
         return;
     }
 
+    // 切换途中再选：只记日志，不叠第二个切换。
+    if (targetSwitchInFlight) {
+        PXLog(@"scene", @"switch busy, drop %@", target.identityKey);
+        [self showTargetSwitchFailure:[NSError errorWithDomain:POCraneErrorDomain
+                                                          code:POCraneTimedOut
+                                                      userInfo:@{NSLocalizedDescriptionKey: @"正在切换，请稍候"}]];
+        return;
+    }
+    targetSwitchInFlight = YES;
+    NSUInteger generation = ++targetSwitchGeneration;
+
+    POSplitTarget *previous = [self currentHostTarget];
     BOOL sameBundleAsHost = [hostSession.activeBundleId isEqualToString:target.bundleIdentifier];
     if (sameBundleAsHost) {
         [self capturePresentationSnapshotIfPossible];
@@ -4590,17 +4673,43 @@ cannotHostFrontmostBundleId:(NSString *)bundleId
 
     __weak SplitViewController *weakSelf = self;
     [POCraneBridge activateTarget:target completion:^(BOOL success, NSError *error) {
+        PXLog(@"clone", @"activate done ok=%d err=%@", success, error.localizedDescription ?: @"none");
         dispatch_async(dispatch_get_main_queue(), ^{
             SplitViewController *strongSelf = weakSelf;
-            if (!strongSelf) return;
+            if (!strongSelf || generation != strongSelf->targetSwitchGeneration) return;
+            strongSelf->targetSwitchInFlight = NO;
             if (!success) {
-                NSLog(@"[splitx] switch %@ -> %@ failed: %@", target.bundleIdentifier,
-                      target.containerIdentifier, error.localizedDescription ?: @"unknown");
+                [strongSelf recoverFromTargetSwitchFailure:error previous:previous sameBundle:sameBundleAsHost];
                 return;
             }
+            [[POSplitXSettings shared] setExpectedContainer:target.containerIdentifier
+                                        forBundleIdentifier:target.bundleIdentifier];
             [strongSelf pinAppWithBundleId:target.bundleIdentifier];
         });
     }];
+
+    // 看门狗：桥接层自己 5 秒超时；再兜 3 秒防止 completion 永不到。
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8.0 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        SplitViewController *strongSelf = weakSelf;
+        if (!strongSelf || generation != strongSelf->targetSwitchGeneration) return;
+        if (!strongSelf->targetSwitchInFlight) return;
+        strongSelf->targetSwitchInFlight = NO;
+        NSError *timeout = [NSError errorWithDomain:POCraneErrorDomain code:POCraneTimedOut
+                                           userInfo:@{NSLocalizedDescriptionKey: @"切换超时，已停在原状"}];
+        [strongSelf recoverFromTargetSwitchFailure:timeout previous:previous sameBundle:sameBundleAsHost];
+    });
+}
+
+/// 失败不落默认容器：同应用则把旧内容重新开回来，再提示。
+-(void)recoverFromTargetSwitchFailure:(NSError *)error
+                             previous:(POSplitTarget *)previous
+                           sameBundle:(BOOL)sameBundle{
+    PXLog(@"scene", @"switch failed: %@ previous=%@", error.localizedDescription ?: @"unknown", previous.identityKey);
+    [self showTargetSwitchFailure:error];
+    if (sameBundle && previous.bundleIdentifier.length) {
+        [self pinAppWithBundleId:previous.bundleIdentifier];
+    }
 }
 
 -(void)quickSwitchTableView:(UIView<POQuickSwitchMenuPresenting> *)quickSwitchTableView

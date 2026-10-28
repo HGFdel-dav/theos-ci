@@ -320,6 +320,16 @@ static BOOL POExternalTransitionContainsBundleIdentifier(id transitionRequest,
     return sharedInstance;
 }
 
++ (NSString *)targetBundleIdentifierForRequest:(id)request {
+    if (!request) return nil;
+    return POExternalTargetBundleIdentifierFromRequest(request);
+}
+
++ (NSString *)openURLStringForRequest:(id)request {
+    if (!request) return nil;
+    return POExternalOpenURL(request).absoluteString;
+}
+
 - (id)prepareOpenApplicationRequestIfNeeded:(id)request completion:(id)completion {
     if (!NSThread.isMainThread || !request || ![POApplicationHelper isEnabled]) {
         return completion;

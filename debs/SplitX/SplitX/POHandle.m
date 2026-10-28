@@ -10,6 +10,7 @@
 #import "SplitViewController.h"
 
 #import "POApplicationHelper.h"
+#import "POSplitXLog.h"
 
 #define PO_HANDLE_DEFAULT_SIZE 30.0
 #define PO_HANDLE_MINIMUM_SIZE 34.0
@@ -286,14 +287,20 @@
 
 
 -(void)tap:(UIGestureRecognizer *)recognizer{
+    PXLog(@"gesture", @"handle tap state=%ld", (long)recognizer.state);
     [self.delegate handle:self didReceiveTap:recognizer];
 }
 
 -(void)longPress:(UIGestureRecognizer *)recognizer{
+    PXLog(@"gesture", @"handle longpress state=%ld", (long)recognizer.state);
     [self.delegate handle:self didLongPress:recognizer];
 }
 
 -(void)panelPan:(UIPanGestureRecognizer *)recognizer{
+    CGPoint p = [recognizer locationInView:self];
+    CGPoint v = [recognizer velocityInView:self];
+    PXLog(@"gesture", @"handle pan state=%ld p=%.0f,%.0f v=%.0f,%.0f nubbed=%d",
+          (long)recognizer.state, p.x, p.y, v.x, v.y, self.isNubbed);
     [self.delegate handle:self didPanPanel:recognizer];
 }
 

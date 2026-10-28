@@ -3,6 +3,7 @@
 #import <QuartzCore/QuartzCore.h>
 
 #import "POApplicationHelper.h"
+#import "POSplitXLog.h"
 
 
 static const CFTimeInterval kPOOwnedSceneCapabilityWindow = 1.0;
@@ -86,6 +87,7 @@ static const CFTimeInterval kPOOwnedSceneFallbackProcessDrainDelay = 0.12;
         return;
     }
 
+    PXLog(@"host", @"prepare %@ 上一状态=%lu", bundleId, (unsigned long)self.state);
     self.preparedScene = nil;
     NSUInteger generation = [self beginGenerationForBundleId:bundleId activationRequested:NO];
     self.state = POHostSessionStatePreparing;
@@ -117,6 +119,8 @@ static const CFTimeInterval kPOOwnedSceneFallbackProcessDrainDelay = 0.12;
 }
 
 - (void)activateBundleId:(NSString *)bundleId {
+    PXLog(@"host", @"activate %@ state=%lu active=%@", bundleId, (unsigned long)self.state,
+          self.activeBundleId ?: @"-");
     if (bundleId.length == 0 ||
         ![POApplicationHelper isUserFacingApplicationBundleId:bundleId]) {
         return;
@@ -235,6 +239,8 @@ static const CFTimeInterval kPOOwnedSceneFallbackProcessDrainDelay = 0.12;
 }
 
 - (void)releaseActiveSessionPreservingPresentationDiscardOwnedScene:(BOOL)discardOwnedScene {
+    PXLog(@"host", @"release active=%@ discard=%d state=%lu",
+          self.activeBundleId ?: @"-", discardOwnedScene, (unsigned long)self.state);
     self.state = POHostSessionStateReleasing;
     self.currentGeneration += 1;
     if (self.currentGeneration == 0) {

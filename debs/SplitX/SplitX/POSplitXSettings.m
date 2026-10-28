@@ -7,6 +7,17 @@
 #import "POSplitXLog.h"
 
 static NSString *const PXDomain = @"com.niubiprass.splitx";
+/// 设置页用 suite 写入；这里必须读同一个域，不能用 standardUserDefaults（那是 SpringBoard 自己的域）。
+static NSUserDefaults *PXDefaults(void) {
+    static NSUserDefaults *defaults;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ defaults = [[NSUserDefaults alloc] initWithSuiteName:PXDomain]; });
+    return defaults;
+}
+static void PXSettingsChanged(CFNotificationCenterRef center, void *observer, CFStringRef name,
+                              const void *object, CFDictionaryRef userInfo) {
+    [[POSplitXSettings shared] reload];
+}
 static NSArray<NSString *> *PXAllowedKeys(void) {
     return @[@"iconSize", @"tileSize", @"itemSpacing", @"panelRadius", @"panelAlpha",
              @"panelColumns", @"triggerWidth", @"triggerOffsetY", @"dockEnabled", @"dockScale"];
@@ -27,16 +38,28 @@ static NSArray<NSString *> *PXAllowedKeys(void) {
     if ((self = [super init])) {
         _values = [NSMutableDictionary dictionary];
         [self reload];
+        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
+                                        (__bridge const void *)self, PXSettingsChanged,
+                                        CFSTR("com.niubiprass.splitx.settings-changed"),
+                                        NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
     }
     return self;
 }
 
 - (void)reload {
+    NSDictionary *before = [_values copy];
     [_values removeAllObjects];
-    NSDictionary *stored = [NSUserDefaults.standardUserDefaults dictionaryRepresentation];
+    NSDictionary *stored = [PXDefaults() dictionaryRepresentation];
     for (NSString *key in PXAllowedKeys()) {
         id value = stored[key];
         if (value) _values[key] = value;
+    }
+    for (NSString *key in PXAllowedKeys()) {
+        id old = before[key] ?: @"(空)";
+        id now = _values[key] ?: @"(空)";
+        if (![old isEqual:now]) {
+            PXLog(@"prefs", @"changed %@: %@ -> %@", key, old, now);
+        }
     }
     PXLog(@"prefs", @"reload keys=%lu", (unsigned long)_values.count);
 }
@@ -52,7 +75,7 @@ static NSArray<NSString *> *PXAllowedKeys(void) {
 - (CGFloat)tileSize { return [self doubleForKey:@"tileSize" fallback:68 min:52 max:88]; }
 - (CGFloat)itemSpacing { return [self doubleForKey:@"itemSpacing" fallback:6 min:0 max:20]; }
 - (CGFloat)panelRadius { return [self doubleForKey:@"panelRadius" fallback:30 min:12 max:40]; }
-- (CGFloat)panelAlpha { return [self doubleForKey:@"panelAlpha" fallback:1 min:0.4 max:1]; }
+- (CGFloat)panelAlpha { return [self doubleForKey:@"panelAlpha" fallback:100 min:40 max:100] / 100.0; }
 - (NSInteger)panelColumns { return (NSInteger)[self doubleForKey:@"panelColumns" fallback:2 min:1 max:3]; }
 - (CGFloat)triggerWidth { return [self doubleForKey:@"triggerWidth" fallback:30 min:8 max:60]; }
 - (CGFloat)triggerOffsetY { return [self doubleForKey:@"triggerOffsetY" fallback:0 min:-200 max:200]; }
@@ -69,8 +92,8 @@ static NSArray<NSString *> *PXAllowedKeys(void) {
         return;
     }
     _values[key] = value;
-    [NSUserDefaults.standardUserDefaults setObject:value forKey:key];
-    [NSUserDefaults.standardUserDefaults synchronize];
+    [PXDefaults() setObject:value forKey:key];
+    [PXDefaults() synchronize];
     PXLog(@"prefs", @"set %@=%@", key, value);
 }
 
@@ -81,6 +104,26 @@ static NSArray<NSString *> *PXAllowedKeys(void) {
         if (value) out[key] = value;
     }
     return out;
+}
+
+#pragma mark - 期望容器
+
+- (void)setExpectedContainer:(NSString *)container forBundleIdentifier:(NSString *)bundle {
+    if (bundle.length == 0) return;
+    NSString *key = [@"expectedContainer." stringByAppendingString:bundle];
+    if (container.length) {
+        [PXDefaults() setObject:container forKey:key];
+    } else {
+        [PXDefaults() removeObjectForKey:key];
+    }
+    [PXDefaults() synchronize];
+    PXLog(@"route", @"expected %@ -> %@", bundle, container ?: @"(clear)");
+}
+
+- (NSString *)expectedContainerForBundleIdentifier:(NSString *)bundle {
+    if (bundle.length == 0) return nil;
+    id value = [PXDefaults() objectForKey:[@"expectedContainer." stringByAppendingString:bundle]];
+    return [value isKindOfClass:NSString.class] && [value length] ? value : nil;
 }
 
 - (BOOL)exportBackupToPath:(NSString *)path error:(NSError **)error {

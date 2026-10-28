@@ -27,7 +27,9 @@
 -(BOOL)isExternallyHostedApplicationVisible:(NSString *)bundleId;
 -(void)applyCurrentSettings;
 -(void)prepareForOrientationChange;
--(void)handleOrientationChange;
+-(void)prepareForContainerSwitchToBundleId:(NSString *)bundleId;
+/// 供心跳日志用的状态摘要。
+- (NSString *)diagnosticStateDescription;-(void)handleOrientationChange;
 @property (nonatomic, readonly) BOOL isPanelActive;
 @property (nonatomic, readonly) BOOL isPanelFullyOpen;
 @property (nonatomic, readonly) BOOL isPanelTransitioning;

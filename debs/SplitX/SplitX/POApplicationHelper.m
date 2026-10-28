@@ -7,6 +7,7 @@
 
 #import "POApplicationHelper.h"
 #import "POCraneBridge.h"
+#import "POSplitXLog.h"
 #import <objc/message.h>
 
 @interface UIImage (POApplicationIcon)
@@ -229,11 +230,41 @@ static id POSharedObjectForClass(Class cls) {
             [targets addObject:[POSplitTarget targetWithBundleIdentifier:bundleId]];
         }
     }
+    PXLog(@"panel", @"targets apps=%lu total=%lu bundles=%@", (unsigned long)bundles.count,
+          (unsigned long)targets.count, [bundles componentsJoinedByString:@","]);
     return targets;
 }
 
 +(UIImage *)imageForBundleId:(NSString *)bundleId{
     return [self iconImageForIdentifier:bundleId];
+}
+
++(NSString *)displayNameForBundleId:(NSString *)bundleId{
+    if (bundleId.length == 0) return bundleId;
+    static NSCache<NSString *, NSString *> *cache;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        cache = [[NSCache alloc] init];
+        cache.countLimit = 64;
+    });
+    NSString *cached = [cache objectForKey:bundleId];
+    if (cached) return cached;
+
+    NSString *name = nil;
+    SBApplicationController *controller = [NSClassFromString(@"SBApplicationController") sharedInstance];
+    SBApplication *application = [controller applicationWithBundleIdentifier:bundleId];
+    if ([application respondsToSelector:@selector(displayName)]) {
+        NSString *displayName = [application performSelector:@selector(displayName)];
+        if ([displayName isKindOfClass:NSString.class] && displayName.length) name = displayName;
+    }
+    if (name.length == 0) {
+        NSDictionary *info = POInfoDictionaryForBundleIdentifier(bundleId);
+        id display = info[@"CFBundleDisplayName"] ?: info[@"CFBundleName"];
+        if ([display isKindOfClass:NSString.class] && [display length]) name = display;
+    }
+    if (name.length == 0) name = bundleId;
+    [cache setObject:name forKey:bundleId];
+    return name;
 }
 
 

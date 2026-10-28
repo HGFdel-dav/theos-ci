@@ -37,6 +37,10 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)importBackupFromPath:(NSString *)path error:(NSError **)error;
 - (NSDictionary<NSString *, id> *)allValues;
 
+/// 用户最后一次为该应用选过的容器。外部 URL / 付款按它决定落到哪个账号。
+- (void)setExpectedContainer:(NSString *)container forBundleIdentifier:(NSString *)bundle;
+- (nullable NSString *)expectedContainerForBundleIdentifier:(NSString *)bundle;
+
 @end
 
 NS_ASSUME_NONNULL_END

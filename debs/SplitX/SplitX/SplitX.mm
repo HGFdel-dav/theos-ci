@@ -8,6 +8,12 @@
 #import <objc/runtime.h>
 #import <notify.h>
 #include <substrate.h>
+#include <sys/sysctl.h>
+#include <dlfcn.h>
+#include <stdlib.h>
+#if __has_include(<os/proc.h>)
+#include <os/proc.h>
+#endif
 
 #import "headers.h"
 #import "FBSOrientationObserver.h"
@@ -15,6 +21,8 @@
 #import "POXWindow.h"
 #import "POSplitSessionController.h"
 #import "POApplicationHelper.h"
+#import "POCraneBridge.h"
+#import "POSplitTarget.h"
 #import "POCameraGrantState.h"
 #import "ContextHostManager.h"
 #import "POExternalActivationCoordinator.h"
@@ -929,8 +937,47 @@ static void POHookSBMainWorkspaceHandleOpenApplicationRequest(id self, SEL _cmd,
     }
     id routedCompletion = [[POExternalActivationCoordinator sharedInstance]
         prepareOpenApplicationRequestIfNeeded:request completion:completion];
-    POOriginalSBMainWorkspaceHandleOpenApplicationRequest(self, _cmd, systemService, request,
-                                                          routedCompletion ?: completion);
+
+    // 目标账号：用户最后一次为这个应用选的容器。只有“选了分身且当前不在那个容器”才预先切换，
+    // 普通默认号、没装 Crane、应用不支持分身都直接放行，不拖慢。
+    NSString *bundle = [POExternalActivationCoordinator targetBundleIdentifierForRequest:request];
+    NSString *expected = bundle.length ? [[POSplitXSettings shared] expectedContainerForBundleIdentifier:bundle] : nil;
+    NSString *active = bundle.length ? [POCraneBridge activeContainerForBundleIdentifier:bundle] : nil;
+    BOOL needSwitch = bundle.length > 0 && expected.length > 0 &&
+        [POCraneBridge isBundleSupported:bundle] &&
+        ![(active ?: POSplitDefaultContainerIdentifier) isEqualToString:expected];
+
+    PXLog(@"route", @"open %@ url=%@ expected=%@ active=%@ switch=%d",
+          bundle ?: @"?", [POExternalActivationCoordinator openURLStringForRequest:request] ?: @"-",
+          expected ?: @"-", active ?: @"-", needSwitch);
+
+    if (!needSwitch) {
+        POOriginalSBMainWorkspaceHandleOpenApplicationRequest(self, _cmd, systemService, request,
+                                                              routedCompletion ?: completion);
+        return;
+    }
+
+    PXLog(@"route", @"开始预切换 -> %@/%@", bundle, expected);
+    __block BOOL forwarded = NO;
+    void (^forward)(void) = ^{
+        if (forwarded) return;
+        forwarded = YES;
+        PXLog(@"route", @"forward %@ routed=%d", bundle, routedCompletion != nil);
+        POOriginalSBMainWorkspaceHandleOpenApplicationRequest(self, _cmd, systemService, request,
+                                                              routedCompletion ?: completion);
+    };
+    POSplitTarget *target = [POSplitTarget targetWithBundleIdentifier:bundle
+                                                            container:expected
+                                                          displayName:nil];
+    POXWindow *poWindow = (POXWindow *)[POXWindow sharedWindow];
+    [poWindow.controller prepareForContainerSwitchToBundleId:bundle];
+    [POCraneBridge activateTarget:target completion:^(BOOL success, NSError *error) {
+        PXLog(@"route", @"pre-switch ok=%d err=%@", success, error.localizedDescription ?: @"none");
+        dispatch_async(dispatch_get_main_queue(), forward);
+    }];
+    // 切不动也得让付款继续，4 秒后按当前容器放行。
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(4.0 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), forward);
 }
 
 static void POHookSBMainWorkspaceHandleTrustedOpenApplicationRequest(id self, SEL _cmd,
@@ -1145,17 +1192,44 @@ static void _logos_method$_ungrouped$UIMutableApplicationSceneSettings$setBackgr
 
 #pragma mark - SpringBoard hooks
 
+static void POStartHeartbeat(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0,
+                                                         dispatch_get_main_queue());
+        dispatch_source_set_timer(timer, dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_SEC),
+                                  30 * NSEC_PER_SEC, 2 * NSEC_PER_SEC);
+        dispatch_source_set_event_handler(timer, ^{
+            @autoreleasepool {
+                double loads[3] = {0, 0, 0};
+                getloadavg(loads, 3);
+                NSString *front = [POApplicationHelper frontMostBundleId] ?: @"?";
+                NSString *state = window.controller ? [window.controller diagnosticStateDescription] : @"no-window";
+                uint64_t available = 0;
+#if __has_include(<os/proc.h>)
+                available = os_proc_available_memory();
+#endif
+                PXLog(@"heartbeat", @"front=%@ mem=%.0fMB load=%.2f %@",
+                      front, available / 1048576.0, loads[0], state);
+            }
+        });
+        dispatch_resume(timer);
+    });
+}
+
 static void _logos_method$_ungrouped$SpringBoard$applicationDidFinishLaunching$(
     _LOGOS_SELF_TYPE_NORMAL SpringBoard *_LOGOS_SELF_CONST __unused self, SEL __unused _cmd, UIApplication *arg1) {
     _logos_orig$_ungrouped$SpringBoard$applicationDidFinishLaunching$(self, _cmd, arg1);
 
     NSDictionary *settings = [POApplicationHelper settings];
+    PXLog(@"boot", @"applicationDidFinishLaunching enabled=%d", POSettingsEnabled(settings));
     if (!POSettingsEnabled(settings)) {
         return;
     }
 
     POStartOrientationObserver();
     POReconcileCommittedInterfaceOrientation(@"launch", 0, NO);
+    POStartHeartbeat();
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
       POApplyCurrentSettings();
@@ -1232,9 +1306,51 @@ static void PORegisterScreenBlankObserver(void) {
 
 #pragma mark - Hook registration
 
+static NSString *PXCraneDescription(void) {
+    Class crane = NSClassFromString(@"CraneManager");
+    if (!crane) return @"未安装";
+    Dl_info info;
+    if (dladdr((__bridge void *)crane, &info) && info.dli_fname) {
+        NSString *path = [NSString stringWithUTF8String:info.dli_fname];
+        NSDictionary *attrs = [NSFileManager.defaultManager attributesOfItemAtPath:path error:NULL];
+        return [NSString stringWithFormat:@"%@ (%llu B, %@)", path,
+                attrs.fileSize, attrs.fileModificationDate ?: @"?"];
+    }
+    return @"已加载";
+}
+
+static NSString *PXJailbreakDescription(void) {
+    if ([NSFileManager.defaultManager fileExistsAtPath:@"/var/jb"]) return @"rootless(/var/jb)";
+    NSArray *roots = [NSFileManager.defaultManager contentsOfDirectoryAtPath:
+        @"/var/mobile/Containers/Shared/AppGroup" error:NULL];
+    for (NSString *name in roots) {
+        if ([name hasPrefix:@".jbroot-"]) return [@"roothide " stringByAppendingString:name];
+    }
+    return @"未识别";
+}
+
 static __attribute__((constructor)) static void PXBootLog(void) {
-    PXLog(@"boot", @"SplitX %@ launched pid=%d", @"0.1.0~dev4", getpid());
+    PXLogBeginSession(@"0.1.0~dev6");
     [POSplitXSettings.shared reload];
+
+    static char machine[32] = {0};
+    size_t size = sizeof(machine);
+    sysctlbyname("hw.machine", machine, &size, NULL, 0);
+
+    PXLogEnvironment(@"bundle=%@ build=%d device=%s system=%@ jb=%@ crane=%@ pid=%d",
+                     NSBundle.mainBundle.bundleIdentifier,
+                     [[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleVersion"] intValue],
+                     machine, NSProcessInfo.processInfo.operatingSystemVersionString,
+                     PXJailbreakDescription(), PXCraneDescription(), getpid());
+    POSplitXSettings *settings = [POSplitXSettings shared];
+    PXLogEnvironment(@"settings icon=%.0f tile=%.0f spacing=%.0f cols=%ld radius=%.0f alpha=%.2f trigger=%.0f dock=%d",
+                     settings.iconSize, settings.tileSize, settings.itemSpacing,
+                     (long)settings.panelColumns, settings.panelRadius, settings.panelAlpha,
+                     settings.triggerWidth, settings.dockEnabled);
+    NSString *crash = PXLogCrashTail();
+    if (crash.length) {
+        PXLogW(@"boot", @"上次会话有崩溃记录 %lu 字节，见 crash.log", (unsigned long)crash.length);
+    }
 }
 
 __attribute__((constructor)) void POInstallSpringBoardHooks(int __unused argc, char __unused **argv,
@@ -1352,4 +1468,9 @@ __attribute__((constructor)) void POInstallSpringBoardHooks(int __unused argc, c
                             (IMP *)&_logos_orig$_ungrouped$SBHomeHardwareButton$singlePressUp$);
         }
     }
+    PXLog(@"hook", @"SpringBoard hooks installed sceneManager=%d workspace=%d toApps=%d appToApp=%d",
+          NSClassFromString(@"FBSceneManager") != nil,
+          NSClassFromString(@"SBMainWorkspace") != nil,
+          NSClassFromString(@"SBToAppsWorkspaceTransaction") != nil,
+          NSClassFromString(@"SBAppToAppWorkspaceTransaction") != nil);
 }

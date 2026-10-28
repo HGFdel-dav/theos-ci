@@ -9,6 +9,7 @@
 //  FBSystemService 终止 completion 无参数（v8@?0），ACK 不等于进程已退出。
 //
 
+#import "POSplitXLog.h"
 #import "POCraneBridge.h"
 #import <objc/message.h>
 #import <objc/runtime.h>
@@ -120,8 +121,16 @@ static BOOL POCranePidExited(pid_t pid) {
                                                        container:POSplitDefaultContainerIdentifier
                                                      displayName:@"默认"]];
     id manager = POCraneManager();
-    if (!manager || ![self isBundleSupported:bundleIdentifier] ||
-        !POCraneSignature(manager, @"applicationSettingsForApplicationWithIdentifier:", "@", @[@"@"])) {
+    if (!manager) {
+        PXLog(@"clone", @"%@ 无 CraneManager，只给 DEFAULT", bundleIdentifier);
+        return targets;
+    }
+    if (![self isBundleSupported:bundleIdentifier]) {
+        PXLog(@"clone", @"%@ 不受 Crane 支持，只给 DEFAULT", bundleIdentifier);
+        return targets;
+    }
+    if (!POCraneSignature(manager, @"applicationSettingsForApplicationWithIdentifier:", "@", @[@"@"])) {
+        PXLogW(@"clone", @"applicationSettings ABI 不符，%@ 只给 DEFAULT", bundleIdentifier);
         return targets;
     }
     id settings = ((id (*)(id, SEL, id))objc_msgSend)(
@@ -139,6 +148,7 @@ static BOOL POCranePidExited(pid_t pid) {
                                                            container:identifier
                                                          displayName:POCraneString(name) ? name : identifier]];
     }
+    PXLog(@"clone", @"%@ 容器 %lu 个", bundleIdentifier, (unsigned long)targets.count);
     return targets;
 }
 
@@ -154,6 +164,7 @@ static BOOL POCranePidExited(pid_t pid) {
             completion(NO, POCraneError(POCraneInvalidData, @"缺少应用标识"));
             return;
         }
+        PXLog(@"clone", @"target %@/%@ available=%d", target.bundleIdentifier, target.containerIdentifier, [self isAvailable]);
         if (![self isAvailable]) {
             completion(YES, nil);   // 没装 Crane：直接走普通启动
             return;
@@ -178,9 +189,15 @@ static BOOL POCranePidExited(pid_t pid) {
         }
 
         __block BOOL finished = NO;
+        __block NSTimeInterval startedAt = NSDate.timeIntervalSinceReferenceDate;
         void (^finish)(BOOL, NSError *) = ^(BOOL ok, NSError *error) {
             if (finished) return;
             finished = YES;
+            PXLogSlow(@"switch", NSDate.timeIntervalSinceReferenceDate - startedAt,
+                      [NSString stringWithFormat:@"activate %@", target.identityKey]);
+            PXLog(@"switch", @"完成 %@ ok=%d err=%@ 用时%.0fms", target.identityKey, ok,
+                  error.localizedDescription ?: @"none",
+                  (NSDate.timeIntervalSinceReferenceDate - startedAt) * 1000.0);
             completion(ok, error);
         };
 
@@ -196,6 +213,7 @@ static BOOL POCranePidExited(pid_t pid) {
                         finish(NO, POCraneError(POCraneVerificationFailed, @"认证或切换被拒绝"));
                         return;
                     }
+                    PXLog(@"clone", @"auth ok, readback=%@ want=%@", POCraneActive(manager, bundle), wanted);
                     if (![POCraneActive(manager, bundle) isEqualToString:wanted]) {
                         finish(NO, POCraneError(POCraneVerificationFailed, @"回读的容器与目标不一致"));
                         return;
@@ -236,6 +254,7 @@ static BOOL POCranePidExited(pid_t pid) {
             BOOL nowRunning = NO;
             BOOL known = POCraneProcess(bundle, &pid, &nowRunning);
             BOOL gone = known ? (!nowRunning && pid == 0 && POCranePidExited(oldPid)) : POCranePidExited(oldPid);
+            PXLog(@"clone", @"poll=%lu pid=%d running=%d exited=%d", (unsigned long)polls, pid, nowRunning, gone);
             if (gone) {
                 switchNow();
                 return;

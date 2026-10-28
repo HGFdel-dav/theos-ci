@@ -18,6 +18,8 @@
 /// 每个应用按真实容器展开；无分身能力时只有一个 DEFAULT 目标。
 + (NSArray<POSplitTarget *> *)quickSwitchTargets;
 + (UIImage *)imageForBundleId:(NSString *)bundleId;
+/// 应用显示名：SBApplication.displayName 优先，Info.plist 显示名兜底，最后退回 bundle id。
++ (NSString *)displayNameForBundleId:(NSString *)bundleId;
 + (NSString *)frontMostBundleId;
 + (BOOL)isUserFacingApplicationBundleId:(NSString *)bundleId;
 + (UIInterfaceOrientationMask)supportedInterfaceOrientationsForBundleId:(NSString *)bundleId;

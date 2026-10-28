@@ -93,6 +93,55 @@ need('@"分"' in cell and '@"默"' in cell, 'badge text 默/分')
 handle = (SRC / 'POHandle.m').read_text()
 need('CGRectGetHeight(self.bounds) / 2.0' in handle, 'handle is a pill')
 
+# 8c 面板参数化与交互手感
+panel = (SRC / 'POSplitPanelView.m').read_text()
+need('POSplitXSettings shared' in panel, 'panel reads settings')
+for token in ('iconSize', 'tileSize', 'itemSpacing', 'panelRadius', 'panelColumns', 'panelAlpha'):
+    need(token in (SRC / 'POSplitXSettings.h').read_text(), f'settings expose {token}')
+need('setHoveredIndex' in panel and 'chosen' in panel, 'hover and chosen feedback')
+need('usingSpringWithDamping' in panel, 'panel uses spring animation')
+need('quickSwitchTableViewWillAppear' in panel and 'quickSwitchTableViewDidDisappear' in panel, 'panel fires lifecycle')
+need('panelColumns' in (SRC / 'POSplitXSettings.h').read_text(), 'settings expose panelColumns')
+prefs_plist = plistlib.loads((PREFS / 'Package/Library/PreferenceBundles/SplitXPreferences.bundle/SplitXPreferences.plist').read_bytes())
+pref_keys = {i.get('key') for i in prefs_plist.get('items', [])}
+for token in ('iconSize', 'tileSize', 'itemSpacing', 'panelColumns', 'panelAlpha', 'panelRadius'):
+    need(token in pref_keys, f'prefs control {token}')
+
+# 8d 选择防重入与失败恢复
+need('targetSwitchInFlight' in vc, 'switch reentrancy guard')
+need('recoverFromTargetSwitchFailure' in vc and 'showTargetSwitchFailure' in vc, 'failure recovery + toast')
+need('POCraneTimedOut' in vc, 'switch watchdog')
+need('setExpectedContainer' in vc, 'remember chosen container')
+
+# 8e 外部唤起按目标容器预先切换
+mm = (SRC / 'SplitX.mm').read_text()
+hook = mm[mm.index('POHookSBMainWorkspaceHandleOpenApplicationRequest'):]
+need('expectedContainerForBundleIdentifier' in hook, 'external open resolves expected container')
+need('prepareForContainerSwitchToBundleId' in hook, 'external open prepares host snapshot')
+need('4.0 * NSEC_PER_SEC' in hook, 'external open has timeout fallback')
+need('forwarded' in hook, 'external open forwards once only')
+er = (SRC / 'POExternalActivationCoordinator.m').read_text()
+need('targetBundleIdentifierForRequest' in er, 'request target resolver')
+
+# 8f 诊断日志
+logm = (SRC / 'POSplitXLog.m').read_text()
+need('PXLogBeginSession' in logm and 'NSSetUncaughtExceptionHandler' in logm, 'session header + crash handler')
+need('PXLogRotateIfNeeded' in logm and 'PXLogKeepFiles = 3' in logm, 'log rotation 3 files')
+need('__sync_fetch_and_add' in logm and 'NSThread.isMainThread' in logm, 'seq + thread mark')
+need('PXLogBeginSession' in mm, 'boot starts session')
+need('PXLogEnvironment' in mm and 'PXLogEnvironment' in logm, 'environment snapshot')
+need('POStartHeartbeat' in mm and '[heartbeat]' not in mm, 'heartbeat timer')
+need('PXLogSlow' in (SRC / 'POCraneBridge.m').read_text(), 'switch duration logged')
+for f, token in (('POSplitPanelView.m', 'PXLog(@"panel"'), ('POCraneBridge.m', 'PXLog(@"switch"'),
+                 ('POHostSessionController.mm', 'PXLog(@"host"'), ('POHandle.m', 'PXLog(@"gesture"'),
+                 ('SplitX.mm', 'PXLog(@"route"')):
+    need(token in (SRC / f).read_text(), f'log point {f}')
+need('writeToFile' in logm and 'crash.log' in logm, 'crash tail persisted')
+need('PXLogSignalHandler' in logm and 'crash.signal.log' in logm, 'signal crash dump')
+need('PXLogInstallSignalHandlers' in logm, 'signal handlers installed')
+prefsctl = (PREFS / 'SplitXPreferencesController.m').read_text()
+need('showDiagnosticLog' in prefsctl and 'clearDiagnosticLog' in prefsctl, 'log viewer + clear in prefs')
+
 # 9 旧品牌残留（README/LICENSE 除外）
 for pat in ('PullOverXPreferences.bundle', 'com.mlgm.pulloverx', 'PullOverViewController'):
     hits = [p for p in ROOT.rglob('*') if p.is_file() and p.suffix in ('.m', '.mm', '.h', '.plist', '.pbxproj', '.sh') and pat in p.read_text(errors='ignore')]

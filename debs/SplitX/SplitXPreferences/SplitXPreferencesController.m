@@ -525,6 +525,9 @@ static NSString * const kPOEnabledPendingRespringKey = @"enabled-respring-pendin
         [defaults removeObjectForKey:key];
     }
     [defaults synchronize];
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                         CFSTR("com.niubiprass.splitx.settings-changed"),
+                                         NULL, NULL, YES);
 
     if ([properties[@"requiresRespring"] boolValue]) {
         [defaults setBool:YES forKey:kPOEnabledPendingRespringKey];
@@ -620,6 +623,78 @@ static NSString * const kPOEnabledPendingRespringKey = @"enabled-respring-pendin
         self.favoritesPickerController = [[QSFavoritesPickerController alloc] init];
     }
     [self.navigationController pushViewController:self.favoritesPickerController animated:YES];
+}
+
+#pragma mark - 诊断日志
+
+static NSString *PXPrefsLogPath(void) {
+    return @"/var/mobile/Documents/SplitX/runtime.log";
+}
+
+-(void)showDiagnosticLog:(PSSpecifier *)specifier{
+    NSString *path = PXPrefsLogPath();
+    NSString *text = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:NULL];
+    if (text.length == 0) text = @"（还没有日志。插件在 SpringBoard 里跑过之后才会有。）";
+
+    // 只显示尾部，避免几 MB 全塞进 TextView。
+    NSArray<NSString *> *lines = [text componentsSeparatedByString:@"\n"];
+    if (lines.count > 400) {
+        lines = [lines subarrayWithRange:NSMakeRange(lines.count - 400, 400)];
+        text = [@"…（仅显示最后 400 行）\n" stringByAppendingString:[lines componentsJoinedByString:@"\n"]];
+    }
+
+    UITextView *view = [[UITextView alloc] initWithFrame:CGRectZero];
+    view.editable = NO;
+    view.font = [UIFont monospacedSystemFontOfSize:10 weight:UIFontWeightRegular];
+    view.text = text;
+    view.textContainerInset = UIEdgeInsetsMake(8, 8, 8, 8);
+
+    UIViewController *holder = [[UIViewController alloc] init];
+    holder.title = @"运行日志";
+    holder.view.backgroundColor = UIColor.systemBackgroundColor;
+    view.translatesAutoresizingMaskIntoConstraints = NO;
+    [holder.view addSubview:view];
+    [NSLayoutConstraint activateConstraints:@[
+        [view.topAnchor constraintEqualToAnchor:holder.view.safeAreaLayoutGuide.topAnchor],
+        [view.bottomAnchor constraintEqualToAnchor:holder.view.bottomAnchor],
+        [view.leadingAnchor constraintEqualToAnchor:holder.view.leadingAnchor],
+        [view.trailingAnchor constraintEqualToAnchor:holder.view.trailingAnchor],
+    ]];
+    holder.navigationItem.rightBarButtonItem =
+        [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone
+                                                      target:self
+                                                      action:@selector(dismissDiagnosticLog)];
+    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:holder];
+    [self presentViewController:nav animated:YES completion:nil];
+}
+
+-(void)dismissDiagnosticLog{
+    [self dismissViewControllerAnimated:YES completion:nil];
+}
+
+-(void)clearDiagnosticLog:(PSSpecifier *)specifier{
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSString *base = PXPrefsLogPath();
+    NSMutableArray<NSString *> *removed = [NSMutableArray array];
+    for (int i = 0; i <= 3; i++) {
+        NSString *path = i == 0 ? base : [base stringByAppendingFormat:@".%d", i];
+        if ([fm fileExistsAtPath:path]) {
+            [fm removeItemAtPath:path error:NULL];
+            [removed addObject:path.lastPathComponent];
+        }
+    }
+    NSString *crash = @"/var/mobile/Documents/SplitX/crash.log";
+    if ([fm fileExistsAtPath:crash]) {
+        [fm removeItemAtPath:crash error:NULL];
+        [removed addObject:@"crash.log"];
+    }
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"日志已清空"
+                                                                   message:removed.count
+                                       ? [removed componentsJoinedByString:@"、"]
+                                       : @"没有可清的日志文件"
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 @end
