@@ -40,7 +40,7 @@ static void PXPInstall(unsigned attempt) {
             dispatch_get_main_queue(),^{ PXPInstall(attempt+1); });
         return;
     }
-    if(PXPInstallHostAdapter() && PXPInstallProvenance() && PXPInstallNativeRouting()) PXPInstallRequestIntake();
+    if(PXPInstallHostAdapter() && PXPInstallProvenance() && PXPInstallNativeRouting() && PXPInstallOwnership()) PXPInstallRequestIntake();
 }
 __attribute__((constructor)) static void PXPEntry(void) {
     @autoreleasepool {

@@ -41,6 +41,9 @@ PXPRoute * _Nullable PXPRouteForForwardedResult(id _Nullable workspace, id _Null
 BOOL PXPHasExactProvenance(PXPRoute *route, id request);
 BOOL PXPInstallProvenance(void);
 void PXPClearProvenance(PXPRoute *route);
+BOOL PXPInstallOwnership(void);
+void PXPCallOriginalRequest(IMP original,id _Nullable receiver,SEL selector,id _Nullable service,
+    id _Nullable request,PXPSystemCompletion _Nullable completion,PXPRoute * _Nullable owner);
 BOOL PXPInstallNativeRouting(void);
 BOOL PXPInstallHostAdapter(void);
 void PXPHostScene(PXPRoute *route, void (^completion)(BOOL ready, NSError * _Nullable error));

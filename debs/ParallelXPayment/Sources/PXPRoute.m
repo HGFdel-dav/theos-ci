@@ -163,8 +163,7 @@ static void PXPForward(PXPRoute *r) {
     } copy];
     r.forwardedCompletion=result;
     @try {
-        ((void(*)(id,SEL,id,id,PXPSystemCompletion))PXPRequestOriginal)(
-            r.receiver,r.selector,r.service,r.request,result);
+        PXPCallOriginalRequest(PXPRequestOriginal,r.receiver,r.selector,r.service,r.request,result,r);
     } @catch(NSException *e) {
         (void)e; [r fail:PXPError(4,@"Application-open request raised an exception")];
     }
@@ -194,7 +193,7 @@ static void PXPRequest(id self,SEL cmd,id service,id request,PXPSystemCompletion
     // No ordinary menu/open request, other app, or background open is intercepted.
     BOOL owns=[bundle isEqual:@"com.tencent.xin"] && PXPPayload(PXPGet(request,@"options"),0);
     if(!owns || !PXPRoutingAvailable()) {
-        ((void(*)(id,SEL,id,id,PXPSystemCompletion))PXPRequestOriginal)(self,cmd,service,request,completion);
+        PXPCallOriginalRequest(PXPRequestOriginal,self,cmd,service,request,completion,nil);
         return;
     }
     PXPRoute *r=[PXPRoute new];
