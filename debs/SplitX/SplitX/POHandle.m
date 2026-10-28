@@ -81,10 +81,13 @@
 
 -(void)applyHandleSize{
     CGFloat size = [self handleSize];
+    // PX 形态：贴边的半圆把，宽度是高度的一半，外侧两角整圆。
     CGRect frame = self.frame;
-    frame.size = CGSizeMake(size, size);
+    frame.size = CGSizeMake(size * 0.52, size * 1.55);
     self.frame = frame;
-    self.layer.cornerRadius = [self fullCornerRadius];
+    self.layer.cornerRadius = CGRectGetWidth(self.bounds) / 2.0;
+    self.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMinXMaxYCorner;
+    self.clipsToBounds = NO;
 
     CGFloat iconSize = MAX(0, size - 10.0);
     self.imageView.frame = CGRectMake((CGRectGetWidth(self.bounds) - iconSize) / 2.0,
@@ -92,7 +95,8 @@
                                       iconSize,
                                       iconSize);
     blurView.frame = self.bounds;
-    blurView.layer.cornerRadius = [self usesNubbedPresentation] ? [self nubbedCornerRadius] : [self fullCornerRadius];
+    blurView.layer.cornerRadius = CGRectGetWidth(self.bounds) / 2.0;
+    blurView.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMinXMaxYCorner;
 }
 
 -(instancetype)initWithController:(id)hubController{

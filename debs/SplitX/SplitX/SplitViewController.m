@@ -7,6 +7,7 @@
 
 #import "SplitViewController.h"
 #import "POCraneBridge.h"
+#import "POSplitPanelView.h"
 #import "POSplitTarget.h"
 #import "POHostSessionController.h"
 #import "POQuickSwitchDragCoordinator.h"
@@ -296,10 +297,6 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     [self.handle setDelegate:self];
     [handleScrollView addSubview:self.handle];
     
-    self.quickSwitchTableView = [[QuickSwitchTableView alloc] init];
-    self.quickSwitchTableView.selectionDelegate = self;
-    [handleScrollView addSubview:self.quickSwitchTableView];
-
     quickSwitchInteractionOverlayView = [[UIView alloc] initWithFrame:self.view.bounds];
     quickSwitchInteractionOverlayView.backgroundColor = [UIColor clearColor];
     quickSwitchInteractionOverlayView.clipsToBounds = NO;
@@ -311,6 +308,11 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
         initWithOverlayView:quickSwitchInteractionOverlayView];
     [mirrorZoneView removeFromSuperview];
     [quickSwitchInteractionOverlayView addSubview:mirrorZoneView];
+
+    POSplitPanelView *panel = [[POSplitPanelView alloc] init];
+    panel.selectionDelegate = self;
+    self.quickSwitchTableView = (UIView<POQuickSwitchMenuPresenting> *)panel;
+    [quickSwitchInteractionOverlayView addSubview:panel];
 
     quickSwitchHorizontalBarView = [[QuickSwitchHorizontalBarView alloc] init];
     quickSwitchHorizontalBarView.selectionDelegate = self;

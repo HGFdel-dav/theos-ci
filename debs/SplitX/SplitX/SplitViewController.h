@@ -40,7 +40,7 @@
 @property (nonatomic, strong) POHandle *handle;
 @property (nonatomic, strong) UIView *contentView;
 
-@property (nonatomic, strong) QuickSwitchTableView *quickSwitchTableView;
+@property (nonatomic, strong) UIView<POQuickSwitchMenuPresenting> *quickSwitchTableView;
 
 
 @end
