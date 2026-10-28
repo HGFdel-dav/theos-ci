@@ -333,8 +333,8 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
         [self.items addObject:item];
     }
 
-    PXLog(@"panel", @"fan items=%lu groups=%lu rings=%d cap=%ld/%ld/%ld/%ld gap=%.0f inner=%.0f outer=%.0f span=%.0fdeg tile=%.0f icon=%.0f size=%@",
-          (unsigned long)ordered.count, (unsigned long)groupOrder.count, (int)rings,
+    PXLog(@"panel", @"fan items=%lu groups=%lu cap=%ld/%ld/%ld/%ld gap=%.0f inner=%.0f outer=%.0f span=%.0fdeg tile=%.0f icon=%.0f size=%@",
+          (unsigned long)ordered.count, (unsigned long)groupOrder.count,
           (long)settings.ring1, (long)settings.ring2, (long)settings.ring3, (long)settings.ring4,
           settings.ringGap, innerRadius, self.radius, self.span * 180.0 / M_PI,
           self.itemTileSize, self.itemIconSize, NSStringFromCGSize(self.bounds.size));
