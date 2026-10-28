@@ -4,7 +4,7 @@
 #include <string.h>
 #include <dispatch/dispatch.h>
 
-# Enabled test-package source. It is not the inert review build.
+// Enabled test-package source. It is not the inert review build.
 #ifndef PXP_ENABLE_CANDIDATE
 #define PXP_ENABLE_CANDIDATE 1
 #endif
