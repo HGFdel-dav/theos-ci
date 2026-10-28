@@ -4,10 +4,9 @@
 #include <string.h>
 #include <dispatch/dispatch.h>
 
-// Review build stays inert until native and host adapters pass ABI/function review.
-// Changing this is a release decision, not an installation-time side effect.
+# Enabled test-package source. It is not the inert review build.
 #ifndef PXP_ENABLE_CANDIDATE
-#define PXP_ENABLE_CANDIDATE 0
+#define PXP_ENABLE_CANDIDATE 1
 #endif
 static BOOL PXPVerifiedEngine(void) {
     static const uint8_t uuid[16]={0x89,0xe3,0x2f,0x12,0xc2,0x62,0x35,0x65,
@@ -32,9 +31,10 @@ static BOOL PXPVerifiedEngine(void) {
 }
 static void PXPInstall(unsigned attempt) {
     if(!PXP_ENABLE_CANDIDATE) return;
-    // Both routing engines must not own the same system request. No plugin is
-    // unloaded, disabled or configured on the user's behalf.
-    if(NSClassFromString(@"SCExternalLinkCoordinator") || NSClassFromString(@"CXCraneBridge")) return;
+    // ScreenCore may be present, but this candidate only claims the explicit
+    // WeChat payment request. Ordinary app opens remain native PX behavior.
+    // Do not silently disable the candidate merely because ScreenCore is loaded.
+
     if(!PXPVerifiedEngine()) {
         if(attempt<12) dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC/2),
             dispatch_get_main_queue(),^{ PXPInstall(attempt+1); });

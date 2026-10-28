@@ -1,8 +1,8 @@
 Package: com.niubiprass.parallelxpayment
-Name: ParallelX Payment (Review Source)
-Version: 0.0.1~review1
+Name: ParallelX Payment (Enabled Test)
+Version: 0.0.2~enabledtest1
 Architecture: iphoneos-arm
-Description: Isolated account payment routing candidate; review build is inert and not ready for installation.
+Description: Enabled manual test candidate for per-account payment split routing; install only after backup and keep rollback package.
 Maintainer: Niubiprass
 Author: Niubiprass
 Section: Tweaks

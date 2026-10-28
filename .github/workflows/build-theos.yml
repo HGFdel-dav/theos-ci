@@ -1,4 +1,4 @@
-name: PX Payment Candidate Compile
+name: PX Payment Enabled Test Package
 on:
   push:
     branches: ['px-payment-review-*']
@@ -21,7 +21,7 @@ jobs:
             debs/ParallelXPayment
       - name: Setup Theos and iOS 15.5 SDK
         run: |
-          set -e
+          set -euo pipefail
           brew install ldid xz
           git clone --depth 1 --recursive https://github.com/roothide/theos.git "$HOME/theos"
           git clone --depth 1 --filter=blob:none --sparse https://github.com/xybp888/iOS-SDKs.git "$HOME/iossdks"
@@ -29,30 +29,29 @@ jobs:
           mkdir -p "$HOME/theos/sdks"
           cp -R "$HOME/iossdks/iPhoneOS15.5.sdk" "$HOME/theos/sdks/"
           echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
-      - name: Compile isolated payment candidate
+      - name: Run source and C state checks
         working-directory: debs/ParallelXPayment
         run: |
           set -euo pipefail
-          mkdir -p ci-output
+          python3 -B -m unittest discover -s tests -p 'test_*source.py' -q
           /usr/bin/clang -std=c11 -Wall -Wextra -Werror tests/test_state.c -o "$RUNNER_TEMP/pxp-state"
           "$RUNNER_TEMP/pxp-state"
           /usr/bin/clang -std=c11 -Wall -Wextra -Werror tests/test_host_state.c -o "$RUNNER_TEMP/pxp-host-state"
           "$RUNNER_TEMP/pxp-host-state"
-          # Compile the live code path to validate ARC/ABI code generation.
-          # This run does NOT package, install or publish a payment test DEB.
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('Makefile')
-          s=p.read_text()
-          assert '-DPXP_ENABLE_CANDIDATE=0' in s
-          p.write_text(s.replace('-DPXP_ENABLE_CANDIDATE=0','-DPXP_ENABLE_CANDIDATE=1'))
-          PY
-          make all FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=${{ matrix.scheme }} 2>&1 | tee ci-output/build.log
-          test -n "$(find .theos -name 'ParallelXPayment.dylib' -print -quit)"
-          echo 'Live code path compile only. No DEB was packaged. Not a functional-test result.' > ci-output/BUILD-SCOPE.txt
+      - name: Build enabled test package
+        working-directory: debs/ParallelXPayment
+        run: |
+          set -euo pipefail
+          make clean || true
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=${{ matrix.scheme }} 2>&1 | tee "$RUNNER_TEMP/build.log"
+          mkdir -p ci-output
+          cp packages/*.deb ci-output/
+          shasum -a 256 ci-output/*.deb > ci-output/SHA256SUMS
+          echo 'ENABLED TEST PACKAGE: install manually only; no device action by CI.' > ci-output/BUILD-SCOPE.txt
+          cp "$RUNNER_TEMP/build.log" ci-output/build.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: px-payment-review-${{ matrix.scheme }}
+          name: px-payment-enabled-${{ matrix.scheme }}
           path: debs/ParallelXPayment/ci-output/
           if-no-files-found: warn
