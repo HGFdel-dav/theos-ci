@@ -253,8 +253,10 @@ static id POSharedObjectForClass(Class cls) {
     NSString *name = nil;
     SBApplicationController *controller = [NSClassFromString(@"SBApplicationController") sharedInstance];
     SBApplication *application = [controller applicationWithBundleIdentifier:bundleId];
-    if ([application respondsToSelector:@selector(displayName)]) {
-        NSString *displayName = [application performSelector:@selector(displayName)];
+    // SBApplication 在 headers.h 里只有前向声明，用 id 调 NSObject 那一套。
+    id appObject = application;
+    if ([appObject respondsToSelector:@selector(displayName)]) {
+        NSString *displayName = [appObject performSelector:@selector(displayName)];
         if ([displayName isKindOfClass:NSString.class] && displayName.length) name = displayName;
     }
     if (name.length == 0) {
