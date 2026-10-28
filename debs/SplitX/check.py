@@ -2,7 +2,10 @@
 """SplitX 本地静态自检：不构建、不安装、不联网。"""
 from pathlib import Path
 import plistlib, re, sys
-from PIL import Image
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
 
 ROOT = Path(__file__).resolve().parent
 SRC = ROOT / 'SplitX'
@@ -46,7 +49,7 @@ bundle = PREFS / 'Package/Library/PreferenceBundles/SplitXPreferences.bundle'
 for name, size in (('SplitXPreferencesIcon.png', 29), ('SplitXPreferencesIcon@2x.png', 58), ('SplitXPreferencesIcon@3x.png', 87)):
     p = bundle / name
     ok = p.is_file()
-    if ok:
+    if ok and Image:
         im = Image.open(p).convert('RGBA')
         ok = im.size == (size, size) and im.getpixel((0, 0))[3] <= 8
     need(ok, f'icon {name} {size}px transparent')
