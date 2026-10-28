@@ -16,6 +16,12 @@
 		</dict>
 		<dict>
 			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>label</key>
+			<string>开关</string>
+		</dict>
+		<dict>
+			<key>cell</key>
 			<string>PSSwitchCell</string>
 			<key>default</key>
 			<true/>
@@ -26,7 +32,7 @@
 			<key>key</key>
 			<string>enabled</string>
 			<key>label</key>
-			<string>Enable</string>
+			<string>启用 SplitX</string>
 			<key>requiresRespring</key>
 			<true/>
 			<key>set</key>
@@ -36,11 +42,9 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>Hold the grabber when closed to show the quickswitch menu. Slide up and down to select.</string>
-			<key>isStaticText</key>
-			<true/>
+			<string>「收藏」为空会自动用最近应用。</string>
 			<key>label</key>
-			<string>QuickSwitch</string>
+			<string>应用与菜单</string>
 		</dict>
 		<dict>
 			<key>cellClass</key>
@@ -54,7 +58,7 @@
 			<key>key</key>
 			<string>style</string>
 			<key>label</key>
-			<string>App Display</string>
+			<string>应用来源</string>
 			<key>set</key>
 			<string>setValue:forSpecifier:</string>
 			<key>validTitles</key>
@@ -69,6 +73,14 @@
 			</array>
 		</dict>
 		<dict>
+			<key>cell</key>
+			<string>PSLinkCell</string>
+			<key>id</key>
+			<string>favoriteApps</string>
+			<key>label</key>
+			<string>选择应用</string>
+		</dict>
+		<dict>
 			<key>cellClass</key>
 			<string>POStepperTableCell</string>
 			<key>default</key>
@@ -81,6 +93,8 @@
 			<string>quickSwitchAppSlots</string>
 			<key>key</key>
 			<string>quickSwitchAppSlots</string>
+			<key>label</key>
+			<string>最多显示几个</string>
 			<key>maximumValue</key>
 			<integer>99</integer>
 			<key>minimumValue</key>
@@ -108,7 +122,7 @@
 			<key>key</key>
 			<string>recentAppsCount</string>
 			<key>label</key>
-			<string></string>
+			<string>最近应用数量</string>
 			<key>maximumValue</key>
 			<integer>99</integer>
 			<key>minimumValue</key>
@@ -126,7 +140,7 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>label</key>
-			<string>面板</string>
+			<string>半圆面板</string>
 		</dict>
 		<dict>
 			<key>cellClass</key>
@@ -141,6 +155,8 @@
 			<string>iconSize</string>
 			<key>key</key>
 			<string>iconSize</string>
+			<key>label</key>
+			<string>图标大小</string>
 			<key>maximumValue</key>
 			<integer>72</integer>
 			<key>minimumValue</key>
@@ -158,7 +174,7 @@
 			<key>cellClass</key>
 			<string>POStepperTableCell</string>
 			<key>default</key>
-			<integer>68</integer>
+			<integer>62</integer>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
 			<key>get</key>
@@ -236,58 +252,6 @@
 			<key>cellClass</key>
 			<string>POStepperTableCell</string>
 			<key>default</key>
-			<integer>100</integer>
-			<key>defaults</key>
-			<string>com.niubiprass.splitx</string>
-			<key>get</key>
-			<string>getValueForSpecifier:</string>
-			<key>id</key>
-			<string>panelAlpha</string>
-			<key>key</key>
-			<string>panelAlpha</string>
-			<key>maximumValue</key>
-			<integer>100</integer>
-			<key>minimumValue</key>
-			<integer>40</integer>
-			<key>pluralLabelFormat</key>
-			<string>面板不透明度 %d</string>
-			<key>set</key>
-			<string>setValue:forSpecifier:</string>
-			<key>singularLabelFormat</key>
-			<string>面板不透明度 %d</string>
-			<key>stepValue</key>
-			<integer>10</integer>
-		</dict>
-		<dict>
-			<key>cellClass</key>
-			<string>POStepperTableCell</string>
-			<key>default</key>
-			<integer>30</integer>
-			<key>defaults</key>
-			<string>com.niubiprass.splitx</string>
-			<key>get</key>
-			<string>getValueForSpecifier:</string>
-			<key>id</key>
-			<string>panelRadius</string>
-			<key>key</key>
-			<string>panelRadius</string>
-			<key>maximumValue</key>
-			<integer>40</integer>
-			<key>minimumValue</key>
-			<integer>12</integer>
-			<key>pluralLabelFormat</key>
-			<string>面板圆角 %d</string>
-			<key>set</key>
-			<string>setValue:forSpecifier:</string>
-			<key>singularLabelFormat</key>
-			<string>面板圆角 %d</string>
-			<key>stepValue</key>
-			<integer>2</integer>
-		</dict>
-		<dict>
-			<key>cellClass</key>
-			<string>POStepperTableCell</string>
-			<key>default</key>
 			<integer>124</integer>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
@@ -297,6 +261,8 @@
 			<string>fanRadius</string>
 			<key>key</key>
 			<string>fanRadius</string>
+			<key>label</key>
+			<string>扇形半径</string>
 			<key>maximumValue</key>
 			<integer>170</integer>
 			<key>minimumValue</key>
@@ -323,6 +289,8 @@
 			<string>fanSpan</string>
 			<key>key</key>
 			<string>fanSpan</string>
+			<key>label</key>
+			<string>扇形张角</string>
 			<key>maximumValue</key>
 			<integer>200</integer>
 			<key>minimumValue</key>
@@ -337,20 +305,124 @@
 			<integer>10</integer>
 		</dict>
 		<dict>
-			<key>cell</key>
-			<string>PSLinkCell</string>
+			<key>cellClass</key>
+			<string>POStepperTableCell</string>
+			<key>default</key>
+			<integer>100</integer>
+			<key>defaults</key>
+			<string>com.niubiprass.splitx</string>
+			<key>get</key>
+			<string>getValueForSpecifier:</string>
 			<key>id</key>
-			<string>favoriteApps</string>
+			<string>panelAlpha</string>
+			<key>key</key>
+			<string>panelAlpha</string>
 			<key>label</key>
-			<string>Select Favorite Apps</string>
+			<string>底板不透明度</string>
+			<key>maximumValue</key>
+			<integer>100</integer>
+			<key>minimumValue</key>
+			<integer>40</integer>
+			<key>pluralLabelFormat</key>
+			<string>面板不透明度 %d</string>
+			<key>set</key>
+			<string>setValue:forSpecifier:</string>
+			<key>singularLabelFormat</key>
+			<string>面板不透明度 %d</string>
+			<key>stepValue</key>
+			<integer>10</integer>
+		</dict>
+		<dict>
+			<key>cellClass</key>
+			<string>POStepperTableCell</string>
+			<key>default</key>
+			<integer>30</integer>
+			<key>defaults</key>
+			<string>com.niubiprass.splitx</string>
+			<key>get</key>
+			<string>getValueForSpecifier:</string>
+			<key>id</key>
+			<string>panelRadius</string>
+			<key>key</key>
+			<string>panelRadius</string>
+			<key>label</key>
+			<string>底板圆角</string>
+			<key>maximumValue</key>
+			<integer>40</integer>
+			<key>minimumValue</key>
+			<integer>12</integer>
+			<key>pluralLabelFormat</key>
+			<string>面板圆角 %d</string>
+			<key>set</key>
+			<string>setValue:forSpecifier:</string>
+			<key>singularLabelFormat</key>
+			<string>面板圆角 %d</string>
+			<key>stepValue</key>
+			<integer>2</integer>
+		</dict>
+		<dict>
+			<key>cellClass</key>
+			<string>POStepperTableCell</string>
+			<key>default</key>
+			<integer>100</integer>
+			<key>defaults</key>
+			<string>com.niubiprass.splitx</string>
+			<key>get</key>
+			<string>getValueForSpecifier:</string>
+			<key>id</key>
+			<string>animationSpeed</string>
+			<key>key</key>
+			<string>animationSpeed</string>
+			<key>maximumValue</key>
+			<integer>200</integer>
+			<key>minimumValue</key>
+			<integer>50</integer>
+			<key>pluralLabelFormat</key>
+			<string>动画速度 % %d</string>
+			<key>set</key>
+			<string>setValue:forSpecifier:</string>
+			<key>singularLabelFormat</key>
+			<string>动画速度 % %d</string>
+			<key>stepValue</key>
+			<integer>10</integer>
 		</dict>
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
-			<key>isStaticText</key>
-			<true/>
 			<key>label</key>
-			<string>Appearance</string>
+			<string>窗口与手势</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<integer>0</integer>
+			<key>defaults</key>
+			<string>com.niubiprass.splitx</string>
+			<key>get</key>
+			<string>getValueForSpecifier:</string>
+			<key>key</key>
+			<string>portraitCenteredAnchor</string>
+			<key>label</key>
+			<string>竖屏窗口固定居中</string>
+			<key>set</key>
+			<string>setValue:forSpecifier:</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<integer>1</integer>
+			<key>defaults</key>
+			<string>com.niubiprass.splitx</string>
+			<key>get</key>
+			<string>getValueForSpecifier:</string>
+			<key>key</key>
+			<string>showSplitAppIdentity</string>
+			<key>label</key>
+			<string>窗口显示应用图标和名称</string>
+			<key>set</key>
+			<string>setValue:forSpecifier:</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -364,7 +436,7 @@
 			<key>key</key>
 			<string>hideOnScreenshot</string>
 			<key>label</key>
-			<string>Hide Handle When Taking Screenshot</string>
+			<string>截图时隐藏手柄和面板</string>
 			<key>set</key>
 			<string>setValue:forSpecifier:</string>
 		</dict>
@@ -378,127 +450,33 @@
 			<key>get</key>
 			<string>getValueForSpecifier:</string>
 			<key>key</key>
-			<string>hideLabels</string>
+			<string>handleActivationGuard</string>
 			<key>label</key>
-			<string>Hide QuickSwitch Labels</string>
+			<string>手柄防误触</string>
 			<key>set</key>
 			<string>setValue:forSpecifier:</string>
 		</dict>
 		<dict>
-			<key>cellClass</key>
-			<string>POValueSliderTableCell</string>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
 			<key>default</key>
-			<integer>34</integer>
+			<false/>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
 			<key>get</key>
 			<string>getValueForSpecifier:</string>
-			<key>increment</key>
-			<integer>1</integer>
 			<key>key</key>
-			<string>handleSize</string>
+			<string>autoNub</string>
 			<key>label</key>
-			<string>Handle Size</string>
-			<key>maximumValue</key>
-			<integer>50</integer>
-			<key>minimumValue</key>
-			<integer>34</integer>
+			<string>不操作时自动收起手柄</string>
 			<key>set</key>
 			<string>setValue:forSpecifier:</string>
-		</dict>
-		<dict>
-			<key>cellClass</key>
-			<string>POValueSliderTableCell</string>
-			<key>default</key>
-			<integer>67</integer>
-			<key>defaults</key>
-			<string>com.niubiprass.splitx</string>
-			<key>get</key>
-			<string>getValueForSpecifier:</string>
-			<key>increment</key>
-			<integer>1</integer>
-			<key>key</key>
-			<string>nubHiddenPercentage</string>
-			<key>label</key>
-			<string>Handle Hidden Percentage</string>
-			<key>maximumValue</key>
-			<integer>80</integer>
-			<key>minimumValue</key>
-			<integer>0</integer>
-			<key>set</key>
-			<string>setValue:forSpecifier:</string>
-			<key>unit</key>
-			<string>%</string>
 		</dict>
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
-			<key>footerText</key>
-			<string>Only whitelisted target apps open in SplitX when launched by another native app through a URL or Open In.</string>
-			<key>isStaticText</key>
-			<true/>
 			<key>label</key>
-			<string>Behavior</string>
-		</dict>
-		<dict>
-			<key>cellClass</key>
-			<string>POCompactSegmentTableCell</string>
-			<key>default</key>
-			<string>rotate</string>
-			<key>defaults</key>
-			<string>com.niubiprass.splitx</string>
-			<key>get</key>
-			<string>getValueForSpecifier:</string>
-			<key>key</key>
-			<string>landscapeBehavior</string>
-			<key>label</key>
-			<string>When Landscape</string>
-			<key>set</key>
-			<string>setValue:forSpecifier:</string>
-			<key>validTitles</key>
-			<array>
-				<string>Rotate</string>
-				<string>Lock</string>
-				<string>Hide</string>
-			</array>
-			<key>validValues</key>
-			<array>
-				<string>rotate</string>
-				<string>lock</string>
-				<string>hide</string>
-			</array>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.niubiprass.splitx</string>
-			<key>get</key>
-			<string>getValueForSpecifier:</string>
-			<key>key</key>
-			<string>hapticFeedback</string>
-			<key>label</key>
-			<string>Haptic Feedback</string>
-			<key>set</key>
-			<string>setValue:forSpecifier:</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.niubiprass.splitx</string>
-			<key>get</key>
-			<string>getValueForSpecifier:</string>
-			<key>key</key>
-			<string>soundFeedback</string>
-			<key>label</key>
-			<string>Sound Feedback</string>
-			<key>set</key>
-			<string>setValue:forSpecifier:</string>
+			<string>键盘</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -512,25 +490,17 @@
 			<key>key</key>
 			<string>keyboardAvoiding</string>
 			<key>label</key>
-			<string>Keyboard Avoiding</string>
+			<string>键盘避让</string>
 			<key>set</key>
 			<string>setValue:forSpecifier:</string>
 		</dict>
 		<dict>
 			<key>cell</key>
-			<string>PSSwitchCell</string>
-			<key>default</key>
-			<true/>
-			<key>defaults</key>
-			<string>com.niubiprass.splitx</string>
-			<key>get</key>
-			<string>getValueForSpecifier:</string>
-			<key>key</key>
-			<string>landscapeKeyboardZoom</string>
+			<string>PSGroupCell</string>
+			<key>footerText</key>
+			<string>只有白名单里的应用才会被外部 URL 唤起进分屏。</string>
 			<key>label</key>
-			<string>Enlarge Keyboard in Landscape</string>
-			<key>set</key>
-			<string>setValue:forSpecifier:</string>
+			<string>外部打开</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -544,7 +514,7 @@
 			<key>key</key>
 			<string>externalURLRoutingEnabled</string>
 			<key>label</key>
-			<string>URL Routing</string>
+			<string>URL 跳转进分屏</string>
 			<key>set</key>
 			<string>setValue:forSpecifier:</string>
 		</dict>
@@ -568,7 +538,7 @@
 			<key>key</key>
 			<string>externalURLRoutingWhitelist</string>
 			<key>label</key>
-			<string>URL Routing Whitelist</string>
+			<string>URL 跳转白名单</string>
 			<key>sections</key>
 			<array>
 				<dict>
@@ -588,24 +558,22 @@
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
-			<key>isStaticText</key>
-			<true/>
 			<key>label</key>
-			<string>Handle</string>
+			<string>系统</string>
 		</dict>
 		<dict>
 			<key>cell</key>
 			<string>PSSwitchCell</string>
 			<key>default</key>
-			<false/>
+			<integer>0</integer>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
 			<key>get</key>
 			<string>getValueForSpecifier:</string>
 			<key>key</key>
-			<string>handleActivationGuard</string>
+			<string>clearOnLock</string>
 			<key>label</key>
-			<string>Handle Activation Guard</string>
+			<string>锁屏时清理分屏</string>
 			<key>set</key>
 			<string>setValue:forSpecifier:</string>
 		</dict>
@@ -613,109 +581,23 @@
 			<key>cell</key>
 			<string>PSSwitchCell</string>
 			<key>default</key>
-			<false/>
+			<integer>0</integer>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
 			<key>get</key>
 			<string>getValueForSpecifier:</string>
 			<key>key</key>
-			<string>autoNub</string>
+			<string>hostedCameraEnabled</string>
 			<key>label</key>
-			<string>Auto-Nub Handle when Inactive</string>
+			<string>允许分屏应用使用相机</string>
 			<key>set</key>
 			<string>setValue:forSpecifier:</string>
-		</dict>
-		<dict>
-			<key>cellClass</key>
-			<string>POTimeStepperTableCell</string>
-			<key>defaults</key>
-			<string>com.niubiprass.splitx</string>
-			<key>get</key>
-			<string>getValueForSpecifier:</string>
-			<key>id</key>
-			<string>autoNub-time</string>
-			<key>key</key>
-			<string>autoNub-time</string>
-			<key>label</key>
-			<string>Nub After</string>
-			<key>set</key>
-			<string>setValue:forSpecifier:</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSGroupCell</string>
-			<key>isStaticText</key>
-			<true/>
-			<key>label</key>
-			<string>Extra Stuff</string>
-		</dict>
-		<dict>
-			<key>cellClass</key>
-			<string>POProfileLinkCell</string>
-			<key>height</key>
-			<integer>44</integer>
-			<key>icon</key>
-			<string>twitter.png</string>
-			<key>label</key>
-			<string>Follow @c1d3rDev (Developer)</string>
-			<key>url</key>
-			<string>https://twitter.com/c1d3rdev</string>
-		</dict>
-		<dict>
-			<key>cellClass</key>
-			<string>POProfileLinkCell</string>
-			<key>height</key>
-			<integer>44</integer>
-			<key>icon</key>
-			<string>akusio_RR.png</string>
-			<key>label</key>
-			<string>@akusio_RR (helped with iOS 13 support)</string>
-			<key>url</key>
-			<string>https://twitter.com/akusio_RR</string>
-		</dict>
-		<dict>
-			<key>cellClass</key>
-			<string>POProfileLinkCell</string>
-			<key>height</key>
-			<integer>44</integer>
-			<key>icon</key>
-			<string>mlgm.png</string>
-			<key>label</key>
-			<string>mlgm (iOS 14+ Adaptation)</string>
-			<key>url</key>
-			<string>https://x.com/mlgm66</string>
-		</dict>
-		<dict>
-			<key>cellClass</key>
-			<string>POProfileLinkCell</string>
-			<key>icon</key>
-			<string>paypal.png</string>
-			<key>label</key>
-			<string>Donate (Original Developer)</string>
-			<key>url</key>
-			<string>https://paypal.me/willsmillie</string>
 		</dict>
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>This version was modified by mlgm based on PullOver Pro.</string>
-			<key>label</key>
-			<string>Currently Maintained</string>
-		</dict>
-		<dict>
-			<key>cellClass</key>
-			<string>POLinkCell</string>
-			<key>height</key>
-			<integer>44</integer>
-			<key>label</key>
-			<string>Current Version Source</string>
-			<key>url</key>
-			<string>https://github.com/mlgm66/PullOver-X</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSGroupCell</string>
+			<string>/var/mobile/Documents/SplitX/runtime.log，2MB 自动滚动。</string>
 			<key>label</key>
 			<string>诊断日志</string>
 		</dict>
@@ -740,8 +622,20 @@
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
+			<key>label</key>
+			<string>关于</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>日志写在 /var/mobile/Documents/SplitX/runtime.log，单文件 2MB 自动滚动保留 3 份；崩溃另存 crash.log。</string>
+			<string>基于 ParallelX 与 PullOver X 实现。</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>footerText</key>
+			<string>SplitX 0.1.0~dev6</string>
 		</dict>
 	</array>
 	<key>title</key>

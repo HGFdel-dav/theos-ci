@@ -20,7 +20,7 @@ static void PXSettingsChanged(CFNotificationCenterRef center, void *observer, CF
 }
 static NSArray<NSString *> *PXAllowedKeys(void) {
     return @[@"iconSize", @"tileSize", @"itemSpacing", @"panelRadius", @"panelAlpha",
-             @"panelColumns", @"fanRadius", @"fanSpan", @"triggerWidth", @"triggerOffsetY", @"dockEnabled", @"dockScale"];
+             @"panelColumns", @"fanRadius", @"fanSpan", @"animationSpeed", @"triggerWidth", @"triggerOffsetY", @"dockEnabled", @"dockScale"];
 }
 
 @implementation POSplitXSettings {
@@ -71,14 +71,15 @@ static NSArray<NSString *> *PXAllowedKeys(void) {
     return MIN(MAX(v, min), max);
 }
 
-- (CGFloat)iconSize { return [self doubleForKey:@"iconSize" fallback:56 min:40 max:72]; }
-- (CGFloat)tileSize { return [self doubleForKey:@"tileSize" fallback:68 min:52 max:88]; }
+- (CGFloat)iconSize { return [self doubleForKey:@"iconSize" fallback:46 min:40 max:72]; }
+- (CGFloat)tileSize { return [self doubleForKey:@"tileSize" fallback:62 min:52 max:88]; }
 - (CGFloat)itemSpacing { return [self doubleForKey:@"itemSpacing" fallback:6 min:0 max:20]; }
 - (CGFloat)panelRadius { return [self doubleForKey:@"panelRadius" fallback:30 min:12 max:40]; }
 - (CGFloat)panelAlpha { return [self doubleForKey:@"panelAlpha" fallback:100 min:40 max:100] / 100.0; }
 - (NSInteger)panelColumns { return (NSInteger)[self doubleForKey:@"panelColumns" fallback:2 min:1 max:3]; }
-- (CGFloat)fanRadius { return [self doubleForKey:@"fanRadius" fallback:124 min:70 max:170]; }
-- (CGFloat)fanSpan { return [self doubleForKey:@"fanSpan" fallback:150 min:60 max:200]; }
+- (CGFloat)fanRadius { return [self doubleForKey:@"fanRadius" fallback:170 min:90 max:210]; }
+- (CGFloat)fanSpan { return [self doubleForKey:@"fanSpan" fallback:120 min:60 max:200]; }
+- (CGFloat)animationSpeed { return [self doubleForKey:@"animationSpeed" fallback:100 min:50 max:200]; }
 - (CGFloat)triggerWidth { return [self doubleForKey:@"triggerWidth" fallback:30 min:8 max:60]; }
 - (CGFloat)triggerOffsetY { return [self doubleForKey:@"triggerOffsetY" fallback:0 min:-200 max:200]; }
 - (CGFloat)dockScale { return [self doubleForKey:@"dockScale" fallback:0.28 min:0.2 max:0.5]; }

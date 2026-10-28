@@ -190,22 +190,22 @@ static id POSharedObjectForClass(Class cls) {
 
 +(NSArray<NSString *> *)quickSwitchBundleIdentifiers{
     NSDictionary *settings = [self settings];
-    NSArray *sourceBundleIds = nil;
-    NSInteger requestedRecentCount = 0;
-    if ([settings[@"style"] isEqualToString:@"Recent Apps"]) {
-        requestedRecentCount = [settings[@"recentAppsCount"] integerValue];
-        NSInteger fetchCount = requestedRecentCount > 0 ? requestedRecentCount + 1 : 0;
-        sourceBundleIds = fetchCount > 0 ? [self recentAppsWithCount:(int)fetchCount] : @[];
-    } else {
-        sourceBundleIds = [settings[@"favorites"] isKindOfClass:[NSArray class]] ? settings[@"favorites"] : @[];
+    NSArray *favorites = [settings[@"favorites"] isKindOfClass:[NSArray class]] ? settings[@"favorites"] : @[];
+    NSMutableArray *sourceBundleIds = [NSMutableArray array];
+
+    // 收藏优先；收藏为空时也要有东西，不能空着。
+    BOOL favoritesMode = [settings[@"style"] isEqualToString:@"Favorite Apps"];
+    if (favoritesMode && favorites.count > 0) {
+        [sourceBundleIds addObjectsFromArray:favorites];
     }
+    NSInteger recentCount = [settings[@"recentAppsCount"] integerValue];
+    NSInteger fetchCount = MAX(recentCount, 12);
+    [sourceBundleIds addObjectsFromArray:[self recentAppsWithCount:(int)fetchCount]];
 
     NSString *frontMostBundleId = [self frontMostBundleId];
     NSMutableOrderedSet<NSString *> *bundleIds = [NSMutableOrderedSet orderedSet];
     for (id value in sourceBundleIds) {
-        if (![value isKindOfClass:[NSString class]]) {
-            continue;
-        }
+        if (![value isKindOfClass:[NSString class]]) continue;
         NSString *bundleId = (NSString *)value;
         if ([self isUserFacingApplicationBundleId:bundleId] &&
             ![bundleId isEqualToString:frontMostBundleId]) {
@@ -213,8 +213,9 @@ static id POSharedObjectForClass(Class cls) {
         }
     }
     NSArray<NSString *> *result = bundleIds.array;
-    if (requestedRecentCount > 0 && result.count > (NSUInteger)requestedRecentCount) {
-        result = [result subarrayWithRange:NSMakeRange(0, (NSUInteger)requestedRecentCount)];
+    NSInteger slots = [settings[@"quickSwitchAppSlots"] integerValue];
+    if (slots > 0 && result.count > (NSUInteger)slots) {
+        result = [result subarrayWithRange:NSMakeRange(0, (NSUInteger)slots)];
     }
     return result;
 }

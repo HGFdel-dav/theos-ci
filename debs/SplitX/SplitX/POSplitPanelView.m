@@ -169,6 +169,7 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
 @property (nonatomic, assign) CGFloat itemTileSize;
 @property (nonatomic, assign) CGFloat itemIconSize;
 @property (nonatomic, assign) CGFloat span;          // 弧度
+@property (nonatomic, assign) CGFloat animationScale;
 @end
 
 @implementation POSplitPanelView
@@ -241,6 +242,7 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
     POSplitXSettings *settings = [POSplitXSettings shared];
     self.itemIconSize = settings.iconSize;
     self.itemTileSize = settings.tileSize;
+    self.animationScale = MAX(0.45, MIN(2.0, 100.0 / MAX(settings.animationSpeed, 1.0)));
 
     NSArray<POSplitTarget *> *all = [POApplicationHelper quickSwitchTargets];
     if (all.count > PQMaxItems) all = [all subarrayWithRange:NSMakeRange(0, PQMaxItems)];
@@ -276,15 +278,20 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
     }
     self.targets = ordered;
 
-    // 半径：不能超出上下边缘。
+    // 半径：先保证相邻图标的弧距够，再受上下边缘限制。
     CGFloat verticalRoom = MIN(self.centerPoint.y, CGRectGetHeight(self.bounds) - self.centerPoint.y);
-    CGFloat usable = MAX(70.0, verticalRoom - self.itemTileSize / 2.0 - 8.0);
-    self.radius = MIN(settings.fanRadius, usable);
-
+    CGFloat usable = MAX(80.0, verticalRoom - self.itemTileSize / 2.0 - 6.0);
     CGFloat spanDegrees = settings.fanSpan * M_PI / 180.0;
-    CGFloat step = ordered.count > 1 ? spanDegrees / (CGFloat)(ordered.count - 1) : 0;
-    step = MIN(MAX(step, PQMinAngleStep), PQMaxAngleStep);
-    self.span = ordered.count > 1 ? step * (CGFloat)(ordered.count - 1) : 0;
+    CGFloat step = ordered.count > 1 ? spanDegrees / (CGFloat)(ordered.count - 1) : M_PI;
+    CGFloat needRadius = (self.itemTileSize * 1.18) / MAX(step, 0.01);
+    CGFloat radius = MIN(MAX(settings.fanRadius, needRadius), usable);
+    self.radius = radius;
+
+    if (ordered.count > 1) {
+        step = (self.itemTileSize * 1.18) / radius;     // 半径被压小就重算步长，别叠在一起
+        step = MIN(MAX(step, PQMinAngleStep), PQMaxAngleStep);
+    }
+    self.span = ordered.count > 1 ? MIN(step * (CGFloat)(ordered.count - 1), 190.0 * M_PI / 180.0) : 0;
     [self rebuildShape];
 
     CGFloat direction = self.expandsRight ? 1.0 : -1.0;
@@ -359,16 +366,17 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
         POSplitXSettings *settings = [POSplitXSettings shared];
         CGFloat radius = settings.fanRadius;
         CGFloat tile = settings.tileSize;
-        CGFloat width = radius + tile + 16.0;
+        CGFloat width = radius + tile + 26.0;
         CGFloat height = 2.0 * radius + tile + 16.0;
 
         // 圆心放在手柄内侧边缘。
         CGFloat cx = handleOnLeft ? CGRectGetMaxX(handleFrame) : CGRectGetMinX(handleFrame);
         CGFloat cy = handleCenter.y;
-        CGFloat x = handleOnLeft ? cx - tile / 2.0 - 8.0 : cx - width + tile / 2.0 + 8.0;
+        CGFloat x = handleOnLeft ? cx - tile / 2.0 - 14.0 : cx - width + tile / 2.0 + 14.0;
+        x = MIN(MAX(8.0, x), MAX(8.0, CGRectGetWidth(coordinateView.bounds) - width - 8.0));
         CGFloat y = cy - height / 2.0;
         self.frame = CGRectMake(x, y, width, height);
-        self.centerPoint = CGPointMake(handleOnLeft ? tile / 2.0 + 8.0 : width - tile / 2.0 - 8.0,
+        self.centerPoint = CGPointMake(handleOnLeft ? tile / 2.0 + 14.0 : width - tile / 2.0 - 14.0,
                                        height / 2.0);
 
         [self buildItems];
@@ -404,7 +412,7 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
             } completion:nil];
         }
 
-        [UIView animateWithDuration:0.34 delay:0 usingSpringWithDamping:0.76 initialSpringVelocity:0.5
+        [UIView animateWithDuration:0.34 * self.animationScale delay:0 usingSpringWithDamping:0.76 initialSpringVelocity:0.5
                             options:UIViewAnimationOptionAllowUserInteraction animations:^{
             self.alpha = 1;
             self.transform = CGAffineTransformIdentity;
@@ -455,7 +463,7 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
     PXLog(@"panel", @"dismiss hovered=%ld", (long)_hoveredIndex);
     _presenting = NO;
     _hoveredIndex = -1;
-    [UIView animateWithDuration:0.16 animations:^{
+    [UIView animateWithDuration:0.16 * self.animationScale animations:^{
         self.alpha = 0;
         self.transform = CGAffineTransformMakeScale(0.9, 0.9);
     } completion:^(BOOL finished) {
