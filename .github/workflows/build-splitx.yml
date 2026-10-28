@@ -41,7 +41,7 @@ jobs:
           if [ -z "$SDK_PATH" ]; then echo 'SDK not found:'; ls -la "$HOME/sdks"; exit 1; fi
           export SDK_PATH
           echo "using SDK $SDK_PATH"
-          ./build.sh "${{ matrix.scheme }}" release 2>&1 | tee build.log
+          bash ./build.sh "${{ matrix.scheme }}" release 2>&1 | tee build.log || { tail -80 build.log; exit 1; }
           mkdir -p out
           cp packages/*.deb out/
           (cd out && shasum -a 256 *.deb > SHA256SUMS)
