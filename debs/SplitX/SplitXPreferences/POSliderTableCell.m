@@ -31,8 +31,17 @@
 - (void)refreshCellContentsWithSpecifier:(PSSpecifier *)specifier {
     NSNumber *minimum = [specifier propertyForKey:@"minimumValue"];
     NSNumber *maximum = [specifier propertyForKey:@"maximumValue"];
-    self.control.minimumValue = minimum ? minimum.floatValue : 0;
-    self.control.maximumValue = maximum ? maximum.floatValue : 100;
+    UISlider *slider = self.control;
+    if (!slider) {
+        slider = [self newControl];
+        [self setValue:slider forKey:@"control"];
+    }
+    if (!slider.superview) {
+        [self.contentView addSubview:slider];
+        [slider addTarget:self action:@selector(sliderChanged:) forControlEvents:UIControlEventValueChanged];
+    }
+    slider.minimumValue = minimum ? minimum.floatValue : 0;
+    slider.maximumValue = maximum ? maximum.floatValue : 100;
     [super refreshCellContentsWithSpecifier:specifier];
     [self updateLabel];
     [self setNeedsLayout];
@@ -49,12 +58,18 @@
     [self updateLabel];
 }
 
+- (void)sliderChanged:(UISlider *)slider {
+    [self controlChanged:slider];
+}
+
 - (void)updateLabel {
     NSInteger step = [[self.specifier propertyForKey:@"stepValue"] integerValue];
     CGFloat value = self.control.value;
     if (step > 1) value = round(value / step) * step;
     self.valueLabel.text = [NSString stringWithFormat:@"%ld", (long)value];
-    self.textLabel.text = [self.specifier propertyForKey:@"label"];
+    NSString *label = [self.specifier propertyForKey:@"label"];
+    if (label.length) self.textLabel.text = label;
+    self.valueLabel.hidden = NO;
 }
 
 - (void)layoutSubviews {

@@ -332,7 +332,7 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
 
     self.contentView = [[UIView alloc] initWithFrame:CGRectZero];
     self.contentView.backgroundColor = [UIColor secondarySystemBackgroundColor];
-    self.contentView.layer.cornerRadius = CONTENT_CORNER_RADIUS;
+    self.contentView.layer.cornerRadius = [self contentCornerRadius];
     if (@available(iOS 13.0, *)) {
         self.contentView.layer.cornerCurve = kCACornerCurveContinuous;
     }
@@ -354,9 +354,9 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     shadowView.backgroundColor = [UIColor clearColor];
     shadowView.layer.shadowColor = [UIColor blackColor].CGColor;
     shadowView.layer.shadowOffset = CGSizeMake(0, 1);
-    shadowView.layer.shadowRadius = 8;
+    shadowView.layer.shadowRadius = [POSplitXSettings shared].windowShadowBlur;
     shadowView.layer.shadowOpacity = 0;
-    shadowView.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:shadowView.bounds cornerRadius:CONTENT_CORNER_RADIUS].CGPath;
+    shadowView.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:shadowView.bounds cornerRadius:[self contentCornerRadius]].CGPath;
     [keyboardZoomContainer addSubview:shadowView];
 
     [keyboardZoomContainer addSubview:self.contentView];
@@ -504,7 +504,7 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     shadowView.frame = keyboardZoomContainer.bounds;
     self.contentView.frame = keyboardZoomContainer.bounds;
     shadowView.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:shadowView.bounds
-                                                              cornerRadius:CONTENT_CORNER_RADIUS].CGPath;
+                                                              cornerRadius:[self contentCornerRadius]].CGPath;
     [self layoutContextView];
 }
 
@@ -2577,7 +2577,8 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     scale = MIN(1.0, MIN(widthScale, heightScale));
 
     CGFloat screenScale = UIScreen.mainScreen.scale;
-    contentLayoutWidth = round(logicalCanvas.width * scale * screenScale) / screenScale;
+    CGFloat preferredWidth = [POSplitXSettings shared].windowWidthPercent / 100.0;
+    contentLayoutWidth = round(logicalCanvas.width * scale * preferredWidth * screenScale) / screenScale;
     CGFloat contentLayoutHeight = round(logicalCanvas.height * scale * screenScale) / screenScale;
     CGFloat anchoredCardBottomY = CGRectGetMidY(bounds);
     if (portraitHostedLandscapeOptimization) {
@@ -2682,10 +2683,10 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
         shadowView.frame = keyboardZoomContainer.bounds;
         self.contentView.frame = keyboardZoomContainer.bounds;
         shadowView.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:shadowView.bounds
-                                                                  cornerRadius:CONTENT_CORNER_RADIUS].CGPath;
+                                                                  cornerRadius:[self contentCornerRadius]].CGPath;
     }];
     CGFloat shadowProgress = MIN(MAX(scrollView.contentOffset.x / CONTENT_SHADOW_FADE_DISTANCE, 0), 1);
-    shadowView.layer.shadowOpacity = CONTENT_SHADOW_OPACITY * shadowProgress;
+    shadowView.layer.shadowOpacity = [POSplitXSettings shared].windowShadowStrength * shadowProgress;
     if (presentationSnapshotView) {
         [self layoutPresentationSnapshotView];
     }
@@ -3078,6 +3079,10 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
         [presentationBundleId isEqualToString:bundleId] &&
         contextView && !contextView.hidden &&
         contextView.superview == self.contentView;
+}
+
+-(CGFloat)contentCornerRadius{
+    return [POSplitXSettings shared].windowCornerRadius;
 }
 
 -(void)open{
@@ -3940,7 +3945,7 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
         [self updateInteractionBackdropsAnimated:NO];
 
         CGFloat shadowProgress = MIN(MAX(sv.contentOffset.x / CONTENT_SHADOW_FADE_DISTANCE, 0), 1);
-        shadowView.layer.shadowOpacity = CONTENT_SHADOW_OPACITY * shadowProgress;
+        shadowView.layer.shadowOpacity = [POSplitXSettings shared].windowShadowStrength * shadowProgress;
 
         CGFloat rawOffsetX = sv.contentOffset.x;
         if (panelState == POPanelStateClosing && !scaledProgrammaticCloseAnimating &&

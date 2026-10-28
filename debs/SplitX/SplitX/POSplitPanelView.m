@@ -333,9 +333,11 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
         [self.items addObject:item];
     }
 
-    PXLog(@"panel", @"fan items=%lu groups=%lu radius=%.0f span=%.0fdeg size=%@",
-          (unsigned long)ordered.count, (unsigned long)groupOrder.count, self.radius,
-          self.span * 180.0 / M_PI, NSStringFromCGSize(self.bounds.size));
+    PXLog(@"panel", @"fan items=%lu groups=%lu rings=%d cap=%ld/%ld/%ld/%ld gap=%.0f inner=%.0f outer=%.0f span=%.0fdeg tile=%.0f icon=%.0f size=%@",
+          (unsigned long)ordered.count, (unsigned long)groupOrder.count, (int)rings,
+          (long)settings.ring1, (long)settings.ring2, (long)settings.ring3, (long)settings.ring4,
+          settings.ringGap, innerRadius, self.radius, self.span * 180.0 / M_PI,
+          self.itemTileSize, self.itemIconSize, NSStringFromCGSize(self.bounds.size));
 }
 
 /// 按角度命中：先看离圆弧近不近，再取角度最近的一项。
@@ -350,6 +352,8 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
     CGFloat angle = atan2(dy, dx);
     NSInteger best = -1;
     CGFloat bestScore = 1.0;
+    NSInteger nearest = -1;
+    CGFloat nearestScore = 9.0;
     for (NSUInteger i = 0; i < self.items.count; i++) {
         POSplitPanelItem *item = self.items[i];
         CGFloat target = item.angle;
@@ -358,8 +362,11 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
         CGFloat radial = fabs(distance - item.radius) / self.itemTileSize;
         if (radial > 1.1) continue;                                  // 不在同一环
         CGFloat score = delta / 0.55 * 0.7 + radial / 1.1 * 0.3;
+        if (score < nearestScore) { nearestScore = score; nearest = (NSInteger)i; }
         if (score < bestScore) { bestScore = score; best = (NSInteger)i; }
     }
+    PXLog(@"panel", @"hit pt=%.0f,%.0f dist=%.0f angle=%.0fdeg -> %ld (near %ld score %.2f)",
+           point.x, point.y, distance, angle * 180.0 / M_PI, (long)best, (long)nearest, nearestScore);
     return best;
 }
 

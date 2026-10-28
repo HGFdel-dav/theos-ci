@@ -1343,9 +1343,11 @@ static __attribute__((constructor)) static void PXBootLog(void) {
                      machine, NSProcessInfo.processInfo.operatingSystemVersionString,
                      PXJailbreakDescription(), PXCraneDescription(), getpid());
     POSplitXSettings *settings = [POSplitXSettings shared];
-    PXLogEnvironment(@"settings icon=%.0f tile=%.0f spacing=%.0f cols=%ld radius=%.0f alpha=%.2f trigger=%.0f dock=%d",
+    PXLogEnvironment(@"settings icon=%.0f tile=%.0f spacing=%.0f cols=%ld radius=%.0f span=%.0f alpha=%.2f rings=%ld/%ld/%ld/%ld gap=%.0f slide=%.0f edge=%.0f trigger=%.0f dock=%d",
                      settings.iconSize, settings.tileSize, settings.itemSpacing,
-                     (long)settings.panelColumns, settings.panelRadius, settings.panelAlpha,
+                     (long)settings.panelColumns, settings.fanRadius, settings.fanSpan, settings.panelAlpha,
+                     (long)settings.ring1, (long)settings.ring2, (long)settings.ring3, (long)settings.ring4,
+                     settings.ringGap, settings.handleSlideDistance, settings.panelEdgeInset,
                      settings.triggerWidth, settings.dockEnabled);
     NSString *crash = PXLogCrashTail();
     if (crash.length) {
