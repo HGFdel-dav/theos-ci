@@ -82,13 +82,15 @@
 		</dict>
 		<dict>
 			<key>cellClass</key>
-			<string>POStepperTableCell</string>
+			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>12</integer>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
 			<key>get</key>
 			<string>getValueForSpecifier:</string>
+			<key>height</key>
+			<integer>80</integer>
 			<key>id</key>
 			<string>quickSwitchAppSlots</string>
 			<key>key</key>
@@ -99,24 +101,22 @@
 			<integer>99</integer>
 			<key>minimumValue</key>
 			<integer>1</integer>
-			<key>pluralLabelFormat</key>
-			<string>Show %d Application Slots</string>
 			<key>set</key>
 			<string>setValue:forSpecifier:</string>
-			<key>singularLabelFormat</key>
-			<string>Show %d Application Slot</string>
 			<key>stepValue</key>
 			<integer>1</integer>
 		</dict>
 		<dict>
 			<key>cellClass</key>
-			<string>POStepperTableCell</string>
+			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>12</integer>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
 			<key>get</key>
 			<string>getValueForSpecifier:</string>
+			<key>height</key>
+			<integer>80</integer>
 			<key>id</key>
 			<string>recentAppsCount</string>
 			<key>key</key>
@@ -127,12 +127,8 @@
 			<integer>99</integer>
 			<key>minimumValue</key>
 			<integer>1</integer>
-			<key>pluralLabelFormat</key>
-			<string>Show %d Recent Apps</string>
 			<key>set</key>
 			<string>setValue:forSpecifier:</string>
-			<key>singularLabelFormat</key>
-			<string>Show %d Recent App</string>
 			<key>stepValue</key>
 			<integer>1</integer>
 		</dict>
@@ -144,13 +140,15 @@
 		</dict>
 		<dict>
 			<key>cellClass</key>
-			<string>POStepperTableCell</string>
+			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>56</integer>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
 			<key>get</key>
 			<string>getValueForSpecifier:</string>
+			<key>height</key>
+			<integer>80</integer>
 			<key>id</key>
 			<string>iconSize</string>
 			<key>key</key>
@@ -161,24 +159,22 @@
 			<integer>72</integer>
 			<key>minimumValue</key>
 			<integer>40</integer>
-			<key>pluralLabelFormat</key>
-			<string>图标大小 %d</string>
 			<key>set</key>
 			<string>setValue:forSpecifier:</string>
-			<key>singularLabelFormat</key>
-			<string>图标大小 %d</string>
 			<key>stepValue</key>
 			<integer>4</integer>
 		</dict>
 		<dict>
 			<key>cellClass</key>
-			<string>POStepperTableCell</string>
+			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>62</integer>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
 			<key>get</key>
 			<string>getValueForSpecifier:</string>
+			<key>height</key>
+			<integer>80</integer>
 			<key>id</key>
 			<string>tileSize</string>
 			<key>key</key>
@@ -187,24 +183,22 @@
 			<integer>88</integer>
 			<key>minimumValue</key>
 			<integer>52</integer>
-			<key>pluralLabelFormat</key>
-			<string>底板大小 %d</string>
 			<key>set</key>
 			<string>setValue:forSpecifier:</string>
-			<key>singularLabelFormat</key>
-			<string>底板大小 %d</string>
 			<key>stepValue</key>
 			<integer>4</integer>
 		</dict>
 		<dict>
 			<key>cellClass</key>
-			<string>POStepperTableCell</string>
+			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>6</integer>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
 			<key>get</key>
 			<string>getValueForSpecifier:</string>
+			<key>height</key>
+			<integer>80</integer>
 			<key>id</key>
 			<string>itemSpacing</string>
 			<key>key</key>
@@ -213,24 +207,22 @@
 			<integer>20</integer>
 			<key>minimumValue</key>
 			<integer>0</integer>
-			<key>pluralLabelFormat</key>
-			<string>图标间隙 %d</string>
 			<key>set</key>
 			<string>setValue:forSpecifier:</string>
-			<key>singularLabelFormat</key>
-			<string>图标间隙 %d</string>
 			<key>stepValue</key>
 			<integer>2</integer>
 		</dict>
 		<dict>
 			<key>cellClass</key>
-			<string>POStepperTableCell</string>
+			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>2</integer>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
 			<key>get</key>
 			<string>getValueForSpecifier:</string>
+			<key>height</key>
+			<integer>80</integer>
 			<key>id</key>
 			<string>panelColumns</string>
 			<key>key</key>
@@ -239,24 +231,22 @@
 			<integer>3</integer>
 			<key>minimumValue</key>
 			<integer>1</integer>
-			<key>pluralLabelFormat</key>
-			<string>每行列数 %d</string>
 			<key>set</key>
 			<string>setValue:forSpecifier:</string>
-			<key>singularLabelFormat</key>
-			<string>每行列数 %d</string>
 			<key>stepValue</key>
 			<integer>1</integer>
 		</dict>
 		<dict>
 			<key>cellClass</key>
-			<string>POStepperTableCell</string>
+			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>124</integer>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
 			<key>get</key>
 			<string>getValueForSpecifier:</string>
+			<key>height</key>
+			<integer>80</integer>
 			<key>id</key>
 			<string>fanRadius</string>
 			<key>key</key>
@@ -267,24 +257,22 @@
 			<integer>170</integer>
 			<key>minimumValue</key>
 			<integer>70</integer>
-			<key>pluralLabelFormat</key>
-			<string>扇形半径 %d</string>
 			<key>set</key>
 			<string>setValue:forSpecifier:</string>
-			<key>singularLabelFormat</key>
-			<string>扇形半径 %d</string>
 			<key>stepValue</key>
 			<integer>6</integer>
 		</dict>
 		<dict>
 			<key>cellClass</key>
-			<string>POStepperTableCell</string>
+			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>150</integer>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
 			<key>get</key>
 			<string>getValueForSpecifier:</string>
+			<key>height</key>
+			<integer>80</integer>
 			<key>id</key>
 			<string>fanSpan</string>
 			<key>key</key>
@@ -295,24 +283,204 @@
 			<integer>200</integer>
 			<key>minimumValue</key>
 			<integer>60</integer>
-			<key>pluralLabelFormat</key>
-			<string>扇形张角 %d</string>
 			<key>set</key>
 			<string>setValue:forSpecifier:</string>
-			<key>singularLabelFormat</key>
-			<string>扇形张角 %d</string>
 			<key>stepValue</key>
 			<integer>10</integer>
 		</dict>
 		<dict>
 			<key>cellClass</key>
-			<string>POStepperTableCell</string>
+			<string>POSliderTableCell</string>
+			<key>default</key>
+			<integer>7</integer>
+			<key>defaults</key>
+			<string>com.niubiprass.splitx</string>
+			<key>get</key>
+			<string>getValueForSpecifier:</string>
+			<key>height</key>
+			<integer>80</integer>
+			<key>id</key>
+			<string>ring1</string>
+			<key>key</key>
+			<string>ring1</string>
+			<key>label</key>
+			<string>第一环容量</string>
+			<key>maximumValue</key>
+			<integer>12</integer>
+			<key>minimumValue</key>
+			<integer>0</integer>
+			<key>set</key>
+			<string>setValue:forSpecifier:</string>
+			<key>stepValue</key>
+			<integer>1</integer>
+		</dict>
+		<dict>
+			<key>cellClass</key>
+			<string>POSliderTableCell</string>
+			<key>default</key>
+			<integer>10</integer>
+			<key>defaults</key>
+			<string>com.niubiprass.splitx</string>
+			<key>get</key>
+			<string>getValueForSpecifier:</string>
+			<key>height</key>
+			<integer>80</integer>
+			<key>id</key>
+			<string>ring2</string>
+			<key>key</key>
+			<string>ring2</string>
+			<key>label</key>
+			<string>第二环容量</string>
+			<key>maximumValue</key>
+			<integer>16</integer>
+			<key>minimumValue</key>
+			<integer>0</integer>
+			<key>set</key>
+			<string>setValue:forSpecifier:</string>
+			<key>stepValue</key>
+			<integer>1</integer>
+		</dict>
+		<dict>
+			<key>cellClass</key>
+			<string>POSliderTableCell</string>
+			<key>default</key>
+			<integer>13</integer>
+			<key>defaults</key>
+			<string>com.niubiprass.splitx</string>
+			<key>get</key>
+			<string>getValueForSpecifier:</string>
+			<key>height</key>
+			<integer>80</integer>
+			<key>id</key>
+			<string>ring3</string>
+			<key>key</key>
+			<string>ring3</string>
+			<key>label</key>
+			<string>第三环容量</string>
+			<key>maximumValue</key>
+			<integer>20</integer>
+			<key>minimumValue</key>
+			<integer>0</integer>
+			<key>set</key>
+			<string>setValue:forSpecifier:</string>
+			<key>stepValue</key>
+			<integer>1</integer>
+		</dict>
+		<dict>
+			<key>cellClass</key>
+			<string>POSliderTableCell</string>
+			<key>default</key>
+			<integer>16</integer>
+			<key>defaults</key>
+			<string>com.niubiprass.splitx</string>
+			<key>get</key>
+			<string>getValueForSpecifier:</string>
+			<key>height</key>
+			<integer>80</integer>
+			<key>id</key>
+			<string>ring4</string>
+			<key>key</key>
+			<string>ring4</string>
+			<key>label</key>
+			<string>第四环容量</string>
+			<key>maximumValue</key>
+			<integer>24</integer>
+			<key>minimumValue</key>
+			<integer>0</integer>
+			<key>set</key>
+			<string>setValue:forSpecifier:</string>
+			<key>stepValue</key>
+			<integer>1</integer>
+		</dict>
+		<dict>
+			<key>cellClass</key>
+			<string>POSliderTableCell</string>
+			<key>default</key>
+			<integer>0</integer>
+			<key>defaults</key>
+			<string>com.niubiprass.splitx</string>
+			<key>get</key>
+			<string>getValueForSpecifier:</string>
+			<key>height</key>
+			<integer>80</integer>
+			<key>id</key>
+			<string>ringGap</string>
+			<key>key</key>
+			<string>ringGap</string>
+			<key>label</key>
+			<string>环间距</string>
+			<key>maximumValue</key>
+			<integer>40</integer>
+			<key>minimumValue</key>
+			<integer>0</integer>
+			<key>set</key>
+			<string>setValue:forSpecifier:</string>
+			<key>stepValue</key>
+			<integer>1</integer>
+		</dict>
+		<dict>
+			<key>cellClass</key>
+			<string>POSliderTableCell</string>
+			<key>default</key>
+			<integer>45</integer>
+			<key>defaults</key>
+			<string>com.niubiprass.splitx</string>
+			<key>get</key>
+			<string>getValueForSpecifier:</string>
+			<key>height</key>
+			<integer>80</integer>
+			<key>id</key>
+			<string>handleSlideDistance</string>
+			<key>key</key>
+			<string>handleSlideDistance</string>
+			<key>label</key>
+			<string>滑出菜单的距离</string>
+			<key>maximumValue</key>
+			<integer>120</integer>
+			<key>minimumValue</key>
+			<integer>10</integer>
+			<key>set</key>
+			<string>setValue:forSpecifier:</string>
+			<key>stepValue</key>
+			<integer>1</integer>
+		</dict>
+		<dict>
+			<key>cellClass</key>
+			<string>POSliderTableCell</string>
+			<key>default</key>
+			<integer>0</integer>
+			<key>defaults</key>
+			<string>com.niubiprass.splitx</string>
+			<key>get</key>
+			<string>getValueForSpecifier:</string>
+			<key>height</key>
+			<integer>80</integer>
+			<key>id</key>
+			<string>panelEdgeInset</string>
+			<key>key</key>
+			<string>panelEdgeInset</string>
+			<key>label</key>
+			<string>面板距边缘</string>
+			<key>maximumValue</key>
+			<integer>60</integer>
+			<key>minimumValue</key>
+			<integer>0</integer>
+			<key>set</key>
+			<string>setValue:forSpecifier:</string>
+			<key>stepValue</key>
+			<integer>1</integer>
+		</dict>
+		<dict>
+			<key>cellClass</key>
+			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>100</integer>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
 			<key>get</key>
 			<string>getValueForSpecifier:</string>
+			<key>height</key>
+			<integer>80</integer>
 			<key>id</key>
 			<string>panelAlpha</string>
 			<key>key</key>
@@ -323,24 +491,22 @@
 			<integer>100</integer>
 			<key>minimumValue</key>
 			<integer>40</integer>
-			<key>pluralLabelFormat</key>
-			<string>面板不透明度 %d</string>
 			<key>set</key>
 			<string>setValue:forSpecifier:</string>
-			<key>singularLabelFormat</key>
-			<string>面板不透明度 %d</string>
 			<key>stepValue</key>
 			<integer>10</integer>
 		</dict>
 		<dict>
 			<key>cellClass</key>
-			<string>POStepperTableCell</string>
+			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>30</integer>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
 			<key>get</key>
 			<string>getValueForSpecifier:</string>
+			<key>height</key>
+			<integer>80</integer>
 			<key>id</key>
 			<string>panelRadius</string>
 			<key>key</key>
@@ -351,24 +517,22 @@
 			<integer>40</integer>
 			<key>minimumValue</key>
 			<integer>12</integer>
-			<key>pluralLabelFormat</key>
-			<string>面板圆角 %d</string>
 			<key>set</key>
 			<string>setValue:forSpecifier:</string>
-			<key>singularLabelFormat</key>
-			<string>面板圆角 %d</string>
 			<key>stepValue</key>
 			<integer>2</integer>
 		</dict>
 		<dict>
 			<key>cellClass</key>
-			<string>POStepperTableCell</string>
+			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>100</integer>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
 			<key>get</key>
 			<string>getValueForSpecifier:</string>
+			<key>height</key>
+			<integer>80</integer>
 			<key>id</key>
 			<string>animationSpeed</string>
 			<key>key</key>
@@ -377,12 +541,8 @@
 			<integer>200</integer>
 			<key>minimumValue</key>
 			<integer>50</integer>
-			<key>pluralLabelFormat</key>
-			<string>动画速度 % %d</string>
 			<key>set</key>
 			<string>setValue:forSpecifier:</string>
-			<key>singularLabelFormat</key>
-			<string>动画速度 % %d</string>
 			<key>stepValue</key>
 			<integer>10</integer>
 		</dict>
@@ -391,6 +551,30 @@
 			<string>PSGroupCell</string>
 			<key>label</key>
 			<string>窗口与手势</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSLinkCell</string>
+			<key>detail</key>
+			<string>Window</string>
+			<key>label</key>
+			<string>窗口尺寸、圆角与阴影</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSLinkCell</string>
+			<key>detail</key>
+			<string>Dock</string>
+			<key>label</key>
+			<string>角落小窗</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSLinkCell</string>
+			<key>detail</key>
+			<string>Gesture</string>
+			<key>label</key>
+			<string>手势区域</string>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -622,20 +806,10 @@
 		<dict>
 			<key>cell</key>
 			<string>PSGroupCell</string>
+			<key>footerText</key>
+			<string>基于 ParallelX 与 PullOver X 实现。   SplitX 0.1.0~dev6</string>
 			<key>label</key>
 			<string>关于</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSGroupCell</string>
-			<key>footerText</key>
-			<string>基于 ParallelX 与 PullOver X 实现。</string>
-		</dict>
-		<dict>
-			<key>cell</key>
-			<string>PSGroupCell</string>
-			<key>footerText</key>
-			<string>SplitX 0.1.0~dev6</string>
 		</dict>
 	</array>
 	<key>title</key>

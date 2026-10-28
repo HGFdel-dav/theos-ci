@@ -23,6 +23,25 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) CGFloat fanRadius;      // 70...170, default 124（扇形半径）
 @property (nonatomic, readonly) CGFloat fanSpan;        // 60...200, default 120（扇形张角，度）
 @property (nonatomic, readonly) CGFloat animationSpeed; // 50...200, default 100（百分比）
+// 环形排列（0 关闭该环及后续）
+@property (nonatomic, readonly) NSInteger ring1, ring2, ring3, ring4;
+@property (nonatomic, readonly) CGFloat ringGap;         // 0...40, default 0
+@property (nonatomic, readonly) CGFloat handleSlideDistance; // 10...120, default 45
+@property (nonatomic, readonly) CGFloat panelEdgeInset;  // 0...60, default 0
+
+// 手势区域
+@property (nonatomic, readonly) CGFloat topGestureWidth, topGestureHeight, topGestureOffset;
+@property (nonatomic, readonly) CGFloat bottomGestureWidth, bottomGestureHeight, bottomGestureOffset;
+@property (nonatomic, readonly) BOOL showGestureArea;
+- (NSString *)bottomActionForKey:(NSString *)key;
+
+// 窗口
+@property (nonatomic, readonly) CGFloat windowWidthPercent, windowInset, windowMaxScalePercent;
+@property (nonatomic, readonly) CGFloat windowCornerRadius, windowShadowStrength, windowShadowBlur;
+@property (nonatomic, readonly) BOOL dockNewSplitPushesCurrent;
+// 小窗
+@property (nonatomic, readonly) CGFloat dockWidthPortrait, dockWidthLandscape, dockAutoStashSeconds;
+@property (nonatomic, readonly) NSInteger dockMaxCount;
 
 // 手势区域
 @property (nonatomic, readonly) CGFloat triggerWidth;   // 8...60,  default 30

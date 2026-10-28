@@ -16,7 +16,7 @@
 #import "POQuickSwitchMetrics.h"
 #import <math.h>
 
-static const NSUInteger PQMaxItems = 12;
+static const NSUInteger PQMaxItems = 40;
 static const CGFloat PQMinAngleStep = 18.0 * M_PI / 180.0;
 static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
 
@@ -35,6 +35,7 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
 @property (nonatomic, assign) BOOL chosen;
 @property (nonatomic, assign) CGFloat angle;
 @property (nonatomic, assign) CGFloat radius;
+@property (nonatomic, assign) CGFloat baseScale;
 - (instancetype)initWithTarget:(POSplitTarget *)target
                       iconSize:(CGFloat)iconSize
                       tileSize:(CGFloat)tileSize
@@ -50,60 +51,56 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
                       tileSize:(CGFloat)tileSize
                          title:(NSString *)title
                          badge:(NSString *)badge {
-    CGFloat width = MAX(tileSize, iconSize) + 10.0;
-    CGFloat height = tileSize + 18.0;
-    if ((self = [super initWithFrame:CGRectMake(0, 0, width, height)])) {
+    // PX 那种：白色圆托 + 圆角图标，没有文字。
+    CGFloat tile = tileSize;
+    CGFloat icon = iconSize;
+    CGFloat width = tile + 10.0;
+    if ((self = [super initWithFrame:CGRectMake(0, 0, width, width)])) {
         _target = target;
+        self.backgroundColor = UIColor.clearColor;
 
-        UIBlurEffect *effect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialLight];
-        _tileView = [[UIVisualEffectView alloc] initWithEffect:effect];
-        _tileView.frame = CGRectMake((width - tileSize) / 2, 0, tileSize, tileSize);
-        _tileView.layer.cornerRadius = tileSize * 0.30;
-        _tileView.layer.cornerCurve = kCACornerCurveContinuous;
-        _tileView.layer.borderWidth = 0.5;
-        _tileView.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.30].CGColor;
-        _tileView.clipsToBounds = YES;
-        _tileView.userInteractionEnabled = NO;
-        [self addSubview:_tileView];
+        UIView *bubble = [[UIView alloc] initWithFrame:CGRectMake(5, 5, tile, tile)];
+        bubble.backgroundColor = [UIColor colorWithWhite:0.98 alpha:0.92];
+        bubble.layer.cornerRadius = tile / 2.0;
+        bubble.layer.borderWidth = 0.5;
+        bubble.layer.borderColor = [UIColor colorWithWhite:0 alpha:0.10].CGColor;
+        bubble.layer.shadowColor = UIColor.blackColor.CGColor;
+        bubble.layer.shadowOpacity = 0.18;
+        bubble.layer.shadowRadius = 6;
+        bubble.layer.shadowOffset = CGSizeMake(0, 2);
+        bubble.userInteractionEnabled = NO;
+        [self addSubview:bubble];
+        _tileView = bubble;
 
-        _iconView = [[UIImageView alloc] initWithFrame:CGRectInset(_tileView.frame, 5, 5)];
+        CGFloat inset = icon * 0.12 + 5.0;
+        _iconView = [[UIImageView alloc] initWithFrame:CGRectInset(bubble.frame, inset, inset)];
         _iconView.contentMode = UIViewContentModeScaleAspectFit;
+        _iconView.layer.cornerRadius = icon * 0.24;
+        _iconView.layer.cornerCurve = kCACornerCurveContinuous;
+        _iconView.clipsToBounds = YES;
         _iconView.image = [POApplicationHelper imageForBundleId:target.bundleIdentifier];
         [self addSubview:_iconView];
 
-        _label = [[UILabel alloc] initWithFrame:CGRectMake(0, CGRectGetMaxY(_tileView.frame) + 2, width, 13)];
-        _label.text = title;
-        _label.font = [UIFont systemFontOfSize:10 weight:UIFontWeightMedium];
-        _label.textColor = UIColor.whiteColor;
-        _label.textAlignment = NSTextAlignmentCenter;
-        _label.adjustsFontSizeToFitWidth = YES;
-        _label.minimumScaleFactor = 0.7;
-        _label.layer.shadowColor = UIColor.blackColor.CGColor;
-        _label.layer.shadowOpacity = 0.55;
-        _label.layer.shadowRadius = 2;
-        _label.layer.shadowOffset = CGSizeMake(0, 1);
-        [self addSubview:_label];
-
         if (badge.length) {
-            CGFloat badgeWidth = MAX(18.0, 12.0 + badge.length * 7.0);
-            _badge = [[UIView alloc] initWithFrame:CGRectMake(CGRectGetMaxX(_tileView.frame) - badgeWidth + 4,
-                                                              2, badgeWidth, 16)];
-            _badge.backgroundColor = [UIColor colorWithWhite:0 alpha:0.62];
-            _badge.layer.cornerRadius = 8;
+            CGFloat size = 15.0;
+            _badge = [[UIView alloc] initWithFrame:CGRectMake(width - size - 4, 4, size, size)];
+            _badge.backgroundColor = [UIColor colorWithWhite:0 alpha:0.72];
+            _badge.layer.cornerRadius = size / 2.0;
             _badge.userInteractionEnabled = NO;
             [self addSubview:_badge];
             _badgeLabel = [[UILabel alloc] initWithFrame:_badge.bounds];
             _badgeLabel.text = badge;
-            _badgeLabel.font = [UIFont systemFontOfSize:9 weight:UIFontWeightBold];
+            _badgeLabel.font = [UIFont systemFontOfSize:8 weight:UIFontWeightBold];
             _badgeLabel.textColor = UIColor.whiteColor;
             _badgeLabel.textAlignment = NSTextAlignmentCenter;
             [_badge addSubview:_badgeLabel];
         }
+        self.layer.shadowColor = UIColor.clearColor.CGColor;
+        _baseScale = 1.0;
     }
     return self;
 }
 
-/// 入场初态：未悬停，压暗。
 - (void)applyDimmedInitialState {
     _highlighted = NO;
     _chosen = NO;
@@ -122,34 +119,24 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
 }
 
 - (void)applyVisualStateAnimated:(BOOL)animated {
-    CGFloat scale = 1.0;
-    CGFloat alpha = 0.42;
+    CGFloat scale = _baseScale;
+    CGFloat alpha = 0.75;
     CGFloat lift = 0.0;
-    if (_chosen) {
-        scale = 1.22;
-        alpha = 1.0;
-        lift = 8.0;
-    } else if (_highlighted) {
-        scale = 1.16;
-        alpha = 1.0;
-        lift = 6.0;
-    }
+    if (_chosen) { scale = _baseScale * 1.20; alpha = 1.0; lift = 9.0; }
+    else if (_highlighted) { scale = _baseScale * 1.14; alpha = 1.0; lift = 6.0; }
+
     void (^apply)(void) = ^{
-        self.tileView.alpha = alpha;
-        self.label.alpha = alpha;
-        self.badge.alpha = alpha;
+        self.alpha = alpha;
         CGAffineTransform t = CGAffineTransformMakeScale(scale, scale);
-        self.transform = CGAffineTransformTranslate(t, cos(self.angle) * lift, sin(self.angle) * lift);
-        self.layer.shadowOpacity = (alpha > 0.9) ? 0.42 : 0.0;
+        self.transform = CGAffineTransformTranslate(t, cos(self.angle) * lift / scale,
+                                                    sin(self.angle) * lift / scale);
+        self.tileView.layer.shadowOpacity = (alpha > 0.95) ? 0.30 : 0.14;
     };
     if (!animated) { apply(); return; }
-    [UIView animateWithDuration:_chosen ? 0.20 : 0.14
-                          delay:0
-         usingSpringWithDamping:0.70
-          initialSpringVelocity:0.4
+    [UIView animateWithDuration:_chosen ? 0.20 : 0.14 delay:0
+         usingSpringWithDamping:0.70 initialSpringVelocity:0.4
                         options:UIViewAnimationOptionAllowUserInteraction
-                     animations:apply
-                     completion:nil];
+                     animations:apply completion:nil];
 }
 
 @end
@@ -166,6 +153,7 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
 @property (nonatomic, assign) BOOL presenting;
 @property (nonatomic, assign) CGPoint centerPoint;   // 相对自身
 @property (nonatomic, assign) CGFloat radius;
+@property (nonatomic, assign) CGFloat baseScale;
 @property (nonatomic, assign) CGFloat itemTileSize;
 @property (nonatomic, assign) CGFloat itemIconSize;
 @property (nonatomic, assign) CGFloat span;          // 弧度
@@ -279,39 +267,68 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
     self.targets = ordered;
 
     // 半径：先保证相邻图标的弧距够，再受上下边缘限制。
-    CGFloat verticalRoom = MIN(self.centerPoint.y, CGRectGetHeight(self.bounds) - self.centerPoint.y);
-    CGFloat usable = MAX(80.0, verticalRoom - self.itemTileSize / 2.0 - 6.0);
-    CGFloat spanDegrees = settings.fanSpan * M_PI / 180.0;
-    CGFloat step = ordered.count > 1 ? spanDegrees / (CGFloat)(ordered.count - 1) : M_PI;
-    CGFloat needRadius = (self.itemTileSize * 1.18) / MAX(step, 0.01);
-    CGFloat radius = MIN(MAX(settings.fanRadius, needRadius), usable);
-    self.radius = radius;
+    // PX 那样铺满一片：分三圈，越外圈放得越多，角度交错。
+    CGFloat maxRadius = MIN(CGRectGetWidth(self.bounds) - self.itemTileSize - 18.0,
+                            MIN(self.centerPoint.y, CGRectGetHeight(self.bounds) - self.centerPoint.y)
+                                - self.itemTileSize * 0.7 - 6.0);
+    maxRadius = MAX(maxRadius, 110.0);
+    CGFloat innerRadius = MAX(92.0, maxRadius * 0.40);
+    self.radius = maxRadius;
+    self.span = (settings.fanSpan + 40.0) * M_PI / 180.0;
 
-    if (ordered.count > 1) {
-        step = (self.itemTileSize * 1.18) / radius;     // 半径被压小就重算步长，别叠在一起
-        step = MIN(MAX(step, PQMinAngleStep), PQMaxAngleStep);
+    // 按环容量填充：先填内环，满了才进下一环。
+    NSInteger caps[4] = {settings.ring1, settings.ring2, settings.ring3, settings.ring4};
+    NSMutableArray<NSNumber *> *ringOf = [NSMutableArray array];
+    NSUInteger capacity = 0;
+    for (int r = 0; r < 4; r++) capacity += (NSUInteger)MAX(caps[r], 0);
+    if (capacity == 0) capacity = ordered.count;
+    if (ordered.count > capacity) ordered = [ordered subarrayWithRange:NSMakeRange(0, capacity)];
+
+    NSInteger ringIndex = 0;
+    NSInteger usedInRing = 0;
+    for (NSUInteger i = 0; i < ordered.count; i++) {
+        while (ringIndex < 3 && usedInRing >= MAX(caps[ringIndex], 0)) {
+            ringIndex++;
+            usedInRing = 0;
+        }
+        [ringOf addObject:@(ringIndex)];
+        usedInRing++;
     }
-    self.span = ordered.count > 1 ? MIN(step * (CGFloat)(ordered.count - 1), 190.0 * M_PI / 180.0) : 0;
     [self rebuildShape];
 
     CGFloat direction = self.expandsRight ? 1.0 : -1.0;
     for (NSUInteger i = 0; i < ordered.count; i++) {
-        CGFloat angle = -M_PI_2 - self.span / 2.0 + step * (CGFloat)i;
+        NSUInteger ring = ringOf[i].unsignedIntegerValue;
+        NSUInteger ringCount = 1;
+        NSUInteger posInRing = 0;
+        for (NSUInteger j = 0; j < ordered.count; j++) {
+            if (ringOf[j].unsignedIntegerValue == ring) {
+                if (j < i) posInRing++;
+                ringCount++;
+            }
+        }
+        ringCount -= 1;
+        CGFloat angle = -M_PI_2;
+        if (ringCount > 1) angle += -self.span / 2.0 + self.span * ((CGFloat)posInRing / (CGFloat)(ringCount - 1));
+        CGFloat ringRadius = self.radius * 0.42 + (CGFloat)ring * (self.itemTileSize + settings.ringGap);
+
         POSplitPanelItem *item = [[POSplitPanelItem alloc] initWithTarget:ordered[i]
                                                                  iconSize:self.itemIconSize
                                                                  tileSize:self.itemTileSize
                                                                     title:titles[i]
                                                                     badge:badges[i]];
         item.angle = angle;
-        item.radius = self.radius;
-        CGFloat x = self.centerPoint.x + direction * cos(angle) * self.radius;
-        CGFloat y = self.centerPoint.y + sin(angle) * self.radius;
-        if (!self.expandsRight) item.angle = M_PI - angle;   // 向左时镜像
+        item.radius = ringRadius;
+        item.baseScale = 0.90 + (CGFloat)((i * 53) % 7) / 7.0 * 0.22;
+        CGFloat x = self.centerPoint.x + direction * cos(angle) * ringRadius;
+        CGFloat y = self.centerPoint.y + sin(angle) * ringRadius;
+        if (!self.expandsRight) item.angle = M_PI - angle;
         item.center = CGPointMake(x, y);
         [item applyDimmedInitialState];
         [self addSubview:item];
         [self.items addObject:item];
     }
+
     PXLog(@"panel", @"fan items=%lu groups=%lu radius=%.0f span=%.0fdeg size=%@",
           (unsigned long)ordered.count, (unsigned long)groupOrder.count, self.radius,
           self.span * 180.0 / M_PI, NSStringFromCGSize(self.bounds.size));
@@ -323,13 +340,12 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
     CGFloat dx = point.x - self.centerPoint.x;
     CGFloat dy = point.y - self.centerPoint.y;
     CGFloat distance = hypot(dx, dy);
-    if (distance < self.radius - self.itemTileSize * 0.85 ||
-        distance > self.radius + self.itemTileSize * 0.85) {
+    if (distance > self.radius + self.itemTileSize * 1.2) {
         return -1;
     }
     CGFloat angle = atan2(dy, dx);
     NSInteger best = -1;
-    CGFloat bestDelta = 1.4;   // ~80°
+    CGFloat bestDelta = 0.62;   // ~35°
     for (NSUInteger i = 0; i < self.items.count; i++) {
         CGFloat target = self.items[i].angle;
         CGFloat delta = fabs(atan2(sin(angle - target), cos(angle - target)));
@@ -357,7 +373,7 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
     UIView *coordinateView = self.superview;
     if (!coordinateView) return NO;
 
-    if (recognizer.state == UIGestureRecognizerStateBegan) {
+    if (recognizer.state == UIGestureRecognizerStateBegan || self.hidden) {
         CGRect handleFrame = [handle convertRect:handle.bounds toView:coordinateView];
         CGPoint handleCenter = CGPointMake(CGRectGetMidX(handleFrame), CGRectGetMidY(handleFrame));
         BOOL handleOnLeft = handleCenter.x <= CGRectGetMidX(coordinateView.bounds);
@@ -372,7 +388,8 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
         // 圆心放在手柄内侧边缘。
         CGFloat cx = handleOnLeft ? CGRectGetMaxX(handleFrame) : CGRectGetMinX(handleFrame);
         CGFloat cy = handleCenter.y;
-        CGFloat x = handleOnLeft ? cx - tile / 2.0 - 14.0 : cx - width + tile / 2.0 + 14.0;
+        CGFloat edge = settings.panelEdgeInset;
+        CGFloat x = handleOnLeft ? cx - tile / 2.0 - 14.0 + edge : cx - width + tile / 2.0 + 14.0 - edge;
         x = MIN(MAX(8.0, x), MAX(8.0, CGRectGetWidth(coordinateView.bounds) - width - 8.0));
         CGFloat y = cy - height / 2.0;
         self.frame = CGRectMake(x, y, width, height);

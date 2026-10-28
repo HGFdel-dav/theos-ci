@@ -20,7 +20,7 @@ static void PXSettingsChanged(CFNotificationCenterRef center, void *observer, CF
 }
 static NSArray<NSString *> *PXAllowedKeys(void) {
     return @[@"iconSize", @"tileSize", @"itemSpacing", @"panelRadius", @"panelAlpha",
-             @"panelColumns", @"fanRadius", @"fanSpan", @"animationSpeed", @"triggerWidth", @"triggerOffsetY", @"dockEnabled", @"dockScale"];
+             @"panelColumns", @"fanRadius", @"fanSpan", @"animationSpeed", @"ring1", @"ring2", @"ring3", @"ring4", @"ringGap", @"handleSlideDistance", @"panelEdgeInset", @"topGestureWidth", @"topGestureHeight", @"topGestureOffset", @"bottomGestureWidth", @"bottomGestureHeight", @"bottomGestureOffset", @"showGestureArea", @"windowWidthPercent", @"windowInset", @"windowMaxScalePercent", @"windowCornerRadius", @"windowShadowStrength", @"windowShadowBlur", @"dockNewSplitPushesCurrent", @"dockWidthPortrait", @"dockWidthLandscape", @"dockAutoStashSeconds", @"dockMaxCount", @"triggerWidth", @"triggerOffsetY", @"dockEnabled", @"dockScale"];
 }
 
 @implementation POSplitXSettings {
@@ -80,6 +80,35 @@ static NSArray<NSString *> *PXAllowedKeys(void) {
 - (CGFloat)fanRadius { return [self doubleForKey:@"fanRadius" fallback:170 min:90 max:210]; }
 - (CGFloat)fanSpan { return [self doubleForKey:@"fanSpan" fallback:120 min:60 max:200]; }
 - (CGFloat)animationSpeed { return [self doubleForKey:@"animationSpeed" fallback:100 min:50 max:200]; }
+- (NSInteger)ring1 { return (NSInteger)[self doubleForKey:@"ring1" fallback:7 min:0 max:12]; }
+- (NSInteger)ring2 { return (NSInteger)[self doubleForKey:@"ring2" fallback:10 min:0 max:16]; }
+- (NSInteger)ring3 { return (NSInteger)[self doubleForKey:@"ring3" fallback:13 min:0 max:20]; }
+- (NSInteger)ring4 { return (NSInteger)[self doubleForKey:@"ring4" fallback:16 min:0 max:24]; }
+- (CGFloat)ringGap { return [self doubleForKey:@"ringGap" fallback:0 min:0 max:40]; }
+- (CGFloat)handleSlideDistance { return [self doubleForKey:@"handleSlideDistance" fallback:45 min:10 max:120]; }
+- (CGFloat)panelEdgeInset { return [self doubleForKey:@"panelEdgeInset" fallback:0 min:0 max:60]; }
+- (CGFloat)topGestureWidth { return [self doubleForKey:@"topGestureWidth" fallback:190 min:80 max:300]; }
+- (CGFloat)topGestureHeight { return [self doubleForKey:@"topGestureHeight" fallback:50 min:24 max:100]; }
+- (CGFloat)topGestureOffset { return [self doubleForKey:@"topGestureOffset" fallback:-20 min:-120 max:120]; }
+- (CGFloat)bottomGestureWidth { return [self doubleForKey:@"bottomGestureWidth" fallback:230 min:120 max:360]; }
+- (CGFloat)bottomGestureHeight { return [self doubleForKey:@"bottomGestureHeight" fallback:36 min:20 max:80]; }
+- (CGFloat)bottomGestureOffset { return [self doubleForKey:@"bottomGestureOffset" fallback:-20 min:-120 max:120]; }
+- (BOOL)showGestureArea { id v = _values[@"showGestureArea"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : NO; }
+- (CGFloat)windowWidthPercent { return [self doubleForKey:@"windowWidthPercent" fallback:80 min:50 max:100]; }
+- (CGFloat)windowInset { return [self doubleForKey:@"windowInset" fallback:12 min:0 max:40]; }
+- (CGFloat)windowMaxScalePercent { return [self doubleForKey:@"windowMaxScalePercent" fallback:172 min:100 max:200]; }
+- (CGFloat)windowCornerRadius { return [self doubleForKey:@"windowCornerRadius" fallback:42 min:0 max:60]; }
+- (CGFloat)windowShadowStrength { return [self doubleForKey:@"windowShadowStrength" fallback:41 min:0 max:100] / 100.0; }
+- (CGFloat)windowShadowBlur { return [self doubleForKey:@"windowShadowBlur" fallback:15 min:0 max:40]; }
+- (BOOL)dockNewSplitPushesCurrent { id v = _values[@"dockNewSplitPushesCurrent"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : YES; }
+- (CGFloat)dockWidthPortrait { return [self doubleForKey:@"dockWidthPortrait" fallback:56 min:40 max:120]; }
+- (CGFloat)dockWidthLandscape { return [self doubleForKey:@"dockWidthLandscape" fallback:151 min:80 max:220]; }
+- (CGFloat)dockAutoStashSeconds { return [self doubleForKey:@"dockAutoStashSeconds" fallback:0 min:0 max:30]; }
+- (NSInteger)dockMaxCount { return (NSInteger)[self doubleForKey:@"dockMaxCount" fallback:6 min:2 max:8]; }
+- (NSString *)bottomActionForKey:(NSString *)key {
+    id v = _values[key];
+    return [v isKindOfClass:NSString.class] && [v length] ? v : @"none";
+}
 - (CGFloat)triggerWidth { return [self doubleForKey:@"triggerWidth" fallback:30 min:8 max:60]; }
 - (CGFloat)triggerOffsetY { return [self doubleForKey:@"triggerOffsetY" fallback:0 min:-200 max:200]; }
 - (CGFloat)dockScale { return [self doubleForKey:@"dockScale" fallback:0.28 min:0.2 max:0.5]; }

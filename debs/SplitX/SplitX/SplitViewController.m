@@ -83,6 +83,8 @@ typedef NS_ENUM(NSUInteger, POHandlePanIntent) {
     POHandlePanIntentNubHandle,
     POHandlePanIntentOpenPanel,
     POHandlePanIntentClosePanel,
+    POHandlePanIntentMenu,
+    POHandlePanIntentMenuPending,
     POHandlePanIntentVerticalCardMove,
 };
 
@@ -3152,6 +3154,11 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
 
         CGPoint velocity = [recognizer velocityInView:self.view];
         BOOL verticalIntent = fabs(velocity.y) > fabs(velocity.x);
+        if (!verticalIntent) {
+            // 先等手指滑出设定距离，避免轻轻一碰就弹菜单。
+            handlePanIntent = POHandlePanIntentMenuPending;
+            return;
+        }
         if (verticalIntent) {
             if (![self canMovePortraitHostedLandscapeCardVertically]) {
                 return;
@@ -3199,6 +3206,32 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
 
         panelPanStartOffsetX = scrollView.contentOffset.x;
         [self scrollViewWillBeginDragging:scrollView];
+        return;
+    }
+
+    if (handlePanIntent == POHandlePanIntentMenuPending) {
+        CGFloat travelled = [recognizer translationInView:self.view].x;
+        if (fabs(travelled) >= [POSplitXSettings shared].handleSlideDistance) {
+            UIView<POQuickSwitchMenuPresenting> *menu =
+                [self quickSwitchMenuForLayoutMode:[self currentQuickSwitchLayoutMode]];
+            if (menu && [menu presentFromHandle:handle withRecognizer:recognizer]) {
+                handlePanIntent = POHandlePanIntentMenu;
+            } else {
+                handlePanIntent = POHandlePanIntentNone;
+            }
+        } else if (recognizer.state == UIGestureRecognizerStateEnded) {
+            handlePanIntent = POHandlePanIntentNone;
+            if (panelState == POPanelStateOpen) [self close]; else [self open];
+        }
+        return;
+    }
+
+    if (handlePanIntent == POHandlePanIntentMenu) {
+        UIView<POQuickSwitchMenuPresenting> *menu = presentedQuickSwitchMenu;
+        if (menu) [menu presentFromHandle:handle withRecognizer:recognizer];
+        if (recognizer.state != UIGestureRecognizerStateChanged) {
+            handlePanIntent = POHandlePanIntentNone;
+        }
         return;
     }
 
