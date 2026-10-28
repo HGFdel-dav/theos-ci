@@ -111,7 +111,8 @@ XCB_COMMON=(
 	-derivedDataPath "$DERIVED_DATA_DIR"
 	-configuration "$CONFIGURATION"
 	THEOS="$THEOS"
-	-sdk "$SDK_PATH"
+	-sdk iphoneos
+	SDKROOT="$SDK_PATH"
 	ARCHS="$ARCHS"
 	VALID_ARCHS="$ARCHS"
 	ONLY_ACTIVE_ARCH=NO
