@@ -1,26 +1,28 @@
 #import "PXPRuntime.h"
 #import "PXPState.h"
 
+NS_ASSUME_NONNULL_BEGIN
+
 typedef void (^PXPSystemCompletion)(NSError * _Nullable error);
 @interface PXPRoute : NSObject {
 @public PXPState state;
 }
 @property(nonatomic, copy) NSString *bundle;
 @property(nonatomic, copy) NSString *container;
-@property(nonatomic, strong) id receiver;
+@property(nonatomic, strong, nullable) id receiver;
 @property(nonatomic) SEL selector;
-@property(nonatomic, strong) id service;
-@property(nonatomic, strong) id request;
-@property(nonatomic, copy) PXPSystemCompletion completion;
-@property(nonatomic, strong) id transitionRequest;
-@property(nonatomic, strong) id provenanceTransition;
-@property(nonatomic, strong) id transitionContext;
-@property(nonatomic, strong) id workspaceTransaction;
-@property(nonatomic, strong) id sceneUpdateTransaction;
-@property(nonatomic, strong) id sceneHandle;
+@property(nonatomic, strong, nullable) id service;
+@property(nonatomic, strong, nullable) id request;
+@property(nonatomic, copy, nullable) PXPSystemCompletion completion;
+@property(nonatomic, strong, nullable) id transitionRequest;
+@property(nonatomic, strong, nullable) id provenanceTransition;
+@property(nonatomic, strong, nullable) id transitionContext;
+@property(nonatomic, strong, nullable) id workspaceTransaction;
+@property(nonatomic, strong, nullable) id sceneUpdateTransaction;
+@property(nonatomic, strong, nullable) id sceneHandle;
 @property(nonatomic, copy) NSString *sceneIdentifier;
-@property(nonatomic, strong) id nativeDelegate;
-@property(nonatomic, strong) NSError *systemError;
+@property(nonatomic, strong, nullable) id nativeDelegate;
+@property(nonatomic, strong) NSError * _Nullable systemError;
 @property(nonatomic) BOOL systemResultReceived;
 @property(nonatomic) BOOL systemCompletionDelivered;
 @property(nonatomic) NSTimeInterval deadline;
@@ -28,17 +30,19 @@ typedef void (^PXPSystemCompletion)(NSError * _Nullable error);
 - (void)fail:(NSError *)error;
 - (void)advance;
 @end
-PXPRoute *PXPAssociatedRoute(id object);
-void PXPAssociate(id object, PXPRoute *route);
+PXPRoute * _Nullable PXPAssociatedRoute(id _Nullable object);
+void PXPAssociate(id _Nullable object, PXPRoute * _Nullable route);
 BOOL PXPBindTransition(PXPRoute *route, id request);
 BOOL PXPHasExactProvenance(PXPRoute *route, id request);
 BOOL PXPInstallProvenance(void);
 void PXPClearProvenance(PXPRoute *route);
 BOOL PXPInstallNativeRouting(void);
 BOOL PXPInstallHostAdapter(void);
-void PXPHostScene(PXPRoute *route, void (^completion)(BOOL ready, NSError *error));
+void PXPHostScene(PXPRoute *route, void (^completion)(BOOL ready, NSError * _Nullable error));
 void PXPClosePaymentHost(NSString *bundle);
 void PXPCancelPaymentHost(PXPRoute *route);
 BOOL PXPRoutingAvailable(void);
 void PXPInstallRequestIntake(void);
 void PXPTeardownNative(PXPRoute *route, void (^completion)(BOOL quiescent));
+
+NS_ASSUME_NONNULL_END
