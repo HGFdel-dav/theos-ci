@@ -928,10 +928,25 @@ static id (*POOriginalSBAppToAppWorkspaceTransactionInit)(id, SEL, id);
 @end
 #pragma mark - External native activation hooks
 
+
+/// 装了 ParallelX 时默认让它先处理外部打开，SplitX 不动 request。
+static BOOL POShouldYieldToParallelX(void) {
+    static BOOL yield = NO;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        yield = NSClassFromString(@"PXSceneBridge") != nil ||
+                [NSFileManager.defaultManager fileExistsAtPath:
+                    @"/var/jb/Library/MobileSubstrate/DynamicLibraries/ParallelX.dylib"] ||
+                [NSFileManager.defaultManager fileExistsAtPath:
+                    @"/Library/MobileSubstrate/DynamicLibraries/ParallelX.dylib"];
+    });
+    return yield;
+}
+
 static void POHookSBMainWorkspaceHandleOpenApplicationRequest(id self, SEL _cmd,
                                                                id systemService, id request,
                                                                id completion) {
-    if (![POApplicationHelper isEnabled]) {
+    if (![POApplicationHelper isEnabled] || POShouldYieldToParallelX()) {
         POOriginalSBMainWorkspaceHandleOpenApplicationRequest(self, _cmd, systemService, request, completion);
         return;
     }
@@ -1041,7 +1056,8 @@ static FBScene *(*_po_orig_FBSceneManager_createLegacySceneFromRemnant)(id, SEL,
 static FBScene *_po_hook_FBSceneManager_createSceneFromRemnant(id self, SEL _cmd,
                                                                id remnant, id settings,
                                                                id transitionContext) {
-    if (![POApplicationHelper isEnabled]) {
+    if (![POApplicationHelper isEnabled] ||
+        (POShouldYieldToParallelX() && ![window.controller isPanelActive])) {
         return _po_orig_FBSceneManager_createSceneFromRemnant(self, _cmd, remnant, settings, transitionContext);
     }
     id primedSettings = [ContextHostManager primePendingSceneRemnantSettings:settings
