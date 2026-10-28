@@ -946,7 +946,8 @@ static BOOL POShouldYieldToParallelX(void) {
 static void POHookSBMainWorkspaceHandleOpenApplicationRequest(id self, SEL _cmd,
                                                                id systemService, id request,
                                                                id completion) {
-    if (![POApplicationHelper isEnabled] || POShouldYieldToParallelX()) {
+    if (![POApplicationHelper isEnabled] ||
+        (POShouldYieldToParallelX() && ![window.controller hasPinnedTarget])) {
         POOriginalSBMainWorkspaceHandleOpenApplicationRequest(self, _cmd, systemService, request, completion);
         return;
     }
@@ -991,7 +992,7 @@ static void POHookSBMainWorkspaceHandleOpenApplicationRequest(id self, SEL _cmd,
         dispatch_async(dispatch_get_main_queue(), forward);
     }];
     // 切不动也得让付款继续，4 秒后按当前容器放行。
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(4.0 * NSEC_PER_SEC)),
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), forward);
 }
 
@@ -1057,7 +1058,7 @@ static FBScene *_po_hook_FBSceneManager_createSceneFromRemnant(id self, SEL _cmd
                                                                id remnant, id settings,
                                                                id transitionContext) {
     if (![POApplicationHelper isEnabled] ||
-        (POShouldYieldToParallelX() && ![window.controller isPanelActive])) {
+        (POShouldYieldToParallelX() && ![window.controller hasPinnedTarget])) {
         return _po_orig_FBSceneManager_createSceneFromRemnant(self, _cmd, remnant, settings, transitionContext);
     }
     id primedSettings = [ContextHostManager primePendingSceneRemnantSettings:settings

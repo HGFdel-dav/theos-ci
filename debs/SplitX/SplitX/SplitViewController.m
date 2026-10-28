@@ -3635,6 +3635,10 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     }
 }
 
+-(BOOL)hasPinnedTarget{
+    return pinnedBundleId.length > 0 || panelState != POPanelStateClosed;
+}
+
 -(NSString *)diagnosticStateDescription{
     return [NSString stringWithFormat:@"panel=%ld host=%@ pinned=%@ switch=%d overlay=%@",
             (long)panelState, hostSession.activeBundleId ?: @"-", pinnedBundleId ?: @"-",

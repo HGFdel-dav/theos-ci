@@ -1,6 +1,14 @@
 #import "POSliderTableCell.h"
 
+@interface UIViewController (POPrivate)
+- (UIViewController *)_viewControllerForAncestor;
+@end
+
 @implementation POSliderTableCell
+
+- (UISlider *)slider {
+    return (UISlider *)self.control;
+}
 
 @dynamic control;
 
@@ -49,7 +57,7 @@
 
 - (void)setValue:(NSNumber *)value {
     [super setValue:value];
-    self.control.value = value.floatValue;
+    self.slider.value = value.floatValue;
     [self updateLabel];
 }
 
@@ -64,7 +72,7 @@
 
 - (void)updateLabel {
     NSInteger step = [[self.specifier propertyForKey:@"stepValue"] integerValue];
-    CGFloat value = self.control.value;
+    CGFloat value = self.slider.value;
     if (step > 1) value = round(value / step) * step;
     self.valueLabel.text = [NSString stringWithFormat:@"%ld", (long)value];
     NSString *label = [self.specifier propertyForKey:@"label"];
@@ -77,12 +85,12 @@
     CGRect bounds = self.contentView.bounds;
     self.textLabel.frame = CGRectMake(16, 8, bounds.size.width - 120, 20);
     self.valueLabel.frame = CGRectMake(bounds.size.width - 88, 8, 72, 20);
-    self.control.frame = CGRectMake(16, 32, bounds.size.width - 32, 32);
+    self.slider.frame = CGRectMake(16, 32, bounds.size.width - 32, 32);
 }
 
 /// 点数值直接输，省得拖着找。
 - (void)editValue:(UITapGestureRecognizer *)recognizer {
-    UIViewController *host = self._viewControllerForAncestor;
+    UIViewController *host = [self _viewControllerForAncestor];
     if (!host) return;
     NSNumber *minimum = [self.specifier propertyForKey:@"minimumValue"];
     NSNumber *maximum = [self.specifier propertyForKey:@"maximumValue"];
@@ -92,7 +100,7 @@
                                                             preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
         field.keyboardType = UIKeyboardTypeNumberPad;
-        field.text = [NSString stringWithFormat:@"%ld", (long)self.control.value];
+        field.text = [NSString stringWithFormat:@"%ld", (long)self.slider.value];
     }];
     __weak typeof(self) weakSelf = self;
     [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
@@ -103,7 +111,7 @@
         if (minimum) value = MAX(value, minimum.floatValue);
         if (maximum) value = MIN(value, maximum.floatValue);
         strongSelf.control.value = value;
-        [strongSelf controlChanged:strongSelf.control];
+        [strongSelf controlChanged:strongSelf.slider];
     }]];
     [host presentViewController:alert animated:YES completion:nil];
 }

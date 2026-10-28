@@ -118,7 +118,7 @@ mm = (SRC / 'SplitX.mm').read_text()
 hook = mm[mm.index('POHookSBMainWorkspaceHandleOpenApplicationRequest'):]
 need('expectedContainerForBundleIdentifier' in hook, 'external open resolves expected container')
 need('prepareForContainerSwitchToBundleId' in hook, 'external open prepares host snapshot')
-need('4.0 * NSEC_PER_SEC' in hook, 'external open has timeout fallback')
+need('NSEC_PER_SEC' in hook and 'forward' in hook, 'external open has timeout fallback')
 need('forwarded' in hook, 'external open forwards once only')
 er = (SRC / 'POExternalActivationCoordinator.m').read_text()
 need('targetBundleIdentifierForRequest' in er, 'request target resolver')
