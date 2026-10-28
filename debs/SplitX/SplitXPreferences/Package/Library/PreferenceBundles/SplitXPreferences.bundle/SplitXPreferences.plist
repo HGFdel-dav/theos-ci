@@ -285,6 +285,58 @@
 			<integer>2</integer>
 		</dict>
 		<dict>
+			<key>cellClass</key>
+			<string>POStepperTableCell</string>
+			<key>default</key>
+			<integer>124</integer>
+			<key>defaults</key>
+			<string>com.niubiprass.splitx</string>
+			<key>get</key>
+			<string>getValueForSpecifier:</string>
+			<key>id</key>
+			<string>fanRadius</string>
+			<key>key</key>
+			<string>fanRadius</string>
+			<key>maximumValue</key>
+			<integer>170</integer>
+			<key>minimumValue</key>
+			<integer>70</integer>
+			<key>pluralLabelFormat</key>
+			<string>扇形半径 %d</string>
+			<key>set</key>
+			<string>setValue:forSpecifier:</string>
+			<key>singularLabelFormat</key>
+			<string>扇形半径 %d</string>
+			<key>stepValue</key>
+			<integer>6</integer>
+		</dict>
+		<dict>
+			<key>cellClass</key>
+			<string>POStepperTableCell</string>
+			<key>default</key>
+			<integer>150</integer>
+			<key>defaults</key>
+			<string>com.niubiprass.splitx</string>
+			<key>get</key>
+			<string>getValueForSpecifier:</string>
+			<key>id</key>
+			<string>fanSpan</string>
+			<key>key</key>
+			<string>fanSpan</string>
+			<key>maximumValue</key>
+			<integer>200</integer>
+			<key>minimumValue</key>
+			<integer>60</integer>
+			<key>pluralLabelFormat</key>
+			<string>扇形张角 %d</string>
+			<key>set</key>
+			<string>setValue:forSpecifier:</string>
+			<key>singularLabelFormat</key>
+			<string>扇形张角 %d</string>
+			<key>stepValue</key>
+			<integer>10</integer>
+		</dict>
+		<dict>
 			<key>cell</key>
 			<string>PSLinkCell</string>
 			<key>id</key>

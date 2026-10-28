@@ -20,6 +20,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) CGFloat panelRadius;    // 12...40, default 30
 @property (nonatomic, readonly) CGFloat panelAlpha;     // 0.4...1, default 1
 @property (nonatomic, readonly) NSInteger panelColumns; // 1...3,  default 2
+@property (nonatomic, readonly) CGFloat fanRadius;      // 70...170, default 124（扇形半径）
+@property (nonatomic, readonly) CGFloat fanSpan;        // 60...200, default 150（扇形张角，度）
 
 // 手势区域
 @property (nonatomic, readonly) CGFloat triggerWidth;   // 8...60,  default 30
