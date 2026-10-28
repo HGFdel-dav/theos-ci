@@ -5,9 +5,9 @@
 
 #import <UIKit/UIKit.h>
 
-static const CGFloat POQuickSwitchIconSize = 32.0;
-static const CGFloat POQuickSwitchSelectionTileSize = 40.0;
-static const CGFloat POQuickSwitchSlotStride = 41.0;
-static const CGFloat POQuickSwitchMenuEdgePadding = 4.5;
-static const CGFloat POQuickSwitchMenuCornerRadius = 12.0;
-static const CGFloat POQuickSwitchSelectionTileCornerRadius = 10.0;
+static const CGFloat POQuickSwitchIconSize = 56.0;
+static const CGFloat POQuickSwitchSelectionTileSize = 68.0;
+static const CGFloat POQuickSwitchSlotStride = 86.0;
+static const CGFloat POQuickSwitchMenuEdgePadding = 10.0;
+static const CGFloat POQuickSwitchMenuCornerRadius = 26.0;
+static const CGFloat POQuickSwitchTileCornerRadius = 20.0;

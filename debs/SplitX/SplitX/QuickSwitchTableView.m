@@ -11,7 +11,7 @@
 #import "POXWindow.h"
 #import "POQuickSwitchMetrics.h"
 
-#define QS_LIST_WIDTH 50.0
+#define QS_LIST_WIDTH 92.0
 #define QS_ROW_HEIGHT POQuickSwitchSlotStride
 #define QS_VERTICAL_SCREEN_EDGE_MARGIN 10.0
 #define QS_HORIZONTAL_SCREEN_EDGE_MARGIN 5.0
@@ -266,8 +266,8 @@ NSArray<NSArray<POQuickSwitchEntry *> *> *POQuickSwitchBuildTargetPages(
         self.estimatedSectionFooterHeight = 0;
         self.separatorStyle = UITableViewCellSeparatorStyleNone;
         self.layer.shadowColor = [UIColor blackColor].CGColor;
-        self.layer.shadowOpacity = 0.30;
-        self.layer.shadowRadius = 3.5;
+        self.layer.shadowOpacity = 0.38;
+        self.layer.shadowRadius = 10.0;
         self.layer.shadowOffset = CGSizeZero;
         self.separatorColor = [UIColor clearColor];
 
@@ -348,7 +348,7 @@ NSArray<NSArray<POQuickSwitchEntry *> *> *POQuickSwitchBuildTargetPages(
         ? @"chevron.up.circle"
         : @"chevron.down.circle";
     UIImageSymbolConfiguration *configuration =
-        [UIImageSymbolConfiguration configurationWithPointSize:POQuickSwitchIconSize
+        [UIImageSymbolConfiguration configurationWithPointSize:22.0
                                                         weight:UIImageSymbolWeightRegular];
     return [UIImage systemImageNamed:symbolName withConfiguration:configuration];
 }
@@ -797,9 +797,11 @@ NSArray<NSArray<POQuickSwitchEntry *> *> *POQuickSwitchBuildTargetPages(
     }
 
     POQuickSwitchEntry *entry = [self entryAtIndexPath:indexPath];
+    cell.target = entry.target;
     cell.imgView.image = entry ? [self imageForEntry:entry] : nil;
     cell.imgView.tintColor = entry && entry.kind == POQuickSwitchEntryKindApplication ? nil : UIColor.labelColor;
     cell.imgView.transform = [self iconLayoutTransform];
+    cell.nameLabelHidden = entry != nil && entry.kind != POQuickSwitchEntryKindApplication;
     cell.isAccessibilityElement = entry && entry.kind != POQuickSwitchEntryKindApplication;
     cell.accessibilityLabel = entry && entry.kind == POQuickSwitchEntryKindPreviousPage
         ? @"上一页"

@@ -11,7 +11,7 @@
 
 #import "POApplicationHelper.h"
 
-#define PO_HANDLE_DEFAULT_SIZE 34.0
+#define PO_HANDLE_DEFAULT_SIZE 30.0
 #define PO_HANDLE_MINIMUM_SIZE 34.0
 #define PO_HANDLE_MAXIMUM_SIZE 50.0
 #define PO_HANDLE_DEFAULT_NUB_HIDDEN_PERCENTAGE 67.0
@@ -53,11 +53,11 @@
 }
 
 -(CGFloat)fullCornerRadius{
-    return CGRectGetWidth(self.bounds) * (8.0 / PO_HANDLE_DEFAULT_SIZE);
+    return CGRectGetHeight(self.bounds) / 2.0;
 }
 
 -(CGFloat)nubbedCornerRadius{
-    return CGRectGetWidth(self.bounds) * (6.0 / PO_HANDLE_DEFAULT_SIZE);
+    return CGRectGetHeight(self.bounds) / 2.0;
 }
 
 -(BOOL)usesNubbedPresentation{
@@ -97,7 +97,24 @@
 
 -(instancetype)initWithController:(id)hubController{
     if (self = [super initWithFrame:CGRectMake(0, 0, PO_HANDLE_DEFAULT_SIZE, PO_HANDLE_DEFAULT_SIZE)]) {
-        self.backgroundColor = [UIColor colorWithWhite:1 alpha:0.04];
+        self.backgroundColor = [UIColor colorWithWhite:1 alpha:0.10];
+        // PX 风格三点握把
+        UIStackView *grip = [[UIStackView alloc] init];
+        grip.axis = UILayoutConstraintAxisVertical;
+        grip.spacing = 3.0;
+        grip.userInteractionEnabled = NO;
+        grip.translatesAutoresizingMaskIntoConstraints = NO;
+        [self addSubview:grip];
+        for (int i = 0; i < 3; i++) {
+            UIView *dot = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 3.0, 3.0)];
+            dot.backgroundColor = [UIColor colorWithWhite:1 alpha:0.85];
+            dot.layer.cornerRadius = 1.5;
+            [grip addArrangedSubview:dot];
+        }
+        [NSLayoutConstraint activateConstraints:@[
+            [grip.centerXAnchor constraintEqualToAnchor:self.centerXAnchor],
+            [grip.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
+        ]];
         self.layer.cornerRadius = 8;
         [self.layer setShadowColor:[UIColor blackColor].CGColor];
         [self.layer setShadowOpacity:0.32];

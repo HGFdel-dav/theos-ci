@@ -8,7 +8,7 @@
 #import "POQuickSwitchMetrics.h"
 #import <objc/runtime.h>
 
-#define QS_HORIZONTAL_BAR_HEIGHT 50.0
+#define QS_HORIZONTAL_BAR_HEIGHT 92.0
 #define QS_HORIZONTAL_ITEM_STRIDE POQuickSwitchSlotStride
 #define QS_HORIZONTAL_ICON_SIZE POQuickSwitchIconSize
 #define QS_HORIZONTAL_TILE_SIZE POQuickSwitchSelectionTileSize

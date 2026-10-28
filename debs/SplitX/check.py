@@ -82,6 +82,17 @@ need('didSelectTarget:' in vc and 'pinTarget:' in vc, 'selection handled by targ
 hv = vc[vc.index('didHoverTarget:'):]
 need('activeContainerForBundleIdentifier' in hv, 'hover checks container before prewarm')
 
+# 8b 界面照 ParallelX（大格子 + 名称 + 角标 + 胶囊手柄）
+metrics = (SRC / 'POQuickSwitchMetrics.h').read_text()
+need('POQuickSwitchIconSize = 56.0' in metrics, 'icon 56pt')
+need('POQuickSwitchSelectionTileSize = 68.0' in metrics, 'tile 68pt')
+need('POQuickSwitchTileCornerRadius' in metrics, 'tile corner token')
+cell = (SRC / 'QuickSwitchTableViewCell.m').read_text()
+need('nameLabel' in cell and 'badgeLabel' in cell, 'cell shows name and badge')
+need('@"分"' in cell and '@"默"' in cell, 'badge text 默/分')
+handle = (SRC / 'POHandle.m').read_text()
+need('CGRectGetHeight(self.bounds) / 2.0' in handle, 'handle is a pill')
+
 # 9 旧品牌残留（README/LICENSE 除外）
 for pat in ('PullOverXPreferences.bundle', 'com.mlgm.pulloverx', 'PullOverViewController'):
     hits = [p for p in ROOT.rglob('*') if p.is_file() and p.suffix in ('.m', '.mm', '.h', '.plist', '.pbxproj', '.sh') and pat in p.read_text(errors='ignore')]

@@ -6,6 +6,7 @@
 //
 
 #import <UIKit/UIKit.h>
+#import "POSplitTarget.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -13,6 +14,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 @property (nonatomic, strong) UIImageView *imgView;
 @property (nonatomic, strong) UIView *tileView;
+@property (nonatomic, strong) POSplitTarget *target;
+@property (nonatomic, assign) BOOL nameLabelHidden;
 
 @end
 
