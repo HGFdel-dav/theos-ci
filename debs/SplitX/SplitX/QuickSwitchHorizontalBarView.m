@@ -13,7 +13,7 @@
 #define QS_HORIZONTAL_ICON_SIZE POQuickSwitchIconSize
 #define QS_HORIZONTAL_TILE_SIZE POQuickSwitchSelectionTileSize
 #define QS_HORIZONTAL_BAR_CORNER_RADIUS POQuickSwitchMenuCornerRadius
-#define QS_HORIZONTAL_TILE_CORNER_RADIUS POQuickSwitchSelectionTileCornerRadius
+#define QS_HORIZONTAL_TILE_CORNER_RADIUS POQuickSwitchTileCornerRadius
 #define QS_HORIZONTAL_EDGE_MARGIN 10.0
 #define QS_HORIZONTAL_CARD_GAP 5.0
 #define QS_HORIZONTAL_SELECTED_POP 48.0
