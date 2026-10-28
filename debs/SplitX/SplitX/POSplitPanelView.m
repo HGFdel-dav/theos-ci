@@ -40,7 +40,8 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
                       iconSize:(CGFloat)iconSize
                       tileSize:(CGFloat)tileSize
                          title:(NSString *)title
-                         badge:(NSString *)badge;
+                         badge:(NSString *)badge
+                        square:(BOOL)square;
 - (void)applyDimmedInitialState;
 @end
 
@@ -50,7 +51,8 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
                       iconSize:(CGFloat)iconSize
                       tileSize:(CGFloat)tileSize
                          title:(NSString *)title
-                         badge:(NSString *)badge {
+                         badge:(NSString *)badge
+                        square:(BOOL)square {
     // PX 那种：白色圆托 + 圆角图标，没有文字。
     CGFloat tile = tileSize;
     CGFloat icon = iconSize;
@@ -61,7 +63,7 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
 
         UIView *bubble = [[UIView alloc] initWithFrame:CGRectMake(5, 5, tile, tile)];
         bubble.backgroundColor = [UIColor colorWithWhite:0.98 alpha:0.92];
-        bubble.layer.cornerRadius = tile / 2.0;
+        bubble.layer.cornerRadius = square ? tile * 0.30 : tile / 2.0;
         bubble.layer.borderWidth = 0.5;
         bubble.layer.borderColor = [UIColor colorWithWhite:0 alpha:0.10].CGColor;
         bubble.layer.shadowColor = UIColor.blackColor.CGColor;
@@ -75,7 +77,7 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
         CGFloat inset = icon * 0.12 + 5.0;
         _iconView = [[UIImageView alloc] initWithFrame:CGRectInset(bubble.frame, inset, inset)];
         _iconView.contentMode = UIViewContentModeScaleAspectFit;
-        _iconView.layer.cornerRadius = icon * 0.24;
+        _iconView.layer.cornerRadius = square ? icon * 0.22 : icon * 0.50;
         _iconView.layer.cornerCurve = kCACornerCurveContinuous;
         _iconView.clipsToBounds = YES;
         _iconView.image = [POApplicationHelper imageForBundleId:target.bundleIdentifier];
@@ -196,8 +198,9 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
 
 /// 扇形路径：圆心 + 半径 + 张角。
 - (UIBezierPath *)fanPathWithRadius:(CGFloat)radius {
-    CGFloat start = -M_PI_2 - self.span / 2.0;
-    CGFloat end = -M_PI_2 + self.span / 2.0;
+    CGFloat centerAngle = self.expandsRight ? 0.0 : M_PI;
+    CGFloat start = centerAngle - self.span / 2.0;
+    CGFloat end = centerAngle + self.span / 2.0;
     UIBezierPath *path = [UIBezierPath bezierPath];
     [path moveToPoint:self.centerPoint];
     [path addArcWithCenter:self.centerPoint radius:radius startAngle:start endAngle:end clockwise:YES];
@@ -268,15 +271,12 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
 
     // 半径：先保证相邻图标的弧距够，再受上下边缘限制。
     // PX 那样铺满一片：分三圈，越外圈放得越多，角度交错。
-    CGFloat verticalRoom = MIN(self.centerPoint.y, CGRectGetHeight(self.bounds) - self.centerPoint.y)
-        - self.itemTileSize * 0.7 - 8.0;
-    CGFloat horizontalRoom = CGRectGetWidth(self.bounds) - self.itemTileSize - 20.0;
-    CGFloat usable = MAX(110.0, MIN(verticalRoom, horizontalRoom));
-    NSUInteger ringCountAtLeast = ordered.count > 16 ? 4 : (ordered.count > 6 ? 3 : 1);
     CGFloat ringUnit = self.itemTileSize + settings.ringGap;
-    CGFloat outerLimit = usable - 8.0;
-    CGFloat innerRadius = MAX(92.0, MIN(usable * 0.42, outerLimit - (CGFloat)(ringCountAtLeast - 1) * ringUnit));
-    self.radius = outerLimit;
+    CGFloat usable = MAX(90.0, self.radius);
+    NSUInteger ringCountAtLeast = ordered.count > 16 ? 4 : (ordered.count > 6 ? 3 : 1);
+    CGFloat innerRadius = MAX(80.0, MIN(usable * 0.45,
+                                        usable - (CGFloat)(ringCountAtLeast - 1) * ringUnit));
+    if (innerRadius < 80.0) innerRadius = 80.0;
     self.span = (settings.fanSpan + 40.0) * M_PI / 180.0;
 
     // 按环容量填充：先填内环，满了才进下一环。
@@ -299,7 +299,7 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
     }
     [self rebuildShape];
 
-    CGFloat direction = self.expandsRight ? 1.0 : -1.0;
+    CGFloat centerAngle = self.expandsRight ? 0.0 : M_PI;   // 永远朝屏幕内侧张开
     for (NSUInteger i = 0; i < ordered.count; i++) {
         NSUInteger ring = ringOf[i].unsignedIntegerValue;
         NSUInteger ringCount = 1;
@@ -311,22 +311,22 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
             }
         }
         ringCount -= 1;
-        CGFloat angle = -M_PI_2;
+        CGFloat angle = centerAngle;
         if (ringCount > 1) angle += -self.span / 2.0 + self.span * ((CGFloat)posInRing / (CGFloat)(ringCount - 1));
-        CGFloat ringRadius = innerRadius + (CGFloat)ring * (self.itemTileSize + settings.ringGap);
-        ringRadius = MIN(ringRadius, self.radius);
+        CGFloat ringSpan = MAX(1.0, self.radius - innerRadius);
+        CGFloat ringRadius = innerRadius + ringSpan * ((CGFloat)ring / (CGFloat)MAX((int)ringCountAtLeast - 1, 1));
 
         POSplitPanelItem *item = [[POSplitPanelItem alloc] initWithTarget:ordered[i]
                                                                  iconSize:self.itemIconSize
                                                                  tileSize:self.itemTileSize
                                                                     title:titles[i]
-                                                                    badge:badges[i]];
+                                                                    badge:badges[i]
+                                                                   square:settings.squareIcons];
         item.angle = angle;
         item.radius = ringRadius;
         item.baseScale = 0.90 + (CGFloat)((i * 53) % 7) / 7.0 * 0.22;
-        CGFloat x = self.centerPoint.x + direction * cos(angle) * ringRadius;
+        CGFloat x = self.centerPoint.x + cos(angle) * ringRadius;
         CGFloat y = self.centerPoint.y + sin(angle) * ringRadius;
-        if (!self.expandsRight) item.angle = M_PI - angle;
         item.center = CGPointMake(x, y);
         [item applyDimmedInitialState];
         [self addSubview:item];
@@ -396,8 +396,11 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
         self.expandsRight = handleOnLeft;
 
         POSplitXSettings *settings = [POSplitXSettings shared];
-        CGFloat radius = settings.fanRadius;
         CGFloat tile = settings.tileSize;
+        // 先按屏幕到手的距离定半径，不要用还没定的 view 高度反推。
+        CGFloat screenHeight = CGRectGetHeight(coordinateView.bounds);
+        CGFloat room = MIN(handleCenter.y, screenHeight - handleCenter.y) - tile - 10.0;
+        CGFloat radius = MAX(90.0, MIN(settings.fanRadius, room));
         CGFloat width = radius + tile + 26.0;
         CGFloat height = 2.0 * radius + tile + 16.0;
 

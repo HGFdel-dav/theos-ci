@@ -84,38 +84,35 @@
 }
 
 -(void)applyHandleSize{
-    CGFloat size = [self handleSize];
-    // PX 形态：贴边的半圆把，宽度是高度的一半，外侧两角整圆。
+    // PX 那种：一根细竖条，平时几乎透明，动它才亮。
     CGRect frame = self.frame;
-    frame.size = CGSizeMake(size * 0.52, size * 1.55);
+    frame.size = CGSizeMake(11.0, 86.0);
     self.frame = frame;
     self.layer.cornerRadius = CGRectGetWidth(self.bounds) / 2.0;
-    self.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMinXMaxYCorner;
+    self.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMinXMaxYCorner | kCALayerMaxXMinYCorner | kCALayerMaxXMaxYCorner;
     self.clipsToBounds = NO;
+    self.imageView.hidden = YES;
 
-    CGFloat iconSize = MAX(0, size - 10.0);
-    self.imageView.frame = CGRectMake((CGRectGetWidth(self.bounds) - iconSize) / 2.0,
-                                      (CGRectGetHeight(self.bounds) - iconSize) / 2.0,
-                                      iconSize,
-                                      iconSize);
     blurView.frame = self.bounds;
     blurView.layer.cornerRadius = CGRectGetWidth(self.bounds) / 2.0;
-    blurView.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMinXMaxYCorner;
+    self.backgroundColor = [UIColor colorWithWhite:1 alpha:0.28];
+    self.alpha = 0.35;
 }
 
+-(instancetype)initWithController:(id)hubController{
 -(instancetype)initWithController:(id)hubController{
     if (self = [super initWithFrame:CGRectMake(0, 0, PO_HANDLE_DEFAULT_SIZE, PO_HANDLE_DEFAULT_SIZE)]) {
         self.backgroundColor = [UIColor colorWithWhite:1 alpha:0.10];
         // PX 风格三点握把
         UIStackView *grip = [[UIStackView alloc] init];
         grip.axis = UILayoutConstraintAxisVertical;
-        grip.spacing = 3.0;
+        grip.spacing = 2.0;
         grip.userInteractionEnabled = NO;
         grip.translatesAutoresizingMaskIntoConstraints = NO;
         [self addSubview:grip];
         for (int i = 0; i < 3; i++) {
             UIView *dot = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 3.0, 3.0)];
-            dot.backgroundColor = [UIColor colorWithWhite:1 alpha:0.85];
+            dot.backgroundColor = [UIColor colorWithWhite:0.25 alpha:0.75];
             dot.layer.cornerRadius = 1.5;
             [grip addArrangedSubview:dot];
         }
@@ -135,7 +132,7 @@
 
         quickSwitchLongPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(longPress:)];
         quickSwitchLongPress.minimumPressDuration = 0.05f;
-        quickSwitchLongPress.allowableMovement = 200.0f;
+        quickSwitchLongPress.allowableMovement = 2000.0f;
         quickSwitchLongPress.delegate = self;
         quickSwitchLongPress.cancelsTouchesInView = NO;
         [self addGestureRecognizer:quickSwitchLongPress];

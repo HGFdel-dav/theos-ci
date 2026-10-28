@@ -597,6 +597,21 @@ static NSString * const kPOEnabledPendingRespringKey = @"enabled-respring-pendin
         [self selectFavorites:specifier];
         return;
     }
+    if ([identifier isEqualToString:@"windowPrefs"]) {
+        [tableView deselectRowAtIndexPath:indexPath animated:YES];
+        [self openSubPage:@"Window" title:@"窗口"];
+        return;
+    }
+    if ([identifier isEqualToString:@"dockPrefs"]) {
+        [tableView deselectRowAtIndexPath:indexPath animated:YES];
+        [self openSubPage:@"Dock" title:@"角落小窗"];
+        return;
+    }
+    if ([identifier isEqualToString:@"gesturePrefs"]) {
+        [tableView deselectRowAtIndexPath:indexPath animated:YES];
+        [self openSubPage:@"Gesture" title:@"手势区域"];
+        return;
+    }
     if ([identifier isEqualToString:@"externalURLRoutingWhitelist"]) {
         [tableView deselectRowAtIndexPath:indexPath animated:YES];
         if (!self.applicationWhitelistController) {
@@ -616,6 +631,19 @@ static NSString * const kPOEnabledPendingRespringKey = @"enabled-respring-pendin
         return;
     }
     [super tableView:tableView didSelectRowAtIndexPath:indexPath];
+}
+
+-(void)openSubPage:(NSString *)plistName title:(NSString *)title{
+    Class cls = NSClassFromString(@"PSListController");
+    if (!cls) return;
+    id controller = [[cls alloc] init];
+    if ([controller respondsToSelector:@selector(loadSpecifiersFromPlistName:target:)]) {
+        [controller loadSpecifiersFromPlistName:plistName target:controller];
+    }
+    if ([controller isKindOfClass:UIViewController.class]) {
+        [(UIViewController *)controller setTitle:title];
+    }
+    [self.navigationController pushViewController:controller animated:YES];
 }
 
 -(void)selectFavorites:(PSSpecifier *)specifier{

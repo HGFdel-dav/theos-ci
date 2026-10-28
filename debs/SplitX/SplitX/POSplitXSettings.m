@@ -20,7 +20,7 @@ static void PXSettingsChanged(CFNotificationCenterRef center, void *observer, CF
 }
 static NSArray<NSString *> *PXAllowedKeys(void) {
     return @[@"iconSize", @"tileSize", @"itemSpacing", @"panelRadius", @"panelAlpha",
-             @"panelColumns", @"fanRadius", @"fanSpan", @"animationSpeed", @"ring1", @"ring2", @"ring3", @"ring4", @"ringGap", @"handleSlideDistance", @"panelEdgeInset", @"topGestureWidth", @"topGestureHeight", @"topGestureOffset", @"bottomGestureWidth", @"bottomGestureHeight", @"bottomGestureOffset", @"showGestureArea", @"windowWidthPercent", @"windowInset", @"windowMaxScalePercent", @"windowCornerRadius", @"windowShadowStrength", @"windowShadowBlur", @"dockNewSplitPushesCurrent", @"dockWidthPortrait", @"dockWidthLandscape", @"dockAutoStashSeconds", @"dockMaxCount", @"triggerWidth", @"triggerOffsetY", @"dockEnabled", @"dockScale"];
+             @"panelColumns", @"fanRadius", @"fanSpan", @"animationSpeed", @"squareIcons", @"ring1", @"ring2", @"ring3", @"ring4", @"ringGap", @"handleSlideDistance", @"panelEdgeInset", @"topGestureWidth", @"topGestureHeight", @"topGestureOffset", @"bottomGestureWidth", @"bottomGestureHeight", @"bottomGestureOffset", @"showGestureArea", @"windowWidthPercent", @"windowInset", @"windowMaxScalePercent", @"windowCornerRadius", @"windowShadowStrength", @"windowShadowBlur", @"dockNewSplitPushesCurrent", @"dockWidthPortrait", @"dockWidthLandscape", @"dockAutoStashSeconds", @"dockMaxCount", @"triggerWidth", @"triggerOffsetY", @"dockEnabled", @"dockScale"];
 }
 
 @implementation POSplitXSettings {
@@ -75,11 +75,12 @@ static NSArray<NSString *> *PXAllowedKeys(void) {
 - (CGFloat)tileSize { return [self doubleForKey:@"tileSize" fallback:62 min:52 max:88]; }
 - (CGFloat)itemSpacing { return [self doubleForKey:@"itemSpacing" fallback:6 min:0 max:20]; }
 - (CGFloat)panelRadius { return [self doubleForKey:@"panelRadius" fallback:30 min:12 max:40]; }
-- (CGFloat)panelAlpha { return [self doubleForKey:@"panelAlpha" fallback:100 min:40 max:100] / 100.0; }
+- (CGFloat)panelAlpha { return [self doubleForKey:@"panelAlpha" fallback:0 min:0 max:100] / 100.0; }
 - (NSInteger)panelColumns { return (NSInteger)[self doubleForKey:@"panelColumns" fallback:2 min:1 max:3]; }
 - (CGFloat)fanRadius { return [self doubleForKey:@"fanRadius" fallback:170 min:90 max:210]; }
 - (CGFloat)fanSpan { return [self doubleForKey:@"fanSpan" fallback:120 min:60 max:200]; }
 - (CGFloat)animationSpeed { return [self doubleForKey:@"animationSpeed" fallback:100 min:50 max:200]; }
+- (BOOL)squareIcons { id v = _values[@"squareIcons"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : NO; }
 - (NSInteger)ring1 { return (NSInteger)[self doubleForKey:@"ring1" fallback:7 min:0 max:12]; }
 - (NSInteger)ring2 { return (NSInteger)[self doubleForKey:@"ring2" fallback:10 min:0 max:16]; }
 - (NSInteger)ring3 { return (NSInteger)[self doubleForKey:@"ring3" fallback:13 min:0 max:20]; }

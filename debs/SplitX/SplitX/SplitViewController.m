@@ -2574,11 +2574,15 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
 
     CGFloat widthScale = availableCardWidth / MAX(1, logicalCanvas.width);
     CGFloat heightScale = availableCardHeight / MAX(1, logicalCanvas.height);
-    scale = MIN(1.0, MIN(widthScale, heightScale));
+    // 宽度先按设置的比例定，再让高度去适配，别让高度把窗口压成一条。
+    CGFloat widthFactor = MAX(0.3, MIN(1.0, [POSplitXSettings shared].windowWidthPercent / 100.0));
+    scale = MIN(1.0, widthScale * widthFactor);
+    if (logicalCanvas.height * scale > availableCardHeight) {
+        scale = MIN(scale, heightScale);
+    }
 
     CGFloat screenScale = UIScreen.mainScreen.scale;
-    CGFloat preferredWidth = [POSplitXSettings shared].windowWidthPercent / 100.0;
-    contentLayoutWidth = round(logicalCanvas.width * scale * preferredWidth * screenScale) / screenScale;
+    contentLayoutWidth = round(logicalCanvas.width * scale * screenScale) / screenScale;
     CGFloat contentLayoutHeight = round(logicalCanvas.height * scale * screenScale) / screenScale;
     CGFloat anchoredCardBottomY = CGRectGetMidY(bounds);
     if (portraitHostedLandscapeOptimization) {
