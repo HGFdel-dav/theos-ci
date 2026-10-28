@@ -46,6 +46,8 @@
 		C9A000000000000000000003 /* POSplitTarget.m in Sources */ = {isa = PBXBuildFile; fileRef = C9A000000000000000000002; };
 		C9A000000000000000000006 /* POCraneBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = C9A000000000000000000005; };
 		C9B000000000000000000003 /* POSplitPanelView.m in Sources */ = {isa = PBXBuildFile; fileRef = C9B000000000000000000002; };
+		C9C000000000000000003 /* POSplitXLog.m in Sources */ = {isa = PBXBuildFile; fileRef = C9C000000000000000002; };
+		C9C000000000000000006 /* POSplitXSettings.m in Sources */ = {isa = PBXBuildFile; fileRef = C9C000000000000000005; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -126,6 +128,10 @@
 		C9A000000000000000000005 /* POCraneBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POCraneBridge.m; sourceTree = "<group>"; };
 		C9B000000000000000000001 /* POSplitPanelView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = POSplitPanelView.h; sourceTree = "<group>"; };
 		C9B000000000000000000002 /* POSplitPanelView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POSplitPanelView.m; sourceTree = "<group>"; };
+		C9C000000000000000001 /* POSplitXLog.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = POSplitXLog.h; sourceTree = "<group>"; };
+		C9C000000000000000002 /* POSplitXLog.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POSplitXLog.m; sourceTree = "<group>"; };
+		C9C000000000000000004 /* POSplitXSettings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = POSplitXSettings.h; sourceTree = "<group>"; };
+		C9C000000000000000005 /* POSplitXSettings.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POSplitXSettings.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -191,6 +197,10 @@
 			isa = PBXGroup;
 			children = (
 				C7151695225BC4000021ADB8 /* SplitX.mm */,
+				C9C000000000000000004 /* POSplitXSettings.h */,
+				C9C000000000000000005 /* POSplitXSettings.m */,
+				C9C000000000000000001 /* POSplitXLog.h */,
+				C9C000000000000000002 /* POSplitXLog.m */,
 				C9B000000000000000000001 /* POSplitPanelView.h */,
 				C9B000000000000000000002 /* POSplitPanelView.m */,
 				C9A000000000000000000001 /* POSplitTarget.h */,
@@ -363,6 +373,8 @@
 				E300000000000000000001 /* POQuickSwitchDragCoordinator.m in Sources */,
 				F100000000000000000001 /* POSplitSessionController.m in Sources */,
 				C7151696225BC4000021ADB8 /* SplitX.mm in Sources */,
+				C9C000000000000000006 /* POSplitXSettings.m in Sources */,
+				C9C000000000000000003 /* POSplitXLog.m in Sources */,
 				C9B000000000000000000003 /* POSplitPanelView.m in Sources */,
 				C9A000000000000000000003 /* POSplitTarget.m in Sources */,
 				C9A000000000000000000006 /* POCraneBridge.m in Sources */,

@@ -533,7 +533,7 @@
     itemsContainerView.transform = CGAffineTransformIdentity;
 }
 
--(BOOL)presentFromHandle:(UIView *)handle withRecognizer:(UILongPressGestureRecognizer *)recognizer{
+-(BOOL)presentFromHandle:(UIView *)handle withRecognizer:(UIGestureRecognizer *)recognizer{
     if (recognizer.state == UIGestureRecognizerStateBegan) {
         presentationGeneration += 1;
         settings = [POApplicationHelper settings];

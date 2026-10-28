@@ -1,5 +1,7 @@
 #line 1 "SplitX.mm"
 #import <Foundation/Foundation.h>
+#import "POSplitXLog.h"
+#import "POSplitXSettings.h"
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 #import <objc/message.h>
@@ -1230,7 +1232,12 @@ static void PORegisterScreenBlankObserver(void) {
 
 #pragma mark - Hook registration
 
-static __attribute__((constructor)) void POInstallSpringBoardHooks(int __unused argc, char __unused **argv,
+static __attribute__((constructor)) static void PXBootLog(void) {
+    PXLog(@"boot", @"SplitX %@ launched pid=%d", @"0.1.0~dev4", getpid());
+    [POSplitXSettings.shared reload];
+}
+
+__attribute__((constructor)) void POInstallSpringBoardHooks(int __unused argc, char __unused **argv,
                                                                     char __unused **envp) {
     if (!objc_getClass("SpringBoard")) {
         return;

@@ -685,7 +685,7 @@ NSArray<NSArray<POQuickSwitchEntry *> *> *POQuickSwitchBuildTargetPages(
     hasLastGesturePoint = NO;
 }
 
--(BOOL)presentFromHandle:(UIView *)handle withRecognizer:(UILongPressGestureRecognizer *)recognizer{
+-(BOOL)presentFromHandle:(UIView *)handle withRecognizer:(UIGestureRecognizer *)recognizer{
     if (recognizer.state == UIGestureRecognizerStateBegan) {
         presentationGeneration += 1;
         [self.layer removeAllAnimations];

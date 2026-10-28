@@ -92,6 +92,7 @@ static const NSUInteger PQMaxItems = 10;
 @property (nonatomic, strong) NSArray<POSplitTarget *> *targets;
 @property (nonatomic, assign) NSInteger hoveredIndex;
 @property (nonatomic, assign) BOOL presenting;
+@property (nonatomic, assign) CGPoint revealOrigin;
 @end
 
 @implementation POSplitPanelView
@@ -179,7 +180,7 @@ static const NSUInteger PQMaxItems = 10;
 
 #pragma mark - 呈现
 
-- (BOOL)presentFromHandle:(UIView *)handle withRecognizer:(UILongPressGestureRecognizer *)recognizer {
+- (BOOL)presentFromHandle:(UIView *)handle withRecognizer:(UIGestureRecognizer *)recognizer {
     UIView *coordinateView = self.superview;
     if (!coordinateView) return NO;
 
@@ -205,6 +206,8 @@ static const NSUInteger PQMaxItems = 10;
         self.alpha = 0;
         self.transform = CGAffineTransformMakeScale(0.86, 0.9);
         _presenting = YES;
+        _revealOrigin = center;
+        [self applyRevealForPoint:[recognizer locationInView:coordinateView]];
         [self.selectionDelegate quickSwitchTableViewWillAppear:self];
         [self setHoveredIndex:-1];
         [UIView animateWithDuration:0.24 delay:0 usingSpringWithDamping:0.78 initialSpringVelocity:0.4
@@ -217,8 +220,14 @@ static const NSUInteger PQMaxItems = 10;
 
     if (!_presenting) return NO;
     CGPoint point = [recognizer locationInView:self];
+    CGPoint touchInHost = [recognizer locationInView:coordinateView];
 
     if (recognizer.state == UIGestureRecognizerStateChanged) {
+        // 手指还在手柄附近时只跟着“长出来”，进入面板后再判定悬停
+        if (!CGRectContainsPoint(self.frame, touchInHost)) {
+            [self applyRevealForPoint:touchInHost];
+            return YES;
+        }
         [self setHoveredIndex:[self indexAtPoint:point]];
         return YES;
     }
@@ -263,6 +272,14 @@ static const NSUInteger PQMaxItems = 10;
                      atPoint:(CGPoint)point {}
 
 - (void)draggingDidEnterBoundsOfQuickSwitchTableView:(UIView<POQuickSwitchMenuPresenting> *)menu {}
+
+- (void)applyRevealForPoint:(CGPoint)point {
+    CGFloat distance = hypot(point.x - self.revealOrigin.x, point.y - self.revealOrigin.y);
+    CGFloat progress = MIN(1.0, MAX(0.15, distance / 90.0));
+    self.alpha = progress;
+    CGFloat scale = 0.86 + 0.14 * progress;
+    self.transform = CGAffineTransformMakeScale(scale, scale);
+}
 
 - (void)refreshLayoutDirection {
     if (_presenting) [self buildItems];

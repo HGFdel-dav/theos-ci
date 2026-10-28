@@ -130,7 +130,8 @@
         [self addGestureRecognizer:_tapGestureRecognizer];
 
         quickSwitchLongPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(longPress:)];
-        quickSwitchLongPress.minimumPressDuration = .3f;
+        quickSwitchLongPress.minimumPressDuration = 0.05f;
+        quickSwitchLongPress.allowableMovement = 200.0f;
         quickSwitchLongPress.delegate = self;
         quickSwitchLongPress.cancelsTouchesInView = NO;
         [self addGestureRecognizer:quickSwitchLongPress];

@@ -50,7 +50,7 @@ FOUNDATION_EXPORT NSArray<NSArray<POQuickSwitchEntry *> *> *POQuickSwitchBuildTa
 
 @protocol POQuickSwitchMenuPresenting <NSObject>
 @property (nonatomic, weak) id<QuickSwitchSelectionDelegate> selectionDelegate;
--(BOOL)presentFromHandle:(UIView *)handle withRecognizer:(UILongPressGestureRecognizer *)recognizer;
+-(BOOL)presentFromHandle:(UIView *)handle withRecognizer:(UIGestureRecognizer *)recognizer;
 -(void)dismissImmediately;
 -(void)refreshLayoutDirection;
 @end
