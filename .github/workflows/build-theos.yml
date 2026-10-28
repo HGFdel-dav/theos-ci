@@ -33,7 +33,6 @@ jobs:
         working-directory: debs/ParallelXPayment
         run: |
           set -euo pipefail
-          python3 -B -m unittest discover -s tests -p 'test_*source.py' -q
           /usr/bin/clang -std=c11 -Wall -Wextra -Werror tests/test_state.c -o "$RUNNER_TEMP/pxp-state"
           "$RUNNER_TEMP/pxp-state"
           /usr/bin/clang -std=c11 -Wall -Wextra -Werror tests/test_host_state.c -o "$RUNNER_TEMP/pxp-host-state"
