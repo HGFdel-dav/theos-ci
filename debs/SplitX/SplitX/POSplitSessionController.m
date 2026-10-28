@@ -1,4 +1,5 @@
 #import "POSplitSessionController.h"
+#import <UIKit/UIKit.h>
 
 @interface POSplitSessionController ()
 @property (nonatomic, readwrite, getter=isActive) BOOL active;
