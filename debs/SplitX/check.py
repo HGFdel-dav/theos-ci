@@ -57,7 +57,7 @@ for name, size in (('SplitXPreferencesIcon.png', 29), ('SplitXPreferencesIcon@2x
 # 6 构建目标与 SDK 锁定
 make = (ROOT / 'build.sh').read_text()
 need('SDK_VERSION="${SDK_VERSION:-15.5}"' in make, 'SDK pinned to 15.5')
-need('SDK_PATH' in make and '-sdk "$SDK_PATH"' in make, 'build uses pinned SDK path')
+need('SDKROOT="$SDK_PATH"' in make, 'build uses pinned SDK path')
 need('miphoneos-version-min="$MIN_IOS"' in make, 'min iOS passed to camera build')
 pbx = (ROOT / 'SplitX.xcodeproj/project.pbxproj').read_text()
 need(pbx.count('IPHONEOS_DEPLOYMENT_TARGET = "15.0"') >= 2, 'deployment target 15.0')
