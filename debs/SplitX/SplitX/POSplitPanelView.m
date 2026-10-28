@@ -268,12 +268,15 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
 
     // 半径：先保证相邻图标的弧距够，再受上下边缘限制。
     // PX 那样铺满一片：分三圈，越外圈放得越多，角度交错。
-    CGFloat maxRadius = MIN(CGRectGetWidth(self.bounds) - self.itemTileSize - 18.0,
-                            MIN(self.centerPoint.y, CGRectGetHeight(self.bounds) - self.centerPoint.y)
-                                - self.itemTileSize * 0.7 - 6.0);
-    maxRadius = MAX(maxRadius, 110.0);
-    CGFloat innerRadius = MAX(92.0, maxRadius * 0.40);
-    self.radius = maxRadius;
+    CGFloat verticalRoom = MIN(self.centerPoint.y, CGRectGetHeight(self.bounds) - self.centerPoint.y)
+        - self.itemTileSize * 0.7 - 8.0;
+    CGFloat horizontalRoom = CGRectGetWidth(self.bounds) - self.itemTileSize - 20.0;
+    CGFloat usable = MAX(110.0, MIN(verticalRoom, horizontalRoom));
+    NSUInteger ringCountAtLeast = ordered.count > 16 ? 4 : (ordered.count > 6 ? 3 : 1);
+    CGFloat ringUnit = self.itemTileSize + settings.ringGap;
+    CGFloat outerLimit = usable - 8.0;
+    CGFloat innerRadius = MAX(92.0, MIN(usable * 0.42, outerLimit - (CGFloat)(ringCountAtLeast - 1) * ringUnit));
+    self.radius = outerLimit;
     self.span = (settings.fanSpan + 40.0) * M_PI / 180.0;
 
     // 按环容量填充：先填内环，满了才进下一环。
@@ -310,7 +313,8 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
         ringCount -= 1;
         CGFloat angle = -M_PI_2;
         if (ringCount > 1) angle += -self.span / 2.0 + self.span * ((CGFloat)posInRing / (CGFloat)(ringCount - 1));
-        CGFloat ringRadius = self.radius * 0.42 + (CGFloat)ring * (self.itemTileSize + settings.ringGap);
+        CGFloat ringRadius = innerRadius + (CGFloat)ring * (self.itemTileSize + settings.ringGap);
+        ringRadius = MIN(ringRadius, self.radius);
 
         POSplitPanelItem *item = [[POSplitPanelItem alloc] initWithTarget:ordered[i]
                                                                  iconSize:self.itemIconSize
@@ -345,11 +349,16 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
     }
     CGFloat angle = atan2(dy, dx);
     NSInteger best = -1;
-    CGFloat bestDelta = 0.62;   // ~35°
+    CGFloat bestScore = 1.0;
     for (NSUInteger i = 0; i < self.items.count; i++) {
-        CGFloat target = self.items[i].angle;
+        POSplitPanelItem *item = self.items[i];
+        CGFloat target = item.angle;
         CGFloat delta = fabs(atan2(sin(angle - target), cos(angle - target)));
-        if (delta < bestDelta) { bestDelta = delta; best = (NSInteger)i; }
+        if (delta > 0.55) continue;                                  // 角度差太大
+        CGFloat radial = fabs(distance - item.radius) / self.itemTileSize;
+        if (radial > 1.1) continue;                                  // 不在同一环
+        CGFloat score = delta / 0.55 * 0.7 + radial / 1.1 * 0.3;
+        if (score < bestScore) { bestScore = score; best = (NSInteger)i; }
     }
     return best;
 }
@@ -399,6 +408,12 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
         [self buildItems];
         if (self.items.count == 0) return NO;
         self.hidden = NO;
+
+        // 半径是建完才算准的，按它重设高度，别让最外环顶出屏幕。
+        CGFloat realHeight = MIN(CGRectGetHeight(coordinateView.bounds) - 16.0,
+                                 2.0 * self.radius + self.itemTileSize + 16.0);
+        self.frame = CGRectMake(CGRectGetMinX(self.frame), cy - realHeight / 2.0,
+                                CGRectGetWidth(self.frame), realHeight);
 
         _presenting = YES;
 
