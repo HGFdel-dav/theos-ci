@@ -181,8 +181,8 @@ static NSString *POCRaneRowString(id row, NSString *key) {
     if (![rows isKindOfClass:NSArray.class]) return targets;
     NSMutableSet<NSString *> *seen = [NSMutableSet setWithObject:POSplitDefaultContainerIdentifier];
     for (id row in rows) {
-        NSString *identifier = POCraneRowString(row, @"identifier");
-        NSString *name = POCraneRowString(row, @"name");
+        NSString *identifier = POCRaneRowString(row, @"identifier");
+        NSString *name = POCRaneRowString(row, @"name");
         if (!POCraneString(identifier) || [seen containsObject:identifier]) continue;
         [seen addObject:identifier];
         [targets addObject:[POSplitTarget targetWithBundleIdentifier:bundleIdentifier
