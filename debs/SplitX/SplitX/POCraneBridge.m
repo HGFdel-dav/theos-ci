@@ -175,9 +175,20 @@ static NSString *POCRaneRowString(id row, NSString *key) {
     id settings = ((id (*)(id, SEL, id))objc_msgSend)(
         manager, NSSelectorFromString(@"applicationSettingsForApplicationWithIdentifier:"), bundleIdentifier);
     id rows = POCRaneContainersFromSettings(settings);
-    PXLog(@"clone", @"%@ settings=%@ containers=%@", bundleIdentifier,
-          settings ? NSStringFromClass([settings class]) : @"nil",
+    NSString *keys = @"-";
+    if ([settings isKindOfClass:NSDictionary.class]) {
+        keys = [[(NSDictionary *)settings allKeys] componentsJoinedByString:@","];
+    }
+    PXLog(@"clone", @"%@ settings=%@ keys=%@ containers=%@", bundleIdentifier,
+          settings ? NSStringFromClass([settings class]) : @"nil", keys,
           [rows isKindOfClass:NSArray.class] ? [NSString stringWithFormat:@"%lu", (unsigned long)[rows count]] : @"nil");
+    if ([rows isKindOfClass:NSArray.class]) {
+        for (id row in [rows subarrayWithRange:NSMakeRange(0, MIN(3, [rows count]))]) {
+            NSString *rowKeys = [row isKindOfClass:NSDictionary.class]
+                ? [[(NSDictionary *)row allKeys] componentsJoinedByString:@","] : @"-";
+            PXLog(@"clone", @"  row %@ keys=%@", NSStringFromClass([row class]), rowKeys);
+        }
+    }
     if (![rows isKindOfClass:NSArray.class]) return targets;
     NSMutableSet<NSString *> *seen = [NSMutableSet setWithObject:POSplitDefaultContainerIdentifier];
     for (id row in rows) {
