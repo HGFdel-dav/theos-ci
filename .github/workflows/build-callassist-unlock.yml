@@ -16,7 +16,14 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Tools
-        run: sudo apt-get update && sudo apt-get install -y ldid dpkg xz-utils
+        run: |
+          set -e
+          sudo apt-get update
+          sudo apt-get install -y dpkg xz-utils build-essential libplist-dev libssl-dev libxml2-dev pkg-config git
+          git clone --depth 1 https://github.com/ProcursusTeam/ldid.git /tmp/ldid
+          make -C /tmp/ldid -j4
+          sudo install -m755 /tmp/ldid/ldid /usr/local/bin/ldid
+          ldid -h | head -3
 
       - name: Patch payload
         run: python3 patches/CallAssistUnlock/apply_patch.py
