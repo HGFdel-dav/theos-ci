@@ -2415,8 +2415,14 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
                                  UIViewAnimationOptionBeginFromCurrentState |
                                  UIViewAnimationOptionAllowUserInteraction)
                      animations:^{
-        self->keyboardZoomContainer.center = cardEndCenter;
-        self->handleScrollView.center = handleEndCenter;
+        // PX 那种：原地缩小并淡出，不是平移出屏。
+        CGFloat shrink = 0.55;
+        CGAffineTransform cardShrink = CGAffineTransformMakeScale(visualScale * shrink, visualScale * shrink);
+        cardShrink.tx = cardTravelX * 0.18;
+        self->keyboardZoomContainer.transform = cardShrink;
+        self->keyboardZoomContainer.alpha = 0;
+        self->handleScrollView.transform = CGAffineTransformMakeScale(0.6, 0.6);
+        self->handleScrollView.alpha = 0;
         self->panelBackdropView.alpha = 0;
         self->quickSwitchBackdropView.alpha = 0;
         self->shadowView.layer.shadowOpacity = 0;
@@ -2428,6 +2434,10 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
         BOOL replayDeferredLayout = self->scaledProgrammaticCloseNeedsLayout;
         [UIView performWithoutAnimation:^{
             [self hidePresentationContainer];
+            self->keyboardZoomContainer.transform = CGAffineTransformIdentity;
+            self->keyboardZoomContainer.alpha = 1;
+            self->handleScrollView.transform = CGAffineTransformIdentity;
+            self->handleScrollView.alpha = 1;
             [self->scrollView setContentOffset:CGPointZero animated:NO];
             self->keyboardZoomContainer.center = cardStartCenter;
             self->handleScrollView.center = handleStartCenter;
@@ -2580,7 +2590,8 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     CGFloat heightScale = availableCardHeight / MAX(1, logicalCanvas.height);
     // 宽度先按设置的比例定，再让高度去适配，别让高度把窗口压成一条。
     CGFloat widthFactor = MAX(0.3, MIN(1.0, [POSplitXSettings shared].windowWidthPercent / 100.0));
-    scale = MIN(1.0, widthScale * widthFactor);
+    CGFloat screenWidth = CGRectGetWidth(bounds);
+    scale = MIN(1.0, (screenWidth * widthFactor) / MAX(1, logicalCanvas.width));
     if (logicalCanvas.height * scale > availableCardHeight) {
         scale = MIN(scale, heightScale);
     }
