@@ -84,7 +84,7 @@ def work_control(ctl):
     text = p.read_text()
     lines = []
     for line in text.splitlines():
-        lines.append('Version: 2.5.1-unlock1' if line.startswith('Version:') else line)
+        lines.append('Version: 2.5.1-unlock2' if line.startswith('Version:') else line)
     p.write_text('\n'.join(lines) + '\n')
     return True
 
