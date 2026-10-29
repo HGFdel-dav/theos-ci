@@ -104,7 +104,7 @@ static NSArray<NSString *> *PXAllowedKeys(void) {
 - (CGFloat)bottomGestureHeight { return [self doubleForKey:@"bottomGestureHeight" fallback:36 min:20 max:80]; }
 - (CGFloat)bottomGestureOffset { return [self doubleForKey:@"bottomGestureOffset" fallback:-20 min:-120 max:120]; }
 - (BOOL)showGestureArea { id v = _values[@"showGestureArea"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : NO; }
-- (CGFloat)windowWidthPercent { return [self doubleForKey:@"windowWidthPercent" fallback:92 min:50 max:100]; }
+- (CGFloat)windowWidthPercent { return [self doubleForKey:@"windowWidthPercent" fallback:62 min:40 max:100]; }
 - (CGFloat)windowInset { return [self doubleForKey:@"windowInset" fallback:12 min:0 max:40]; }
 - (CGFloat)windowMaxScalePercent { return [self doubleForKey:@"windowMaxScalePercent" fallback:172 min:100 max:200]; }
 - (CGFloat)windowCornerRadius { return [self doubleForKey:@"windowCornerRadius" fallback:42 min:0 max:60]; }

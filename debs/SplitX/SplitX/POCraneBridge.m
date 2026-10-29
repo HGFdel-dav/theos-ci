@@ -154,54 +154,51 @@ static NSString *POCRaneRowString(id row, NSString *key) {
                                                  bundleIdentifier) != 0;
 }
 
++ (NSString *)displayNameForContainer:(NSString *)containerID bundle:(NSString *)bundleID {
+    id manager = POCraneManager();
+    if (!manager || !containerID.length || !bundleID.length) return @"";
+    SEL se = NSSelectorFromString(@"displayNameForContainerWithIdentifier:ofApplicationWithIdentifier:shouldUseShortVersion:");
+    if (POCraneSignature(manager, se, "@", @[@"@", @"@", [NSString stringWithUTF8String:@encode(BOOL)]])) {
+        id name = ((id (*)(id, SEL, id, id, BOOL))objc_msgSend)(manager, se, containerID, bundleID, NO);
+        if ([name isKindOfClass:NSString.class] && [name length]) return name;
+    }
+    SEL shortSel = NSSelectorFromString(@"displayNameForContainerWithIdentifier:ofApplicationWithIdentifier:");
+    if (POCraneSignature(manager, shortSel, "@", @[@"@", @"@"])) {
+        id name = ((id (*)(id, SEL, id, id))objc_msgSend)(manager, shortSel, containerID, bundleID);
+        if ([name isKindOfClass:NSString.class] && [name length]) return name;
+    }
+    return @"";
+}
+
 + (NSArray<POSplitTarget *> *)targetsForBundleIdentifier:(NSString *)bundleIdentifier {
     NSMutableArray<POSplitTarget *> *targets = [NSMutableArray array];
     if (!POCraneString(bundleIdentifier)) return targets;
-    if ([[POSplitXSettings shared] cloneShowDefault]) {
-        [targets addObject:[POSplitTarget targetWithBundleIdentifier:bundleIdentifier
-                                                           container:POSplitDefaultContainerIdentifier
-                                                         displayName:@"默认"]];
-    }
+
     id manager = POCraneManager();
-    if (!manager) {
-        PXLog(@"clone", @"%@ 无 CraneManager，只给 DEFAULT", bundleIdentifier);
+    SEL listSel = NSSelectorFromString(@"containerIdentifiersOfApplicationWithIdentifier:");
+    if (!manager || !POCraneSignature(manager, listSel, "@", @[@"@"])) {
+        [targets addObject:[POSplitTarget targetWithBundleIdentifier:bundleIdentifier]];
         return targets;
     }
-    if (![self isBundleSupported:bundleIdentifier]) {
-        PXLog(@"clone", @"%@ 不受 Crane 支持，只给 DEFAULT", bundleIdentifier);
+    id list = ((id (*)(id, SEL, id))objc_msgSend)(manager, listSel, bundleIdentifier);
+    if (![list isKindOfClass:NSArray.class]) {
+        [targets addObject:[POSplitTarget targetWithBundleIdentifier:bundleIdentifier]];
         return targets;
     }
-    if (!POCraneSignature(manager, @"applicationSettingsForApplicationWithIdentifier:", "@", @[@"@"])) {
-        PXLogW(@"clone", @"applicationSettings ABI 不符，%@ 只给 DEFAULT", bundleIdentifier);
-        return targets;
+
+    // DEFAULT 排最前，其余按系统给的顺序；去重。
+    NSMutableOrderedSet<NSString *> *ids = [NSMutableOrderedSet orderedSetWithObject:POSplitDefaultContainerIdentifier];
+    for (id item in (NSArray *)list) {
+        if (POCraneString(item)) [ids addObject:item];
     }
-    id settings = ((id (*)(id, SEL, id))objc_msgSend)(
-        manager, NSSelectorFromString(@"applicationSettingsForApplicationWithIdentifier:"), bundleIdentifier);
-    id rows = POCRaneContainersFromSettings(settings);
-    NSString *keys = @"-";
-    if ([settings isKindOfClass:NSDictionary.class]) {
-        keys = [[(NSDictionary *)settings allKeys] componentsJoinedByString:@","];
-    }
-    PXLog(@"clone", @"%@ settings=%@ keys=%@ containers=%@", bundleIdentifier,
-          settings ? NSStringFromClass([settings class]) : @"nil", keys,
-          [rows isKindOfClass:NSArray.class] ? [NSString stringWithFormat:@"%lu", (unsigned long)[rows count]] : @"nil");
-    if ([rows isKindOfClass:NSArray.class]) {
-        for (id row in [rows subarrayWithRange:NSMakeRange(0, MIN(3, [rows count]))]) {
-            NSString *rowKeys = [row isKindOfClass:NSDictionary.class]
-                ? [[(NSDictionary *)row allKeys] componentsJoinedByString:@","] : @"-";
-            PXLog(@"clone", @"  row %@ keys=%@", NSStringFromClass([row class]), rowKeys);
-        }
-    }
-    if (![rows isKindOfClass:NSArray.class]) return targets;
-    NSMutableSet<NSString *> *seen = [NSMutableSet setWithObject:POSplitDefaultContainerIdentifier];
-    for (id row in rows) {
-        NSString *identifier = POCRaneRowString(row, @"identifier");
-        NSString *name = POCRaneRowString(row, @"name");
-        if (!POCraneString(identifier) || [seen containsObject:identifier]) continue;
-        [seen addObject:identifier];
+    BOOL multiple = ids.count > 1;
+    for (NSString *identifier in ids) {
+        BOOL isDefault = [identifier isEqualToString:POSplitDefaultContainerIdentifier];
+        if (isDefault && multiple && ![POSplitXSettings shared].cloneShowDefault) continue;
+        NSString *name = isDefault ? @"默认" : [self displayNameForContainer:identifier bundle:bundleIdentifier];
         [targets addObject:[POSplitTarget targetWithBundleIdentifier:bundleIdentifier
                                                            container:identifier
-                                                         displayName:POCraneString(name) ? name : identifier]];
+                                                         displayName:name.length ? name : identifier]];
     }
     PXLog(@"clone", @"%@ 容器 %lu 个", bundleIdentifier, (unsigned long)targets.count);
     return targets;

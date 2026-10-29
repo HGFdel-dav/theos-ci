@@ -98,7 +98,7 @@
     blurView.frame = self.bounds;
     blurView.layer.cornerRadius = CGRectGetWidth(self.bounds) / 2.0;
     self.backgroundColor = [UIColor colorWithWhite:1 alpha:0.28];
-    if (self.alpha == 0) self.alpha = 0.35;
+    self.alpha = 0.0;   // 平时不挂在那儿，动它才出来
     [self.superview setNeedsLayout];
     self.hidden = NO;
 }
@@ -291,6 +291,11 @@
 
 -(void)tap:(UIGestureRecognizer *)recognizer{
     PXLog(@"gesture", @"handle tap state=%ld", (long)recognizer.state);
+    self.alpha = 1.0;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        [UIView animateWithDuration:0.3 animations:^{ self.alpha = 0.0; }];
+    });
     [self.delegate handle:self didReceiveTap:recognizer];
 }
 
@@ -303,11 +308,18 @@
 }
 
 -(void)panelPan:(UIPanGestureRecognizer *)recognizer{
-    NSTimeInterval now = NSDate.timeIntervalSinceReferenceDate;
+    if (recognizer.state == UIGestureRecognizerStateBegan) {
+        [UIView animateWithDuration:0.12 animations:^{ self.alpha = 1.0; }];
+    } else if (recognizer.state == UIGestureRecognizerStateEnded ||
+               recognizer.state == UIGestureRecognizerStateCancelled ||
+               recognizer.state == UIGestureRecognizerStateFailed) {
+        [UIView animateWithDuration:0.28 animations:^{ self.alpha = 0.0; }];
+    }
+    NSTimeInterval timeStamp = NSDate.timeIntervalSinceReferenceDate;
     BOOL stateChanged = recognizer.state != _lastPanState;
-    if (stateChanged || now - _lastPanLogTime > 0.12) {
+    if (stateChanged || timeStamp - _lastPanLogTime > 0.12) {
         _lastPanState = recognizer.state;
-        _lastPanLogTime = now;
+        _lastPanLogTime = timeStamp;
         CGPoint p = [recognizer locationInView:self];
         CGPoint v = [recognizer velocityInView:self];
         PXLog(@"gesture", @"handle pan state=%ld p=%.0f,%.0f v=%.0f,%.0f nubbed=%d",

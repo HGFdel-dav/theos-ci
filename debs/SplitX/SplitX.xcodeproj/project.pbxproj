@@ -52,6 +52,7 @@
 		C9D000000000000000003 /* POSplitXLog.m in Sources */ = {isa = PBXBuildFile; fileRef = C9C000000000000000002; };
 		C9F000000000000000001 /* POSplitXSettings.m in Sources */ = {isa = PBXBuildFile; fileRef = C9C000000000000000005; };
 		C9E000000000000000003 /* POSliderTableCell.m in Sources */ = {isa = PBXBuildFile; fileRef = C9E000000000000000002; };
+		C9F0000000000000000A3 /* POSubPageController.m in Sources */ = {isa = PBXBuildFile; fileRef = C9F0000000000000000A2; };
 		C9C000000000000000006 /* POSplitXSettings.m in Sources */ = {isa = PBXBuildFile; fileRef = C9C000000000000000005; };
 /* End PBXBuildFile section */
 
@@ -107,6 +108,8 @@
 		C774843E2496A7EF00272DB5 /* POTimeStepperTableCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POTimeStepperTableCell.m; sourceTree = "<group>"; };
 		C9E000000000000000001 /* POSliderTableCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = POSliderTableCell.h; sourceTree = "<group>"; };
 		C9E000000000000000002 /* POSliderTableCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POSliderTableCell.m; sourceTree = "<group>"; };
+		C9F0000000000000000A1 /* POSubPageController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = POSubPageController.h; sourceTree = "<group>"; };
+		C9F0000000000000000A2 /* POSubPageController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POSubPageController.m; sourceTree = "<group>"; };
 		C77E05DF229B2B5E003A59C9 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
 		C7A168DA23B126B100451FA7 /* ContextInterfaces.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ContextInterfaces.h; sourceTree = "<group>"; };
 		C900000000000000000010 /* POLocalization.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POLocalization.m; sourceTree = "<group>"; };
@@ -262,6 +265,7 @@
 				A200000000000000000010 /* POSearchPresentation.h */,
 				A200000000000000000011 /* POSearchPresentation.m */,
 				C9E000000000000000001 /* POSliderTableCell.h */,
+				C9F0000000000000000A1 /* POSubPageController.h */,
 				C9E000000000000000002 /* POSliderTableCell.m */,
 				A200000000000000000012 /* POApplicationWhitelistController.h */,
 				A200000000000000000013 /* POApplicationWhitelistController.m */,
@@ -401,6 +405,7 @@
 				C774843F2496A7EF00272DB5 /* POTimeStepperTableCell.m in Sources */,
 				C72445E4225D480B001E1330 /* POStepperTableCell.m in Sources */,
 				C9E000000000000000003 /* POSliderTableCell.m in Sources */,
+				C9F0000000000000000A3 /* POSubPageController.m in Sources */,
 				C72445E1225D3743001E1330 /* QSFavoritesPickerController.m in Sources */,
 				A200000000000000000001 /* POSearchPresentation.m in Sources */,
 				A200000000000000000002 /* POApplicationWhitelistController.m in Sources */,

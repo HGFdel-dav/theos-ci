@@ -3637,7 +3637,7 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     [self restoreQuickSwitchContentYieldIfNeededAnimated:NO];
     [self hideQuickSwitchBackdropImmediately];
     quickSwitchInteractionOverlayView.hidden = YES;
-    self.handle.alpha = 1;
+    self.handle.alpha = 0.0;   // 平时不挂手柄，滑边缘才出来
     [self updateInteractionBackdropsAnimated:NO];
     [self reconcileCardChromeZOrder];
     [self reevaluateKeyboardZoomAnimated:NO];

@@ -215,7 +215,7 @@ static id POSharedObjectForClass(Class cls) {
     }
     NSArray<NSString *> *result = bundleIds.array;
     NSInteger slots = [settings[@"quickSwitchAppSlots"] integerValue];
-    if (!favoritesMode && slots > 0 && result.count > (NSUInteger)slots) {
+    if (slots > 0 && result.count > (NSUInteger)slots) {
         result = [result subarrayWithRange:NSMakeRange(0, (NSUInteger)slots)];
     }
     return result;

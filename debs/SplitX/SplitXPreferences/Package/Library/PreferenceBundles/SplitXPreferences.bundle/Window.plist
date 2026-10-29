@@ -14,7 +14,7 @@
 			<key>cellClass</key>
 			<string>POSliderTableCell</string>
 			<key>default</key>
-			<integer>80</integer>
+			<real>62.0</real>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
 			<key>get</key>
@@ -30,7 +30,7 @@
 			<key>maximumValue</key>
 			<integer>100</integer>
 			<key>minimumValue</key>
-			<integer>50</integer>
+			<real>40.0</real>
 			<key>set</key>
 			<string>setValue:forSpecifier:</string>
 			<key>stepValue</key>
