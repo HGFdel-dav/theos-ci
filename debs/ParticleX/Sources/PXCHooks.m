@@ -128,7 +128,14 @@ static void PXCWidgetRemove(id self,SEL cmd,id icon,unsigned long long options,i
         // Search already-mounted icon views by identity, not iconViewForIcon:
         // which can allocate/relocate views. No arbitrary window snapshots.
         Class iconView=NSClassFromString(@"SBIconView");
-        for (UIWindow *window in UIApplication.sharedApplication.windows) {
+        NSMutableOrderedSet<UIWindow *> *windows=[NSMutableOrderedSet orderedSet];
+        for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+            if ([scene isKindOfClass:UIWindowScene.class]) [windows addObjectsFromArray:((UIWindowScene *)scene).windows];
+        }
+        // SpringBoard can own legacy windows outside UIWindowScene on 15.5.
+        // Public object getter is ABI-checked and used only as a fallback.
+        if (!windows.count) [windows addObjectsFromArray:PXCArray(PXCObject(UIApplication.sharedApplication,@"windows"))];
+        for (UIWindow *window in windows) {
             if (window.hidden || window.alpha<0.05) continue;
             NSMutableArray *queue=[NSMutableArray arrayWithObject:window];
             for (NSUInteger i=0;i<queue.count && i<2400;i++) {

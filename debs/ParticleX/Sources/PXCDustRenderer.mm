@@ -394,7 +394,7 @@ static void PXCDustInstallLifecycleObservers(void) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidReceiveMemoryWarningNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n) { PXCDustRemoveAll(); }];
-        [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidChangeStatusBarOrientationNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n) { PXCDustRemoveAll(); }];
+        [[NSNotificationCenter defaultCenter] addObserverForName:UIDeviceOrientationDidChangeNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n) { PXCDustRemoveAll(); }];
     });
 }
 void PXCDustPrewarm(void) {
