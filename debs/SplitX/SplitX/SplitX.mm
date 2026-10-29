@@ -1347,7 +1347,7 @@ static NSString *PXJailbreakDescription(void) {
 }
 
 static __attribute__((constructor)) static void PXBootLog(void) {
-    PXLogBeginSession(@"0.1.0~r19");
+    PXLogBeginSession(@"0.1.0~r20");
     [POSplitXSettings.shared reload];
 
     static char machine[32] = {0};

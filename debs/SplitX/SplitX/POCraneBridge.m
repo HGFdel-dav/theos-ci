@@ -251,18 +251,29 @@ static NSString *POCRaneRowString(id row, NSString *key) {
         return targets;
     }
     id list = ((id (*)(id, SEL, id))objc_msgSend)(manager, listSel, bundleIdentifier);
-    if (![list isKindOfClass:NSArray.class]) {
-        PXLogW(@"clone", @"%@ 容器列表不是数组: %@", bundleIdentifier,
-               list ? NSStringFromClass([list class]) : @"nil");
-        [targets addObject:[POSplitTarget targetWithBundleIdentifier:bundleIdentifier]];
-        return targets;
+    if (![list isKindOfClass:NSArray.class] || [(NSArray *)list count] == 0) {
+        // 这条 selector 在部分 Crane 版本返回空，退回 applicationSettings 的 Containers。
+        id settings = [manager respondsToSelector:@selector(applicationSettingsForApplicationWithIdentifier:)]
+            ? ((id (*)(id, SEL, id))objc_msgSend)(manager,
+                NSSelectorFromString(@"applicationSettingsForApplicationWithIdentifier:"), bundleIdentifier)
+            : nil;
+        id rows = POCRaneContainersFromSettings(settings);
+        PXLog(@"clone", @"%@ containerIdentifiers 空/非数组，回退 settings=%@ rows=%lu", bundleIdentifier,
+              settings ? NSStringFromClass([settings class]) : @"nil", (unsigned long)[rows count]);
+        if ([rows isKindOfClass:NSArray.class] && [(NSArray *)rows count] > 0) {
+            list = rows;
+        } else {
+            [targets addObject:[POSplitTarget targetWithBundleIdentifier:bundleIdentifier]];
+            return targets;
+        }
     }
     PXLog(@"clone", @"%@ 原始容器列表=%@", bundleIdentifier, [(NSArray *)list componentsJoinedByString:@","]);
 
     // DEFAULT 排最前，其余按系统给的顺序；去重。
     NSMutableOrderedSet<NSString *> *ids = [NSMutableOrderedSet orderedSetWithObject:POSplitDefaultContainerIdentifier];
     for (id item in (NSArray *)list) {
-        if (POCraneString(item)) [ids addObject:item];
+        NSString *identifier = [item isKindOfClass:NSString.class] ? item : POCRaneRowString(item, @"identifier");
+        if (POCraneString(identifier)) [ids addObject:identifier];
     }
     BOOL multiple = ids.count > 1;
     for (NSString *identifier in ids) {

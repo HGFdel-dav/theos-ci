@@ -104,7 +104,7 @@
 
 - (void)layoutSubviews {
     [super layoutSubviews];
-    CGRect bounds = self.contentView.bounds;
+    CGRect bounds = self.bounds;   // contentView 只有 44 高，会把滑杆裁掉
     self.textLabel.frame = CGRectMake(16, 8, bounds.size.width - 120, 20);
     self.valueLabel.frame = CGRectMake(bounds.size.width - 88, 8, 72, 20);
     self.slider.frame = CGRectMake(16, 32, bounds.size.width - 32, 32);

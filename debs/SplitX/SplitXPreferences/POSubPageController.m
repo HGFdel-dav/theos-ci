@@ -84,4 +84,26 @@
           (unsigned long)self.specifiers.count);
 }
 
+
+- (id)getValueForSpecifier:(PSSpecifier *)specifier {
+    NSString *key = [specifier propertyForKey:@"key"];
+    NSString *suite = [specifier propertyForKey:@"defaults"];
+    if (!key.length || !suite.length) return nil;
+    id value = [[[NSUserDefaults alloc] initWithSuiteName:suite] objectForKey:key];
+    return value ?: [specifier propertyForKey:@"default"];
+}
+
+- (void)setValue:(id)value forSpecifier:(PSSpecifier *)specifier {
+    NSString *key = [specifier propertyForKey:@"key"];
+    NSString *suite = [specifier propertyForKey:@"defaults"];
+    if (!key.length || !suite.length) return;
+    NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:suite];
+    if (value) [defaults setObject:value forKey:key];
+    else [defaults removeObjectForKey:key];
+    [defaults synchronize];
+    PXLog(@"prefs", @"子页写 %@=%@", key, value ?: @"(清空)");
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                         CFSTR("com.niubiprass.splitx.settings-changed"),
+                                         NULL, NULL, YES);
+}
 @end
