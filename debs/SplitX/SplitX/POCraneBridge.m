@@ -10,6 +10,7 @@
 //
 
 #import "POSplitXLog.h"
+#import "POSplitXSettings.h"
 #import "POCraneBridge.h"
 #import <objc/message.h>
 #import <objc/runtime.h>
@@ -156,9 +157,11 @@ static NSString *POCRaneRowString(id row, NSString *key) {
 + (NSArray<POSplitTarget *> *)targetsForBundleIdentifier:(NSString *)bundleIdentifier {
     NSMutableArray<POSplitTarget *> *targets = [NSMutableArray array];
     if (!POCraneString(bundleIdentifier)) return targets;
-    [targets addObject:[POSplitTarget targetWithBundleIdentifier:bundleIdentifier
-                                                       container:POSplitDefaultContainerIdentifier
-                                                     displayName:@"默认"]];
+    if ([[POSplitXSettings shared] cloneShowDefault]) {
+        [targets addObject:[POSplitTarget targetWithBundleIdentifier:bundleIdentifier
+                                                           container:POSplitDefaultContainerIdentifier
+                                                         displayName:@"默认"]];
+    }
     id manager = POCraneManager();
     if (!manager) {
         PXLog(@"clone", @"%@ 无 CraneManager，只给 DEFAULT", bundleIdentifier);

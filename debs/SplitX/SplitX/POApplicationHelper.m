@@ -8,6 +8,7 @@
 #import "POApplicationHelper.h"
 #import "POCraneBridge.h"
 #import "POSplitXLog.h"
+#import "POSplitXSettings.h"
 #import <objc/message.h>
 
 @interface UIImage (POApplicationIcon)
@@ -224,7 +225,8 @@ static id POSharedObjectForClass(Class cls) {
     NSArray<NSString *> *bundles = [self quickSwitchBundleIdentifiers];
     NSMutableArray<POSplitTarget *> *targets = [NSMutableArray array];
     for (NSString *bundleId in bundles) {
-        NSArray<POSplitTarget *> *containers = [POCraneBridge targetsForBundleIdentifier:bundleId];
+        NSArray<POSplitTarget *> *containers = [[POSplitXSettings shared] cloneEnabled]
+            ? [POCraneBridge targetsForBundleIdentifier:bundleId] : nil;
         if (containers.count) {
             [targets addObjectsFromArray:containers];
         } else {

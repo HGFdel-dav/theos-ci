@@ -20,7 +20,7 @@ static void PXSettingsChanged(CFNotificationCenterRef center, void *observer, CF
 }
 static NSArray<NSString *> *PXAllowedKeys(void) {
     return @[@"iconSize", @"tileSize", @"itemSpacing", @"panelRadius", @"panelAlpha",
-             @"panelColumns", @"fanRadius", @"fanSpan", @"animationSpeed", @"squareIcons", @"ring1", @"ring2", @"ring3", @"ring4", @"ringGap", @"handleSlideDistance", @"panelEdgeInset", @"topGestureWidth", @"topGestureHeight", @"topGestureOffset", @"bottomGestureWidth", @"bottomGestureHeight", @"bottomGestureOffset", @"showGestureArea", @"windowWidthPercent", @"windowInset", @"windowMaxScalePercent", @"windowCornerRadius", @"windowShadowStrength", @"windowShadowBlur", @"dockNewSplitPushesCurrent", @"dockWidthPortrait", @"dockWidthLandscape", @"dockAutoStashSeconds", @"dockMaxCount", @"triggerWidth", @"triggerOffsetY", @"dockEnabled", @"dockScale"];
+             @"panelColumns", @"fanRadius", @"fanSpan", @"animationSpeed", @"squareIcons", @"cloneEnabled", @"cloneShowDefault", @"ring1", @"ring2", @"ring3", @"ring4", @"ringGap", @"handleSlideDistance", @"panelEdgeInset", @"topGestureWidth", @"topGestureHeight", @"topGestureOffset", @"bottomGestureWidth", @"bottomGestureHeight", @"bottomGestureOffset", @"showGestureArea", @"windowWidthPercent", @"windowInset", @"windowMaxScalePercent", @"windowCornerRadius", @"windowShadowStrength", @"windowShadowBlur", @"dockNewSplitPushesCurrent", @"dockWidthPortrait", @"dockWidthLandscape", @"dockAutoStashSeconds", @"dockMaxCount", @"triggerWidth", @"triggerOffsetY", @"dockEnabled", @"dockScale"];
 }
 
 @implementation POSplitXSettings {
@@ -80,6 +80,8 @@ static NSArray<NSString *> *PXAllowedKeys(void) {
 - (CGFloat)fanRadius { return [self doubleForKey:@"fanRadius" fallback:170 min:90 max:210]; }
 - (CGFloat)fanSpan { return [self doubleForKey:@"fanSpan" fallback:120 min:60 max:200]; }
 - (CGFloat)animationSpeed { return [self doubleForKey:@"animationSpeed" fallback:100 min:50 max:200]; }
+- (BOOL)cloneEnabled { id v = _values[@"cloneEnabled"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : YES; }
+- (BOOL)cloneShowDefault { id v = _values[@"cloneShowDefault"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : YES; }
 - (BOOL)squareIcons { id v = _values[@"squareIcons"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : NO; }
 - (NSInteger)ring1 { return (NSInteger)[self doubleForKey:@"ring1" fallback:7 min:0 max:12]; }
 - (NSInteger)ring2 { return (NSInteger)[self doubleForKey:@"ring2" fallback:10 min:0 max:16]; }

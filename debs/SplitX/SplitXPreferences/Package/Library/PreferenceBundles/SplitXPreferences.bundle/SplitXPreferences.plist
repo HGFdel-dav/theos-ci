@@ -42,6 +42,46 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
+			<string>关掉就不列分身，只用默认号；装了 Crane 才会出现分身条目。</string>
+			<key>label</key>
+			<string>分身（Crane）</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<integer>1</integer>
+			<key>defaults</key>
+			<string>com.niubiprass.splitx</string>
+			<key>get</key>
+			<string>getValueForSpecifier:</string>
+			<key>key</key>
+			<string>cloneEnabled</string>
+			<key>label</key>
+			<string>启用分身</string>
+			<key>set</key>
+			<string>setValue:forSpecifier:</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<integer>1</integer>
+			<key>defaults</key>
+			<string>com.niubiprass.splitx</string>
+			<key>get</key>
+			<string>getValueForSpecifier:</string>
+			<key>key</key>
+			<string>cloneShowDefault</string>
+			<key>label</key>
+			<string>显示默认号</string>
+			<key>set</key>
+			<string>setValue:forSpecifier:</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>footerText</key>
 			<string>「收藏」为空会自动用最近应用。</string>
 			<key>label</key>
 			<string>应用与菜单</string>

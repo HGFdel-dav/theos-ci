@@ -86,7 +86,9 @@
 -(void)applyHandleSize{
     // PX 那种：一根细竖条，平时几乎透明，动它才亮。
     CGRect frame = self.frame;
-    frame.size = CGSizeMake(11.0, 86.0);
+    frame.size = CGSizeMake(13.0, 86.0);
+    CGFloat railWidth = self.superview ? CGRectGetWidth(self.superview.bounds) : 0;
+    if (railWidth > 0) frame.origin.x = (railWidth - 13.0) / 2.0;
     self.frame = frame;
     self.layer.cornerRadius = CGRectGetWidth(self.bounds) / 2.0;
     self.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMinXMaxYCorner | kCALayerMaxXMinYCorner | kCALayerMaxXMaxYCorner;
@@ -96,7 +98,9 @@
     blurView.frame = self.bounds;
     blurView.layer.cornerRadius = CGRectGetWidth(self.bounds) / 2.0;
     self.backgroundColor = [UIColor colorWithWhite:1 alpha:0.28];
-    self.alpha = 0.35;
+    if (self.alpha == 0) self.alpha = 0.35;
+    [self.superview setNeedsLayout];
+    self.hidden = NO;
 }
 
 -(instancetype)initWithController:(id)hubController{
