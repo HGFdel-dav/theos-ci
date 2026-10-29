@@ -1,4 +1,4 @@
-name: Build DebsNewsBatch
+name: DebsNewsBatch Build
 
 on:
   push:
@@ -12,60 +12,67 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-15-intel
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     strategy:
       fail-fast: false
       matrix:
-        scheme: [rootless, roothide]
+        scheme: [roothide, rootless]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: debs/DebsNewsBatch
 
-      - name: Setup Theos
+      - name: Toolchain and exact SDK
         run: |
-          brew install ldid xz
-          git clone --recursive https://github.com/roothide/theos.git "$HOME/theos"
-          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
-          git clone --depth 1 --filter=blob:none --sparse https://github.com/xybp888/iOS-SDKs.git "$HOME/iossdks"
-          ( cd "$HOME/iossdks" && git sparse-checkout set iPhoneOS15.5.sdk )
+          set -euo pipefail
+          test "$(uname -m)" = x86_64
+          xcodebuild -version
+          brew install ldid xz dpkg
+          git clone --depth 1 --recursive https://github.com/roothide/theos.git "$HOME/theos"
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/xybp888/iOS-SDKs.git "$HOME/sdks"
+          (cd "$HOME/sdks" && git sparse-checkout set iPhoneOS15.5.sdk)
           mkdir -p "$HOME/theos/sdks"
-          cp -R "$HOME/iossdks/iPhoneOS15.5.sdk" "$HOME/theos/sdks/"
+          cp -R "$HOME/sdks/iPhoneOS15.5.sdk" "$HOME/theos/sdks/"
+          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
           ls "$HOME/theos/sdks"
 
-      - name: 本地逻辑单测（纯 C，与插件共用同一份 DNBLogic.h）
+      - name: Static checks and portable logic tests
+        working-directory: debs/DebsNewsBatch
         run: |
-          set -e
-          /usr/bin/clang -Wall -Wextra -Werror \
-            -I debs/DebsNewsBatch/DebsNewsBatch \
-            debs/DebsNewsBatch/tests/dnb_logic_test.c -o "$RUNNER_TEMP/dnb_logic_test"
+          set -euo pipefail
+          python3 tests/check.py
+          /usr/bin/clang -Wall -Wextra -Werror -I DebsNewsBatch tests/dnb_logic_test.c -o "$RUNNER_TEMP/dnb_logic_test"
           "$RUNNER_TEMP/dnb_logic_test"
-          python3 debs/DebsNewsBatch/tests/check.py
 
-      - name: 构建 ${{ matrix.scheme }}
+      - name: Build release
+        working-directory: debs/DebsNewsBatch
         run: |
-          set -e
-          cd debs/DebsNewsBatch
-          make clean || true
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=${{ matrix.scheme }} 2>&1 | tee "$RUNNER_TEMP/build-${{ matrix.scheme }}.log"
-
-      - name: 收集 deb / dylib / plist
-        run: |
-          set -e
-          OUT="$RUNNER_TEMP/out"
-          mkdir -p "$OUT"
-          find debs/DebsNewsBatch -maxdepth 2 -name '*.deb' -exec cp {} "$OUT/" \;
-          DY=$(find debs/DebsNewsBatch/.theos -name 'DebsNewsBatch.dylib' | head -1)
+          set -euo pipefail
+          mkdir -p out
+          make clean
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=${{ matrix.scheme }} 2>&1 | tee out/build.log
+          cp packages/*.deb out/
+          for p in packages/*.deb; do
+            dpkg-deb -I "$p"
+            dpkg-deb -c "$p"
+          done > out/package-list.txt
+          DY=$(find .theos -name 'DebsNewsBatch.dylib' | head -1)
           test -n "$DY"
-          cp "$DY" "$OUT/DebsNewsBatch-${{ matrix.scheme }}.dylib"
-          cp debs/DebsNewsBatch/DebsNewsBatch.plist "$OUT/DebsNewsBatch-${{ matrix.scheme }}.plist"
-          cp "$RUNNER_TEMP/build-${{ matrix.scheme }}.log" "$OUT/"
-          file "$OUT/DebsNewsBatch-${{ matrix.scheme }}.dylib"
-          ls -la "$OUT"
+          cp "$DY" "out/DebsNewsBatch-${{ matrix.scheme }}.dylib"
+          cp DebsNewsBatch.plist "out/DebsNewsBatch-${{ matrix.scheme }}.plist"
+          file "out/DebsNewsBatch-${{ matrix.scheme }}.dylib"
+          (cd out && shasum -a 256 *.deb *.dylib) | tee out/SHA256SUMS_deb_dylib.txt
+          ls -la out
 
-      - name: Upload 产物
+      - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: debsnewsbatch-${{ matrix.scheme }}
-          path: ${{ runner.temp }}/out/*
-          if-no-files-found: error
+          path: debs/DebsNewsBatch/out/
+          if-no-files-found: warn
