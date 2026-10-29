@@ -14,6 +14,7 @@
 @property(nonatomic) NSUInteger pxcStyle;
 @property(nonatomic) CGFloat pxcGlyphSize;
 - (void)pxcRefreshMaterial;
+- (void)pxcTransparencyChanged:(NSNotification *)notification;
 @end
 @implementation PXCClearGlassButton
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -39,12 +40,16 @@
         self.layer.borderWidth=0.5;
         self.pxcGlyphSize=-1;
         [self pxcApplyStyle:0 glyphSize:22];
-        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(pxcRefreshMaterial)
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(pxcTransparencyChanged:)
             name:UIAccessibilityReduceTransparencyStatusDidChangeNotification object:nil];
     }
     return self;
 }
 - (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; }
+- (void)pxcTransparencyChanged:(NSNotification *)notification {
+    if (NSThread.isMainThread) [self pxcRefreshMaterial];
+    else { __weak PXCClearGlassButton *weak=self;dispatch_async(dispatch_get_main_queue(), ^{ [weak pxcRefreshMaterial]; }); }
+}
 - (void)pxcRefreshMaterial {
     BOOL reduced=UIAccessibilityIsReduceTransparencyEnabled();
     // Keep opacity on the material only. Never fade the button's icon/text or

@@ -30,6 +30,13 @@ Each local header retains its classdump copyright header. Header repository MIT 
 ## Selected implementation
 Private methods are looked up dynamically and return + each argument checked before MSHookMessageEx. Unknown signatures skip with diagnostic log. No global UIView removal hook. Original deletion method executes exactly once with original parameters and block; visual capture does not modify native view visibility. Control center observes native gesture AFTER original processing, never writes system brightness/volume.
 
+## dev3 lockscreen button appearance evidence
+- `quick-actions/CSQuickActionsView.h` (CoverSheet, iOS15.5): object getters `flashlightButton` and `cameraButton`, `- (void)layoutSubviews`.
+- `quick-actions/UICoverSheetButton.h` (UIKitCore, iOS15.5): `_backgroundEffectView` is a UIVisualEffectView object ivar. Read-only typed runtime access retrieves the visible frosted circle, rather than inflated touch bounds. Native private buttons and gesture handlers are never modified.
+- New callbacks hook only CSQuickActionsView layout/window changes and NCNotificationStructuredListViewController lifecycle; weak view cache, no global UIView/window hook, no app foreground manipulation.
+- UIVisualEffectView uses public ultra-thin dark material; Reduce Transparency uses an opaque accessible fallback. UIText/glyph opacity is not reduced to fake transparency.
+- If the native visual surfaces are absent/hidden/invalid, sizing falls back to 50pt until a later native layout refresh. Native matching still requires device visual acceptance, especially with lockscreen themes and other tweaks.
+
 ## Not proved without runtime test
 - Whether every swipe/clear-all route on this exact device reaches these callbacks.
 - `requestsClearingNotificationRequestsInSections:` payload shape: current matching recognizes section identifiers if getter is present; unknown objects are not coerced.
