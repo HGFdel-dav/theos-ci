@@ -79,7 +79,7 @@ static NSArray<NSString *> *PXAllowedKeys(void) {
 - (CGFloat)tileSize { return [self doubleForKey:@"tileSize" fallback:68 min:52 max:92]; }
 - (CGFloat)itemSpacing { return [self doubleForKey:@"itemSpacing" fallback:6 min:0 max:20]; }
 - (CGFloat)panelRadius { return [self doubleForKey:@"panelRadius" fallback:30 min:12 max:40]; }
-- (CGFloat)panelAlpha { return [self doubleForKey:@"panelAlpha" fallback:55 min:0 max:100] / 100.0; }
+- (CGFloat)panelAlpha { return [self doubleForKey:@"panelAlpha" fallback:0 min:0 max:100] / 100.0; }
 - (NSInteger)panelColumns { return (NSInteger)[self doubleForKey:@"panelColumns" fallback:2 min:1 max:3]; }
 - (CGFloat)fanRadius { return [self doubleForKey:@"fanRadius" fallback:210 min:120 max:260]; }
 - (CGFloat)fanSpan { return [self doubleForKey:@"fanSpan" fallback:120 min:60 max:200]; }

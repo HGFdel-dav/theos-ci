@@ -121,6 +121,17 @@
 
 /// 每个有分身的应用一页开关，按账号勾选要不要出现在菜单里。
 - (NSArray *)buildCloneSpecifiers {
+    @try {
+        return [self po_buildCloneSpecifiers];
+    } @catch (NSException *e) {
+        PXLogE(@"prefs", @"分身页构建异常 %@: %@", e.name, e.reason);
+        return @[[PSSpecifier preferenceSpecifierNamed:@"读取分身失败，见日志"
+                                                target:nil set:NULL get:NULL detail:nil
+                                                  cell:PSGroupCell edit:nil]];
+    }
+}
+
+- (NSArray *)po_buildCloneSpecifiers {
     NSMutableArray *result = [NSMutableArray array];
     id manager = NSClassFromString(@"CraneManager");
     SEL listSel = NSSelectorFromString(@"identfiersOfApplicationsThatHaveNonDefaultContainers");
@@ -141,6 +152,7 @@
             target:nil set:NULL get:NULL detail:nil cell:PSGroupCell edit:nil];
         [result addObject:group];
         NSArray *targets = [POCraneBridge targetsForBundleIdentifier:bundle];
+        @try {
         for (POSplitTarget *target in targets) {
             if (target.isDefaultContainer) continue;
             NSString *key = [NSString stringWithFormat:@"cloneShow.%@.%@", bundle, target.containerIdentifier];
@@ -153,6 +165,9 @@
             [row setProperty:@"com.niubiprass.splitx" forKey:@"defaults"];
             [row setProperty:@YES forKey:@"default"];
             [result addObject:row];
+        }
+        } @catch (NSException *e) {
+            PXLogW(@"prefs", @"%@ 分身行构建失败 %@", bundle, e.reason);
         }
     }
     return result;

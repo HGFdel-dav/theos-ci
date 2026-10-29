@@ -284,6 +284,11 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
     self.span = MIN((settings.fanSpan + 40.0) * M_PI / 180.0, 200.0 * M_PI / 180.0);
 
     NSInteger caps[4] = {settings.ring1, settings.ring2, settings.ring3, settings.ring4};
+    if (caps[0] + caps[1] + caps[2] + caps[3] <= 0) {
+        // 全调成 0 时不能把所有图标塞在圆心，回到默认环容量。
+        caps[0] = 7; caps[1] = 10; caps[2] = 13; caps[3] = 16;
+        PXLogW(@"panel", @"环容量全为 0，使用默认 7/10/13/16");
+    }
     NSUInteger capacity = 0;
     for (int r = 0; r < maxRings; r++) capacity += (NSUInteger)MAX(caps[r], 0);
     if (capacity == 0) capacity = ordered.count;
