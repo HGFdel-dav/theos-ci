@@ -11,12 +11,12 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Tools
-        run: brew install ldid dpkg xz
+        run: sudo apt-get update && sudo apt-get install -y ldid dpkg xz-utils
 
       - name: Patch payload
         run: python3 patches/CallAssistUnlock/apply_patch.py
