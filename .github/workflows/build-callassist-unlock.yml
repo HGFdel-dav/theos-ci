@@ -1,0 +1,61 @@
+name: Build CallAssist unlock
+
+on:
+  push:
+    paths:
+      - 'patches/CallAssistUnlock/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tools
+        run: brew install ldid dpkg xz
+
+      - name: Patch payload
+        run: python3 patches/CallAssistUnlock/apply_patch.py
+
+      - name: Package
+        run: python3 patches/CallAssistUnlock/pack.py
+
+      - name: Checksums and readme
+        run: |
+          set -e
+          cd patches/CallAssistUnlock
+          sha256sum CallAssist-2.5.1-unlock1.deb > SHA256SUMS
+          cat > README.txt <<'EOF'
+          电话助手 2.5.1 (RootHide) 去激活验证构建
+          - 仅修改 arm64e 切片；arm64 切片保持原样
+          - 核心：授权文件/设备校验固定通过，全局授权标志强制为已授权
+          - 面板：授权状态显示已授权，跳过启动自动验证与手动激活，重置配置保留授权文件
+          - 首次安装会预置 /var/mobile/Library/CallAssistActivation/Activation.plist 占位
+          - 原始 DEB SHA256: a3843c698e98a72abcfd2e07268eb1a4bef5ccf653d4347f1b9a470dd904abd9
+          EOF
+          cat SHA256SUMS
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CallAssist-2.5.1-unlock1
+          path: |
+            patches/CallAssistUnlock/CallAssist-2.5.1-unlock1.deb
+            patches/CallAssistUnlock/SHA256SUMS
+            patches/CallAssistUnlock/README.txt
+
+      - name: Commit package to branch
+        run: |
+          set -e
+          mkdir -p packages
+          cp patches/CallAssistUnlock/CallAssist-2.5.1-unlock1.deb packages/
+          cp patches/CallAssistUnlock/SHA256SUMS packages/CallAssist-2.5.1-unlock1.SHA256SUMS
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add packages/CallAssist-2.5.1-unlock1.deb packages/CallAssist-2.5.1-unlock1.SHA256SUMS
+          git commit -m "CallAssist 2.5.1-unlock1 自动构建" || true
+          git push
