@@ -1,4 +1,6 @@
 #import "POSubPageController.h"
+#import <Preferences/PSSpecifier.h>
+#import <Preferences/PSTableCell.h>
 #import "POSplitXLog.h"
 #import <objc/message.h>
 
