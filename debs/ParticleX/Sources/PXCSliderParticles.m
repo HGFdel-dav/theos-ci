@@ -161,7 +161,13 @@ void PXCSlidersRemoveAll(void) {
 }
 
 BOOL PXCSliderIsTracking(UIView *slider) {
-    return PXCBrightnessSlider(slider) && [objc_getAssociatedObject(slider,PXCSliderTrackingKey) boolValue];
+    if (!PXCBrightnessSlider(slider) || !slider.window || ![objc_getAssociatedObject(slider,PXCSliderTrackingKey) boolValue]) return NO;
+    for (UIView *v=slider;v;v=v.superview) if (v.hidden || v.alpha<0.01) return NO;
+    // Only observe the native gesture; never alter its state or targets.
+    for (UIGestureRecognizer *gesture in slider.gestureRecognizers)
+        if ([gesture isKindOfClass:UIPanGestureRecognizer.class] &&
+            (gesture.state==UIGestureRecognizerStateBegan || gesture.state==UIGestureRecognizerStateChanged)) return YES;
+    return NO;
 }
 void PXCSliderSetTracking(UIView *slider,BOOL tracking) {
     if (!NSThread.isMainThread || !PXCBrightnessSlider(slider)) return;

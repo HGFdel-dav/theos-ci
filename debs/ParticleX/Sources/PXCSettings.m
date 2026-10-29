@@ -32,7 +32,7 @@ static void PXCReload(void) {
     PXCRemoveAllEffects();
     PXCNotificationSettingsChanged();
     if (s.enabled && !UIAccessibilityIsReduceMotionEnabled()) PXCDustPrewarm();
-    PXCLog([NSString stringWithFormat:@"config enabled=%d notifications=%d widgets=%d cc=%d duration=%.2f density=%lu notificationDirection=%lu widgetDirection=%lu clearAllButton=%d", s.enabled,s.notifications,s.widgets,s.controlCenter,s.duration,(unsigned long)s.density,(unsigned long)s.notificationDirection,(unsigned long)s.widgetDirection,s.clearAllButton]);
+    PXCLog([NSString stringWithFormat:@"config enabled=%d notifications=%d widgets=%d cc=%d duration=%.2f density=%lu notificationDirection=%lu widgetDirection=%lu clearAllButton=%d groupByApp=%d", s.enabled,s.notifications,s.widgets,s.controlCenter,s.duration,(unsigned long)s.density,(unsigned long)s.notificationDirection,(unsigned long)s.widgetDirection,s.clearAllButton,s.groupByApp]);
 }
 PXCSettings PXCSettingsGet(void) {
     // All effect/hook callers are main-thread only. Never read plist per frame.

@@ -238,7 +238,11 @@ static void PXCNSectionAll(id self,SEL cmd) {
 }
 static void (*PXCNOrigMasterAll)(id,SEL,id);
 static void PXCNMasterAll(id self,SEL cmd,id component) {
-    PXCNotificationCapture(self,nil,nil,YES,@"master-clear-all");
+    NSMutableArray *roots=[NSMutableArray array];
+    for (NSString *name in @[@"groupListView",@"sectionListView",@"masterListView"]) {
+        id root=PXCNObject(component,name);if ([root isKindOfClass:UIView.class]) [roots addObject:root];
+    }
+    PXCNAnimateCells(PXCNCellsInRoots(roots),@"master-component-clear-all");
     PXCNOrigMasterAll(self,cmd,component);
 }
 static void (*PXCNOrigControllerClear)(id,SEL,BOOL);

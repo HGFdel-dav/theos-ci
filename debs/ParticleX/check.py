@@ -98,6 +98,14 @@ require('notification-batch' in t,'batch renderer source evidence')
 for key in ('notificationDirection','widgetDirection'):
  spec=next(s for s in root['items'] if s.get('key')==key)
  require(spec['validValues']==[0,1,2,3,4] and len(spec['validTitles'])==5,'all direction options '+key)
+grouping=read('Sources/PXCAppGrouping.m')
+require('PXCGRemovalDepth' in grouping and 'PXCGInsertionDepth' in grouping,'group lookup insert/remove scoped')
+require('PXCGFind(PXCGObject(self,"notificationGroups"),request,NO)' in grouping,'removal uses exact membership')
+require('setThreadIdentifier' not in grouping and 'setNotificationIdentifier' not in grouping,'raw requests untouched')
+require('PXCGOrigNew' not in grouping,'no new-family ownership hook')
+require('latched until SpringBoard reload' in grouping,'stable grouping policy per process')
+require('for (unsigned i=0;i<sizeof(defs)/sizeof(defs[0]);i++) if (!PXCGMethod' in grouping,'all grouping ABI preflight')
+require(next(s for s in root['items'] if s.get('key')=='groupByApp')['default'] is False,'grouping candidate opt-in')
 for src in (R/'tests').glob('*.c') if (R/'tests').exists() else []:
  with tempfile.TemporaryDirectory() as d:
   exe=str(Path(d)/'test')
