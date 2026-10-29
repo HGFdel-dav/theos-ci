@@ -56,25 +56,25 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
     // PX 那种：白色圆托 + 圆角图标，没有文字。
     CGFloat tile = tileSize;
     CGFloat icon = iconSize;
-    CGFloat width = tile + 10.0;
+    CGFloat width = tile + 6.0;
     if ((self = [super initWithFrame:CGRectMake(0, 0, width, width)])) {
         _target = target;
         self.backgroundColor = UIColor.clearColor;
 
-        UIView *bubble = [[UIView alloc] initWithFrame:CGRectMake(5, 5, tile, tile)];
+        UIView *bubble = [[UIView alloc] initWithFrame:CGRectMake(3, 3, tile, tile)];
         bubble.backgroundColor = [UIColor colorWithWhite:0.98 alpha:0.92];
         bubble.layer.cornerRadius = square ? tile * 0.30 : tile / 2.0;
         bubble.layer.borderWidth = 0.5;
         bubble.layer.borderColor = [UIColor colorWithWhite:0 alpha:0.10].CGColor;
         bubble.layer.shadowColor = UIColor.blackColor.CGColor;
-        bubble.layer.shadowOpacity = 0.18;
-        bubble.layer.shadowRadius = 6;
-        bubble.layer.shadowOffset = CGSizeMake(0, 2);
+        bubble.layer.shadowOpacity = 0.10;
+        bubble.layer.shadowRadius = 4;
+        bubble.layer.shadowOffset = CGSizeMake(0, 1);
         bubble.userInteractionEnabled = NO;
         [self addSubview:bubble];
         _tileView = bubble;
 
-        CGFloat inset = icon * 0.12 + 5.0;
+        CGFloat inset = MAX(3.0, icon * 0.07);
         _iconView = [[UIImageView alloc] initWithFrame:CGRectInset(bubble.frame, inset, inset)];
         _iconView.contentMode = UIViewContentModeScaleAspectFit;
         _iconView.layer.cornerRadius = square ? icon * 0.22 : icon * 0.50;
@@ -330,7 +330,7 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
                                                                    square:settings.squareIcons];
         item.angle = angle;
         item.radius = ringRadius;
-        item.baseScale = 0.90 + (CGFloat)((i * 53) % 7) / 7.0 * 0.22;
+        item.baseScale = 0.96 + (CGFloat)((i * 53) % 7) / 7.0 * 0.14;
         CGFloat x = self.centerPoint.x + cos(angle) * ringRadius;
         CGFloat y = self.centerPoint.y + sin(angle) * ringRadius;
         item.center = CGPointMake(x, y);

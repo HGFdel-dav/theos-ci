@@ -124,7 +124,7 @@
 			<key>cellClass</key>
 			<string>POSliderTableCell</string>
 			<key>default</key>
-			<integer>12</integer>
+			<integer>24</integer>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
 			<key>get</key>
@@ -182,7 +182,7 @@
 			<key>cellClass</key>
 			<string>POSliderTableCell</string>
 			<key>default</key>
-			<real>46.0</real>
+			<real>60.0</real>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
 			<key>get</key>
@@ -196,7 +196,7 @@
 			<key>label</key>
 			<string>图标大小</string>
 			<key>maximumValue</key>
-			<integer>72</integer>
+			<real>76.0</real>
 			<key>minimumValue</key>
 			<integer>40</integer>
 			<key>set</key>
@@ -208,7 +208,7 @@
 			<key>cellClass</key>
 			<string>POSliderTableCell</string>
 			<key>default</key>
-			<integer>62</integer>
+			<real>68.0</real>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
 			<key>get</key>
@@ -222,7 +222,7 @@
 			<key>label</key>
 			<string>底板大小</string>
 			<key>maximumValue</key>
-			<integer>88</integer>
+			<real>92.0</real>
 			<key>minimumValue</key>
 			<integer>52</integer>
 			<key>set</key>

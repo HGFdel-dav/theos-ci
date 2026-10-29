@@ -71,8 +71,8 @@ static NSArray<NSString *> *PXAllowedKeys(void) {
     return MIN(MAX(v, min), max);
 }
 
-- (CGFloat)iconSize { return [self doubleForKey:@"iconSize" fallback:46 min:40 max:72]; }
-- (CGFloat)tileSize { return [self doubleForKey:@"tileSize" fallback:62 min:52 max:88]; }
+- (CGFloat)iconSize { return [self doubleForKey:@"iconSize" fallback:60 min:40 max:76]; }
+- (CGFloat)tileSize { return [self doubleForKey:@"tileSize" fallback:68 min:52 max:92]; }
 - (CGFloat)itemSpacing { return [self doubleForKey:@"itemSpacing" fallback:6 min:0 max:20]; }
 - (CGFloat)panelRadius { return [self doubleForKey:@"panelRadius" fallback:30 min:12 max:40]; }
 - (CGFloat)panelAlpha { return [self doubleForKey:@"panelAlpha" fallback:55 min:0 max:100] / 100.0; }

@@ -13,6 +13,7 @@
 #import "QSFavoritesPickerController.h"
 #import "POApplicationWhitelistController.h"
 #import "../POLocalization.h"
+#import <objc/message.h>
 
 typedef NS_OPTIONS(NSUInteger, SBSRelaunchActionOptions) {
     SBSRelaunchActionOptionsRestartRenderServer = 1 << 0,
@@ -637,6 +638,14 @@ static NSString * const kPOEnabledPendingRespringKey = @"enabled-respring-pendin
     Class cls = NSClassFromString(@"PSListController");
     if (!cls) return;
     id controller = [[cls alloc] init];
+    // 不指定 bundle 会去 Preferences 自己的包里找 plist，结果是一片空白。
+    NSBundle *bundle = [NSBundle bundleForClass:self.class];
+    SEL setBundle = NSSelectorFromString(@"setBundle:");
+    if ([controller respondsToSelector:setBundle]) {
+        ((void (*)(id, SEL, id))objc_msgSend)(controller, setBundle, bundle);
+    } else if ([controller respondsToSelector:@selector(setValue:forKey:)]) {
+        [controller setValue:bundle forKey:@"bundle"];
+    }
     if ([controller respondsToSelector:@selector(loadSpecifiersFromPlistName:target:)]) {
         [controller loadSpecifiersFromPlistName:plistName target:controller];
     }

@@ -86,7 +86,7 @@ static BOOL POCraneProcess(NSString *bundle, pid_t *pid, BOOL *running) {
     if (!app || !POCraneSignature(app, @"processState", "@", @[])) return NO;
     id state = ((id (*)(id, SEL))objc_msgSend)(app, NSSelectorFromString(@"processState"));
     if (!state) return NO;
-    if (!POCraneSignature(state, @"pid", @encode(int), @[])) return NO;
+    if (!POCraneSignature(state, @"pid", @encode(int), @[]) && !POCraneSignature(state, @"pid", @encode(long long), @[])) return NO;
     *pid = (pid_t)((int (*)(id, SEL))objc_msgSend)(state, NSSelectorFromString(@"pid"));
     *running = NO;
     if (POCraneSignature(state, @"isRunning", @encode(BOOL), @[])) {
@@ -310,8 +310,13 @@ static NSString *POCRaneRowString(id row, NSString *key) {
             BOOL known = POCraneProcess(bundle, &pid, &nowRunning);
             BOOL gone = known ? (!nowRunning && pid == 0 && POCranePidExited(oldPid)) : POCranePidExited(oldPid);
             PXLog(@"clone", @"poll=%lu pid=%d running=%d exited=%d", (unsigned long)polls, pid, nowRunning, gone);
-            if (gone) {
-                switchNow();
+            if (gone || !known) {
+                if (!known) {
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.9 * NSEC_PER_SEC)),
+                                   dispatch_get_main_queue(), switchNow);
+                } else {
+                    switchNow();
+                }
                 return;
             }
             if (known && pid != 0 && pid != oldPid) {
