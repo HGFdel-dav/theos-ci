@@ -119,7 +119,8 @@ static void PXCDustPrepareGPUIfNeeded(void) {
                     gPXCDustGPUState = 3;
                 }
             }
-            (void)libraryError;
+            if (pipeline) PXCLog(@"Metal dust pipeline ready");
+            else PXCLog([NSString stringWithFormat:@"Metal dust pipeline unavailable %@",libraryError.localizedDescription ?: @"device/queue/pipeline failure"]);
         }
     });
 }

@@ -31,6 +31,12 @@ jobs:
       - name: Static checks and portable math tests
         working-directory: debs/ParticleX
         run: python3 check.py
+      - name: Validate embedded Metal shader
+        working-directory: debs/ParticleX
+        run: |
+          set -euo pipefail
+          python3 tests/extract_shader.py "$RUNNER_TEMP/particlex.metal"
+          xcrun -sdk iphoneos metal -std=ios-metal2.3 -c "$RUNNER_TEMP/particlex.metal" -o "$RUNNER_TEMP/particlex.air"
       - name: Build release
         working-directory: debs/ParticleX
         run: |
