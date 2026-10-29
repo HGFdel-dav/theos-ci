@@ -104,6 +104,8 @@ need('quickSwitchTableViewWillAppear' in panel and 'quickSwitchTableViewDidDisap
 need('panelColumns' in (SRC / 'POSplitXSettings.h').read_text(), 'settings expose panelColumns')
 prefs_plist = plistlib.loads((PREFS / 'Package/Library/PreferenceBundles/SplitXPreferences.bundle/SplitXPreferences.plist').read_bytes())
 pref_keys = {i.get('key') for i in prefs_plist.get('items', [])}
+panel_plist = plistlib.loads((PREFS / 'Package/Library/PreferenceBundles/SplitXPreferences.bundle/Panel.plist').read_bytes())
+pref_keys |= {i.get('key') for i in panel_plist.get('items', [])}
 for token in ('iconSize', 'tileSize', 'itemSpacing', 'panelColumns', 'panelAlpha', 'panelRadius'):
     need(token in pref_keys, f'prefs control {token}')
 

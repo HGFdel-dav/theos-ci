@@ -20,7 +20,7 @@ static void PXSettingsChanged(CFNotificationCenterRef center, void *observer, CF
 }
 static NSArray<NSString *> *PXAllowedKeys(void) {
     return @[@"iconSize", @"tileSize", @"itemSpacing", @"panelRadius", @"panelAlpha",
-             @"panelColumns", @"fanRadius", @"fanSpan", @"animationSpeed", @"squareIcons", @"hapticFeedback", @"cloneEnabled", @"cloneShowDefault", @"ring1", @"ring2", @"ring3", @"ring4", @"ringGap", @"handleSlideDistance", @"panelEdgeInset", @"topGestureWidth", @"topGestureHeight", @"topGestureOffset", @"bottomGestureWidth", @"bottomGestureHeight", @"bottomGestureOffset", @"showGestureArea", @"windowWidthPercent", @"windowInset", @"windowMaxScalePercent", @"windowCornerRadius", @"windowShadowStrength", @"windowShadowBlur", @"dockNewSplitPushesCurrent", @"dockWidthPortrait", @"dockWidthLandscape", @"dockAutoStashSeconds", @"dockMaxCount", @"triggerWidth", @"triggerOffsetY", @"dockEnabled", @"dockScale"];
+             @"panelColumns", @"fanRadius", @"fanSpan", @"animationSpeed", @"squareIcons", @"hapticFeedback", @"portraitExternalKeyboard", @"landscapeExternalKeyboard", @"closeOutsideWithKeyboard", @"internalKeyboardZoomPercent", @"externalKeyboardHorizontalPercent", @"keyboardDimOpacity", @"cloneEnabled", @"cloneShowDefault", @"ring1", @"ring2", @"ring3", @"ring4", @"ringGap", @"handleSlideDistance", @"panelEdgeInset", @"topGestureWidth", @"topGestureHeight", @"topGestureOffset", @"bottomGestureWidth", @"bottomGestureHeight", @"bottomGestureOffset", @"showGestureArea", @"windowWidthPercent", @"windowInset", @"windowMaxScalePercent", @"windowCornerRadius", @"windowShadowStrength", @"windowShadowBlur", @"dockNewSplitPushesCurrent", @"dockWidthPortrait", @"dockWidthLandscape", @"dockAutoStashSeconds", @"dockMaxCount", @"triggerWidth", @"triggerOffsetY", @"dockEnabled", @"dockScale"];
 }
 
 @implementation POSplitXSettings {
@@ -81,6 +81,12 @@ static NSArray<NSString *> *PXAllowedKeys(void) {
 - (CGFloat)fanSpan { return [self doubleForKey:@"fanSpan" fallback:120 min:60 max:200]; }
 - (CGFloat)animationSpeed { return [self doubleForKey:@"animationSpeed" fallback:100 min:50 max:200]; }
 - (BOOL)hapticFeedback { id v = _values[@"hapticFeedback"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : YES; }
+- (BOOL)portraitExternalKeyboard { id v=_values[@"portraitExternalKeyboard"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : YES; }
+- (BOOL)landscapeExternalKeyboard { id v=_values[@"landscapeExternalKeyboard"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : NO; }
+- (BOOL)closeOutsideWithKeyboard { id v=_values[@"closeOutsideWithKeyboard"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : YES; }
+- (CGFloat)internalKeyboardZoomPercent { return [self doubleForKey:@"internalKeyboardZoomPercent" fallback:160 min:100 max:200]; }
+- (CGFloat)externalKeyboardHorizontalPercent { return [self doubleForKey:@"externalKeyboardHorizontalPercent" fallback:50 min:0 max:100]; }
+- (CGFloat)keyboardDimOpacity { return [self doubleForKey:@"keyboardDimOpacity" fallback:12 min:0 max:60] / 100.0; }
 - (BOOL)cloneEnabled { id v = _values[@"cloneEnabled"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : YES; }
 - (BOOL)cloneShowDefault { id v = _values[@"cloneShowDefault"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : YES; }
 - (BOOL)squareIcons { id v = _values[@"squareIcons"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : NO; }
@@ -98,7 +104,7 @@ static NSArray<NSString *> *PXAllowedKeys(void) {
 - (CGFloat)bottomGestureHeight { return [self doubleForKey:@"bottomGestureHeight" fallback:36 min:20 max:80]; }
 - (CGFloat)bottomGestureOffset { return [self doubleForKey:@"bottomGestureOffset" fallback:-20 min:-120 max:120]; }
 - (BOOL)showGestureArea { id v = _values[@"showGestureArea"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : NO; }
-- (CGFloat)windowWidthPercent { return [self doubleForKey:@"windowWidthPercent" fallback:80 min:50 max:100]; }
+- (CGFloat)windowWidthPercent { return [self doubleForKey:@"windowWidthPercent" fallback:92 min:50 max:100]; }
 - (CGFloat)windowInset { return [self doubleForKey:@"windowInset" fallback:12 min:0 max:40]; }
 - (CGFloat)windowMaxScalePercent { return [self doubleForKey:@"windowMaxScalePercent" fallback:172 min:100 max:200]; }
 - (CGFloat)windowCornerRadius { return [self doubleForKey:@"windowCornerRadius" fallback:42 min:0 max:60]; }
