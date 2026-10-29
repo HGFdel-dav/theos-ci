@@ -60,22 +60,60 @@ static BOOL POCraneSignature(id target, NSString *name, const char *result, NSAr
     return YES;
 }
 
+static NSArray<NSString *> *POCraneCandidatePaths(void) {
+    NSMutableArray<NSString *> *paths = [NSMutableArray array];
+    void (^addRoot)(NSString *) = ^(NSString *root) {
+        if (!root.length) return;
+        NSString *p = [root stringByAppendingPathComponent:@"usr/lib/libcrane.dylib"];
+        if (![paths containsObject:p]) [paths addObject:p];
+    };
+    const char *env = getenv("JBROOT");
+    if (env) addRoot([NSString stringWithUTF8String:env]);
+    addRoot(@"/");
+    addRoot(@"/var/jb");
+    // RootHide：真实根是 .jbroot-<UUID>，/var/jb 往往只是符号链接。
+    NSArray<NSString *> *bases = @[
+        @"/var/containers/Bundle/Application",
+        @"/var/mobile/Containers/Shared/AppGroup",
+        @"/var/mobile/Containers/Bundle/Application",
+    ];
+    NSFileManager *fm = NSFileManager.defaultManager;
+    for (NSString *base in bases) {
+        for (NSString *name in [fm contentsOfDirectoryAtPath:base error:NULL]) {
+            if (![name hasPrefix:@".jbroot"]) continue;
+            addRoot([base stringByAppendingPathComponent:name]);
+        }
+    }
+    return paths;
+}
+
 static id POCraneManager(void) {
     static BOOL logged = NO;
     Class cls = NSClassFromString(@"CraneManager");
     if (!cls) {
+        for (NSString *path in POCraneCandidatePaths()) {
+            if (![NSFileManager.defaultManager fileExistsAtPath:path]) continue;
+            void *h = dlopen(path.fileSystemRepresentation, RTLD_NOW | RTLD_GLOBAL);
+            cls = NSClassFromString(@"CraneManager");
+            if (!logged) {
+                logged = YES;
+                PXLog(@"clone", @"dlopen %@ -> %p class=%d", path, h, cls != nil);
+            }
+            if (cls) break;
+        }
+    }
+    if (!cls) {
         if (!logged) {
             logged = YES;
-            void *h = dlopen("/var/jb/usr/lib/libcrane.dylib", RTLD_LAZY);
-            void *h2 = dlopen("/usr/lib/libcrane.dylib", RTLD_LAZY);
-            PXLogW(@"clone", @"没有 CraneManager 类；dlopen jb=%p root=%p 再查=%d",
-                   h, h2, NSClassFromString(@"CraneManager") != nil);
-            cls = NSClassFromString(@"CraneManager");
+            PXLogW(@"clone", @"找不到 CraneManager，候选=%@", POCraneCandidatePaths());
         }
-        if (!cls) return nil;
+        return nil;
     }
     SEL shared = NSSelectorFromString(@"sharedManager");
-    if (!POCraneSignature(cls, @"sharedManager", "@", @[])) return nil;
+    if (!POCraneSignature(cls, @"sharedManager", "@", @[])) {
+        PXLogW(@"clone", @"CraneManager 有类但 sharedManager 签名不符");
+        return nil;
+    }
     return ((id (*)(id, SEL))objc_msgSend)(cls, shared);
 }
 
