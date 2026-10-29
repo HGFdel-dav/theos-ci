@@ -84,6 +84,8 @@ static NSArray<NSString *> *PXAllowedKeys(void) {
 - (CGFloat)fanRadius { return [self doubleForKey:@"fanRadius" fallback:210 min:120 max:260]; }
 - (CGFloat)fanSpan { return [self doubleForKey:@"fanSpan" fallback:120 min:60 max:200]; }
 - (CGFloat)animationSpeed { return [self doubleForKey:@"animationSpeed" fallback:100 min:50 max:200]; }
+- (BOOL)handleHidden { id v = _values[@"handleHidden"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : NO; }
+- (CGFloat)handleOpacity { return [self doubleForKey:@"handleOpacity" fallback:100 min:10 max:100] / 100.0; }
 - (BOOL)handleAlwaysVisible { id v = _values[@"handleAlwaysVisible"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : YES; }
 - (BOOL)hapticFeedback { id v = _values[@"hapticFeedback"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : YES; }
 - (BOOL)portraitExternalKeyboard { id v=_values[@"portraitExternalKeyboard"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : YES; }

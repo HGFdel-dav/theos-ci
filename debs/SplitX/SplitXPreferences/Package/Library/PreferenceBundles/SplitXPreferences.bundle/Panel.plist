@@ -346,6 +346,48 @@
 			<key>cell</key>
 			<string>PSSwitchCell</string>
 			<key>default</key>
+			<integer>0</integer>
+			<key>defaults</key>
+			<string>com.niubiprass.splitx</string>
+			<key>get</key>
+			<string>getValueForSpecifier:</string>
+			<key>key</key>
+			<string>handleHidden</string>
+			<key>label</key>
+			<string>手柄隐身（平时透明，动它才出现）</string>
+			<key>set</key>
+			<string>setValue:forSpecifier:</string>
+		</dict>
+		<dict>
+			<key>cellClass</key>
+			<string>POSliderTableCell</string>
+			<key>default</key>
+			<integer>100</integer>
+			<key>defaults</key>
+			<string>com.niubiprass.splitx</string>
+			<key>get</key>
+			<string>getValueForSpecifier:</string>
+			<key>height</key>
+			<integer>80</integer>
+			<key>id</key>
+			<string>handleOpacity</string>
+			<key>key</key>
+			<string>handleOpacity</string>
+			<key>label</key>
+			<string>手柄不透明度 %</string>
+			<key>maximumValue</key>
+			<integer>100</integer>
+			<key>minimumValue</key>
+			<integer>10</integer>
+			<key>set</key>
+			<string>setValue:forSpecifier:</string>
+			<key>stepValue</key>
+			<integer>5</integer>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
 			<integer>1</integer>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>

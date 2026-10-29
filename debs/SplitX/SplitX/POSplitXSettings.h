@@ -27,6 +27,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) NSInteger ring1, ring2, ring3, ring4;
 @property (nonatomic, readonly) BOOL hapticFeedback;
 @property (nonatomic, readonly) BOOL handleAlwaysVisible;   // 手柄常显
+@property (nonatomic, readonly) BOOL handleHidden;          // 平时完全隐身，动它才出现
+@property (nonatomic, readonly) CGFloat handleOpacity;       // 0...100, default 100
 @property (nonatomic, readonly) BOOL portraitExternalKeyboard, landscapeExternalKeyboard, closeOutsideWithKeyboard;
 @property (nonatomic, readonly) CGFloat internalKeyboardZoomPercent, externalKeyboardHorizontalPercent, keyboardDimOpacity;     // 悬停/选中震动
 @property (nonatomic, readonly) BOOL cloneEnabled;     // 是否列分身

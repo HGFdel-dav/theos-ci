@@ -34,6 +34,7 @@
 }
 
 -(void)applyCurrentPresentationAnimated:(BOOL)animated;
+- (CGFloat)restingAlpha;
 - (void)setHandleVisualsVisible:(BOOL)visible;
 
 @end
@@ -102,7 +103,9 @@
     // 平时看不见，但必须保留 1.0 的 alpha，否则 hitTest 直接跳过、滑不出来。
     self.alpha = 1.0;
     self.backgroundColor = UIColor.clearColor;
-    BOOL alwaysVisible = [[POSplitXSettings shared] handleAlwaysVisible];
+    self.alpha = [self restingAlpha];
+    BOOL alwaysVisible = [[POSplitXSettings shared] handleAlwaysVisible] &&
+        ![[POSplitXSettings shared] handleHidden];
     blurView.alpha = alwaysVisible ? 1.0 : 0.0;
     if (alwaysVisible) self.backgroundColor = [UIColor colorWithWhite:1 alpha:0.28];
     for (UIView *v in self.subviews) {
@@ -319,12 +322,21 @@
     [self.delegate handle:self didLongPress:recognizer];
 }
 
+-(CGFloat)restingAlpha {
+    POSplitXSettings *settings = [POSplitXSettings shared];
+    if (settings.handleHidden) return 0.0;
+    return MAX(0.1, settings.handleOpacity);
+}
+
 -(void)setHandleVisualsVisible:(BOOL)visible {
+    POSplitXSettings *settings = [POSplitXSettings shared];
+    BOOL keep = visible || (settings.handleAlwaysVisible && !settings.handleHidden);
+    [UIView animateWithDuration:0.15 animations:^{ self.alpha = visible ? 1.0 : [self restingAlpha]; }];
     [UIView animateWithDuration:visible ? 0.12 : 0.28 animations:^{
-        self->blurView.alpha = visible ? 1.0 : 0.0;
-        self.backgroundColor = visible ? [UIColor colorWithWhite:1 alpha:0.28] : UIColor.clearColor;
+        self->blurView.alpha = keep ? 1.0 : 0.0;
+        self.backgroundColor = keep ? [UIColor colorWithWhite:1 alpha:0.28] : UIColor.clearColor;
         for (UIView *v in self.subviews) {
-            if (v != self->blurView && v != self.imageView) v.alpha = visible ? 1.0 : 0.0;
+            if (v != self->blurView && v != self.imageView) v.alpha = keep ? 1.0 : 0.0;
         }
     }];
 }
