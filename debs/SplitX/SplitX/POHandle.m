@@ -290,7 +290,10 @@
 
 
 -(void)tap:(UIGestureRecognizer *)recognizer{
-    PXLog(@"gesture", @"handle tap state=%ld", (long)recognizer.state);
+    CGPoint point = [recognizer locationInView:self];
+    PXLog(@"gesture", @"handle tap state=%ld point=%.0f,%.0f alpha=%.2f hidden=%d nubbed=%d layout=%ld",
+          (long)recognizer.state, point.x, point.y, self.alpha, self.hidden, self.isNubbed,
+          (long)self.layoutMode);
     self.alpha = 1.0;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
@@ -302,7 +305,10 @@
 -(void)longPress:(UIGestureRecognizer *)recognizer{
     if (recognizer.state != _lastLongPressState) {
         _lastLongPressState = recognizer.state;
-        PXLog(@"gesture", @"handle longpress state=%ld", (long)recognizer.state);
+        CGPoint point = [recognizer locationInView:self];
+        PXLog(@"gesture", @"handle longpress state=%ld point=%.0f,%.0f duration=%.2f movement=%.0f",
+              (long)recognizer.state, point.x, point.y,
+              quickSwitchLongPress.minimumPressDuration, quickSwitchLongPress.allowableMovement);
     }
     [self.delegate handle:self didLongPress:recognizer];
 }

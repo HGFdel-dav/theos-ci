@@ -34,3 +34,29 @@ dev6，**只到本地源码**：未编译、未推送、未安装、未真机验
 2. 先只测面板外观与参数是否生效，不看功能。
 3. 再测同应用两容器切换 A→B→A。
 4. 最后测付款。
+
+## 已踩过的坑（禁止复现）
+
+1. 设置包引用了某个类，就必须把那个 .m 一起编进 SplitXPreferences，否则 dlopen 报 `symbol not found`、设置页空白。目前需要一起编的：POCraneBridge、POSplitTarget、POSplitXLog、POSplitXSettings。
+2. pbxproj 新文件要四处齐全：PBXFileReference、PBXBuildFile、所在 group、Sources phase；ID 必须 24 位十六进制（我曾写过带 G 的）。
+3. 子页不能 `setValue:forKey:@"bundle"`，会抛 NSUnknownKeyException 闪退；用 POSubPageController 在 viewDidLoad 里 loadSpecifiers。
+4. 分身枚举必须用 `containerIdentifiersOfApplicationWithIdentifier:` + `displayNameForContainer...`，不要去猜 settings 的 Containers 键。
+5. `processState` 的 pid 编码要同时接受 int / long long；读不到进程时不要直接失败。
+6. 面板 present 一定别忘了 `self.hidden = NO`。
+7. 扇形半径以设置为准，不能被环数或可用空间覆盖；环距固定为图标 1.15 倍，放不下就少显示几环，宁少勿叠。
+8. 手柄常态 alpha 0，滑动时出现，关窗归 0；pan 的上下方向必须留给移动手柄。
+9. 窗口宽度按屏幕宽乘百分比，默认 62；不要用「可用宽度」二次相乘。
+10. 关闭用缩小淡出，不是平移出屏。
+11. 滑杆的 min/max/default 必须和 POSplitXSettings 的 clamp 完全一致，check.py 已有守卫。
+
+## 操作探针（本地，未推送）
+
+日志现在覆盖：
+
+- 手柄：长按（状态/坐标/时长/允许位移）、点击（坐标/面板状态）、拖动开始（起点/速度/面板状态/偏移）、上下移动分流、菜单阈值与成功失败、拖动结束（终点/速度/总位移/最终意图）。
+- 菜单：列表来源（style/收藏数/请求数/槽位/截断结果）、布局（环数/单位/内径/半径/跨度/容量/锚点）、每个图标的环/角度/半径/坐标/缩放/目标、命中（点/距离/角度/得分/候选/目标中心）、悬停、选中、落空。
+- 窗口：缩放开始/过程/结束（起始缩放/位移/目标/实际）。
+- 设置：滑杆旧值→新值、范围、synchronize 结果、写入失败。
+- 子页：init、load（plist/bundle）、异常、push 与导航栈深度。
+- 分身：原始容器列表、前置状态、已在目标、不受支持、进程状态每一步失败点、终止、轮询、回读、耗时、失败恢复。
+- 日志目录统一到 /var/mobile/Documents/SplitX，Preferences 与 SpringBoard 写同一份。

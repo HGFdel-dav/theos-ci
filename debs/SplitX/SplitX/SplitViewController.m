@@ -3145,26 +3145,34 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
 }
 
 -(void)handleWindowResize:(UIPanGestureRecognizer *)recognizer{
-    if (panelState != POPanelStateOpen) return;
+    if (panelState != POPanelStateOpen) {
+        PXLog(@"window", @"resize 忽略 panel=%ld", (long)panelState);
+        return;
+    }
+    CGPoint moved = [recognizer translationInView:self.view];
     if (recognizer.state == UIGestureRecognizerStateBegan) {
         resizeActive = YES;
         resizeStartScale = [self resolvedCardScale];
+        PXLog(@"window", @"resize began startScale=%.3f max=%.2f view=%@",
+              resizeStartScale, [POSplitXSettings shared].windowMaxScalePercent / 100.0,
+              NSStringFromCGRect(self.view.bounds));
         [self cancelAutoNubTimer];
         return;
     }
     if (!resizeActive) return;
 
-    CGFloat dx = [recognizer translationInView:self.view].x;
-    CGFloat dy = [recognizer translationInView:self.view].y;
-    CGFloat delta = (fabs(dx) > fabs(dy) ? dx : dy) / 220.0;
+    CGFloat delta = (fabs(moved.x) > fabs(moved.y) ? moved.x : moved.y) / 220.0;
     CGFloat target = resizeStartScale - delta;      // 往屏幕里拖 = 变大
     [self applyCardScaleTarget:target animated:NO source:POCardScaleTransitionSourceReconcile];
+    PXLog(@"window", @"resize dx=%.0f dy=%.0f target=%.3f applied=%.3f",
+          moved.x, moved.y, target, [self resolvedCardScale]);
 
     if (recognizer.state == UIGestureRecognizerStateEnded ||
         recognizer.state == UIGestureRecognizerStateCancelled) {
         resizeActive = NO;
         [self applyCardScaleTarget:[self resolvedCardScale] animated:YES
                             source:POCardScaleTransitionSourceReconcile];
+        PXLog(@"window", @"resize end scale=%.3f", [self resolvedCardScale]);
     }
 }
 
@@ -3224,6 +3232,10 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
 #pragma mark - MHHandleDelegate
 
 -(void)handle:(POHandle *)handle didReceiveTap:(UIGestureRecognizer *)recognizer{
+    CGPoint tapPoint = [recognizer locationInView:self.view];
+    PXLog(@"gesture", @"tap fired p=%.0f,%.0f panel=%ld transitioning=%d dragging=%d decel=%d nubbed=%d",
+          tapPoint.x, tapPoint.y, (long)panelState, [self isPanelTransitioning],
+          scrollView.dragging, scrollView.decelerating, self.handle.isNubbed);
     [self cancelAutoNubTimer];
     if ([self isPanelTransitioning] || scrollView.dragging || scrollView.decelerating) {
         return;
@@ -3251,15 +3263,20 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     if (recognizer.state == UIGestureRecognizerStateBegan) {
         handlePanIntent = POHandlePanIntentNone;
         handlePanStartedNubbed = self.handle.isNubbed;
+        CGPoint origin = [recognizer locationInView:self.view];
+        CGPoint startVelocity = [recognizer velocityInView:self.view];
+        PXLog(@"gesture", @"pan began origin=%.0f,%.0f velocity=%.0f,%.0f panel=%ld offset=%.1f nubbed=%d",
+              origin.x, origin.y, startVelocity.x, startVelocity.y, (long)panelState,
+              scrollView.contentOffset.x, handlePanStartedNubbed);
         if ([self isPanelTransitioning]) {
             return;
         }
 
-        CGPoint velocity = [recognizer velocityInView:self.view];
-        BOOL verticalIntent = fabs(velocity.y) > fabs(velocity.x);
+        BOOL verticalIntent = fabs(startVelocity.y) > fabs(startVelocity.x);
         if (!verticalIntent) {
             // 先等手指滑出设定距离，避免轻轻一碰就弹菜单。
             handlePanIntent = POHandlePanIntentMenuPending;
+            PXLog(@"gesture", @"pan route=menuPending threshold=%.0f", [POSplitXSettings shared].handleSlideDistance);
             return;
         }
         if (verticalIntent) {
@@ -3278,7 +3295,7 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
             return;
         }
 
-        handlePanIntent = [self horizontalHandlePanIntentForVelocityX:velocity.x];
+        handlePanIntent = [self horizontalHandlePanIntentForVelocityX:startVelocity.x];
         switch (handlePanIntent) {
             case POHandlePanIntentRevealHandle:
                 [self cancelAutoNubTimer];
@@ -3322,6 +3339,7 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
                 handlePanIntent = POHandlePanIntentVerticalCardMove;
                 portraitHostedLandscapeHandleAnchorY = currentY;
                 panelVerticalMoveStartAnchorY = currentY;
+                PXLog(@"gesture", @"pan route=verticalMove startY=%.1f dy=%.1f", currentY, moved.y);
                 [self cancelAutoNubTimer];
                 [self restoreKeyboardZoomImmediately];
                 return;
@@ -3333,8 +3351,10 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
                 [self quickSwitchMenuForLayoutMode:[self currentQuickSwitchLayoutMode]];
             if (menu && [menu presentFromHandle:handle withRecognizer:recognizer]) {
                 handlePanIntent = POHandlePanIntentMenu;
+                PXLog(@"gesture", @"pan route=menu distance=%.1f threshold=%.1f", fabs(travelled), [POSplitXSettings shared].handleSlideDistance);
             } else {
                 handlePanIntent = POHandlePanIntentNone;
+                PXLogW(@"gesture", @"pan route=menu failed distance=%.1f", fabs(travelled));
             }
         } else if (recognizer.state == UIGestureRecognizerStateEnded) {
             handlePanIntent = POHandlePanIntentNone;
@@ -3344,6 +3364,8 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     }
 
     if (handlePanIntent == POHandlePanIntentMenu) {
+        CGPoint p = [recognizer locationInView:self.view];
+        PXLog(@"gesture", @"pan menu-forward state=%ld p=%.0f,%.0f", (long)recognizer.state, p.x, p.y);
         UIView<POQuickSwitchMenuPresenting> *menu = presentedQuickSwitchMenu;
         if (menu) [menu presentFromHandle:handle withRecognizer:recognizer];
         if (recognizer.state != UIGestureRecognizerStateChanged) {
@@ -3373,7 +3395,12 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     if (recognizer.state == UIGestureRecognizerStateEnded ||
         recognizer.state == UIGestureRecognizerStateCancelled ||
         recognizer.state == UIGestureRecognizerStateFailed) {
-        if (handlePanIntent == POHandlePanIntentVerticalCardMove) {
+        CGPoint endPoint = [recognizer locationInView:self.view];
+        CGPoint endVelocity = [recognizer velocityInView:self.view];
+        CGPoint translation = [recognizer translationInView:self.view];
+        PXLog(@"gesture", @"pan end state=%ld p=%.0f,%.0f v=%.0f,%.0f translation=%.0f,%.0f intent=%lu panel=%ld",
+              (long)recognizer.state, endPoint.x, endPoint.y, endVelocity.x, endVelocity.y,
+              translation.x, translation.y, (unsigned long)handlePanIntent, (long)panelState);
             CGFloat translationY = [recognizer translationInView:self.view].y;
             [self applyPortraitHostedLandscapeVerticalHandleAnchorY:
                 panelVerticalMoveStartAnchorY + translationY];
@@ -4882,6 +4909,8 @@ cannotHostFrontmostBundleId:(NSString *)bundleId
 
 -(void)quickSwitchTableView:(UIView<POQuickSwitchMenuPresenting> *)quickSwitchTableView
              didSelectTarget:(POSplitTarget *)target{
+    PXLog(@"panel", @"delegate select target=%@ host=%@ pinned=%@ state=%ld",
+          target.identityKey, hostSession.activeBundleId ?: @"nil", pinnedBundleId ?: @"nil", (long)panelState);
     [self cancelQuickSwitchPrewarm];
     quickSwitchOpeningApp = YES;
     [self cancelAutoNubTimer];

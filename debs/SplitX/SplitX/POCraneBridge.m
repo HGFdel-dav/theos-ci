@@ -77,21 +77,36 @@ static NSString *POCraneActive(id manager, NSString *bundle) {
 /// 只读 processState；缺 selector 视为未知，不当作“已退出”。
 static BOOL POCraneProcess(NSString *bundle, pid_t *pid, BOOL *running) {
     Class controllerClass = NSClassFromString(@"SBApplicationController");
-    if (!controllerClass) return NO;
+    if (!controllerClass) { PXLogW(@"clone", @"process: 没有 SBApplicationController"); return NO; }
     SEL lookup = NSSelectorFromString(@"applicationWithBundleIdentifier:");
     if (!POCraneSignature(controllerClass, @"sharedInstance", "@", @[]) ||
-        !POCraneSignature(controllerClass, @"applicationWithBundleIdentifier:", "@", @[@"@"])) return NO;
+        !POCraneSignature(controllerClass, @"applicationWithBundleIdentifier:", "@", @[@"@"])) {
+        PXLogW(@"clone", @"process: controller ABI 不符 shared=%d lookup=%d",
+               POCraneSignature(controllerClass, @"sharedInstance", "@", @[]),
+               POCraneSignature(controllerClass, @"applicationWithBundleIdentifier:", "@", @[@"@"]));
+        return NO;
+    }
     id controller = ((id (*)(id, SEL))objc_msgSend)(controllerClass, NSSelectorFromString(@"sharedInstance"));
     id app = ((id (*)(id, SEL, id))objc_msgSend)(controller, lookup, bundle);
-    if (!app || !POCraneSignature(app, @"processState", "@", @[])) return NO;
+    if (!app) { PXLogW(@"clone", @"process: %@ 没有 SBApplication", bundle); return NO; }
+    if (!POCraneSignature(app, @"processState", "@", @[])) {
+        PXLogW(@"clone", @"process: %@ processState ABI 不符 (class=%@)", bundle, NSStringFromClass([app class]));
+        return NO;
+    }
     id state = ((id (*)(id, SEL))objc_msgSend)(app, NSSelectorFromString(@"processState"));
-    if (!state) return NO;
-    if (!POCraneSignature(state, @"pid", @encode(int), @[]) && !POCraneSignature(state, @"pid", @encode(long long), @[])) return NO;
+    if (!state) { PXLogW(@"clone", @"process: %@ processState=nil", bundle); return NO; }
+    BOOL pidInt = POCraneSignature(state, @"pid", @encode(int), @[]);
+    BOOL pidLong = POCraneSignature(state, @"pid", @encode(long long), @[]);
+    if (!pidInt && !pidLong) {
+        PXLogW(@"clone", @"process: %@ pid ABI 不符 (state=%@)", bundle, NSStringFromClass([state class]));
+        return NO;
+    }
     *pid = (pid_t)((int (*)(id, SEL))objc_msgSend)(state, NSSelectorFromString(@"pid"));
     *running = NO;
     if (POCraneSignature(state, @"isRunning", @encode(BOOL), @[])) {
         *running = ((BOOL (*)(id, SEL))objc_msgSend)(state, NSSelectorFromString(@"isRunning")) != 0;
     }
+    PXLog(@"clone", @"process: %@ pid=%d running=%d", bundle, *pid, *running);
     return YES;
 }
 
@@ -182,9 +197,12 @@ static NSString *POCRaneRowString(id row, NSString *key) {
     }
     id list = ((id (*)(id, SEL, id))objc_msgSend)(manager, listSel, bundleIdentifier);
     if (![list isKindOfClass:NSArray.class]) {
+        PXLogW(@"clone", @"%@ 容器列表不是数组: %@", bundleIdentifier,
+               list ? NSStringFromClass([list class]) : @"nil");
         [targets addObject:[POSplitTarget targetWithBundleIdentifier:bundleIdentifier]];
         return targets;
     }
+    PXLog(@"clone", @"%@ 原始容器列表=%@", bundleIdentifier, [(NSArray *)list componentsJoinedByString:@","]);
 
     // DEFAULT 排最前，其余按系统给的顺序；去重。
     NSMutableOrderedSet<NSString *> *ids = [NSMutableOrderedSet orderedSetWithObject:POSplitDefaultContainerIdentifier];
@@ -216,7 +234,9 @@ static NSString *POCRaneRowString(id row, NSString *key) {
             completion(NO, POCraneError(POCraneInvalidData, @"缺少应用标识"));
             return;
         }
-        PXLog(@"clone", @"target %@/%@ available=%d", target.bundleIdentifier, target.containerIdentifier, [self isAvailable]);
+        PXLog(@"clone", @"target %@/%@ available=%d supported=%d active=%@", target.bundleIdentifier,
+              target.containerIdentifier, [self isAvailable], [self isBundleSupported:target.bundleIdentifier],
+              POCraneActive(POCraneManager(), target.bundleIdentifier) ?: @"nil");
         if (![self isAvailable]) {
             completion(YES, nil);   // 没装 Crane：直接走普通启动
             return;
@@ -225,10 +245,12 @@ static NSString *POCRaneRowString(id row, NSString *key) {
         NSString *wanted = target.containerIdentifier;
         id manager = POCraneManager();
         if (![self isBundleSupported:bundle]) {
+            PXLog(@"clone", @"%@ 不受 Crane 支持，按普通启动", bundle);
             completion(YES, nil);   // 该应用本身不支持分身
             return;
         }
         if ([POCraneActive(manager, bundle) isEqualToString:wanted]) {
+            PXLog(@"clone", @"%@ 已在目标容器 %@，无需切换", bundle, wanted);
             completion(YES, nil);   // 已在目标容器，由调用方决定是否复用
             return;
         }

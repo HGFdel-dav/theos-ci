@@ -646,8 +646,15 @@ static NSString * const kPOEnabledPendingRespringKey = @"enabled-respring-pendin
 }
 
 -(void)openSubPage:(NSString *)plistName title:(NSString *)title{
+    PXLogMessage(PXLogLevelInfo, @"prefs", @"打开子页 %@ (%@)", title, plistName);
     POSubPageController *controller = [[POSubPageController alloc] initWithPlistName:plistName title:title];
+    if (!self.navigationController) {
+        PXLogMessage(PXLogLevelWarn, @"prefs", @"导航栈为空，子页 %@ 无法 push", title);
+        return;
+    }
     [self.navigationController pushViewController:controller animated:YES];
+    PXLogMessage(PXLogLevelInfo, @"prefs", @"子页已 push %@ stack=%lu", title,
+                 (unsigned long)self.navigationController.viewControllers.count);
 }
 
 -(void)selectFavorites:(PSSpecifier *)specifier{

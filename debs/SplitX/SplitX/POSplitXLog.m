@@ -25,6 +25,13 @@ static const unsigned long long PXLogMaxBytes = 2ULL * 1024 * 1024;
 static const int PXLogKeepFiles = 3;
 
 static NSString *PXLogDirectory(void) {
+    // SpringBoard 与 Preferences 必须写同一份日志，否则设置页操作会丢在各自沙盒里。
+    NSString *shared = @"/var/mobile/Documents/SplitX";
+    NSFileManager *fm = NSFileManager.defaultManager;
+    [fm createDirectoryAtPath:shared withIntermediateDirectories:YES attributes:nil error:NULL];
+    if ([fm isWritableFileAtPath:shared]) {
+        return shared;
+    }
     NSString *docs = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
     if (docs.length == 0) docs = @"/var/mobile/Documents";
     return [docs stringByAppendingPathComponent:@"SplitX"];

@@ -28,7 +28,8 @@ for f in list(SRC.glob('*.m')) + list(SRC.glob('*.mm')) + list(SRC.glob('*.h')) 
     for imp in re.findall(r'#import "([^"]+)"', f.read_text(errors='ignore')):
         base = (f.parent / imp).resolve()
         alt = (PREFS / imp).resolve()
-        need(base.exists() or alt.exists(), f'import {f.name} -> {imp}')
+        shared = (SRC / imp).resolve()
+        need(base.exists() or alt.exists() or shared.exists(), f'import {f.name} -> {imp}')
 
 # 3 包信息
 control_text = (SRC / 'Package/DEBIAN/control').read_text()

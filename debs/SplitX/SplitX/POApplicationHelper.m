@@ -218,6 +218,9 @@ static id POSharedObjectForClass(Class cls) {
     if (slots > 0 && result.count > (NSUInteger)slots) {
         result = [result subarrayWithRange:NSMakeRange(0, (NSUInteger)slots)];
     }
+    PXLog(@"panel", @"list style=%@ favorites=%lu recentAsked=%ld slots=%ld -> %lu apps: %@",
+          settings[@"style"] ?: @"?", (unsigned long)favorites.count, (long)recentCount, (long)slots,
+          (unsigned long)result.count, [result componentsJoinedByString:@","]);
     return result;
 }
 

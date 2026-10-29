@@ -1,4 +1,5 @@
 #import "POSliderTableCell.h"
+#import "POSplitXLog.h"
 
 @interface POSliderTableCell ()
 - (UIViewController *)_viewControllerForAncestor;
@@ -75,12 +76,17 @@
     if (step > 1) value = round(value / step) * step;
     if (key.length && suite.length) {
         NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:suite];
+        id before = [defaults objectForKey:key];
         [defaults setObject:@((long)value) forKey:key];
-        [defaults synchronize];
-        [[NSUserDefaults standardUserDefaults] synchronize];
+        BOOL synced = [defaults synchronize];
+        PXLogMessage(PXLogLevelInfo, @"prefs", @"slider %@ %@ -> %ld sync=%d range=%.0f..%.0f",
+                     key, before ?: @"(空)", (long)value, synced,
+                     slider.minimumValue, slider.maximumValue);
         CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
                                              CFSTR("com.niubiprass.splitx.settings-changed"),
                                              NULL, NULL, YES);
+    } else {
+        PXLogMessage(PXLogLevelWarn, @"prefs", @"slider 写入失败 key=%@ suite=%@", key ?: @"?", suite ?: @"?");
     }
     [self updateLabel];
 }

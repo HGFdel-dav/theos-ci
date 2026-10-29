@@ -275,30 +275,26 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
     }
     self.targets = ordered;
 
-    // 半径：先保证相邻图标的弧距够，再受上下边缘限制。
-    // PX 那样铺满一片：分三圈，越外圈放得越多，角度交错。
-    CGFloat ringUnit = self.itemTileSize + settings.ringGap;
-    CGFloat usable = MAX(120.0, self.radius);
-    NSUInteger ringCountAtLeast = ordered.count > 16 ? 4 : (ordered.count > 6 ? 3 : 1);
-    CGFloat innerRadius = usable * 0.45;
-    CGFloat maxRing = (CGFloat)(ringCountAtLeast - 1) * ringUnit;
-    if (innerRadius + maxRing > usable) innerRadius = MAX(70.0, usable - maxRing);
-    self.span = (settings.fanSpan + 40.0) * M_PI / 180.0;
-
-    // 按环容量填充：先填内环，满了才进下一环；环距固定，宁少勿叠。
-    NSInteger caps[4] = {settings.ring1, settings.ring2, settings.ring3, settings.ring4};
+    // 半径以设置为准；放不下就减少环数，宁少勿叠。
     CGFloat ringUnit = self.itemTileSize * 1.15 + settings.ringGap;
     CGFloat usableRadius = MAX(120.0, self.radius);
     CGFloat innerRadius = MIN(usableRadius * 0.5, 96.0);
     NSInteger maxRings = (NSInteger)floor((usableRadius - innerRadius) / MAX(ringUnit, 1.0)) + 1;
     maxRings = MIN(MAX(maxRings, 1), 4);
+    self.span = MIN((settings.fanSpan + 40.0) * M_PI / 180.0, 200.0 * M_PI / 180.0);
 
-    NSMutableArray<NSNumber *> *ringOf = [NSMutableArray array];
+    NSInteger caps[4] = {settings.ring1, settings.ring2, settings.ring3, settings.ring4};
     NSUInteger capacity = 0;
-    for (int r = 0; r < 4; r++) capacity += (NSUInteger)MAX(caps[r], 0);
-    for (int r = 0; r < maxRings; r++) capacity = MIN(capacity, (NSUInteger)MAX(caps[r], 0) + (r ? capacity : 0));
+    for (int r = 0; r < maxRings; r++) capacity += (NSUInteger)MAX(caps[r], 0);
     if (capacity == 0) capacity = ordered.count;
+    NSUInteger beforeTrim = ordered.count;
     if (ordered.count > capacity) ordered = [ordered subarrayWithRange:NSMakeRange(0, capacity)];
+    PXLog(@"panel", @"layout items=%lu->%lu groups=%lu rings=%ld unit=%.1f inner=%.1f radius=%.1f span=%.0f caps=%ld,%ld,%ld,%ld gap=%.1f tile=%.1f icon=%.1f anchor=%.1f,%.1f size=%@",
+          (unsigned long)beforeTrim, (unsigned long)ordered.count, (unsigned long)groupOrder.count,
+          (long)maxRings, ringUnit, innerRadius, self.radius, self.span * 180.0 / M_PI,
+          (long)caps[0], (long)caps[1], (long)caps[2], (long)caps[3], settings.ringGap,
+          self.itemTileSize, self.itemIconSize, self.centerPoint.x, self.centerPoint.y,
+          NSStringFromCGSize(self.bounds.size));
 
     NSInteger ringIndex = 0;
     NSInteger usedInRing = 0;
@@ -343,13 +339,12 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
         [item applyDimmedInitialState];
         [self addSubview:item];
         [self.items addObject:item];
+        PXLog(@"panel", @"item %lu/%lu ring=%lu angle=%.0f r=%.0f center=%.0f,%.0f scale=%.2f target=%@",
+              (unsigned long)(i + 1), (unsigned long)ordered.count, (unsigned long)ring,
+              angle * 180.0 / M_PI, ringRadius, x, y, item.baseScale, ordered[i].identityKey);
     }
 
-    PXLog(@"panel", @"fan items=%lu groups=%lu cap=%ld/%ld/%ld/%ld gap=%.0f inner=%.0f outer=%.0f span=%.0fdeg tile=%.0f icon=%.0f size=%@",
-          (unsigned long)ordered.count, (unsigned long)groupOrder.count,
-          (long)settings.ring1, (long)settings.ring2, (long)settings.ring3, (long)settings.ring4,
-          settings.ringGap, innerRadius, self.radius, self.span * 180.0 / M_PI,
-          self.itemTileSize, self.itemIconSize, NSStringFromCGSize(self.bounds.size));
+    PXLog(@"panel", @"fan ready items=%lu radius=%.0f", (unsigned long)ordered.count, self.radius);
 }
 
 /// 按角度命中：先看离圆弧近不近，再取角度最近的一项。
@@ -377,8 +372,16 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
         if (score < nearestScore) { nearestScore = score; nearest = (NSInteger)i; }
         if (score < bestScore) { bestScore = score; best = (NSInteger)i; }
     }
-    PXLog(@"panel", @"hit pt=%.0f,%.0f dist=%.0f angle=%.0fdeg -> %ld (near %ld score %.2f)",
-           point.x, point.y, distance, angle * 180.0 / M_PI, (long)best, (long)nearest, nearestScore);
+    PXLog(@"panel", @"hit pt=%.0f,%.0f dist=%.0f angle=%.0fdeg -> %ld candidate=%ld score=%.2f items=%lu",
+           point.x, point.y, distance, angle * 180.0 / M_PI, (long)best, (long)nearest, nearestScore,
+           (unsigned long)self.items.count);
+    if (best >= 0) {
+        POSplitTarget *target = self.targets[(NSUInteger)best];
+        PXLog(@"panel", @"hit target=%@ itemCenter=%.0f,%.0f itemRadius=%.0f itemAngle=%.0f",
+              target.identityKey, self.items[(NSUInteger)best].center.x,
+              self.items[(NSUInteger)best].center.y, self.items[(NSUInteger)best].radius,
+              self.items[(NSUInteger)best].angle * 180.0 / M_PI);
+    }
     return best;
 }
 
@@ -393,8 +396,10 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
         [self.hoverHaptics prepare];
     }
     if (index >= 0 && index < (NSInteger)self.targets.count) {
+        PXLog(@"panel", @"hover idx=%ld target=%@", (long)index, self.targets[(NSUInteger)index].identityKey);
         [self.selectionDelegate quickSwitchTableView:self didHoverTarget:self.targets[index]];
     } else {
+        PXLog(@"panel", @"hover clear idx=%ld", (long)index);
         [self.selectionDelegate quickSwitchTableViewDidClearHover:self];
     }
 }
@@ -476,8 +481,8 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
             self.alpha = 1;
             self.transform = CGAffineTransformIdentity;
         } completion:nil];
-        PXLog(@"panel", @"present left=%d center=%.0f,%.0f radius=%.0f", handleOnLeft,
-              self.centerPoint.x, self.centerPoint.y, self.radius);
+        PXLog(@"panel", @"present left=%d center=%.0f,%.0f radius=%.0f height=%.0f", handleOnLeft,
+              self.centerPoint.x, self.centerPoint.y, self.radius, CGRectGetHeight(self.frame));
         return YES;
     }
 
@@ -509,6 +514,8 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.17 * NSEC_PER_SEC)),
                            dispatch_get_main_queue(), ^{ [self dismissImmediately]; });
         } else {
+            PXLog(@"panel", @"select miss pt=%.0f,%.0f hovered=%ld items=%lu",
+                  point.x, point.y, (long)self.hoveredIndex, (unsigned long)self.items.count);
             [self dismissImmediately];
         }
         return YES;
