@@ -1,0 +1,59 @@
+name: ParticleX Build
+on:
+  push:
+    branches: ['particlex-*']
+    paths: ['debs/ParticleX/**', '.github/workflows/build-theos.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        scheme: [roothide, rootless]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: debs/ParticleX
+      - name: Toolchain and exact SDK
+        run: |
+          set -euo pipefail
+          brew install ldid xz dpkg
+          git clone --depth 1 --recursive https://github.com/roothide/theos.git "$HOME/theos"
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/xybp888/iOS-SDKs.git "$HOME/sdks"
+          (cd "$HOME/sdks" && git sparse-checkout set iPhoneOS15.5.sdk)
+          mkdir -p "$HOME/theos/sdks"
+          cp -R "$HOME/sdks/iPhoneOS15.5.sdk" "$HOME/theos/sdks/"
+          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
+      - name: Static checks and portable math tests
+        working-directory: debs/ParticleX
+        run: python3 check.py
+      - name: Validate embedded Metal shader
+        working-directory: debs/ParticleX
+        run: |
+          set -euo pipefail
+          python3 tests/extract_shader.py "$RUNNER_TEMP/particlex.metal"
+          xcrun -sdk iphoneos metal -std=ios-metal2.3 -c "$RUNNER_TEMP/particlex.metal" -o "$RUNNER_TEMP/particlex.air"
+      - name: Build release
+        working-directory: debs/ParticleX
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          make clean
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=${{ matrix.scheme }} 2>&1 | tee out/build.log
+          cp packages/*.deb out/
+          for p in packages/*.deb; do
+            dpkg-deb -I "$p"
+            dpkg-deb -c "$p"
+          done > out/package-list.txt
+          (cd out && shasum -a 256 *.deb > SHA256SUMS)
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: particlex-${{ matrix.scheme }}
+          path: debs/ParticleX/out/
+          if-no-files-found: warn
