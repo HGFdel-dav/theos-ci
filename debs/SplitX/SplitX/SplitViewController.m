@@ -215,6 +215,10 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     NSNumber *origOffset;
     CGSize lastLaidOutSize;
     CGFloat lastLoggedCardWidth;
+    UIPanGestureRecognizer *windowResizePan;
+    UIView *windowResizeHandle;
+    CGFloat resizeStartScale;
+    BOOL resizeActive;
 }
 
 -(void)retainPresentationAfterReleaseIfPossible;
@@ -332,6 +336,24 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     [quickSwitchInteractionOverlayView addSubview:quickSwitchHorizontalBarView];
 
     self.contentView = [[UIView alloc] initWithFrame:CGRectZero];
+    UIPinchGestureRecognizer *windowPinch =
+        [[UIPinchGestureRecognizer alloc] initWithTarget:self action:@selector(handleWindowPinch:)];
+    windowPinch.delegate = self;
+    windowPinch.cancelsTouchesInView = NO;
+    [self.contentView addGestureRecognizer:windowPinch];
+    [keyboardZoomContainer addGestureRecognizer:[[UIPinchGestureRecognizer alloc] initWithTarget:self
+                                                                                          action:@selector(handleWindowPinch:)]];
+    // 右下角把手（做法参考 FrontBoardAppLauncher/DecoratedFloatingView），单指拖它改大小。
+    windowResizeHandle = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 30, 30)];
+    windowResizeHandle.backgroundColor = [UIColor colorWithWhite:1 alpha:0.16];
+    windowResizeHandle.layer.cornerRadius = 15;
+    windowResizeHandle.layer.borderWidth = 0.5;
+    windowResizeHandle.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.4].CGColor;
+    windowResizeHandle.userInteractionEnabled = YES;
+    [keyboardZoomContainer addSubview:windowResizeHandle];
+    windowResizePan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleWindowResize:)];
+    windowResizePan.maximumNumberOfTouches = 1;
+    [windowResizeHandle addGestureRecognizer:windowResizePan];
     self.contentView.backgroundColor = [UIColor secondarySystemBackgroundColor];
     self.contentView.layer.cornerRadius = [self contentCornerRadius];
     if (@available(iOS 13.0, *)) {
@@ -3111,6 +3133,45 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     return [POSplitXSettings shared].windowCornerRadius;
 }
 
+-(void)handleWindowResize:(UIPanGestureRecognizer *)recognizer{
+    if (panelState != POPanelStateOpen) return;
+    if (recognizer.state == UIGestureRecognizerStateBegan) {
+        resizeActive = YES;
+        resizeStartScale = [self resolvedCardScale];
+        [self cancelAutoNubTimer];
+        return;
+    }
+    if (!resizeActive) return;
+
+    CGFloat dx = [recognizer translationInView:self.view].x;
+    CGFloat dy = [recognizer translationInView:self.view].y;
+    CGFloat delta = (fabs(dx) > fabs(dy) ? dx : dy) / 220.0;
+    CGFloat target = resizeStartScale - delta;      // 往屏幕里拖 = 变大
+    [self applyCardScaleTarget:target animated:NO source:POCardScaleTransitionSourceReconcile];
+
+    if (recognizer.state == UIGestureRecognizerStateEnded ||
+        recognizer.state == UIGestureRecognizerStateCancelled) {
+        resizeActive = NO;
+        [self applyCardScaleTarget:[self resolvedCardScale] animated:YES
+                            source:POCardScaleTransitionSourceReconcile];
+    }
+}
+
+-(void)handleWindowPinch:(UIPinchGestureRecognizer *)recognizer{
+    if (panelState != POPanelStateOpen) return;
+    static CGFloat pinchStartScale = 1.0;
+    if (recognizer.state == UIGestureRecognizerStateBegan) {
+        pinchStartScale = [self resolvedCardScale];
+    } else if (recognizer.state == UIGestureRecognizerStateChanged) {
+        CGFloat target = pinchStartScale * recognizer.scale;
+        [self applyCardScaleTarget:target animated:NO source:POCardScaleTransitionSourceReconcile];
+    } else if (recognizer.state == UIGestureRecognizerStateEnded ||
+               recognizer.state == UIGestureRecognizerStateCancelled) {
+        [self applyCardScaleTarget:[self resolvedCardScale] animated:YES
+                            source:POCardScaleTransitionSourceReconcile];
+    }
+}
+
 -(void)open{
     PXLog(@"ui", @"open pinned=%@ state=%ld", pinnedBundleId ?: @"-", (long)panelState);
     if (pinnedBundleId.length == 0 || scaledProgrammaticCloseAnimating ||
@@ -3422,7 +3483,15 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     [self pinAppWithBundleId:bundleId];
 }
 
+-(void)layoutWindowResizeHandle{
+    if (!windowResizeHandle || !keyboardZoomContainer) return;
+    windowResizeHandle.center = CGPointMake(CGRectGetWidth(keyboardZoomContainer.bounds) - 16.0,
+                                            CGRectGetHeight(keyboardZoomContainer.bounds) - 16.0);
+    windowResizeHandle.hidden = (panelState != POPanelStateOpen);
+}
+
 -(void)syncHostedContentGeometryToContentView{
+    [self layoutWindowResizeHandle];
     if (contextView) {
         CGRect hostBounds = self.contentView.bounds;
         contextView.center = CGPointMake(CGRectGetMidX(hostBounds), CGRectGetMidY(hostBounds));
