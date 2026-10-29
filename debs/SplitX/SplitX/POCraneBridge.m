@@ -173,12 +173,12 @@ static NSString *POCRaneRowString(id row, NSString *key) {
     id manager = POCraneManager();
     if (!manager || !containerID.length || !bundleID.length) return @"";
     SEL se = NSSelectorFromString(@"displayNameForContainerWithIdentifier:ofApplicationWithIdentifier:shouldUseShortVersion:");
-    if (POCraneSignature(manager, se, "@", @[@"@", @"@", [NSString stringWithUTF8String:@encode(BOOL)]])) {
+    if (POCraneSignature(manager, NSStringFromSelector(se), "@", @[@"@", @"@", [NSString stringWithUTF8String:@encode(BOOL)]])) {
         id name = ((id (*)(id, SEL, id, id, BOOL))objc_msgSend)(manager, se, containerID, bundleID, NO);
         if ([name isKindOfClass:NSString.class] && [name length]) return name;
     }
     SEL shortSel = NSSelectorFromString(@"displayNameForContainerWithIdentifier:ofApplicationWithIdentifier:");
-    if (POCraneSignature(manager, shortSel, "@", @[@"@", @"@"])) {
+    if (POCraneSignature(manager, NSStringFromSelector(shortSel), "@", @[@"@", @"@"])) {
         id name = ((id (*)(id, SEL, id, id))objc_msgSend)(manager, shortSel, containerID, bundleID);
         if ([name isKindOfClass:NSString.class] && [name length]) return name;
     }
@@ -191,7 +191,7 @@ static NSString *POCRaneRowString(id row, NSString *key) {
 
     id manager = POCraneManager();
     SEL listSel = NSSelectorFromString(@"containerIdentifiersOfApplicationWithIdentifier:");
-    if (!manager || !POCraneSignature(manager, listSel, "@", @[@"@"])) {
+    if (!manager || !POCraneSignature(manager, NSStringFromSelector(listSel), "@", @[@"@"])) {
         [targets addObject:[POSplitTarget targetWithBundleIdentifier:bundleIdentifier]];
         return targets;
     }

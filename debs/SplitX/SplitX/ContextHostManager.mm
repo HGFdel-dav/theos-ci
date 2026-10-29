@@ -1,6 +1,9 @@
 #import "ContextHostManager.h"
 #import "POSplitSessionController.h"
 #import "POApplicationHelper.h"
+#import "POCraneBridge.h"
+#import "POSplitXLog.h"
+#include <dlfcn.h>
 #import "POCameraGrantState.h"
 #import "FBSOrientationObserver.h"
 #import <objc/message.h>
@@ -820,6 +823,28 @@ static void PONormalizeIOS26PresentationContainerGeometry(UIView *container) {
                                            attempt:(NSUInteger)attempt;
 @end
 
+
+/// 分身场景必须打这针，否则环境与主 App 冲突，表现为黑屏/闪退。
+/// 依据 ScreenCore 2.0.5 的 crane_applyEnvironmentChanges 调用点。
+static void POApplyCraneEnvironmentIfNeeded(FBScene *scene, NSString *bundleId) {
+    if (!scene || !bundleId.length) return;
+    NSString *active = [POCraneBridge activeContainerForBundleIdentifier:bundleId];
+    if (!active.length || [active isEqualToString:POSplitDefaultContainerIdentifier]) return;
+    void *sym = dlsym(RTLD_DEFAULT, "crane_applyEnvironmentChanges");
+    if (!sym) {
+        PXLogW(@"clone", @"%@ 是分身但拿不到 crane_applyEnvironmentChanges", bundleId);
+        return;
+    }
+    id env = [scene respondsToSelector:@selector(environment)] ? [scene environment] : nil;
+    id patched = ((id (*)(id, id))sym)([env isKindOfClass:NSDictionary.class] ? env : @{}, bundleId);
+    if ([patched isKindOfClass:NSDictionary.class]) {
+        [scene setEnvironment:patched];
+        PXLog(@"clone", @"%@ 已打分身环境针 keys=%lu", bundleId, (unsigned long)[patched count]);
+    } else {
+        PXLogW(@"clone", @"%@ 环境针返回 %@", bundleId, patched ? NSStringFromClass([patched class]) : @"nil");
+    }
+}
+
 @implementation ContextHostManager
 
 static BOOL POMainLayerIdentitiesEqual(NSArray<FBSceneLayer *> *lhs,
@@ -1634,6 +1659,7 @@ static BOOL POMainLayerIdentitiesEqual(NSArray<FBSceneLayer *> *lhs,
         if (!scene) {
             return nil;
         }
+        POApplyCraneEnvironmentIfNeeded(scene, bundleId);
         self.ownedHostedScene = scene;
         self.ownedHostedBundleId = [bundleId copy];
         self.ownedCanonicalSceneAwaitingLeaseBundleId =

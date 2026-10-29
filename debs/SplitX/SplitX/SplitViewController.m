@@ -3407,6 +3407,7 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
         PXLog(@"gesture", @"pan end state=%ld p=%.0f,%.0f v=%.0f,%.0f translation=%.0f,%.0f intent=%lu panel=%ld",
               (long)recognizer.state, endPoint.x, endPoint.y, endVelocity.x, endVelocity.y,
               translation.x, translation.y, (unsigned long)handlePanIntent, (long)panelState);
+        if (handlePanIntent == POHandlePanIntentVerticalCardMove) {
             CGFloat translationY = [recognizer translationInView:self.view].y;
             [self applyPortraitHostedLandscapeVerticalHandleAnchorY:
                 panelVerticalMoveStartAnchorY + translationY];
