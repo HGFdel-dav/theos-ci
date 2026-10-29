@@ -266,6 +266,7 @@
 				A200000000000000000011 /* POSearchPresentation.m */,
 				C9E000000000000000001 /* POSliderTableCell.h */,
 				C9F0000000000000000A1 /* POSubPageController.h */,
+				C9F0000000000000000A2 /* POSubPageController.m */,
 				C9E000000000000000002 /* POSliderTableCell.m */,
 				A200000000000000000012 /* POApplicationWhitelistController.h */,
 				A200000000000000000013 /* POApplicationWhitelistController.m */,
