@@ -296,6 +296,7 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
           self.itemTileSize, self.itemIconSize, self.centerPoint.x, self.centerPoint.y,
           NSStringFromCGSize(self.bounds.size));
 
+    NSMutableArray<NSNumber *> *ringOf = [NSMutableArray array];
     NSInteger ringIndex = 0;
     NSInteger usedInRing = 0;
     for (NSUInteger i = 0; i < ordered.count; i++) {
