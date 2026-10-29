@@ -106,10 +106,10 @@
 		C72445E0225D3743001E1330 /* QSFavoritesPickerController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QSFavoritesPickerController.m; sourceTree = "<group>"; };
 		C72445E3225D480B001E1330 /* POStepperTableCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POStepperTableCell.m; sourceTree = "<group>"; };
 		C774843E2496A7EF00272DB5 /* POTimeStepperTableCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POTimeStepperTableCell.m; sourceTree = "<group>"; };
-		C9E000000000000000001 /* POSliderTableCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = POSliderTableCell.h; sourceTree = "<group>"; };
-		C9E000000000000000002 /* POSliderTableCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POSliderTableCell.m; sourceTree = "<group>"; };
-		C9F0000000000000000A1 /* POSubPageController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = POSubPageController.h; sourceTree = "<group>"; };
-		C9F0000000000000000A2 /* POSubPageController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POSubPageController.m; sourceTree = "<group>"; };
+		C9E000000000000000001 /* POSliderTableCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SplitXPreferences/POSliderTableCell.h; sourceTree = "<group>"; };
+		C9E000000000000000002 /* POSliderTableCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SplitXPreferences/POSliderTableCell.m; sourceTree = "<group>"; };
+		C9F0000000000000000A1 /* POSubPageController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SplitXPreferences/POSubPageController.h; sourceTree = "<group>"; };
+		C9F0000000000000000A2 /* POSubPageController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SplitXPreferences/POSubPageController.m; sourceTree = "<group>"; };
 		C77E05DF229B2B5E003A59C9 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
 		C7A168DA23B126B100451FA7 /* ContextInterfaces.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ContextInterfaces.h; sourceTree = "<group>"; };
 		C900000000000000000010 /* POLocalization.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = POLocalization.m; sourceTree = "<group>"; };

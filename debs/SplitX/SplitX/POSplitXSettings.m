@@ -5,6 +5,7 @@
 
 #import "POSplitXSettings.h"
 #import "POSplitXLog.h"
+#import "POApplicationHelper.h"
 
 static NSString *const PXDomain = @"com.niubiprass.splitx";
 /// 设置页用 suite 写入；这里必须读同一个域，不能用 standardUserDefaults（那是 SpringBoard 自己的域）。
@@ -17,6 +18,9 @@ static NSUserDefaults *PXDefaults(void) {
 static void PXSettingsChanged(CFNotificationCenterRef center, void *observer, CFStringRef name,
                               const void *object, CFDictionaryRef userInfo) {
     [[POSplitXSettings shared] reload];
+    // POApplicationHelper 把设置缓存住了，不主动清就一直用启动时的旧值。
+    [POApplicationHelper reloadSettings];
+    PXLog(@"prefs", @"settings-changed 已重载");
 }
 static NSArray<NSString *> *PXAllowedKeys(void) {
     return @[@"iconSize", @"tileSize", @"itemSpacing", @"panelRadius", @"panelAlpha",

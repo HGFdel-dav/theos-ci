@@ -67,7 +67,22 @@
 }
 
 - (void)sliderChanged:(UISlider *)slider {
-    [self controlChanged:slider];
+    // 自己写，不依赖父类那套 setter。
+    NSString *key = [self.specifier propertyForKey:@"key"];
+    NSString *suite = [self.specifier propertyForKey:@"defaults"];
+    NSInteger step = [[self.specifier propertyForKey:@"stepValue"] integerValue];
+    CGFloat value = slider.value;
+    if (step > 1) value = round(value / step) * step;
+    if (key.length && suite.length) {
+        NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:suite];
+        [defaults setObject:@((long)value) forKey:key];
+        [defaults synchronize];
+        [[NSUserDefaults standardUserDefaults] synchronize];
+        CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                             CFSTR("com.niubiprass.splitx.settings-changed"),
+                                             NULL, NULL, YES);
+    }
+    [self updateLabel];
 }
 
 - (void)updateLabel {
