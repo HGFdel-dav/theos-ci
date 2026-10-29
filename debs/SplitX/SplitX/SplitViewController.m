@@ -217,6 +217,7 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     CGFloat lastLoggedCardWidth;
     UIPanGestureRecognizer *windowResizePan;
     UIView *windowResizeHandle;
+    UIButton *windowCloseButton;
     CGFloat resizeStartScale;
     BOOL resizeActive;
 }
@@ -354,6 +355,16 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     windowResizePan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleWindowResize:)];
     windowResizePan.maximumNumberOfTouches = 1;
     [windowResizeHandle addGestureRecognizer:windowResizePan];
+
+    // 右上角关闭点，省得摸手柄。
+    windowCloseButton = [[UIButton alloc] initWithFrame:CGRectMake(0, 0, 24, 24)];
+    windowCloseButton.backgroundColor = [UIColor colorWithWhite:0 alpha:0.45];
+    windowCloseButton.layer.cornerRadius = 12;
+    [windowCloseButton setTitle:@"×" forState:UIControlStateNormal];
+    [windowCloseButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    windowCloseButton.titleLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightSemibold];
+    [windowCloseButton addTarget:self action:@selector(closeFromButton) forControlEvents:UIControlEventTouchUpInside];
+    [keyboardZoomContainer addSubview:windowCloseButton];
     self.contentView.backgroundColor = [UIColor secondarySystemBackgroundColor];
     self.contentView.layer.cornerRadius = [self contentCornerRadius];
     if (@available(iOS 13.0, *)) {
@@ -3483,11 +3494,17 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     [self pinAppWithBundleId:bundleId];
 }
 
+-(void)closeFromButton{
+    [self close];
+}
+
 -(void)layoutWindowResizeHandle{
     if (!windowResizeHandle || !keyboardZoomContainer) return;
     windowResizeHandle.center = CGPointMake(CGRectGetWidth(keyboardZoomContainer.bounds) - 16.0,
                                             CGRectGetHeight(keyboardZoomContainer.bounds) - 16.0);
     windowResizeHandle.hidden = (panelState != POPanelStateOpen);
+    windowCloseButton.center = CGPointMake(CGRectGetWidth(keyboardZoomContainer.bounds) - 16.0, 16.0);
+    windowCloseButton.hidden = windowResizeHandle.hidden;
 }
 
 -(void)syncHostedContentGeometryToContentView{
