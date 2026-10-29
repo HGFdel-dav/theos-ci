@@ -27,6 +27,8 @@
         [self.contentView addSubview:_valueLabel];
         self.selectionStyle = UITableViewCellSelectionStyleNone;
         [self.contentView addSubview:self.control];
+        [self.control addTarget:self action:@selector(sliderChanged:)
+               forControlEvents:UIControlEventValueChanged];
     }
     return self;
 }
@@ -45,10 +47,9 @@
         slider = [self newControl];
         [self setValue:slider forKey:@"control"];
     }
-    if (!slider.superview) {
-        [self.contentView addSubview:slider];
-        [slider addTarget:self action:@selector(sliderChanged:) forControlEvents:UIControlEventValueChanged];
-    }
+    if (!slider.superview) [self.contentView addSubview:slider];
+    [slider removeTarget:self action:@selector(sliderChanged:) forControlEvents:UIControlEventValueChanged];
+    [slider addTarget:self action:@selector(sliderChanged:) forControlEvents:UIControlEventValueChanged];
     slider.minimumValue = minimum ? minimum.floatValue : 0;
     slider.maximumValue = maximum ? maximum.floatValue : 100;
     [super refreshCellContentsWithSpecifier:specifier];

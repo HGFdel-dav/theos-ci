@@ -24,10 +24,12 @@
         if (own && [self respondsToSelector:setBundle]) {
             ((void (*)(id, SEL, id))objc_msgSend)(self, setBundle, own);
         }
-        // PSListController 内部会看 name / bundle，两个都对齐，避免回退到上一页。
-        SEL setName = NSSelectorFromString(@"setName:");
-        if ([self respondsToSelector:setName]) {
-            ((void (*)(id, SEL, id))objc_msgSend)(self, setName, _subPagePlistName);
+        // 父类真正用到的是它自己的 _plistName，试着直接写进去。
+        @try {
+            [self setValue:_subPagePlistName forKey:@"_plistName"];
+            PXLog(@"prefs", @"已写入父类 _plistName=%@", _subPagePlistName);
+        } @catch (NSException *e) {
+            PXLogW(@"prefs", @"写父类 _plistName 失败: %@", e.reason);
         }
         PXLog(@"prefs", @"子页 load plist=%@ bundle=%@", _subPagePlistName, own.bundlePath ?: @"nil");
         [self loadSpecifiersFromPlistName:_subPagePlistName target:self];
