@@ -3,12 +3,12 @@
 #import <objc/message.h>
 
 @implementation POSubPageController {
-    NSString *_plistName;
+    NSString *_subPagePlistName;
 }
 
 - (instancetype)initWithPlistName:(NSString *)plistName title:(NSString *)title {
     if ((self = [super init])) {
-        _plistName = [plistName copy];
+        _subPagePlistName = [plistName copy];
         self.title = title;
         PXLog(@"prefs", @"子页 init plist=%@ title=%@", plistName, title);
     }
@@ -24,8 +24,13 @@
         if (own && [self respondsToSelector:setBundle]) {
             ((void (*)(id, SEL, id))objc_msgSend)(self, setBundle, own);
         }
-        PXLog(@"prefs", @"子页 load plist=%@ bundle=%@", _plistName, own.bundlePath ?: @"nil");
-        [self loadSpecifiersFromPlistName:_plistName target:self];
+        // PSListController 内部会看 name / bundle，两个都对齐，避免回退到上一页。
+        SEL setName = NSSelectorFromString(@"setName:");
+        if ([self respondsToSelector:setName]) {
+            ((void (*)(id, SEL, id))objc_msgSend)(self, setName, _subPagePlistName);
+        }
+        PXLog(@"prefs", @"子页 load plist=%@ bundle=%@", _subPagePlistName, own.bundlePath ?: @"nil");
+        [self loadSpecifiersFromPlistName:_subPagePlistName target:self];
         PXLog(@"prefs", @"子页 load ok count=%lu", (unsigned long)self.specifiers.count);
     } @catch (NSException *exception) {
         PXLogE(@"prefs", @"子页 load 抛异常 %@: %@", exception.name, exception.reason);
