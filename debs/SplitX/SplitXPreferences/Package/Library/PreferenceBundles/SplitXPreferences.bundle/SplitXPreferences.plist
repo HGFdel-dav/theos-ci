@@ -182,7 +182,7 @@
 			<key>cellClass</key>
 			<string>POSliderTableCell</string>
 			<key>default</key>
-			<integer>56</integer>
+			<real>46.0</real>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
 			<key>get</key>
@@ -286,7 +286,7 @@
 			<key>cellClass</key>
 			<string>POSliderTableCell</string>
 			<key>default</key>
-			<integer>124</integer>
+			<real>170.0</real>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
 			<key>get</key>
@@ -300,9 +300,9 @@
 			<key>label</key>
 			<string>扇形半径</string>
 			<key>maximumValue</key>
-			<integer>170</integer>
+			<real>210.0</real>
 			<key>minimumValue</key>
-			<integer>70</integer>
+			<real>90.0</real>
 			<key>set</key>
 			<string>setValue:forSpecifier:</string>
 			<key>stepValue</key>
@@ -312,7 +312,7 @@
 			<key>cellClass</key>
 			<string>POSliderTableCell</string>
 			<key>default</key>
-			<integer>150</integer>
+			<real>120.0</real>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
 			<key>get</key>
@@ -536,7 +536,7 @@
 			<key>cellClass</key>
 			<string>POSliderTableCell</string>
 			<key>default</key>
-			<integer>0</integer>
+			<real>0.0</real>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
 			<key>get</key>
@@ -550,9 +550,9 @@
 			<key>label</key>
 			<string>底板不透明度</string>
 			<key>maximumValue</key>
-			<integer>100</integer>
+			<real>100.0</real>
 			<key>minimumValue</key>
-			<integer>40</integer>
+			<real>0.0</real>
 			<key>set</key>
 			<string>setValue:forSpecifier:</string>
 			<key>stepValue</key>

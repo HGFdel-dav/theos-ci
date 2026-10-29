@@ -142,6 +142,18 @@ need('PXLogInstallSignalHandlers' in logm, 'signal handlers installed')
 prefsctl = (PREFS / 'SplitXPreferencesController.m').read_text()
 need('showDiagnosticLog' in prefsctl and 'clearDiagnosticLog' in prefsctl, 'log viewer + clear in prefs')
 
+
+# 8g 滑杆范围必须与代码 clamp 一致
+settings_m = (SRC / 'POSplitXSettings.m').read_text()
+ranges = {(m[0]): (m[1], m[2], m[3]) for m in re.findall(r'doubleForKey:@"(\w+)" fallback:([\d.]+) min:([\d.]+) max:([\d.]+)', settings_m)}
+for item in prefs_plist.get('items', []):
+    key = item.get('key')
+    if key in ranges and item.get('cellClass') == 'POSliderTableCell':
+        fallback, low, high = ranges[key]
+        need(float(item.get('minimumValue', -1)) == float(low), f'{key} min matches code ({low})')
+        need(float(item.get('maximumValue', -1)) == float(high), f'{key} max matches code ({high})')
+        need(float(item.get('default', -1)) == float(fallback), f'{key} default matches code ({fallback})')
+
 # 9 旧品牌残留（README/LICENSE 除外）
 for pat in ('PullOverXPreferences.bundle', 'com.mlgm.pulloverx', 'PullOverViewController'):
     hits = [p for p in ROOT.rglob('*') if p.is_file() and p.suffix in ('.m', '.mm', '.h', '.plist', '.pbxproj', '.sh') and pat in p.read_text(errors='ignore')]
