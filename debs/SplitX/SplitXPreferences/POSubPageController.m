@@ -60,7 +60,7 @@
             spec = [PSSpecifier preferenceSpecifierNamed:label target:self
                                                      set:(hasKey ? @selector(setValue:forSpecifier:) : NULL)
                                                      get:(hasKey ? @selector(getValueForSpecifier:) : NULL)
-                                                  detail:nil cell:(PSCellType)4 edit:nil];   // 4 = PSListCell，实际 cell 由 cellClass 决定
+                                                  detail:nil cell:PSGroupCell edit:nil];   // 只当容器，真实 cell 由 cellClass 决定
         }
         if (!spec) continue;
 

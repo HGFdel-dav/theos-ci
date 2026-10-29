@@ -14,6 +14,7 @@
 #import "POCraneBridge.h"
 #import <objc/message.h>
 #import <objc/runtime.h>
+#include <dlfcn.h>
 #include <signal.h>
 #include <errno.h>
 #include <string.h>
@@ -60,8 +61,19 @@ static BOOL POCraneSignature(id target, NSString *name, const char *result, NSAr
 }
 
 static id POCraneManager(void) {
+    static BOOL logged = NO;
     Class cls = NSClassFromString(@"CraneManager");
-    if (!cls) return nil;
+    if (!cls) {
+        if (!logged) {
+            logged = YES;
+            void *h = dlopen("/var/jb/usr/lib/libcrane.dylib", RTLD_LAZY);
+            void *h2 = dlopen("/usr/lib/libcrane.dylib", RTLD_LAZY);
+            PXLogW(@"clone", @"没有 CraneManager 类；dlopen jb=%p root=%p 再查=%d",
+                   h, h2, NSClassFromString(@"CraneManager") != nil);
+            cls = NSClassFromString(@"CraneManager");
+        }
+        if (!cls) return nil;
+    }
     SEL shared = NSSelectorFromString(@"sharedManager");
     if (!POCraneSignature(cls, @"sharedManager", "@", @[])) return nil;
     return ((id (*)(id, SEL))objc_msgSend)(cls, shared);
