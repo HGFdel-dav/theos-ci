@@ -24,7 +24,7 @@ static void PXSettingsChanged(CFNotificationCenterRef center, void *observer, CF
 }
 static NSArray<NSString *> *PXAllowedKeys(void) {
     return @[@"iconSize", @"tileSize", @"itemSpacing", @"panelRadius", @"panelAlpha",
-             @"panelColumns", @"fanRadius", @"fanSpan", @"animationSpeed", @"squareIcons", @"hapticFeedback", @"handleAlwaysVisible", @"portraitExternalKeyboard", @"landscapeExternalKeyboard", @"closeOutsideWithKeyboard", @"internalKeyboardZoomPercent", @"externalKeyboardHorizontalPercent", @"keyboardDimOpacity", @"cloneEnabled", @"cloneShowDefault", @"ring1", @"ring2", @"ring3", @"ring4", @"ringGap", @"handleSlideDistance", @"panelEdgeInset", @"topGestureWidth", @"topGestureHeight", @"topGestureOffset", @"bottomGestureWidth", @"bottomGestureHeight", @"bottomGestureOffset", @"showGestureArea", @"windowWidthPercent", @"windowInset", @"windowInsetLandscape", @"windowWidthLandscape", @"windowCornerRadiusLandscape", @"windowMaxScalePercent", @"windowCornerRadius", @"windowShadowStrength", @"windowShadowBlur", @"dockNewSplitPushesCurrent", @"dockWidthPortrait", @"dockWidthLandscape", @"dockAutoStashSeconds", @"dockMaxCount", @"triggerWidth", @"triggerOffsetY", @"dockEnabled", @"dockScale"];
+             @"panelColumns", @"fanRadius", @"fanSpan", @"animationSpeed", @"squareIcons", @"hapticFeedback", @"handleAlwaysVisible", @"handleHidden", @"handleOpacity", @"handleOnLeft", @"handleVerticalPosition", @"gestureBottomUp", @"gestureBottomDown", @"gestureBottomLeft", @"gestureBottomRight", @"gestureBottomDoubleTap", @"gestureBottomLongPress", @"portraitExternalKeyboard", @"landscapeExternalKeyboard", @"closeOutsideWithKeyboard", @"internalKeyboardZoomPercent", @"externalKeyboardHorizontalPercent", @"keyboardDimOpacity", @"cloneEnabled", @"cloneShowDefault", @"showSplitAppIdentity", @"ring1", @"ring2", @"ring3", @"ring4", @"ringGap", @"handleSlideDistance", @"panelEdgeInset", @"topGestureWidth", @"topGestureHeight", @"topGestureOffset", @"bottomGestureWidth", @"bottomGestureHeight", @"bottomGestureOffset", @"showGestureArea", @"windowWidthPercent", @"windowInset", @"windowInsetLandscape", @"windowWidthLandscape", @"windowCornerRadiusLandscape", @"windowMaxScalePercent", @"windowCornerRadius", @"windowShadowStrength", @"windowShadowBlur", @"dockNewSplitPushesCurrent", @"dockWidthPortrait", @"dockWidthLandscape", @"dockAutoStashSeconds", @"dockMaxCount", @"triggerWidth", @"triggerOffsetY", @"dockEnabled", @"dockScale"];
 }
 
 @implementation POSplitXSettings {
@@ -79,6 +79,7 @@ static NSArray<NSString *> *PXAllowedKeys(void) {
 - (CGFloat)tileSize { return [self doubleForKey:@"tileSize" fallback:68 min:52 max:92]; }
 - (CGFloat)itemSpacing { return [self doubleForKey:@"itemSpacing" fallback:6 min:0 max:20]; }
 - (CGFloat)panelRadius { return [self doubleForKey:@"panelRadius" fallback:30 min:12 max:40]; }
+- (BOOL)showSplitAppIdentity { id v = _values[@"showSplitAppIdentity"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : YES; }
 - (CGFloat)panelAlpha { return [self doubleForKey:@"panelAlpha" fallback:0 min:0 max:100] / 100.0; }
 - (NSInteger)panelColumns { return (NSInteger)[self doubleForKey:@"panelColumns" fallback:2 min:1 max:3]; }
 - (CGFloat)fanRadius { return [self doubleForKey:@"fanRadius" fallback:210 min:120 max:260]; }
@@ -86,6 +87,8 @@ static NSArray<NSString *> *PXAllowedKeys(void) {
 - (CGFloat)animationSpeed { return [self doubleForKey:@"animationSpeed" fallback:100 min:50 max:200]; }
 - (BOOL)handleHidden { id v = _values[@"handleHidden"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : NO; }
 - (CGFloat)handleOpacity { return [self doubleForKey:@"handleOpacity" fallback:100 min:10 max:100] / 100.0; }
+- (BOOL)handleOnLeft { id v = _values[@"handleOnLeft"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : NO; }
+- (CGFloat)handleVerticalPosition { return [self doubleForKey:@"handleVerticalPosition" fallback:50 min:0 max:100] / 100.0; }
 - (BOOL)handleAlwaysVisible { id v = _values[@"handleAlwaysVisible"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : YES; }
 - (BOOL)hapticFeedback { id v = _values[@"hapticFeedback"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : YES; }
 - (BOOL)portraitExternalKeyboard { id v=_values[@"portraitExternalKeyboard"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : YES; }

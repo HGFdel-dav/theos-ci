@@ -18,6 +18,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) CGFloat tileSize;       // 52...88, default 68
 @property (nonatomic, readonly) CGFloat itemSpacing;    // 0...20,  default 6
 @property (nonatomic, readonly) CGFloat panelRadius;    // 12...40, default 30
+@property (nonatomic, readonly) BOOL showSplitAppIdentity;
 @property (nonatomic, readonly) CGFloat panelAlpha;     // 0.4...1, default 1
 @property (nonatomic, readonly) NSInteger panelColumns; // 1...3,  default 2
 @property (nonatomic, readonly) CGFloat fanRadius;      // 70...170, default 124（扇形半径）
@@ -29,6 +30,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) BOOL handleAlwaysVisible;   // 手柄常显
 @property (nonatomic, readonly) BOOL handleHidden;          // 平时完全隐身，动它才出现
 @property (nonatomic, readonly) CGFloat handleOpacity;       // 0...100, default 100
+@property (nonatomic, readonly) BOOL handleOnLeft;            // 手柄在左侧
+@property (nonatomic, readonly) CGFloat handleVerticalPosition; // 0...100
 @property (nonatomic, readonly) BOOL portraitExternalKeyboard, landscapeExternalKeyboard, closeOutsideWithKeyboard;
 @property (nonatomic, readonly) CGFloat internalKeyboardZoomPercent, externalKeyboardHorizontalPercent, keyboardDimOpacity;     // 悬停/选中震动
 @property (nonatomic, readonly) BOOL cloneEnabled;     // 是否列分身

@@ -86,6 +86,7 @@ typedef NS_ENUM(NSUInteger, POHandlePanIntent) {
     POHandlePanIntentMenu,
     POHandlePanIntentMenuPending,
     POHandlePanIntentVerticalCardMove,
+    POHandlePanIntentVerticalHandleMove,
 };
 
 static BOOL POIsConcretePresentationOrientation(UIInterfaceOrientation orientation) {
@@ -120,6 +121,7 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     BOOL mirrorZoneHighlighted;
     UIView *panelBackdropView;
     UIView *quickSwitchBackdropView;
+    UITapGestureRecognizer *quickSwitchBackdropTapGestureRecognizer;
     UITapGestureRecognizer *panelBackdropTapGestureRecognizer;
     UIPanGestureRecognizer *panelBackdropPanGestureRecognizer;
     UIView *shadowView;
@@ -216,9 +218,20 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     CGSize lastLaidOutSize;
     CGFloat lastLoggedCardWidth;
     UIPanGestureRecognizer *windowResizePan;
+    NSMutableArray<UIView *> *windowCornerHandles;
     UIView *windowResizeHandle;
+    UIView *windowTitleBar;
+    UIImageView *windowTitleIcon;
+    UILabel *windowTitleLabel;
+    UIView *windowMoveGrip;
+    UILongPressGestureRecognizer *windowMoveLongPress;
+    CGPoint windowMoveStartCenter;
+    CGPoint windowMoveStartLocation;
+    BOOL windowMoveActive;
     UIButton *windowCloseButton;
     CGFloat resizeStartScale;
+    CGRect resizeStartFrame;
+    NSInteger resizeCorner;
     BOOL resizeActive;
 }
 
@@ -336,6 +349,14 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     quickSwitchHorizontalBarView.selectionDelegate = self;
     [quickSwitchInteractionOverlayView addSubview:quickSwitchHorizontalBarView];
 
+    // 宿主容器必须先创建，再挂内容、关闭点和缩放角；旧代码顺序反了，
+    // 所有控件当时都被加到 nil 上，随后窗口又被 contentView 盖住。
+    keyboardZoomContainer = [[UIView alloc] initWithFrame:CGRectZero];
+    keyboardZoomContainer.backgroundColor = UIColor.clearColor;
+    keyboardZoomContainer.clipsToBounds = NO;
+    keyboardZoomContainer.hidden = YES;
+    [scrollView addSubview:keyboardZoomContainer];
+
     self.contentView = [[UIView alloc] initWithFrame:CGRectZero];
     UIPinchGestureRecognizer *windowPinch =
         [[UIPinchGestureRecognizer alloc] initWithTarget:self action:@selector(handleWindowPinch:)];
@@ -344,17 +365,26 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     [self.contentView addGestureRecognizer:windowPinch];
     [keyboardZoomContainer addGestureRecognizer:[[UIPinchGestureRecognizer alloc] initWithTarget:self
                                                                                           action:@selector(handleWindowPinch:)]];
-    // 右下角把手（做法参考 FrontBoardAppLauncher/DecoratedFloatingView），单指拖它改大小。
-    windowResizeHandle = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 30, 30)];
-    windowResizeHandle.backgroundColor = [UIColor colorWithWhite:1 alpha:0.16];
-    windowResizeHandle.layer.cornerRadius = 15;
-    windowResizeHandle.layer.borderWidth = 0.5;
-    windowResizeHandle.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.4].CGColor;
-    windowResizeHandle.userInteractionEnabled = YES;
-    [keyboardZoomContainer addSubview:windowResizeHandle];
-    windowResizePan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleWindowResize:)];
-    windowResizePan.maximumNumberOfTouches = 1;
-    [windowResizeHandle addGestureRecognizer:windowResizePan];
+    // ParallelX 方式：四个角都能单指拖动，右下不再是唯一缩放入口。
+    windowCornerHandles = [NSMutableArray arrayWithCapacity:4];
+    for (NSInteger corner = 0; corner < 4; corner++) {
+        UIView *handle = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 44, 44)];
+        handle.tag = 7200 + corner;
+        handle.backgroundColor = UIColor.clearColor;
+        UIView *dot = [[UIView alloc] initWithFrame:CGRectMake(7, 7, 30, 30)];
+        dot.backgroundColor = [UIColor colorWithWhite:1 alpha:0.16];
+        dot.layer.cornerRadius = 15;
+        dot.layer.borderWidth = 0.5;
+        dot.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.4].CGColor;
+        dot.userInteractionEnabled = NO;
+        [handle addSubview:dot];
+        UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleWindowResize:)];
+        pan.maximumNumberOfTouches = 1;
+        [handle addGestureRecognizer:pan];
+        [keyboardZoomContainer addSubview:handle];
+        [windowCornerHandles addObject:handle];
+    }
+    windowResizeHandle = windowCornerHandles.lastObject;
 
     // 右上角关闭点，省得摸手柄。
     windowCloseButton = [[UIButton alloc] initWithFrame:CGRectMake(0, 0, 24, 24)];
@@ -365,6 +395,37 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     windowCloseButton.titleLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightSemibold];
     [windowCloseButton addTarget:self action:@selector(closeFromButton) forControlEvents:UIControlEventTouchUpInside];
     [keyboardZoomContainer addSubview:windowCloseButton];
+
+    // 卡片顶部身份条：图标 + 名称，不拦触摸。
+    windowTitleBar = [[UIView alloc] initWithFrame:CGRectZero];
+    windowTitleBar.backgroundColor = [UIColor colorWithWhite:0 alpha:0.20];
+    windowTitleBar.layer.cornerRadius = 9;
+    windowTitleBar.userInteractionEnabled = NO;
+    windowTitleBar.hidden = YES;
+    windowTitleIcon = [[UIImageView alloc] initWithFrame:CGRectZero];
+    windowTitleIcon.contentMode = UIViewContentModeScaleAspectFit;
+    windowTitleIcon.layer.cornerRadius = 3;
+    windowTitleIcon.clipsToBounds = YES;
+    [windowTitleBar addSubview:windowTitleIcon];
+    windowTitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    windowTitleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
+    windowTitleLabel.textColor = UIColor.whiteColor;
+    [windowTitleBar addSubview:windowTitleLabel];
+    [keyboardZoomContainer addSubview:windowTitleBar];
+    windowMoveGrip = [[UIView alloc] initWithFrame:CGRectZero];
+    windowMoveGrip.backgroundColor = [UIColor colorWithWhite:0 alpha:0.20];
+    windowMoveGrip.layer.cornerRadius = 8;
+    windowMoveGrip.userInteractionEnabled = YES;
+    UIView *gripLine = [[UIView alloc] initWithFrame:CGRectMake(24, 11, 32, 4)];
+    gripLine.backgroundColor = [UIColor colorWithWhite:1 alpha:0.55];
+    gripLine.layer.cornerRadius = 2;
+    gripLine.userInteractionEnabled = NO;
+    [windowMoveGrip addSubview:gripLine];
+    windowMoveLongPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleWindowMoveLongPress:)];
+    windowMoveLongPress.minimumPressDuration = 0.35;
+    windowMoveLongPress.allowableMovement = 1000;
+    [windowMoveGrip addGestureRecognizer:windowMoveLongPress];
+    [keyboardZoomContainer addSubview:windowMoveGrip];
     self.contentView.backgroundColor = [UIColor secondarySystemBackgroundColor];
     self.contentView.layer.cornerRadius = [self contentCornerRadius];
     if (@available(iOS 13.0, *)) {
@@ -372,15 +433,14 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     }
     self.contentView.clipsToBounds = YES;
 
-    keyboardZoomContainer = [[UIView alloc] initWithFrame:CGRectZero];
-    keyboardZoomContainer.backgroundColor = [UIColor clearColor];
-    keyboardZoomContainer.clipsToBounds = NO;    keyboardZoomContainer.hidden = YES;
-    [scrollView addSubview:keyboardZoomContainer];
-
     quickSwitchBackdropView = [[UIView alloc] initWithFrame:scrollView.bounds];
     quickSwitchBackdropView.backgroundColor = UIColor.blackColor;
     quickSwitchBackdropView.alpha = 0;
     quickSwitchBackdropView.userInteractionEnabled = YES;
+    quickSwitchBackdropTapGestureRecognizer = [[UITapGestureRecognizer alloc]
+        initWithTarget:self action:@selector(quickSwitchBackdropDidTap:)];
+    quickSwitchBackdropTapGestureRecognizer.delegate = self;
+    [quickSwitchBackdropView addGestureRecognizer:quickSwitchBackdropTapGestureRecognizer];
     [scrollView addSubview:quickSwitchBackdropView];
     [scrollView bringSubviewToFront:handleScrollView];
     
@@ -457,7 +517,8 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     }
 
     [self.handle refreshHandleSizeAnimated:NO];
-    [self applyLayoutPreservingHandlePosition:YES];
+    [self refreshWindowTitleBar];
+    [self applyLayoutPreservingHandlePosition:NO];
     [self.handle refreshNubbedPositionAnimated:NO];
     [self reevaluateKeyboardZoomAnimated:YES];
     if (self.view.window && self.view.window.userInteractionEnabled && self.view.alpha > 0.01) {
@@ -676,7 +737,16 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     [self handle:self.handle didPanPanel:recognizer];
 }
 
+-(void)quickSwitchBackdropDidTap:(UITapGestureRecognizer *)recognizer {
+    if (recognizer.state != UIGestureRecognizerStateEnded ||
+        ![presentedQuickSwitchMenu isKindOfClass:POSplitPanelView.class]) return;
+    PXLog(@"panel", @"background tap cancels menu");
+    [self dismissPresentedQuickSwitchMenuImmediately];
+}
+
 -(BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer{
+    if (gestureRecognizer == quickSwitchBackdropTapGestureRecognizer)
+        return [presentedQuickSwitchMenu isKindOfClass:POSplitPanelView.class];
     if (gestureRecognizer == panelBackdropTapGestureRecognizer) {
         return [self currentInteractionMode] == POInteractionModeDrawerModal &&
             panelState == POPanelStateOpen && ![self isPanelTransitioning];
@@ -1880,7 +1950,11 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     [defaults setValue:NSStringFromCGPoint(handlePoint) forKey:@"handlePoint"];
     CGFloat maximumOffset = [self maximumHandleOffset];
     if (maximumOffset > 0) {
-        [defaults setDouble:(handlePoint.y / maximumOffset) forKey:@"handlePointRatio"];
+        CGFloat ratio = handlePoint.y / maximumOffset;
+        [defaults setDouble:ratio forKey:@"handlePointRatio"];
+        NSUserDefaults *suite = [[NSUserDefaults alloc] initWithSuiteName:@"com.niubiprass.splitx"];
+        [suite setObject:@(ratio * 100.0) forKey:@"handleVerticalPosition"];
+        [suite synchronize];
     }
 }
 
@@ -2235,6 +2309,7 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     if (shouldOpen) {
         panelState = POPanelStateOpen;
         keyboardZoomContainer.hidden = NO;
+        [self.handle setHostedWindowOpen:YES];
         if (presentationSnapshotView && !presentationSnapshotView.hidden &&
             hostSession.state == POHostSessionStateLive) {
             [self schedulePresentationSnapshotRetirementForBundleId:hostSession.requestedBundleId
@@ -2266,6 +2341,7 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
             handleHandoffSnapshot = [self beginHandleVisualHandoffSnapshot];
         }
         panelState = POPanelStateClosed;
+        [self.handle setHostedWindowOpen:NO];
         if (previousLayoutMode != [self currentQuickSwitchLayoutMode]) {
             [self applyLayoutPreservingHandlePosition:YES];
             [self inheritVerticalHandleScreenY:inheritedHandleScreenY];
@@ -2388,8 +2464,16 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
         !CGRectIsEmpty(keyboardZoomBaseFrame);
 }
 
--(void)performDirectScaledProgrammaticCloseAnimation{
-    if (![self canUseDirectScaledProgrammaticCloseAnimation]) {
+/// forced=YES：关闭按钮/手势直接要关闭时，不被滚动状态或偏移量挡回平移。
+-(void)performScaledProgrammaticCloseAnimationForced:(BOOL)forced{
+    if (forced) {
+        if (panelState != POPanelStateOpen || keyboardZoomContainer.hidden) {
+            [self snapPanelToOpenState:NO];
+            return;
+        }
+        if (CGRectIsEmpty(keyboardZoomBaseFrame))
+            keyboardZoomBaseFrame = keyboardZoomContainer.frame;
+    } else if (![self canUseDirectScaledProgrammaticCloseAnimation]) {
         [self snapPanelToOpenState:NO];
         return;
     }
@@ -2687,7 +2771,9 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     CGFloat handleViewportHeight = horizontalMode
         ? CGRectGetHeight(bounds)
         : CGRectGetHeight(bounds) * chromeScale;
-    handleScrollView.frame = CGRectMake(CGRectGetWidth(bounds) - handleRailWidth, 0, handleRailWidth, handleViewportHeight);
+    BOOL handleOnLeft = [POSplitXSettings shared].handleOnLeft;
+    handleScrollView.frame = CGRectMake(handleOnLeft ? 0 : CGRectGetWidth(bounds) - handleRailWidth,
+                                        0, handleRailWidth, handleViewportHeight);
     if (!horizontalMode) {
         handleScrollView.center = CGPointMake(handleScrollView.center.x, CGRectGetMidY(bounds));
         handleScrollView.contentSize = CGSizeMake(handleRailWidth, (handleViewportHeight * 2) - self.handle.frame.size.height);
@@ -2702,22 +2788,18 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
                 targetHandleOffset = handleRatio * [self maximumHandleOffset];
             }
         } else {
-            NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-            NSNumber *storedRatio = [defaults objectForKey:@"handlePointRatio"];
-            NSString *storedPoint = [defaults valueForKey:@"handlePoint"];
-            if (storedRatio) {
-                targetHandleOffset = storedRatio.doubleValue * [self maximumHandleOffset];
-            } else if (storedPoint) {
-                targetHandleOffset = CGPointFromString(storedPoint).y;
-            } else {
-                targetHandleOffset = [self maximumHandleOffset] / 2.0;
-            }
+            CGFloat configured = [POSplitXSettings shared].handleVerticalPosition;
+            targetHandleOffset = configured * [self maximumHandleOffset];
         }
         [handleScrollView setContentOffset:CGPointMake(0, [self clampedHandleOffset:targetHandleOffset]) animated:NO];
 
-        self.handle.restingOriginX = handleRailWidth - HANDLE_EDGE_GAP - self.handle.frame.size.width;
+        BOOL handleOnLeft = [POSplitXSettings shared].handleOnLeft;
+        self.handle.restingOriginX = handleOnLeft
+            ? HANDLE_EDGE_GAP
+            : handleRailWidth - HANDLE_EDGE_GAP - self.handle.frame.size.width;
         CGRect handleLayoutFrame = self.handle.frame;
-        handleLayoutFrame.origin.y = handleViewportHeight - CGRectGetHeight(self.handle.bounds);
+        CGFloat ratio = [POSplitXSettings shared].handleVerticalPosition;
+        handleLayoutFrame.origin.y = ratio * MAX(0, handleViewportHeight - CGRectGetHeight(self.handle.bounds));
         if (!self.handle.isNubbed) {
             handleLayoutFrame.origin.x = self.handle.restingOriginX;
         }
@@ -3017,6 +3099,7 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
         return;
     }
     pinnedBundleId = bundleId;
+    [self refreshWindowTitleBar];
     [[NSUserDefaults standardUserDefaults] setObject:bundleId forKey:@"lastPinnedBundleId"];
     [self refreshHandleIconIfNeeded];
 }
@@ -3149,35 +3232,79 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     return landscape ? settings.windowCornerRadiusLandscape : settings.windowCornerRadius;
 }
 
--(void)handleWindowResize:(UIPanGestureRecognizer *)recognizer{
-    if (panelState != POPanelStateOpen) {
-        PXLog(@"window", @"resize 忽略 panel=%ld", (long)panelState);
+-(void)handleWindowMoveLongPress:(UILongPressGestureRecognizer *)recognizer{
+    if (panelState != POPanelStateOpen || !keyboardZoomContainer) return;
+    if (recognizer.state == UIGestureRecognizerStateBegan) {
+        windowMoveActive = YES;
+        windowMoveStartCenter = keyboardZoomContainer.center;
+        windowMoveStartLocation = [recognizer locationInView:scrollView];
+        PXLog(@"window", @"move grip began center=%.0f,%.0f", windowMoveStartCenter.x, windowMoveStartCenter.y);
         return;
     }
+    if (!windowMoveActive) return;
+    if (recognizer.state == UIGestureRecognizerStateChanged || recognizer.state == UIGestureRecognizerStateEnded) {
+        CGPoint now = [recognizer locationInView:scrollView];
+        CGPoint candidate = CGPointMake(windowMoveStartCenter.x + now.x - windowMoveStartLocation.x,
+                                        windowMoveStartCenter.y + now.y - windowMoveStartLocation.y);
+        CGPoint screenCenter = [scrollView convertPoint:candidate toView:self.view];
+        CGRect visible = [keyboardZoomContainer convertRect:keyboardZoomContainer.bounds toView:self.view];
+        CGSize half = CGSizeMake(CGRectGetWidth(visible) / 2.0, CGRectGetHeight(visible) / 2.0);
+        UIEdgeInsets insets = self.view.safeAreaInsets;
+        CGRect safe = UIEdgeInsetsInsetRect(self.view.bounds, UIEdgeInsetsMake(insets.top + 8, insets.left + 8, insets.bottom + 8, insets.right + 8));
+        screenCenter.x = MIN(MAX(screenCenter.x, CGRectGetMinX(safe) + half.width), CGRectGetMaxX(safe) - half.width);
+        screenCenter.y = MIN(MAX(screenCenter.y, CGRectGetMinY(safe) + half.height), CGRectGetMaxY(safe) - half.height);
+        keyboardZoomContainer.center = [self.view convertPoint:screenCenter toView:scrollView];
+        if (recognizer.state == UIGestureRecognizerStateEnded) {
+            keyboardZoomBaseFrame = keyboardZoomContainer.frame;
+            windowMoveActive = NO;
+            PXLog(@"window", @"move grip end center=%.0f,%.0f", keyboardZoomContainer.center.x, keyboardZoomContainer.center.y);
+        }
+    } else if (recognizer.state == UIGestureRecognizerStateCancelled || recognizer.state == UIGestureRecognizerStateFailed) {
+        windowMoveActive = NO;
+    }
+}
+
+-(void)handleWindowResize:(UIPanGestureRecognizer *)recognizer{
+    if (panelState != POPanelStateOpen || !keyboardZoomContainer) return;
     CGPoint moved = [recognizer translationInView:self.view];
+    UIView *cornerHandle = recognizer.view;
     if (recognizer.state == UIGestureRecognizerStateBegan) {
         resizeActive = YES;
-        resizeStartScale = [self resolvedCardScale];
-        PXLog(@"window", @"resize began startScale=%.3f max=%.2f view=%@",
-              resizeStartScale, [POSplitXSettings shared].windowMaxScalePercent / 100.0,
-              NSStringFromCGRect(self.view.bounds));
-        [self cancelAutoNubTimer];
+        resizeCorner = MAX(0, MIN(3, cornerHandle.tag - 7200));
+        resizeStartScale = appliedCardScale > 0 ? appliedCardScale : 1.0;
+        resizeStartFrame = keyboardZoomContainer.frame;
+        PXLog(@"window", @"corner resize began corner=%ld scale=%.3f frame=%@", (long)resizeCorner,
+              resizeStartScale, NSStringFromCGRect(resizeStartFrame));
         return;
     }
     if (!resizeActive) return;
-
-    CGFloat delta = (fabs(moved.x) > fabs(moved.y) ? moved.x : moved.y) / 220.0;
-    CGFloat target = resizeStartScale - delta;      // 往屏幕里拖 = 变大
-    [self applyCardScaleTarget:target animated:NO source:POCardScaleTransitionSourceReconcile];
-    PXLog(@"window", @"resize dx=%.0f dy=%.0f target=%.3f applied=%.3f",
-          moved.x, moved.y, target, [self resolvedCardScale]);
-
-    if (recognizer.state == UIGestureRecognizerStateEnded ||
-        recognizer.state == UIGestureRecognizerStateCancelled) {
+    CGFloat horizontalSign = (resizeCorner == 1 || resizeCorner == 3) ? 1.0 : -1.0;
+    CGFloat verticalSign = (resizeCorner >= 2) ? 1.0 : -1.0;
+    CGFloat dx = moved.x * horizontalSign;
+    CGFloat dy = moved.y * verticalSign;
+    CGFloat outward = fabs(dx) >= fabs(dy) ? dx : dy;
+    CGFloat base = MAX(160.0, MIN(CGRectGetWidth(resizeStartFrame), CGRectGetHeight(resizeStartFrame)));
+    CGFloat minScale = 0.45;
+    CGFloat maxScale = MAX(1.0, [POSplitXSettings shared].windowMaxScalePercent / 100.0);
+    CGFloat target = MIN(MAX(resizeStartScale * (1.0 + outward / base), minScale), maxScale);
+    // 保持固定角落：缩放中心由选中的相对角决定。
+    CGRect baseFrame = keyboardZoomBaseFrame;
+    CGPoint anchor = CGPointMake(CGRectGetMinX(baseFrame), CGRectGetMinY(baseFrame));
+    if (resizeCorner == 1) anchor = CGPointMake(CGRectGetMaxX(baseFrame), CGRectGetMinY(baseFrame));
+    if (resizeCorner == 2) anchor = CGPointMake(CGRectGetMinX(baseFrame), CGRectGetMaxY(baseFrame));
+    if (resizeCorner == 3) anchor = CGPointMake(CGRectGetMaxX(baseFrame), CGRectGetMaxY(baseFrame));
+    CGPoint baseCenter = CGPointMake(CGRectGetMidX(baseFrame), CGRectGetMidY(baseFrame));
+    CGPoint center = CGPointMake(anchor.x + (baseCenter.x - anchor.x) * target,
+                                 anchor.y + (baseCenter.y - anchor.y) * target);
+    keyboardZoomContainer.transform = CGAffineTransformMakeScale(target, target);
+    keyboardZoomContainer.center = center;
+    appliedCardScale = target;
+    keyboardZoomApplied = fabs(target - 1.0) > PO_CARD_SCALE_EPSILON;
+    [self layoutWindowResizeHandle];
+    PXLog(@"window", @"corner resize corner=%ld dx=%.0f dy=%.0f scale=%.3f", (long)resizeCorner, moved.x, moved.y, target);
+    if (recognizer.state == UIGestureRecognizerStateEnded || recognizer.state == UIGestureRecognizerStateCancelled || recognizer.state == UIGestureRecognizerStateFailed) {
         resizeActive = NO;
-        [self applyCardScaleTarget:[self resolvedCardScale] animated:YES
-                            source:POCardScaleTransitionSourceReconcile];
-        PXLog(@"window", @"resize end scale=%.3f", [self resolvedCardScale]);
+        PXLog(@"window", @"corner resize end scale=%.3f", target);
     }
 }
 
@@ -3226,11 +3353,8 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     deferredOpenGeneration += 1;
     [self addKeyboardZoomSuspension:POKeyboardZoomSuspensionClosing];
     [self dismissPresentedQuickSwitchMenuImmediately];
-    if ([self canUseDirectScaledProgrammaticCloseAnimation]) {
-        [self performDirectScaledProgrammaticCloseAnimation];
-    } else {
-        [self snapPanelToOpenState:NO];
-    }
+    // 关闭一律原地缩小淡出，滚动/偏移/键盘状态只影响细节，不再退回平移出屏。
+    [self performScaledProgrammaticCloseAnimationForced:YES];
 }
      
 
@@ -3278,6 +3402,12 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
         }
 
         BOOL verticalIntent = fabs(startVelocity.y) > fabs(startVelocity.x);
+        if (verticalIntent && self.handle.layoutMode == POHandleLayoutModeVerticalRail) {
+            handlePanIntent = POHandlePanIntentVerticalHandleMove;
+            panelVerticalMoveStartAnchorY = handleScrollView.contentOffset.y;
+            [self cancelAutoNubTimer];
+            return;
+        }
         if (!verticalIntent) {
             // 先等手指滑出设定距离，避免轻轻一碰就弹菜单。
             handlePanIntent = POHandlePanIntentMenuPending;
@@ -3331,6 +3461,22 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
 
         panelPanStartOffsetX = scrollView.contentOffset.x;
         [self scrollViewWillBeginDragging:scrollView];
+        return;
+    }
+
+    if (handlePanIntent == POHandlePanIntentVerticalHandleMove) {
+        if (recognizer.state == UIGestureRecognizerStateChanged || recognizer.state == UIGestureRecognizerStateEnded) {
+            CGFloat dy = [recognizer translationInView:self.view].y;
+            CGFloat next = [self clampedHandleOffset:panelVerticalMoveStartAnchorY - dy];
+            [handleScrollView setContentOffset:CGPointMake(0, next) animated:NO];
+            if (recognizer.state == UIGestureRecognizerStateEnded) {
+                [self storeHandlePosition];
+                handlePanIntent = POHandlePanIntentNone;
+            }
+        } else if (recognizer.state == UIGestureRecognizerStateCancelled || recognizer.state == UIGestureRecognizerStateFailed) {
+            [handleScrollView setContentOffset:CGPointMake(0, [self clampedHandleOffset:panelVerticalMoveStartAnchorY]) animated:NO];
+            handlePanIntent = POHandlePanIntentNone;
+        }
         return;
     }
 
@@ -3542,16 +3688,61 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
 }
 
 -(void)closeFromButton{
-    [self close];
+    PXLog(@"ui", @"close from button forced scale");
+    if (panelState != POPanelStateOpen) { [self close]; return; }
+    deferredOpenGeneration += 1;
+    [self addKeyboardZoomSuspension:POKeyboardZoomSuspensionClosing];
+    [self dismissPresentedQuickSwitchMenuImmediately];
+    [self performScaledProgrammaticCloseAnimationForced:YES];
+}
+
+-(void)refreshWindowTitleBar{
+    POSplitXSettings *settings = [POSplitXSettings shared];
+    BOOL show = settings.showSplitAppIdentity && pinnedBundleId.length > 0 && panelState == POPanelStateOpen;
+    windowTitleBar.hidden = !show;
+    if (!show) return;
+    windowTitleIcon.image = [POApplicationHelper imageForBundleId:pinnedBundleId];
+    windowTitleLabel.text = [POApplicationHelper displayNameForBundleId:pinnedBundleId] ?: pinnedBundleId;
+    CGFloat available = MAX(0.0, CGRectGetWidth(keyboardZoomContainer.bounds) - 60.0);
+    CGSize textSize = [windowTitleLabel sizeThatFits:CGSizeMake(220.0, 20.0)];
+    CGFloat barWidth = MIN(MAX(44.0, textSize.width + 36.0), available);
+    windowTitleBar.frame = CGRectMake((CGRectGetWidth(keyboardZoomContainer.bounds) - barWidth) / 2.0,
+                                      34.0, barWidth, 24.0);
+    windowTitleIcon.frame = CGRectMake(8.0, 5.0, 14.0, 14.0);
+    windowTitleLabel.frame = CGRectMake(27.0, 2.0, MAX(0.0, barWidth - 35.0), 20.0);
 }
 
 -(void)layoutWindowResizeHandle{
-    if (!windowResizeHandle || !keyboardZoomContainer) return;
-    windowResizeHandle.center = CGPointMake(CGRectGetWidth(keyboardZoomContainer.bounds) - 16.0,
-                                            CGRectGetHeight(keyboardZoomContainer.bounds) - 16.0);
-    windowResizeHandle.hidden = (panelState != POPanelStateOpen);
-    windowCloseButton.center = CGPointMake(CGRectGetWidth(keyboardZoomContainer.bounds) - 16.0, 16.0);
-    windowCloseButton.hidden = windowResizeHandle.hidden;
+    if (!keyboardZoomContainer) return;
+    BOOL hidden = panelState != POPanelStateOpen;
+    CGFloat w = CGRectGetWidth(keyboardZoomContainer.bounds);
+    CGFloat h = CGRectGetHeight(keyboardZoomContainer.bounds);
+    if (windowCornerHandles.count == 4) {
+        CGPoint centers[4] = {
+            CGPointMake(22, 22), CGPointMake(MAX(22, w - 22), 22),
+            CGPointMake(22, MAX(22, h - 22)), CGPointMake(MAX(22, w - 22), MAX(22, h - 22))
+        };
+        for (NSInteger i = 0; i < 4; i++) {
+            UIView *handle = windowCornerHandles[(NSUInteger)i];
+            handle.center = centers[i];
+            handle.hidden = hidden;
+            [keyboardZoomContainer bringSubviewToFront:handle];
+        }
+    } else if (windowResizeHandle) {
+        windowResizeHandle.center = CGPointMake(MAX(22, w - 22), MAX(22, h - 22));
+        windowResizeHandle.hidden = hidden;
+        [keyboardZoomContainer bringSubviewToFront:windowResizeHandle];
+    }
+    windowCloseButton.center = CGPointMake(w / 2.0, 18.0);
+    windowCloseButton.hidden = hidden;
+    windowMoveGrip.frame = CGRectMake(MAX(0, (w - 80.0) / 2.0), MAX(0, h - 32.0), 80.0, 26.0);
+    windowMoveGrip.hidden = hidden;
+    [self refreshWindowTitleBar];
+    [keyboardZoomContainer bringSubviewToFront:windowTitleBar];
+    [keyboardZoomContainer bringSubviewToFront:windowMoveGrip];
+    [keyboardZoomContainer bringSubviewToFront:windowCloseButton];
+    // 阴影留在 contentView 后面；抬到最上会造成截图中的黑色不规则外框。
+    [keyboardZoomContainer insertSubview:shadowView belowSubview:self.contentView];
 }
 
 -(void)syncHostedContentGeometryToContentView{
@@ -3672,6 +3863,7 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     [quickSwitchBackdropView.layer removeAllAnimations];
     quickSwitchBackdropView.alpha = 0;
     quickSwitchInteractionOverlayView.hidden = NO;
+    quickSwitchInteractionOverlayView.userInteractionEnabled = YES;
     [self.view bringSubviewToFront:quickSwitchInteractionOverlayView];
     [quickSwitchDragCoordinator cancelAnimated:NO];
     self.handle.alpha = 0;
@@ -3680,6 +3872,15 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     if ([self isHorizontalQuickSwitchMenu:menu]) {
         [quickSwitchInteractionOverlayView bringSubviewToFront:quickSwitchHorizontalBarView];
         [self hideMirrorZone];
+        return;
+    }
+
+    if ([menu isKindOfClass:POSplitPanelView.class]) {
+        // 半圆菜单在全屏 overlay 中排布。不可搬进仅 50pt 宽的 handleScrollView，
+        // 否则下一次打开会按窄容器错误计算半径/中心，点击也被父视图裁掉。
+        if (menu.superview != quickSwitchInteractionOverlayView)
+            [quickSwitchInteractionOverlayView addSubview:menu];
+        [quickSwitchInteractionOverlayView bringSubviewToFront:menu];
         return;
     }
 
@@ -3701,7 +3902,8 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     [self restoreQuickSwitchContentYieldIfNeededAnimated:NO];
     [self hideQuickSwitchBackdropImmediately];
     quickSwitchInteractionOverlayView.hidden = YES;
-    self.handle.alpha = 0.0;   // 平时不挂手柄，滑边缘才出来
+    quickSwitchInteractionOverlayView.userInteractionEnabled = NO;
+    [self.handle restoreRestingAppearance];
     [self updateInteractionBackdropsAnimated:NO];
     [self reconcileCardChromeZOrder];
     [self reevaluateKeyboardZoomAnimated:NO];

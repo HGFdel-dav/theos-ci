@@ -11,8 +11,6 @@
 			<string>尺寸与数量</string>
 		</dict>
 		<dict>
-			<key>cellClass</key>
-			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>56</integer>
 			<key>defaults</key>
@@ -35,10 +33,18 @@
 			<string>setValue:forSpecifier:</string>
 			<key>stepValue</key>
 			<integer>1</integer>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>min</key>
+			<integer>40</integer>
+			<key>max</key>
+			<integer>120</integer>
+			<key>showValue</key>
+			<true/>
+			<key>isContinuous</key>
+			<false/>
 		</dict>
 		<dict>
-			<key>cellClass</key>
-			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>151</integer>
 			<key>defaults</key>
@@ -61,10 +67,18 @@
 			<string>setValue:forSpecifier:</string>
 			<key>stepValue</key>
 			<integer>1</integer>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>min</key>
+			<integer>80</integer>
+			<key>max</key>
+			<integer>220</integer>
+			<key>showValue</key>
+			<true/>
+			<key>isContinuous</key>
+			<false/>
 		</dict>
 		<dict>
-			<key>cellClass</key>
-			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>6</integer>
 			<key>defaults</key>
@@ -87,10 +101,18 @@
 			<string>setValue:forSpecifier:</string>
 			<key>stepValue</key>
 			<integer>1</integer>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>min</key>
+			<integer>2</integer>
+			<key>max</key>
+			<integer>8</integer>
+			<key>showValue</key>
+			<true/>
+			<key>isContinuous</key>
+			<false/>
 		</dict>
 		<dict>
-			<key>cellClass</key>
-			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>0</integer>
 			<key>defaults</key>
@@ -113,6 +135,16 @@
 			<string>setValue:forSpecifier:</string>
 			<key>stepValue</key>
 			<integer>1</integer>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>min</key>
+			<integer>0</integer>
+			<key>max</key>
+			<integer>30</integer>
+			<key>showValue</key>
+			<true/>
+			<key>isContinuous</key>
+			<false/>
 		</dict>
 		<dict>
 			<key>cell</key>

@@ -2,8 +2,8 @@
 //  POSplitPanelView.m
 //  SplitX
 //
-//  ParallelX 那种半圆菜单：手柄所在位置是圆心，图标沿半圆弧散开，
-//  玻璃底板也是扇形，不是一整块矩形。
+//  无整块底板；只有各自独立的轻玻璃图标。
+//  图标按真实尺寸分环排布，屏内放不下的条目分页，不再挤叠。
 //
 //  拖动时按手指和圆心的夹角判悬停，松手选中；选中项先向外弹一下再收。
 //
@@ -14,11 +14,9 @@
 #import "POSplitTarget.h"
 #import "POApplicationHelper.h"
 #import "POQuickSwitchMetrics.h"
+#import "POFanLayout.h"
 #import <math.h>
 
-static const NSUInteger PQMaxItems = 40;
-static const CGFloat PQMinAngleStep = 18.0 * M_PI / 180.0;
-static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
 
 @class POSplitPanelItem;
 
@@ -53,35 +51,43 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
                          title:(NSString *)title
                          badge:(NSString *)badge
                         square:(BOOL)square {
-    // PX 那种：白色圆托 + 圆角图标，没有文字。
-    CGFloat tile = tileSize;
+    // SplitX 自绘轻玻璃托，不实例化 PX 的私有 Swift 图标类。
     CGFloat icon = iconSize;
+    CGFloat tile = MAX(tileSize, icon + 8.0);
     CGFloat width = tile + 6.0;
     if ((self = [super initWithFrame:CGRectMake(0, 0, width, width)])) {
         _target = target;
         self.backgroundColor = UIColor.clearColor;
+        self.accessibilityLabel = title;
+        self.isAccessibilityElement = YES;
 
-        UIView *bubble = [[UIView alloc] initWithFrame:CGRectMake(3, 3, tile, tile)];
-        bubble.backgroundColor = [UIColor colorWithWhite:0.98 alpha:0.92];
-        bubble.layer.cornerRadius = square ? tile * 0.30 : tile / 2.0;
-        bubble.layer.borderWidth = 0.5;
-        bubble.layer.borderColor = [UIColor colorWithWhite:0 alpha:0.10].CGColor;
-        bubble.layer.shadowColor = UIColor.blackColor.CGColor;
-        bubble.layer.shadowOpacity = 0.10;
-        bubble.layer.shadowRadius = 4;
-        bubble.layer.shadowOffset = CGSizeMake(0, 1);
+        // 原来那块 92% 不透明的白方托删除，改为每个图标独立的薄玻璃。
+        UIVisualEffectView *bubble = [[UIVisualEffectView alloc] initWithEffect:
+            [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterial]];
+        bubble.frame = CGRectMake(3, 3, tile, tile);
+        bubble.layer.cornerRadius = square ? tile * 0.28 : tile / 2.0;
+        bubble.layer.cornerCurve = kCACornerCurveContinuous;
+        bubble.clipsToBounds = YES;
         bubble.userInteractionEnabled = NO;
+        bubble.layer.borderWidth = 0.5;
+        bubble.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.30].CGColor;
         [self addSubview:bubble];
         _tileView = bubble;
 
-        CGFloat inset = MAX(2.0, icon * 0.05);
-        _iconView = [[UIImageView alloc] initWithFrame:CGRectInset(bubble.frame, inset, inset)];
+        // 图标尺寸严格取 iconSize，不再从 tileSize 的 inset 反推成另一个数值。
+        _iconView = [[UIImageView alloc] initWithFrame:
+            CGRectMake((width - icon) / 2.0, (width - icon) / 2.0, icon, icon)];
         _iconView.contentMode = UIViewContentModeScaleAspectFit;
         _iconView.layer.cornerRadius = square ? icon * 0.22 : icon * 0.50;
         _iconView.layer.cornerCurve = kCACornerCurveContinuous;
         _iconView.clipsToBounds = YES;
         _iconView.image = [POApplicationHelper imageForBundleId:target.bundleIdentifier];
+        _iconView.userInteractionEnabled = NO;
         [self addSubview:_iconView];
+        self.layer.shadowColor = UIColor.blackColor.CGColor;
+        self.layer.shadowOpacity = 0.10;
+        self.layer.shadowRadius = 3.0;
+        self.layer.shadowOffset = CGSizeMake(0, 1);
 
         if (badge.length) {
             CGFloat size = 15.0;
@@ -97,7 +103,6 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
             _badgeLabel.textAlignment = NSTextAlignmentCenter;
             [_badge addSubview:_badgeLabel];
         }
-        self.layer.shadowColor = UIColor.clearColor.CGColor;
         _baseScale = 1.0;
     }
     return self;
@@ -132,7 +137,7 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
         CGAffineTransform t = CGAffineTransformMakeScale(scale, scale);
         self.transform = CGAffineTransformTranslate(t, cos(self.angle) * lift / scale,
                                                     sin(self.angle) * lift / scale);
-        self.tileView.layer.shadowOpacity = (alpha > 0.95) ? 0.30 : 0.14;
+        self.layer.shadowOpacity = (alpha > 0.95) ? 0.18 : 0.10;
     };
     if (!animated) { apply(); return; }
     [UIView animateWithDuration:_chosen ? 0.20 : 0.14 delay:0
@@ -145,14 +150,21 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
 
 #pragma mark - 扇形菜单
 
-@interface POSplitPanelView ()
-@property (nonatomic, strong) UIVisualEffectView *backgroundView;
-@property (nonatomic, strong) CAShapeLayer *shapeMask;
-@property (nonatomic, strong) CAShapeLayer *edgeLayer;
+@interface POSplitPanelView () <UIGestureRecognizerDelegate>
+@property (nonatomic, assign) CGRect coordinateBounds;
+@property (nonatomic, assign) CGPoint anchorInSuperview;
+@property (nonatomic, assign) NSUInteger pageIndex;
+@property (nonatomic, assign) NSUInteger pageCount;
+@property (nonatomic, strong) UIView *pager;
+@property (nonatomic, strong) UIButton *previousButton;
+@property (nonatomic, strong) UIButton *nextButton;
+@property (nonatomic, strong) UILabel *pageLabel;
 @property (nonatomic, strong) NSMutableArray<POSplitPanelItem *> *items;
 @property (nonatomic, strong) NSArray<POSplitTarget *> *targets;
 @property (nonatomic, assign) NSInteger hoveredIndex;
 @property (nonatomic, assign) BOOL presenting;
+@property (nonatomic, assign) BOOL selectionPending;
+@property (nonatomic, assign) NSUInteger presentationGeneration;
 @property (nonatomic, assign) CGPoint centerPoint;   // 相对自身
 @property (nonatomic, assign) CGFloat radius;
 @property (nonatomic, assign) CGFloat baseScale;
@@ -170,21 +182,30 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
 - (instancetype)init {
     if ((self = [super initWithFrame:CGRectZero])) {
         self.backgroundColor = UIColor.clearColor;
+        UITapGestureRecognizer *emptyTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(emptyAreaTapped:)];
+        emptyTap.delegate = self;
+        emptyTap.cancelsTouchesInView = NO;
+        [self addGestureRecognizer:emptyTap];
 
-        _backgroundView = [[UIVisualEffectView alloc] initWithEffect:
-            [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterialLight]];
-        _backgroundView.userInteractionEnabled = NO;
-        _backgroundView.layer.masksToBounds = YES;
-        [self addSubview:_backgroundView];
-
-        _shapeMask = [CAShapeLayer layer];
-        _backgroundView.layer.mask = _shapeMask;
-
-        _edgeLayer = [CAShapeLayer layer];
-        _edgeLayer.fillColor = UIColor.clearColor.CGColor;
-        _edgeLayer.strokeColor = [UIColor colorWithWhite:1 alpha:0.28].CGColor;
-        _edgeLayer.lineWidth = 0.8;
-        [self.layer addSublayer:_edgeLayer];
+        // 不创建扇形毛玻璃、遮罩、多边形边线；旧 alpha 配置也无法让底板重现。
+        _pager = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 32, 78)];
+        _pager.backgroundColor = UIColor.clearColor;
+        _previousButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        _previousButton.frame = CGRectMake(0, 0, 32, 26);
+        [_previousButton setImage:[UIImage systemImageNamed:@"chevron.up"] forState:UIControlStateNormal];
+        [_previousButton addTarget:self action:@selector(previousPage) forControlEvents:UIControlEventTouchUpInside];
+        [_pager addSubview:_previousButton];
+        _pageLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 26, 32, 26)];
+        _pageLabel.font = [UIFont monospacedDigitSystemFontOfSize:10 weight:UIFontWeightMedium];
+        _pageLabel.textAlignment = NSTextAlignmentCenter;
+        _pageLabel.textColor = UIColor.secondaryLabelColor;
+        [_pager addSubview:_pageLabel];
+        _nextButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        _nextButton.frame = CGRectMake(0, 52, 32, 26);
+        [_nextButton setImage:[UIImage systemImageNamed:@"chevron.down"] forState:UIControlStateNormal];
+        [_nextButton addTarget:self action:@selector(nextPage) forControlEvents:UIControlEventTouchUpInside];
+        [_pager addSubview:_nextButton];
+        [self addSubview:_pager];
 
         _items = [NSMutableArray array];
         _hoveredIndex = -1;
@@ -195,32 +216,7 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
     return self;
 }
 
-- (void)layoutSubviews {
-    [super layoutSubviews];
-    self.backgroundView.frame = self.bounds;
-    [self rebuildShape];
-}
-
-/// 扇形路径：圆心 + 半径 + 张角。
-- (UIBezierPath *)fanPathWithRadius:(CGFloat)radius {
-    CGFloat centerAngle = self.expandsRight ? 0.0 : M_PI;
-    CGFloat start = centerAngle - self.span / 2.0;
-    CGFloat end = centerAngle + self.span / 2.0;
-    UIBezierPath *path = [UIBezierPath bezierPath];
-    [path moveToPoint:self.centerPoint];
-    [path addArcWithCenter:self.centerPoint radius:radius startAngle:start endAngle:end clockwise:YES];
-    [path closePath];
-    return path;
-}
-
-- (void)rebuildShape {
-    if (self.radius <= 0) return;
-    UIBezierPath *path = [self fanPathWithRadius:self.radius];
-    _shapeMask.frame = self.bounds;
-    _shapeMask.path = path.CGPath;
-    _edgeLayer.frame = self.bounds;
-    _edgeLayer.path = path.CGPath;
-}
+// 本视图没有整块背景路径，布局只由 POFanBuild 的图标位置决定。
 
 #pragma mark 排布
 
@@ -242,8 +238,13 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
     self.hapticsEnabled = settings.hapticFeedback;
 
     NSArray<POSplitTarget *> *all = [POApplicationHelper quickSwitchTargets];
-    if (all.count > PQMaxItems) all = [all subarrayWithRange:NSMakeRange(0, PQMaxItems)];
-    if (all.count == 0) { self.targets = @[]; return; }
+    if (all.count == 0) {
+        self.targets = @[];
+        self.pageCount = 0;
+        self.pager.hidden = YES;
+        [self endEmptyRebuildIfPresenting];
+        return;
+    }
 
     // 同应用的分身挨在一起。
     NSMutableArray<NSString *> *groupOrder = [NSMutableArray array];
@@ -273,121 +274,94 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
             [badges addObject:[self badgeForTargets:same index:i] ?: @""];
         }
     }
-    self.targets = ordered;
-
-    // 半径以设置为准；放不下就减少环数，宁少勿叠。
-    CGFloat ringUnit = self.itemTileSize * 1.15 + settings.ringGap;
-    CGFloat usableRadius = MAX(120.0, self.radius);
-    CGFloat innerRadius = MIN(usableRadius * 0.5, 96.0);
-    NSInteger maxRings = (NSInteger)floor((usableRadius - innerRadius) / MAX(ringUnit, 1.0)) + 1;
-    maxRings = MIN(MAX(maxRings, 1), 4);
-    self.span = MIN((settings.fanSpan + 40.0) * M_PI / 180.0, 200.0 * M_PI / 180.0);
-
-    NSInteger caps[4] = {settings.ring1, settings.ring2, settings.ring3, settings.ring4};
-    if (caps[0] + caps[1] + caps[2] + caps[3] <= 0) {
-        // 全调成 0 时不能把所有图标塞在圆心，回到默认环容量。
-        caps[0] = 7; caps[1] = 10; caps[2] = 13; caps[3] = 16;
-        PXLogW(@"panel", @"环容量全为 0，使用默认 7/10/13/16");
+    // 固定一页的几何槽位。容量受真实图标尺寸与屏内矩形约束，绝不隐藏或缩放剩余账号。
+    int caps[4] = {(int)settings.ring1, (int)settings.ring2, (int)settings.ring3, (int)settings.ring4};
+    // 触摸框只比玻璃托多几像素，不再叠加一整份 6pt 留白，否则屏内只剩两环。
+    CGFloat side = MAX(self.itemTileSize, self.itemIconSize + 6.0);
+    CGRect safe = self.coordinateBounds;
+    POFanLayout layout = POFanBuild(CGRectGetMinX(safe), CGRectGetMinY(safe), CGRectGetMaxX(safe), CGRectGetMaxY(safe),
+        self.anchorInSuperview.x, self.anchorInSuperview.y, self.expandsRight,
+        settings.fanRadius, settings.fanSpan, side, settings.itemSpacing, settings.ringGap, caps);
+    if (layout.count <= 0) {
+        self.targets = @[];
+        self.pageCount = 0;
+        self.pager.hidden = YES;
+        PXLogW(@"panel", @"no safe slots side=%.0f radius=%.0f bounds=%@", side, settings.fanRadius, NSStringFromCGRect(safe));
+        [self endEmptyRebuildIfPresenting];
+        return;
     }
-    NSUInteger capacity = 0;
-    for (int r = 0; r < maxRings; r++) capacity += (NSUInteger)MAX(caps[r], 0);
-    if (capacity == 0) capacity = ordered.count;
-    NSUInteger beforeTrim = ordered.count;
-    if (ordered.count > capacity) ordered = [ordered subarrayWithRange:NSMakeRange(0, capacity)];
-    PXLog(@"panel", @"layout items=%lu->%lu groups=%lu rings=%ld unit=%.1f inner=%.1f radius=%.1f span=%.0f caps=%ld,%ld,%ld,%ld gap=%.1f tile=%.1f icon=%.1f anchor=%.1f,%.1f size=%@",
-          (unsigned long)beforeTrim, (unsigned long)ordered.count, (unsigned long)groupOrder.count,
-          (long)maxRings, ringUnit, innerRadius, self.radius, self.span * 180.0 / M_PI,
-          (long)caps[0], (long)caps[1], (long)caps[2], (long)caps[3], settings.ringGap,
-          self.itemTileSize, self.itemIconSize, self.centerPoint.x, self.centerPoint.y,
-          NSStringFromCGSize(self.bounds.size));
+    NSUInteger capacity = (NSUInteger)layout.count;
+    self.pageCount = (ordered.count + capacity - 1) / capacity;
+    self.pageIndex = MIN(self.pageIndex, self.pageCount - 1);
+    NSUInteger first = self.pageIndex * capacity;
+    NSUInteger count = MIN(capacity, ordered.count - first);
+    self.targets = [ordered subarrayWithRange:NSMakeRange(first, count)];
+    self.radius = settings.fanRadius;
+    self.span = settings.fanSpan * M_PI / 180.0;
 
-    NSMutableArray<NSNumber *> *ringOf = [NSMutableArray array];
-    NSInteger ringIndex = 0;
-    NSInteger usedInRing = 0;
-    for (NSUInteger i = 0; i < ordered.count; i++) {
-        while (ringIndex < maxRings - 1 && usedInRing >= MAX(caps[ringIndex], 0)) {
-            ringIndex++;
-            usedInRing = 0;
-        }
-        [ringOf addObject:@(ringIndex)];
-        usedInRing++;
+    CGFloat minX = layout.minX, maxX = layout.maxX, minY = layout.minY, maxY = layout.maxY;
+    CGRect pagerInSuperview = CGRectMake(
+        MIN(MAX(self.anchorInSuperview.x - 16.0, CGRectGetMinX(safe)), CGRectGetMaxX(safe) - 32.0),
+        MIN(MAX(self.anchorInSuperview.y - 39.0, CGRectGetMinY(safe)), CGRectGetMaxY(safe) - 78.0), 32.0, 78.0);
+    if (self.pageCount > 1) {
+        minX = MIN(minX, CGRectGetMinX(pagerInSuperview)); maxX = MAX(maxX, CGRectGetMaxX(pagerInSuperview));
+        minY = MIN(minY, CGRectGetMinY(pagerInSuperview)); maxY = MAX(maxY, CGRectGetMaxY(pagerInSuperview));
     }
-    [self rebuildShape];
+    // 动画锚点、画布和图标坐标一次性确定；不再先布局后修改高度导致圆心跑偏。
+    self.transform = CGAffineTransformIdentity;
+    self.bounds = CGRectMake(0, 0, maxX - minX, maxY - minY);
+    self.centerPoint = CGPointMake(self.anchorInSuperview.x - minX, self.anchorInSuperview.y - minY);
+    self.layer.anchorPoint = CGPointMake(self.centerPoint.x / CGRectGetWidth(self.bounds),
+                                         self.centerPoint.y / CGRectGetHeight(self.bounds));
+    self.layer.position = self.anchorInSuperview;
+    self.pager.frame = CGRectOffset(pagerInSuperview, -minX, -minY);
+    self.pager.hidden = self.pageCount <= 1;
+    self.pageLabel.text = [NSString stringWithFormat:@"%lu/%lu", (unsigned long)(self.pageIndex + 1), (unsigned long)self.pageCount];
+    self.previousButton.enabled = self.pageIndex > 0;
+    self.nextButton.enabled = self.pageIndex + 1 < self.pageCount;
 
-    CGFloat centerAngle = self.expandsRight ? 0.0 : M_PI;   // 永远朝屏幕内侧张开
-    for (NSUInteger i = 0; i < ordered.count; i++) {
-        NSUInteger ring = ringOf[i].unsignedIntegerValue;
-        NSUInteger ringCount = 1;
-        NSUInteger posInRing = 0;
-        for (NSUInteger j = 0; j < ordered.count; j++) {
-            if (ringOf[j].unsignedIntegerValue == ring) {
-                if (j < i) posInRing++;
-                ringCount++;
-            }
-        }
-        ringCount -= 1;
-        CGFloat angle = centerAngle;
-        if (ringCount > 1) angle += -self.span / 2.0 + self.span * ((CGFloat)posInRing / (CGFloat)(ringCount - 1));
-        CGFloat ringRadius = MIN(self.radius, innerRadius + (CGFloat)ring * ringUnit);
-
-        POSplitPanelItem *item = [[POSplitPanelItem alloc] initWithTarget:ordered[i]
-                                                                 iconSize:self.itemIconSize
-                                                                 tileSize:self.itemTileSize
-                                                                    title:titles[i]
-                                                                    badge:badges[i]
-                                                                   square:settings.squareIcons];
-        item.angle = angle;
-        item.radius = ringRadius;
-        item.baseScale = 0.99 + (CGFloat)((i * 53) % 5) / 5.0 * 0.06;
-        CGFloat x = self.centerPoint.x + cos(angle) * ringRadius;
-        CGFloat y = self.centerPoint.y + sin(angle) * ringRadius;
-        item.center = CGPointMake(x, y);
+    PXLog(@"panel", @"layout total=%lu page=%lu/%lu slots=%lu rings=%d side=%.0f icon=%.0f tile=%.0f radius=%.0f span=%.0f caps=%d,%d,%d,%d board=removed",
+          (unsigned long)ordered.count, (unsigned long)(self.pageIndex + 1), (unsigned long)self.pageCount,
+          (unsigned long)capacity, layout.rings, side, self.itemIconSize, self.itemTileSize,
+          settings.fanRadius, settings.fanSpan, caps[0], caps[1], caps[2], caps[3]);
+    for (NSUInteger i = 0; i < count; i++) {
+        POFanPoint position = layout.points[i];
+        POSplitTarget *target = self.targets[i];
+        POSplitPanelItem *item = [[POSplitPanelItem alloc] initWithTarget:target
+            iconSize:self.itemIconSize tileSize:self.itemTileSize title:titles[first + i]
+            badge:badges[first + i] square:settings.squareIcons];
+        item.angle = position.angle;
+        item.radius = position.radius;
+        item.baseScale = 1.0;
+        item.center = CGPointMake(position.x - minX, position.y - minY);
         [item applyDimmedInitialState];
+        [item addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(itemTapped:)]];
         [self addSubview:item];
         [self.items addObject:item];
-        PXLog(@"panel", @"item %lu/%lu ring=%lu angle=%.0f r=%.0f center=%.0f,%.0f scale=%.2f target=%@",
-              (unsigned long)(i + 1), (unsigned long)ordered.count, (unsigned long)ring,
-              angle * 180.0 / M_PI, ringRadius, x, y, item.baseScale, ordered[i].identityKey);
+        PXLog(@"panel", @"item %lu ring=%d angle=%.0f r=%.0f center=%.0f,%.0f target=%@",
+              (unsigned long)i, position.ring, position.angle * 180.0 / M_PI,
+              position.radius, item.center.x, item.center.y, target.identityKey);
     }
-
-    PXLog(@"panel", @"fan ready items=%lu radius=%.0f", (unsigned long)ordered.count, self.radius);
+    [self bringSubviewToFront:self.pager];
+    self.hoveredIndex = -1;
+    PXLog(@"panel", @"fan ready items=%lu total=%lu page=%lu radius=%.0f", (unsigned long)self.items.count,
+          (unsigned long)ordered.count, (unsigned long)(self.pageIndex + 1), self.radius);
 }
 
-/// 按角度命中：先看离圆弧近不近，再取角度最近的一项。
+/// 按当前页真实图标位置命中，不在圆心附近提前猜中远处图标。
 - (NSInteger)indexAtPoint:(CGPoint)point {
-    if (self.items.count == 0) return -1;
-    CGFloat dx = point.x - self.centerPoint.x;
-    CGFloat dy = point.y - self.centerPoint.y;
-    CGFloat distance = hypot(dx, dy);
-    if (distance > self.radius + self.itemTileSize * 1.2) {
-        return -1;
-    }
-    CGFloat angle = atan2(dy, dx);
     NSInteger best = -1;
-    CGFloat bestScore = 1.0;
-    NSInteger nearest = -1;
-    CGFloat nearestScore = 9.0;
+    CGFloat bestDistance = CGFLOAT_MAX;
     for (NSUInteger i = 0; i < self.items.count; i++) {
         POSplitPanelItem *item = self.items[i];
-        CGFloat target = item.angle;
-        CGFloat delta = fabs(atan2(sin(angle - target), cos(angle - target)));
-        if (delta > 0.55) continue;                                  // 角度差太大
-        CGFloat radial = fabs(distance - item.radius) / self.itemTileSize;
-        if (radial > 1.1) continue;                                  // 不在同一环
-        CGFloat score = delta / 0.55 * 0.7 + radial / 1.1 * 0.3;
-        if (score < nearestScore) { nearestScore = score; nearest = (NSInteger)i; }
-        if (score < bestScore) { bestScore = score; best = (NSInteger)i; }
+        CGFloat half = CGRectGetWidth(item.bounds) / 2.0 + 8.0;
+        CGFloat dx = point.x - item.center.x, dy = point.y - item.center.y;
+        if (fabs(dx) > half || fabs(dy) > half) continue;
+        CGFloat distance = hypot(dx, dy);
+        if (distance < bestDistance) { bestDistance = distance; best = (NSInteger)i; }
     }
-    PXLog(@"panel", @"hit pt=%.0f,%.0f dist=%.0f angle=%.0fdeg -> %ld candidate=%ld score=%.2f items=%lu",
-           point.x, point.y, distance, angle * 180.0 / M_PI, (long)best, (long)nearest, nearestScore,
-           (unsigned long)self.items.count);
-    if (best >= 0) {
-        POSplitTarget *target = self.targets[(NSUInteger)best];
-        PXLog(@"panel", @"hit target=%@ itemCenter=%.0f,%.0f itemRadius=%.0f itemAngle=%.0f",
-              target.identityKey, self.items[(NSUInteger)best].center.x,
-              self.items[(NSUInteger)best].center.y, self.items[(NSUInteger)best].radius,
-              self.items[(NSUInteger)best].angle * 180.0 / M_PI);
-    }
+    PXLog(@"panel", @"hit pt=%.0f,%.0f -> %ld page=%lu items=%lu", point.x, point.y, (long)best,
+          (unsigned long)(self.pageIndex + 1), (unsigned long)self.items.count);
     return best;
 }
 
@@ -410,6 +384,59 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
     }
 }
 
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)recognizer shouldReceiveTouch:(UITouch *)touch {
+    return touch.view == self;
+}
+
+- (void)emptyAreaTapped:(UITapGestureRecognizer *)recognizer {
+    if (recognizer.state != UIGestureRecognizerStateEnded || !_presenting || self.selectionPending) return;
+    PXLog(@"panel", @"empty area cancels menu");
+    [self dismissImmediately];
+}
+
+- (void)endEmptyRebuildIfPresenting {
+    if (!_presenting) return;
+    _hoveredIndex = -1;
+    [self.selectionDelegate quickSwitchTableViewDidClearHover:self];
+    [self dismissImmediately];
+}
+
+- (void)previousPage {
+    if (!_presenting || self.selectionPending || self.pageIndex == 0) return;
+    self.pageIndex--;
+    [self buildItems];
+    PXLog(@"panel", @"page previous -> %lu/%lu", (unsigned long)(self.pageIndex + 1), (unsigned long)self.pageCount);
+}
+
+- (void)nextPage {
+    if (!_presenting || self.selectionPending || self.pageIndex + 1 >= self.pageCount) return;
+    self.pageIndex++;
+    [self buildItems];
+    PXLog(@"panel", @"page next -> %lu/%lu", (unsigned long)(self.pageIndex + 1), (unsigned long)self.pageCount);
+}
+
+- (void)selectIndex:(NSInteger)index {
+    if (!_presenting || self.selectionPending || index < 0 || index >= (NSInteger)self.targets.count) return;
+    self.selectionPending = YES;
+    NSUInteger generation = self.presentationGeneration;
+    POSplitTarget *target = self.targets[(NSUInteger)index];
+    PXLog(@"panel", @"select %@ page=%lu", target.identityKey, (unsigned long)(self.pageIndex + 1));
+    if (self.hapticsEnabled) [self.confirmHaptics impactOccurred];
+    for (NSUInteger i = 0; i < self.items.count; i++) {
+        self.items[i].highlighted = NO;
+        self.items[i].chosen = ((NSInteger)i == index);
+    }
+    [self.selectionDelegate quickSwitchTableView:self didSelectTarget:target];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.17 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if (self.presentationGeneration == generation) [self dismissImmediately];
+    });
+}
+
+- (void)itemTapped:(UITapGestureRecognizer *)recognizer {
+    NSUInteger index = [self.items indexOfObjectIdenticalTo:(POSplitPanelItem *)recognizer.view];
+    if (index != NSNotFound) [self selectIndex:(NSInteger)index];
+}
+
 #pragma mark 呈现
 
 - (BOOL)presentFromHandle:(UIView *)handle withRecognizer:(UIGestureRecognizer *)recognizer {
@@ -423,41 +450,23 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
         self.expandsRight = handleOnLeft;
 
         POSplitXSettings *settings = [POSplitXSettings shared];
-        CGFloat tile = settings.tileSize;
-        // 先按屏幕到手的距离定半径，不要用还没定的 view 高度反推。
-        CGFloat screenHeight = CGRectGetHeight(coordinateView.bounds);
-        CGFloat room = MIN(handleCenter.y, screenHeight - handleCenter.y) - 16.0;
-        CGFloat radius = MAX(90.0, MIN(settings.fanRadius, room));
-        self.radius = radius;
-        CGFloat width = radius + tile + 26.0;
-        CGFloat height = 2.0 * radius + tile + 16.0;
-
-        // 圆心放在手柄内侧边缘。
-        CGFloat cx = handleOnLeft ? CGRectGetMaxX(handleFrame) : CGRectGetMinX(handleFrame);
-        CGFloat cy = handleCenter.y;
-        CGFloat edge = settings.panelEdgeInset;
-        CGFloat x = handleOnLeft ? cx - tile / 2.0 - 14.0 + edge : cx - width + tile / 2.0 + 14.0 - edge;
-        x = MIN(MAX(8.0, x), MAX(8.0, CGRectGetWidth(coordinateView.bounds) - width - 8.0));
-        CGFloat y = cy - height / 2.0;
-        self.frame = CGRectMake(x, y, width, height);
-        self.centerPoint = CGPointMake(handleOnLeft ? tile / 2.0 + 14.0 : width - tile / 2.0 - 14.0,
-                                       height / 2.0);
-
+        UIEdgeInsets insets = coordinateView.safeAreaInsets;
+        insets.top += 34.0; insets.bottom += 10.0;   // 让开设置页导航标题与 Home 条
+        insets.left += 8.0; insets.right += 8.0;
+        self.coordinateBounds = UIEdgeInsetsInsetRect(coordinateView.bounds, insets);
+        self.presentationAnchorFrame = handleFrame;
+        self.anchorInSuperview = CGPointMake(handleCenter.x + (handleOnLeft ? 1.0 : -1.0) * settings.panelEdgeInset,
+                                             handleCenter.y);
+        if (!_presenting) self.pageIndex = 0;
+        self.presentationGeneration++;
+        self.selectionPending = NO;
         [self buildItems];
         if (self.items.count == 0) return NO;
         self.hidden = NO;
-
-        // 半径是建完才算准的，按它重设高度，别让最外环顶出屏幕。
-        CGFloat realHeight = MIN(CGRectGetHeight(coordinateView.bounds) - 16.0,
-                                 2.0 * self.radius + self.itemTileSize + 16.0);
-        self.frame = CGRectMake(CGRectGetMinX(self.frame), cy - realHeight / 2.0,
-                                CGRectGetWidth(self.frame), realHeight);
-
         _presenting = YES;
 
         self.alpha = 0;
-        self.layer.anchorPoint = CGPointMake(handleOnLeft ? 0 : 1, 0.5);
-        self.layer.position = CGPointMake(handleOnLeft ? x : x + width, cy);
+        // buildItems 已一次性确定真实手柄锚点，不再使用屏幕边缘替代圆心。
         self.transform = CGAffineTransformMakeScale(0.72, 0.72);
 
         [self.selectionDelegate quickSwitchTableViewWillAppear:self];
@@ -503,25 +512,18 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
     }
 
     if (recognizer.state == UIGestureRecognizerStateEnded) {
+        if (!self.pager.hidden && CGRectContainsPoint(self.pager.frame, point)) {
+            CGPoint pagerPoint = [self convertPoint:point toView:self.pager];
+            if (CGRectContainsPoint(self.previousButton.frame, pagerPoint)) [self previousPage];
+            else if (CGRectContainsPoint(self.nextButton.frame, pagerPoint)) [self nextPage];
+            PXLog(@"panel", @"page control released; keep menu visible");
+            return YES;
+        }
         NSInteger index = [self indexAtPoint:point];
-        if (self.hapticsEnabled && index >= 0 && index < (NSInteger)self.targets.count) {
-        [self.hoverHaptics selectionChanged];
-        [self.hoverHaptics prepare];
-    }
-    if (index >= 0 && index < (NSInteger)self.targets.count) {
-            POSplitTarget *target = self.targets[index];
-            PXLog(@"panel", @"select %@", target.identityKey);
-            if (self.hapticsEnabled) [self.confirmHaptics impactOccurred];
-            for (NSUInteger i = 0; i < self.items.count; i++) {
-                self.items[i].chosen = ((NSInteger)i == index);
-                self.items[i].highlighted = NO;
-            }
-            [self.selectionDelegate quickSwitchTableView:self didSelectTarget:target];
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.17 * NSEC_PER_SEC)),
-                           dispatch_get_main_queue(), ^{ [self dismissImmediately]; });
-        } else {
-            PXLog(@"panel", @"select miss pt=%.0f,%.0f hovered=%ld items=%lu",
-                  point.x, point.y, (long)self.hoveredIndex, (unsigned long)self.items.count);
+        if (index >= 0) [self selectIndex:index];
+        else {
+            PXLog(@"panel", @"select miss pt=%.0f,%.0f hovered=%ld items=%lu", point.x, point.y,
+                  (long)self.hoveredIndex, (unsigned long)self.items.count);
             [self dismissImmediately];
         }
         return YES;
@@ -539,8 +541,11 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
     if (!_presenting) return;
     PXLog(@"panel", @"dismiss hovered=%ld", (long)_hoveredIndex);
     _presenting = NO;
+    _selectionPending = NO;
+    NSUInteger closingGeneration = ++self.presentationGeneration;
+    NSArray<POSplitPanelItem *> *closingItems = [self.items copy];
     _hoveredIndex = -1;
-    for (POSplitPanelItem *item in self.items) {
+    for (POSplitPanelItem *item in closingItems) {
         [UIView animateWithDuration:0.18 * self.animationScale delay:0
              usingSpringWithDamping:0.9 initialSpringVelocity:0.2
                             options:UIViewAnimationOptionBeginFromCurrentState animations:^{
@@ -549,12 +554,17 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
             item.transform = CGAffineTransformMakeScale(0.4, 0.4);
         } completion:nil];
     }
-    [UIView animateWithDuration:0.20 * self.animationScale animations:^{
+    // 和 Galaxy 一样：整体向手柄收缩再淡出，不是只把透明度假到 0。
+    [UIView animateWithDuration:0.20 * self.animationScale delay:0
+         usingSpringWithDamping:0.9 initialSpringVelocity:0.2
+                        options:UIViewAnimationOptionBeginFromCurrentState animations:^{
         self.alpha = 0;
+        self.transform = CGAffineTransformMakeScale(0.86, 0.86);
     } completion:^(BOOL finished) {
+        if (self.presentationGeneration != closingGeneration || _presenting) return;
         self.hidden = YES;
         self.transform = CGAffineTransformIdentity;
-        for (POSplitPanelItem *item in self.items) { item.chosen = NO; }
+        for (POSplitPanelItem *item in closingItems) { item.chosen = NO; }
     }];
     [self.selectionDelegate quickSwitchTableViewDidDisappear:self];
 }

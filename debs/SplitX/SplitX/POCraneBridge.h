@@ -30,7 +30,12 @@ typedef NS_ENUM(NSInteger, POCraneErrorCode) {
 + (BOOL)isAvailable;
 + (BOOL)isBundleSupported:(NSString *)bundleIdentifier;
 
-/// 只用真实容器列表；含 DEFAULT。没有分身能力的应用返回单元素 DEFAULT 目标。
+/// 原始枚举：设置页始终列出全部真实账号，不受显示开关、菜单数量或全局分身开关过滤。
++ (NSArray<POSplitTarget *> *)allTargetsForBundleIdentifier:(NSString *)bundleIdentifier;
++ (NSArray<NSString *> *)applicationsWithNonDefaultContainers;
++ (NSString *)visibilityKeyForTarget:(POSplitTarget *)target;
+
+/// 菜单枚举：在原始结果上应用默认号/逐账号显示开关。全部关闭时允许返回空数组。
 + (NSArray<POSplitTarget *> *)targetsForBundleIdentifier:(NSString *)bundleIdentifier;
 
 + (nullable NSString *)activeContainerForBundleIdentifier:(NSString *)bundleIdentifier;

@@ -228,10 +228,9 @@ static id POSharedObjectForClass(Class cls) {
     NSArray<NSString *> *bundles = [self quickSwitchBundleIdentifiers];
     NSMutableArray<POSplitTarget *> *targets = [NSMutableArray array];
     for (NSString *bundleId in bundles) {
-        NSArray<POSplitTarget *> *containers = [[POSplitXSettings shared] cloneEnabled]
-            ? [POCraneBridge targetsForBundleIdentifier:bundleId] : nil;
-        if (containers.count) {
-            [targets addObjectsFromArray:containers];
+        if ([[POSplitXSettings shared] cloneEnabled]) {
+            // 空数组可能表示该应用的所有账号均被用户隐藏，不得再偷偷补回 DEFAULT。
+            [targets addObjectsFromArray:[POCraneBridge targetsForBundleIdentifier:bundleId]];
         } else {
             [targets addObject:[POSplitTarget targetWithBundleIdentifier:bundleId]];
         }

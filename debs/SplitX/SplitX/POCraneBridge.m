@@ -127,31 +127,50 @@ static NSString *POCraneActive(id manager, NSString *bundle) {
 /// 只读 processState；缺 selector 视为未知，不当作“已退出”。
 static BOOL POCraneProcess(NSString *bundle, pid_t *pid, BOOL *running) {
     Class controllerClass = NSClassFromString(@"SBApplicationController");
-    if (!controllerClass) { PXLogW(@"clone", @"process: 没有 SBApplicationController"); return NO; }
+    if (!controllerClass) {
+        PXLogW(@"clone", @"process: 没有 SBApplicationController，按未运行处理");
+        *pid = 0; *running = NO; return YES;
+    }
     SEL lookup = NSSelectorFromString(@"applicationWithBundleIdentifier:");
-    if (!POCraneSignature(controllerClass, @"sharedInstance", "@", @[]) ||
-        !POCraneSignature(controllerClass, @"applicationWithBundleIdentifier:", "@", @[@"@"])) {
-        PXLogW(@"clone", @"process: controller ABI 不符 shared=%d lookup=%d",
-               POCraneSignature(controllerClass, @"sharedInstance", "@", @[]),
-               POCraneSignature(controllerClass, @"applicationWithBundleIdentifier:", "@", @[@"@"]));
+    BOOL sharedOK = POCraneSignature(controllerClass, @"sharedInstance", "@", @[]);
+    if (!sharedOK) {
+        PXLogW(@"clone", @"process: controller sharedInstance ABI 不符");
         return NO;
     }
     id controller = ((id (*)(id, SEL))objc_msgSend)(controllerClass, NSSelectorFromString(@"sharedInstance"));
+    // sharedInstance 是类方法；applicationWithBundleIdentifier: 是实例方法。
+    BOOL lookupOK = POCraneSignature(controller, @"applicationWithBundleIdentifier:", "@", @[@"@"]) ||
+                    [controller respondsToSelector:lookup];
+    if (!lookupOK) {
+        PXLogW(@"clone", @"process: controller 实例没有 %@ (class=%@)，按未运行处理",
+               NSStringFromSelector(lookup), NSStringFromClass([controller class]));
+        *pid = 0; *running = NO; return YES;
+    }
     id app = ((id (*)(id, SEL, id))objc_msgSend)(controller, lookup, bundle);
-    if (!app) { PXLogW(@"clone", @"process: %@ 没有 SBApplication", bundle); return NO; }
+    if (!app) {
+        PXLogW(@"clone", @"process: %@ 没有 SBApplication，按未运行处理", bundle);
+        *pid = 0; *running = NO; return YES;
+    }
     if (!POCraneSignature(app, @"processState", "@", @[])) {
-        PXLogW(@"clone", @"process: %@ processState ABI 不符 (class=%@)", bundle, NSStringFromClass([app class]));
-        return NO;
+        PXLogW(@"clone", @"process: %@ processState ABI 不符 (class=%@)，按未运行处理", bundle, NSStringFromClass([app class]));
+        *pid = 0; *running = NO; return YES;
     }
     id state = ((id (*)(id, SEL))objc_msgSend)(app, NSSelectorFromString(@"processState"));
-    if (!state) { PXLogW(@"clone", @"process: %@ processState=nil", bundle); return NO; }
+    if (!state) {
+        PXLogW(@"clone", @"process: %@ processState=nil，按未运行处理", bundle);
+        *pid = 0; *running = NO; return YES;
+    }
     BOOL pidInt = POCraneSignature(state, @"pid", @encode(int), @[]);
     BOOL pidLong = POCraneSignature(state, @"pid", @encode(long long), @[]);
     if (!pidInt && !pidLong) {
-        PXLogW(@"clone", @"process: %@ pid ABI 不符 (state=%@)", bundle, NSStringFromClass([state class]));
-        return NO;
+        PXLogW(@"clone", @"process: %@ pid ABI 不符 (state=%@)，按未运行处理", bundle, NSStringFromClass([state class]));
+        *pid = 0; *running = NO; return YES;
     }
-    *pid = (pid_t)((int (*)(id, SEL))objc_msgSend)(state, NSSelectorFromString(@"pid"));
+    if (pidLong) {
+        *pid = (pid_t)((long long (*)(id, SEL))objc_msgSend)(state, NSSelectorFromString(@"pid"));
+    } else {
+        *pid = (pid_t)((int (*)(id, SEL))objc_msgSend)(state, NSSelectorFromString(@"pid"));
+    }
     *running = NO;
     if (POCraneSignature(state, @"isRunning", @encode(BOOL), @[])) {
         *running = ((BOOL (*)(id, SEL))objc_msgSend)(state, NSSelectorFromString(@"isRunning")) != 0;
@@ -166,43 +185,27 @@ static BOOL POCranePidExited(pid_t pid) {
     return kill(pid, 0) == -1 && errno == ESRCH;
 }
 
-/// settings 可能是字典，也可能是应用设置对象；两种都取 containers。
-static id POCRaneContainersFromSettings(id settings) {
-    if (!settings) return nil;
-    if ([settings isKindOfClass:NSDictionary.class]) {
-        NSDictionary *dict = settings;
-        return dict[@"Containers"] ?: dict[@"containers"];
-    }
-    for (NSString *key in @[@"containers", @"Containers"]) {
+/// 旧版本 settings 对象可能没有 containers getter；KVC 必须逐键保护。
+static id POCRaneObjectValue(id object, NSString *key) {
+    if (!object) return nil;
+    if ([object isKindOfClass:NSDictionary.class]) return ((NSDictionary *)object)[key];
+    @try {
         SEL sel = NSSelectorFromString(key);
-        if ([settings respondsToSelector:sel]) {
-            return ((id (*)(id, SEL))objc_msgSend)(settings, sel);
-        }
-        if ([settings respondsToSelector:@selector(valueForKey:)]) {
-            id value = ((id (*)(id, SEL, id))objc_msgSend)(settings, @selector(valueForKey:), key);
-            if (value) return value;
-        }
+        if (POCraneSignature(object, key, "@", @[]))
+            return ((id (*)(id, SEL))objc_msgSend)(object, sel);
+        return [object valueForKey:key];
+    } @catch (NSException *exception) {
+        return nil;
     }
-    return nil;
 }
 
-/// 行可能是字典或对象。
+static id POCRaneContainersFromSettings(id settings) {
+    return POCRaneObjectValue(settings, @"containers") ?: POCRaneObjectValue(settings, @"Containers");
+}
+
 static NSString *POCRaneRowString(id row, NSString *key) {
-    if (!row) return nil;
-    if ([row isKindOfClass:NSDictionary.class]) {
-        id value = ((NSDictionary *)row)[key];
-        return [value isKindOfClass:NSString.class] ? value : nil;
-    }
-    SEL sel = NSSelectorFromString(key);
-    if ([row respondsToSelector:sel]) {
-        id value = ((id (*)(id, SEL))objc_msgSend)(row, sel);
-        return [value isKindOfClass:NSString.class] ? value : nil;
-    }
-    if ([row respondsToSelector:@selector(valueForKey:)]) {
-        id value = ((id (*)(id, SEL, id))objc_msgSend)(row, @selector(valueForKey:), key);
-        return [value isKindOfClass:NSString.class] ? value : nil;
-    }
-    return nil;
+    id value = POCRaneObjectValue(row, key);
+    return POCraneString(value) ? value : nil;
 }
 
 @implementation POCraneBridge
@@ -235,62 +238,137 @@ static NSString *POCRaneRowString(id row, NSString *key) {
     return @"";
 }
 
-+ (NSArray<POSplitTarget *> *)targetsForBundleIdentifier:(NSString *)bundleIdentifier {
++ (NSArray<POSplitTarget *> *)allTargetsForBundleIdentifier:(NSString *)bundleIdentifier {
+    if (!POCraneString(bundleIdentifier)) return @[];
     NSMutableArray<POSplitTarget *> *targets = [NSMutableArray array];
-    if (!POCraneString(bundleIdentifier)) return targets;
-
     id manager = POCraneManager();
-    SEL listSel = NSSelectorFromString(@"containerIdentifiersOfApplicationWithIdentifier:");
-    BOOL sigOK = manager && POCraneSignature(manager, NSStringFromSelector(listSel), "@", @[@"@"]);
-    if (!sigOK) {
-        PXLogW(@"clone", @"%@ 枚举失败 manager=%@ 有容器枚举=%@ 有settings=%@", bundleIdentifier,
-               manager ? NSStringFromClass([manager class]) : @"nil",
-               manager && [manager respondsToSelector:@selector(containerIdentifiersOfApplicationWithIdentifier:)] ? @"yes" : @"no",
-               manager && [manager respondsToSelector:@selector(applicationSettingsForApplicationWithIdentifier:)] ? @"yes" : @"no");
-        [targets addObject:[POSplitTarget targetWithBundleIdentifier:bundleIdentifier]];
-        return targets;
-    }
-    id list = ((id (*)(id, SEL, id))objc_msgSend)(manager, listSel, bundleIdentifier);
-    if (![list isKindOfClass:NSArray.class] || [(NSArray *)list count] == 0) {
-        // 这条 selector 在部分 Crane 版本返回空，退回 applicationSettings 的 Containers。
-        id settings = [manager respondsToSelector:@selector(applicationSettingsForApplicationWithIdentifier:)]
-            ? ((id (*)(id, SEL, id))objc_msgSend)(manager,
-                NSSelectorFromString(@"applicationSettingsForApplicationWithIdentifier:"), bundleIdentifier)
-            : nil;
-        id rows = POCRaneContainersFromSettings(settings);
-        PXLog(@"clone", @"%@ containerIdentifiers 空/非数组，回退 settings=%@ rows=%lu", bundleIdentifier,
-              settings ? NSStringFromClass([settings class]) : @"nil", (unsigned long)[rows count]);
-        if ([rows isKindOfClass:NSArray.class] && [(NSArray *)rows count] > 0) {
-            list = rows;
-        } else {
-            [targets addObject:[POSplitTarget targetWithBundleIdentifier:bundleIdentifier]];
-            return targets;
-        }
-    }
-    PXLog(@"clone", @"%@ 原始容器列表=%@", bundleIdentifier, [(NSArray *)list componentsJoinedByString:@","]);
-
-    // DEFAULT 排最前，其余按系统给的顺序；去重。
+    NSString *listName = @"containerIdentifiersOfApplicationWithIdentifier:";
+    NSString *settingsName = @"applicationSettingsForApplicationWithIdentifier:";
     NSMutableOrderedSet<NSString *> *ids = [NSMutableOrderedSet orderedSetWithObject:POSplitDefaultContainerIdentifier];
-    for (id item in (NSArray *)list) {
-        NSString *identifier = [item isKindOfClass:NSString.class] ? item : POCRaneRowString(item, @"identifier");
-        if (POCraneString(identifier)) [ids addObject:identifier];
+    NSMutableDictionary<NSString *, NSString *> *rowNames = [NSMutableDictionary dictionary];
+    @try {
+        id list = POCraneSignature(manager, listName, "@", @[@"@"])
+            ? ((id (*)(id, SEL, id))objc_msgSend)(manager, NSSelectorFromString(listName), bundleIdentifier) : nil;
+        // 缺少 selector 时也要回退，不能在检查失败处提前 return DEFAULT。
+        if (![list isKindOfClass:NSArray.class] || [(NSArray *)list count] == 0) {
+            id settings = POCraneSignature(manager, settingsName, "@", @[@"@"])
+                ? ((id (*)(id, SEL, id))objc_msgSend)(manager, NSSelectorFromString(settingsName), bundleIdentifier) : nil;
+            id rows = POCRaneContainersFromSettings(settings);
+            if ([rows isKindOfClass:NSDictionary.class]) {
+                NSDictionary *dictionary = rows;
+                for (id key in dictionary) {
+                    if (!POCraneString(key)) continue;
+                    [ids addObject:key];
+                    NSString *name = POCRaneRowString(dictionary[key], @"name");
+                    if (name) rowNames[key] = name;
+                }
+                list = @[];
+            } else {
+                list = [rows isKindOfClass:NSArray.class] ? rows : @[];
+            }
+            PXLog(@"clone", @"%@ raw fallback settings=%@ rowsType=%@", bundleIdentifier,
+                  settings ? NSStringFromClass([settings class]) : @"nil",
+                  rows ? NSStringFromClass([rows class]) : @"nil");
+        }
+        for (id row in ([list isKindOfClass:NSArray.class] ? (NSArray *)list : @[])) {
+            NSString *identifier = POCraneString(row) ? row : POCRaneRowString(row, @"identifier");
+            if (!identifier) continue;
+            [ids addObject:identifier];
+            NSString *name = POCraneString(row) ? nil : POCRaneRowString(row, @"name");
+            if (name) rowNames[identifier] = name;
+        }
+    } @catch (NSException *exception) {
+        PXLogE(@"clone", @"%@ raw enumeration exception %@: %@", bundleIdentifier, exception.name, exception.reason);
     }
-    BOOL multiple = ids.count > 1;
+    // 日志只连接归一后的字符串，不对未知 Crane 对象直接 componentsJoinedByString。
+    PXLog(@"clone", @"%@ 原始容器列表=%@", bundleIdentifier, [ids.array componentsJoinedByString:@","]);
     for (NSString *identifier in ids) {
         BOOL isDefault = [identifier isEqualToString:POSplitDefaultContainerIdentifier];
-        if (isDefault && multiple && ![POSplitXSettings shared].cloneShowDefault) continue;
-        if (!isDefault) {
-            NSString *showKey = [NSString stringWithFormat:@"cloneShow.%@.%@", bundleIdentifier, identifier];
-            id show = [[[NSUserDefaults alloc] initWithSuiteName:@"com.niubiprass.splitx"] objectForKey:showKey];
-            if ([show respondsToSelector:@selector(boolValue)] && ![show boolValue]) continue;
+        NSString *name = isDefault ? @"默认" : rowNames[identifier];
+        @try {
+            if (!isDefault && !name.length) name = [self displayNameForContainer:identifier bundle:bundleIdentifier];
+        } @catch (NSException *exception) {
+            PXLogW(@"clone", @"%@/%@ name exception=%@", bundleIdentifier, identifier, exception.reason);
         }
-        NSString *name = isDefault ? @"默认" : [self displayNameForContainer:identifier bundle:bundleIdentifier];
-        [targets addObject:[POSplitTarget targetWithBundleIdentifier:bundleIdentifier
-                                                           container:identifier
-                                                         displayName:name.length ? name : identifier]];
+        [targets addObject:[POSplitTarget targetWithBundleIdentifier:bundleIdentifier container:identifier
+                                                        displayName:name.length ? name : identifier]];
     }
-    PXLog(@"clone", @"%@ 容器 %lu 个", bundleIdentifier, (unsigned long)targets.count);
     return targets;
+}
+
++ (NSString *)visibilityKeyForTarget:(POSplitTarget *)target {
+    return [NSString stringWithFormat:@"cloneShow.%@.%@", target.bundleIdentifier, target.containerIdentifier];
+}
+
++ (NSArray<POSplitTarget *> *)targetsForBundleIdentifier:(NSString *)bundleIdentifier {
+    NSArray<POSplitTarget *> *all = [self allTargetsForBundleIdentifier:bundleIdentifier];
+    NSMutableArray<POSplitTarget *> *visible = [NSMutableArray array];
+    NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.niubiprass.splitx"];
+    for (POSplitTarget *target in all) {
+        if (target.isDefaultContainer && all.count > 1 && ![POSplitXSettings shared].cloneShowDefault) continue;
+        id show = [defaults objectForKey:[self visibilityKeyForTarget:target]];
+        if ([show respondsToSelector:@selector(boolValue)] && ![show boolValue]) continue;
+        [visible addObject:target];
+    }
+    PXLog(@"clone", @"%@ visible=%lu raw=%lu", bundleIdentifier, (unsigned long)visible.count, (unsigned long)all.count);
+    return visible;
+}
+
++ (NSArray<NSString *> *)applicationsWithNonDefaultContainers {
+    id manager = POCraneManager();
+    NSString *listName = @"identfiersOfApplicationsThatHaveNonDefaultContainers";
+    if (!manager) return @[];
+    NSMutableOrderedSet<NSString *> *bundles = [NSMutableOrderedSet orderedSet];
+    @try {
+        if (POCraneSignature(manager, listName, "@", @[])) {
+            id list = ((id (*)(id, SEL))objc_msgSend)(manager, NSSelectorFromString(listName));
+            if ([list isKindOfClass:NSArray.class] || [list isKindOfClass:NSSet.class]) {
+                for (id bundle in list) if (POCraneString(bundle)) [bundles addObject:bundle];
+            }
+        }
+    } @catch (NSException *exception) {
+        PXLogW(@"clone", @"apps enumeration exception=%@", exception.reason);
+    }
+    if (bundles.count) return bundles.array;
+
+    // 与已有应用选择器同源：LSApplicationWorkspace 优先，文件系统作为旧系统兜底。
+    NSMutableOrderedSet<NSString *> *installed = [NSMutableOrderedSet orderedSet];
+    @try {
+        Class workspaceClass = NSClassFromString(@"LSApplicationWorkspace");
+        id workspace = POCraneSignature(workspaceClass, @"defaultWorkspace", "@", @[])
+            ? ((id (*)(id, SEL))objc_msgSend)(workspaceClass, NSSelectorFromString(@"defaultWorkspace")) : nil;
+        id apps = POCraneSignature(workspace, @"allApplications", "@", @[])
+            ? ((id (*)(id, SEL))objc_msgSend)(workspace, NSSelectorFromString(@"allApplications")) : nil;
+        if ([apps isKindOfClass:NSArray.class]) {
+            for (id app in apps) {
+                NSString *identifier = POCRaneRowString(app, @"applicationIdentifier");
+                if (identifier) [installed addObject:identifier];
+            }
+        }
+    } @catch (NSException *exception) {
+        PXLogW(@"clone", @"LS enumeration exception=%@", exception.reason);
+    }
+    if (!installed.count) {
+        NSFileManager *fm = NSFileManager.defaultManager;
+        for (NSString *base in @[@"/var/mobile/Containers/Bundle/Application", @"/var/containers/Bundle/Application"]) {
+            for (NSString *container in [fm contentsOfDirectoryAtPath:base error:NULL]) {
+                if ([container hasPrefix:@"."]) continue;
+                NSString *directory = [base stringByAppendingPathComponent:container];
+                for (NSString *name in [fm contentsOfDirectoryAtPath:directory error:NULL]) {
+                    if (![name.pathExtension isEqualToString:@"app"]) continue;
+                    NSDictionary *info = [NSDictionary dictionaryWithContentsOfFile:
+                        [[directory stringByAppendingPathComponent:name] stringByAppendingPathComponent:@"Info.plist"]];
+                    NSString *identifier = info[@"CFBundleIdentifier"];
+                    if (POCraneString(identifier)) [installed addObject:identifier];
+                }
+            }
+        }
+    }
+    for (NSString *bundle in installed) {
+        if ([self allTargetsForBundleIdentifier:bundle].count > 1) [bundles addObject:bundle];
+    }
+    PXLog(@"clone", @"apps fallback inspected=%lu withClones=%lu", (unsigned long)installed.count, (unsigned long)bundles.count);
+    return bundles.array;
 }
 
 + (NSString *)activeContainerForBundleIdentifier:(NSString *)bundleIdentifier {

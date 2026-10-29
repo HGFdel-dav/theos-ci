@@ -31,6 +31,9 @@ typedef NS_ENUM(NSUInteger, POHandleLayoutMode) {
 -(instancetype)initWithController:(id)controller;
 -(void)refreshHandleSizeAnimated:(BOOL)animated;
 -(void)refreshNubbedPositionAnimated:(BOOL)animated;
+-(void)restoreRestingAppearance;
+/// 分屏窗口打开时隐藏视觉层，但保留触摸区域。
+-(void)setHostedWindowOpen:(BOOL)open;
 
 
 @end

@@ -13,10 +13,20 @@
 
 @dynamic control;
 
+- (NSNumber *)controlValue {
+    return @(self.slider.value);
+}
+
 - (instancetype)initWithStyle:(UITableViewCellStyle)style
                reuseIdentifier:(NSString *)reuseIdentifier
                     specifier:(PSSpecifier *)specifier {
     if ((self = [super initWithStyle:style reuseIdentifier:reuseIdentifier specifier:specifier])) {
+        self.textLabel.hidden = YES;
+        self.detailTextLabel.hidden = YES;
+        _captionLabel = [[UILabel alloc] init];
+        _captionLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightMedium];
+        _captionLabel.textColor = UIColor.labelColor;
+        [self.contentView addSubview:_captionLabel];
         _valueLabel = [[UILabel alloc] init];
         _valueLabel.font = [UIFont monospacedDigitSystemFontOfSize:15 weight:UIFontWeightMedium];
         _valueLabel.textColor = UIColor.secondaryLabelColor;
@@ -52,7 +62,13 @@
     [slider addTarget:self action:@selector(sliderChanged:) forControlEvents:UIControlEventValueChanged];
     slider.minimumValue = minimum ? minimum.floatValue : 0;
     slider.maximumValue = maximum ? maximum.floatValue : 100;
+    NSString *label = [specifier propertyForKey:@"label"];
+    _captionLabel.text = label ?: @"";
+    _captionLabel.hidden = label.length == 0;
+    self.textLabel.hidden = YES;
+    self.detailTextLabel.hidden = YES;
     [super refreshCellContentsWithSpecifier:specifier];
+    self.valueLabel.hidden = NO;
     [self updateLabel];
     [self setNeedsLayout];
 }
@@ -73,8 +89,11 @@
     NSString *key = [self.specifier propertyForKey:@"key"];
     NSString *suite = [self.specifier propertyForKey:@"defaults"];
     NSInteger step = [[self.specifier propertyForKey:@"stepValue"] integerValue];
-    CGFloat value = slider.value;
-    if (step > 1) value = round(value / step) * step;
+    CGFloat minimum = slider.minimumValue;
+    CGFloat maximum = slider.maximumValue;
+    CGFloat value = MIN(MAX(slider.value, minimum), maximum);
+    if (step > 0) value = MIN(MAX(round(value / step) * step, minimum), maximum);
+    slider.value = value;
     if (key.length && suite.length) {
         NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:suite];
         id before = [defaults objectForKey:key];
@@ -98,16 +117,30 @@
     if (step > 1) value = round(value / step) * step;
     self.valueLabel.text = [NSString stringWithFormat:@"%ld", (long)value];
     NSString *label = [self.specifier propertyForKey:@"label"];
-    if (label.length) self.textLabel.text = label;
+    if (label.length) {
+        self.captionLabel.text = label;
+        self.captionLabel.hidden = NO;
+    }
     self.valueLabel.hidden = NO;
 }
 
 - (void)layoutSubviews {
     [super layoutSubviews];
-    CGRect bounds = self.bounds;   // contentView 只有 44 高，会把滑杆裁掉
-    self.textLabel.frame = CGRectMake(16, 8, bounds.size.width - 120, 20);
-    self.valueLabel.frame = CGRectMake(bounds.size.width - 88, 8, 72, 20);
-    self.slider.frame = CGRectMake(16, 32, bounds.size.width - 32, 32);
+    CGRect bounds = self.contentView.bounds;
+    _captionLabel.frame = CGRectMake(16, 7, bounds.size.width - 120, 23);
+    _valueLabel.frame = CGRectMake(bounds.size.width - 96, 7, 80, 23);
+    self.slider.frame = CGRectMake(16, 37, bounds.size.width - 32, 34);
+    self.textLabel.hidden = YES;
+    self.detailTextLabel.hidden = YES;
+}
+
++ (CGFloat)heightForSpecifier:(PSSpecifier *)specifier {
+    NSNumber *height = [specifier propertyForKey:@"height"];
+    return MAX(80.0, height ? height.doubleValue : 80.0);
+}
+
++ (CGFloat)heightForSpecifier:(PSSpecifier *)specifier width:(CGFloat)width {
+    return [self heightForSpecifier:specifier];
 }
 
 /// 点数值直接输，省得拖着找。

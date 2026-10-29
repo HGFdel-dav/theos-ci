@@ -5,8 +5,14 @@
 	<key>items</key>
 	<array>
 		<dict>
-			<key>cellClass</key>
-			<string>POSliderTableCell</string>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>label</key>
+			<string>图标与布局</string>
+			<key>footerText</key>
+			<string>菜单不再有整块底板，只有独立轻玻璃图标。图标大小按设置绘制；拥挤时分页，不叠在一起，也不偷偷缩小图标。环容量是每环上限，0 跳过该环；四环全 0 时采用默认容量。</string>
+		</dict>
+		<dict>
 			<key>default</key>
 			<real>60.0</real>
 			<key>defaults</key>
@@ -29,10 +35,18 @@
 			<string>setValue:forSpecifier:</string>
 			<key>stepValue</key>
 			<integer>4</integer>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>min</key>
+			<integer>40</integer>
+			<key>max</key>
+			<real>76.0</real>
+			<key>showValue</key>
+			<true/>
+			<key>isContinuous</key>
+			<false/>
 		</dict>
 		<dict>
-			<key>cellClass</key>
-			<string>POSliderTableCell</string>
 			<key>default</key>
 			<real>68.0</real>
 			<key>defaults</key>
@@ -46,7 +60,7 @@
 			<key>key</key>
 			<string>tileSize</string>
 			<key>label</key>
-			<string>底板大小</string>
+			<string>图标玻璃托尺寸</string>
 			<key>maximumValue</key>
 			<real>92.0</real>
 			<key>minimumValue</key>
@@ -55,10 +69,18 @@
 			<string>setValue:forSpecifier:</string>
 			<key>stepValue</key>
 			<integer>4</integer>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>min</key>
+			<integer>52</integer>
+			<key>max</key>
+			<real>92.0</real>
+			<key>showValue</key>
+			<true/>
+			<key>isContinuous</key>
+			<false/>
 		</dict>
 		<dict>
-			<key>cellClass</key>
-			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>6</integer>
 			<key>defaults</key>
@@ -81,36 +103,18 @@
 			<string>setValue:forSpecifier:</string>
 			<key>stepValue</key>
 			<integer>2</integer>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>min</key>
+			<integer>0</integer>
+			<key>max</key>
+			<integer>20</integer>
+			<key>showValue</key>
+			<true/>
+			<key>isContinuous</key>
+			<false/>
 		</dict>
 		<dict>
-			<key>cellClass</key>
-			<string>POSliderTableCell</string>
-			<key>default</key>
-			<integer>2</integer>
-			<key>defaults</key>
-			<string>com.niubiprass.splitx</string>
-			<key>get</key>
-			<string>getValueForSpecifier:</string>
-			<key>height</key>
-			<integer>80</integer>
-			<key>id</key>
-			<string>panelColumns</string>
-			<key>key</key>
-			<string>panelColumns</string>
-			<key>label</key>
-			<string>每行列数</string>
-			<key>maximumValue</key>
-			<integer>3</integer>
-			<key>minimumValue</key>
-			<integer>1</integer>
-			<key>set</key>
-			<string>setValue:forSpecifier:</string>
-			<key>stepValue</key>
-			<integer>1</integer>
-		</dict>
-		<dict>
-			<key>cellClass</key>
-			<string>POSliderTableCell</string>
 			<key>default</key>
 			<real>210.0</real>
 			<key>defaults</key>
@@ -124,7 +128,7 @@
 			<key>key</key>
 			<string>fanRadius</string>
 			<key>label</key>
-			<string>扇形半径</string>
+			<string>最大展开半径</string>
 			<key>maximumValue</key>
 			<real>260.0</real>
 			<key>minimumValue</key>
@@ -133,10 +137,18 @@
 			<string>setValue:forSpecifier:</string>
 			<key>stepValue</key>
 			<integer>6</integer>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>min</key>
+			<real>120.0</real>
+			<key>max</key>
+			<real>260.0</real>
+			<key>showValue</key>
+			<true/>
+			<key>isContinuous</key>
+			<false/>
 		</dict>
 		<dict>
-			<key>cellClass</key>
-			<string>POSliderTableCell</string>
 			<key>default</key>
 			<real>120.0</real>
 			<key>defaults</key>
@@ -150,7 +162,7 @@
 			<key>key</key>
 			<string>fanSpan</string>
 			<key>label</key>
-			<string>扇形张角</string>
+			<string>最大展开张角</string>
 			<key>maximumValue</key>
 			<integer>200</integer>
 			<key>minimumValue</key>
@@ -159,10 +171,18 @@
 			<string>setValue:forSpecifier:</string>
 			<key>stepValue</key>
 			<integer>10</integer>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>min</key>
+			<integer>60</integer>
+			<key>max</key>
+			<integer>200</integer>
+			<key>showValue</key>
+			<true/>
+			<key>isContinuous</key>
+			<false/>
 		</dict>
 		<dict>
-			<key>cellClass</key>
-			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>7</integer>
 			<key>defaults</key>
@@ -176,7 +196,7 @@
 			<key>key</key>
 			<string>ring1</string>
 			<key>label</key>
-			<string>第一环容量</string>
+			<string>第一环最多图标</string>
 			<key>maximumValue</key>
 			<integer>12</integer>
 			<key>minimumValue</key>
@@ -185,10 +205,18 @@
 			<string>setValue:forSpecifier:</string>
 			<key>stepValue</key>
 			<integer>1</integer>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>min</key>
+			<integer>0</integer>
+			<key>max</key>
+			<integer>12</integer>
+			<key>showValue</key>
+			<true/>
+			<key>isContinuous</key>
+			<false/>
 		</dict>
 		<dict>
-			<key>cellClass</key>
-			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>10</integer>
 			<key>defaults</key>
@@ -202,7 +230,7 @@
 			<key>key</key>
 			<string>ring2</string>
 			<key>label</key>
-			<string>第二环容量</string>
+			<string>第二环最多图标</string>
 			<key>maximumValue</key>
 			<integer>16</integer>
 			<key>minimumValue</key>
@@ -211,10 +239,18 @@
 			<string>setValue:forSpecifier:</string>
 			<key>stepValue</key>
 			<integer>1</integer>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>min</key>
+			<integer>0</integer>
+			<key>max</key>
+			<integer>16</integer>
+			<key>showValue</key>
+			<true/>
+			<key>isContinuous</key>
+			<false/>
 		</dict>
 		<dict>
-			<key>cellClass</key>
-			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>13</integer>
 			<key>defaults</key>
@@ -228,7 +264,7 @@
 			<key>key</key>
 			<string>ring3</string>
 			<key>label</key>
-			<string>第三环容量</string>
+			<string>第三环最多图标</string>
 			<key>maximumValue</key>
 			<integer>20</integer>
 			<key>minimumValue</key>
@@ -237,10 +273,18 @@
 			<string>setValue:forSpecifier:</string>
 			<key>stepValue</key>
 			<integer>1</integer>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>min</key>
+			<integer>0</integer>
+			<key>max</key>
+			<integer>20</integer>
+			<key>showValue</key>
+			<true/>
+			<key>isContinuous</key>
+			<false/>
 		</dict>
 		<dict>
-			<key>cellClass</key>
-			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>16</integer>
 			<key>defaults</key>
@@ -254,7 +298,7 @@
 			<key>key</key>
 			<string>ring4</string>
 			<key>label</key>
-			<string>第四环容量</string>
+			<string>第四环最多图标</string>
 			<key>maximumValue</key>
 			<integer>24</integer>
 			<key>minimumValue</key>
@@ -263,10 +307,18 @@
 			<string>setValue:forSpecifier:</string>
 			<key>stepValue</key>
 			<integer>1</integer>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>min</key>
+			<integer>0</integer>
+			<key>max</key>
+			<integer>24</integer>
+			<key>showValue</key>
+			<true/>
+			<key>isContinuous</key>
+			<false/>
 		</dict>
 		<dict>
-			<key>cellClass</key>
-			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>0</integer>
 			<key>defaults</key>
@@ -289,10 +341,18 @@
 			<string>setValue:forSpecifier:</string>
 			<key>stepValue</key>
 			<integer>1</integer>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>min</key>
+			<integer>0</integer>
+			<key>max</key>
+			<integer>40</integer>
+			<key>showValue</key>
+			<true/>
+			<key>isContinuous</key>
+			<false/>
 		</dict>
 		<dict>
-			<key>cellClass</key>
-			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>45</integer>
 			<key>defaults</key>
@@ -315,10 +375,18 @@
 			<string>setValue:forSpecifier:</string>
 			<key>stepValue</key>
 			<integer>1</integer>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>min</key>
+			<integer>10</integer>
+			<key>max</key>
+			<integer>120</integer>
+			<key>showValue</key>
+			<true/>
+			<key>isContinuous</key>
+			<false/>
 		</dict>
 		<dict>
-			<key>cellClass</key>
-			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>0</integer>
 			<key>defaults</key>
@@ -341,6 +409,16 @@
 			<string>setValue:forSpecifier:</string>
 			<key>stepValue</key>
 			<integer>1</integer>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>min</key>
+			<integer>0</integer>
+			<key>max</key>
+			<integer>60</integer>
+			<key>showValue</key>
+			<true/>
+			<key>isContinuous</key>
+			<false/>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -359,8 +437,20 @@
 			<string>setValue:forSpecifier:</string>
 		</dict>
 		<dict>
-			<key>cellClass</key>
-			<string>POSliderTableCell</string>
+			<key>cell</key><string>PSSwitchCell</string>
+			<key>default</key><false/>
+			<key>defaults</key><string>com.niubiprass.splitx</string>
+			<key>get</key><string>getValueForSpecifier:</string>
+			<key>key</key><string>handleOnLeft</string>
+			<key>label</key><string>手柄放左侧</string>
+			<key>set</key><string>setValue:forSpecifier:</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSSliderCell</string><key>default</key><integer>50</integer><key>defaults</key><string>com.niubiprass.splitx</string>
+			<key>get</key><string>getValueForSpecifier:</string><key>height</key><integer>80</integer><key>id</key><string>handleVerticalPosition</string>
+			<key>key</key><string>handleVerticalPosition</string><key>label</key><string>手柄垂直位置 %</string><key>maximumValue</key><integer>100</integer><key>minimumValue</key><integer>0</integer><key>min</key><integer>0</integer><key>max</key><integer>100</integer><key>showValue</key><true/><key>isContinuous</key><false/><key>set</key><string>setValue:forSpecifier:</string><key>stepValue</key><integer>1</integer>
+		</dict>
+		<dict>
 			<key>default</key>
 			<integer>100</integer>
 			<key>defaults</key>
@@ -383,6 +473,16 @@
 			<string>setValue:forSpecifier:</string>
 			<key>stepValue</key>
 			<integer>5</integer>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>min</key>
+			<integer>10</integer>
+			<key>max</key>
+			<integer>100</integer>
+			<key>showValue</key>
+			<true/>
+			<key>isContinuous</key>
+			<false/>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -417,60 +517,6 @@
 			<string>setValue:forSpecifier:</string>
 		</dict>
 		<dict>
-			<key>cellClass</key>
-			<string>POSliderTableCell</string>
-			<key>default</key>
-			<integer>0</integer>
-			<key>defaults</key>
-			<string>com.niubiprass.splitx</string>
-			<key>get</key>
-			<string>getValueForSpecifier:</string>
-			<key>height</key>
-			<integer>80</integer>
-			<key>id</key>
-			<string>panelAlpha</string>
-			<key>key</key>
-			<string>panelAlpha</string>
-			<key>label</key>
-			<string>底板不透明度</string>
-			<key>maximumValue</key>
-			<real>100.0</real>
-			<key>minimumValue</key>
-			<real>0.0</real>
-			<key>set</key>
-			<string>setValue:forSpecifier:</string>
-			<key>stepValue</key>
-			<integer>10</integer>
-		</dict>
-		<dict>
-			<key>cellClass</key>
-			<string>POSliderTableCell</string>
-			<key>default</key>
-			<integer>30</integer>
-			<key>defaults</key>
-			<string>com.niubiprass.splitx</string>
-			<key>get</key>
-			<string>getValueForSpecifier:</string>
-			<key>height</key>
-			<integer>80</integer>
-			<key>id</key>
-			<string>panelRadius</string>
-			<key>key</key>
-			<string>panelRadius</string>
-			<key>label</key>
-			<string>底板圆角</string>
-			<key>maximumValue</key>
-			<integer>40</integer>
-			<key>minimumValue</key>
-			<integer>12</integer>
-			<key>set</key>
-			<string>setValue:forSpecifier:</string>
-			<key>stepValue</key>
-			<integer>2</integer>
-		</dict>
-		<dict>
-			<key>cellClass</key>
-			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>100</integer>
 			<key>defaults</key>
@@ -493,6 +539,16 @@
 			<string>setValue:forSpecifier:</string>
 			<key>stepValue</key>
 			<integer>10</integer>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>min</key>
+			<integer>50</integer>
+			<key>max</key>
+			<integer>200</integer>
+			<key>showValue</key>
+			<true/>
+			<key>isContinuous</key>
+			<false/>
 		</dict>
 	</array>
 	<key>title</key>

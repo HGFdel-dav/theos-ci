@@ -11,8 +11,6 @@
 			<string>底部触发区域</string>
 		</dict>
 		<dict>
-			<key>cellClass</key>
-			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>230</integer>
 			<key>defaults</key>
@@ -35,10 +33,18 @@
 			<string>setValue:forSpecifier:</string>
 			<key>stepValue</key>
 			<integer>1</integer>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>min</key>
+			<integer>120</integer>
+			<key>max</key>
+			<integer>360</integer>
+			<key>showValue</key>
+			<true/>
+			<key>isContinuous</key>
+			<false/>
 		</dict>
 		<dict>
-			<key>cellClass</key>
-			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>36</integer>
 			<key>defaults</key>
@@ -61,10 +67,18 @@
 			<string>setValue:forSpecifier:</string>
 			<key>stepValue</key>
 			<integer>1</integer>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>min</key>
+			<integer>20</integer>
+			<key>max</key>
+			<integer>80</integer>
+			<key>showValue</key>
+			<true/>
+			<key>isContinuous</key>
+			<false/>
 		</dict>
 		<dict>
-			<key>cellClass</key>
-			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>-20</integer>
 			<key>defaults</key>
@@ -87,6 +101,16 @@
 			<string>setValue:forSpecifier:</string>
 			<key>stepValue</key>
 			<integer>1</integer>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>min</key>
+			<integer>-120</integer>
+			<key>max</key>
+			<integer>120</integer>
+			<key>showValue</key>
+			<true/>
+			<key>isContinuous</key>
+			<false/>
 		</dict>
 		<dict>
 			<key>cell</key>
@@ -95,8 +119,6 @@
 			<string>顶部触发区域</string>
 		</dict>
 		<dict>
-			<key>cellClass</key>
-			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>190</integer>
 			<key>defaults</key>
@@ -119,10 +141,18 @@
 			<string>setValue:forSpecifier:</string>
 			<key>stepValue</key>
 			<integer>1</integer>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>min</key>
+			<integer>80</integer>
+			<key>max</key>
+			<integer>300</integer>
+			<key>showValue</key>
+			<true/>
+			<key>isContinuous</key>
+			<false/>
 		</dict>
 		<dict>
-			<key>cellClass</key>
-			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>50</integer>
 			<key>defaults</key>
@@ -145,10 +175,18 @@
 			<string>setValue:forSpecifier:</string>
 			<key>stepValue</key>
 			<integer>1</integer>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>min</key>
+			<integer>24</integer>
+			<key>max</key>
+			<integer>100</integer>
+			<key>showValue</key>
+			<true/>
+			<key>isContinuous</key>
+			<false/>
 		</dict>
 		<dict>
-			<key>cellClass</key>
-			<string>POSliderTableCell</string>
 			<key>default</key>
 			<integer>-20</integer>
 			<key>defaults</key>
@@ -171,6 +209,16 @@
 			<string>setValue:forSpecifier:</string>
 			<key>stepValue</key>
 			<integer>1</integer>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>min</key>
+			<integer>-120</integer>
+			<key>max</key>
+			<integer>120</integer>
+			<key>showValue</key>
+			<true/>
+			<key>isContinuous</key>
+			<false/>
 		</dict>
 		<dict>
 			<key>cell</key>

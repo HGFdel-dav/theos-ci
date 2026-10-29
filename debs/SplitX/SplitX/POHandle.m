@@ -31,6 +31,7 @@
     NSInteger _lastLongPressState;
     NSInteger _lastPanState;
     NSTimeInterval _lastPanLogTime;
+    BOOL _hostedWindowOpen;
 }
 
 -(void)applyCurrentPresentationAnimated:(BOOL)animated;
@@ -73,11 +74,12 @@
 
 -(CGFloat)nubbedOriginX{
     CGFloat containerWidth = CGRectGetWidth(self.superview.bounds);
-    if (containerWidth <= 0) {
-        containerWidth = 50.0;
+    if (containerWidth <= 0) containerWidth = 50.0;
+    CGFloat hidden = CGRectGetWidth(self.bounds) * [self nubHiddenPercentage] / 100.0;
+    if ([POSplitXSettings shared].handleOnLeft) {
+        return -hidden;
     }
-    CGFloat visibleWidth = CGRectGetWidth(self.bounds) * (1.0 - [self nubHiddenPercentage] / 100.0);
-    return containerWidth - visibleWidth;
+    return containerWidth - CGRectGetWidth(self.bounds) + hidden;
 }
 
 -(void)applyNubbedPosition{
@@ -100,17 +102,9 @@
 
     blurView.frame = self.bounds;
     blurView.layer.cornerRadius = CGRectGetWidth(self.bounds) / 2.0;
-    // 平时看不见，但必须保留 1.0 的 alpha，否则 hitTest 直接跳过、滑不出来。
+    // 隐身只作用于视觉层，触摸视图永远保留 alpha=1。
     self.alpha = 1.0;
-    self.backgroundColor = UIColor.clearColor;
-    self.alpha = [self restingAlpha];
-    BOOL alwaysVisible = [[POSplitXSettings shared] handleAlwaysVisible] &&
-        ![[POSplitXSettings shared] handleHidden];
-    blurView.alpha = alwaysVisible ? 1.0 : 0.0;
-    if (alwaysVisible) self.backgroundColor = [UIColor colorWithWhite:1 alpha:0.28];
-    for (UIView *v in self.subviews) {
-        if (v != blurView && v != self.imageView) v.alpha = alwaysVisible ? 1.0 : 0.0;
-    }
+    [self restoreRestingAppearance];
     [self.superview setNeedsLayout];
     self.hidden = NO;
 }
@@ -324,19 +318,30 @@
 
 -(CGFloat)restingAlpha {
     POSplitXSettings *settings = [POSplitXSettings shared];
-    if (settings.handleHidden) return 0.0;
+    if (_hostedWindowOpen || settings.handleHidden) return 0.0;
     return MAX(0.1, settings.handleOpacity);
+}
+
+-(void)setHostedWindowOpen:(BOOL)open {
+    _hostedWindowOpen = open;
+    [self setHandleVisualsVisible:NO];
+}
+
+-(void)restoreRestingAppearance {
+    [self setHandleVisualsVisible:NO];
 }
 
 -(void)setHandleVisualsVisible:(BOOL)visible {
     POSplitXSettings *settings = [POSplitXSettings shared];
     BOOL keep = visible || (settings.handleAlwaysVisible && !settings.handleHidden);
-    [UIView animateWithDuration:0.15 animations:^{ self.alpha = visible ? 1.0 : [self restingAlpha]; }];
+    CGFloat visualAlpha = visible ? 1.0 : (keep ? [self restingAlpha] : 0.0);
+    self.alpha = 1.0; // hitTest 必须能命中，完全透明时也不失去手势。
     [UIView animateWithDuration:visible ? 0.12 : 0.28 animations:^{
-        self->blurView.alpha = keep ? 1.0 : 0.0;
-        self.backgroundColor = keep ? [UIColor colorWithWhite:1 alpha:0.28] : UIColor.clearColor;
+        self->blurView.alpha = visualAlpha;
+        self.backgroundColor = [UIColor colorWithWhite:1 alpha:0.28 * visualAlpha];
+        self.layer.shadowOpacity = 0.20 * visualAlpha;
         for (UIView *v in self.subviews) {
-            if (v != self->blurView && v != self.imageView) v.alpha = keep ? 1.0 : 0.0;
+            if (v != self->blurView && v != self.imageView) v.alpha = visualAlpha;
         }
     }];
 }

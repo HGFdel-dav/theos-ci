@@ -2,8 +2,8 @@
 //  POSplitPanelView.h
 //  SplitX
 //
-//  ParallelX 形态的面板：从边缘手柄弹出的一整块玻璃，图标按斜向两列散开，
-//  不再是一列竖表。命中按最近图标判定。
+//  无整块底板的轻玻璃图标菜单。真实尺寸防重叠布局，放不下的账号分页显示。
+//  从手柄朝屏幕内侧展开；命中使用当前页实际图标位置。
 //
 
 #import <UIKit/UIKit.h>
@@ -16,7 +16,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, weak) id<QuickSwitchSelectionDelegate> selectionDelegate;
 @property (nonatomic, assign) CGRect presentationAnchorFrame;
 
-/// 当前吸附的屏幕边：YES = 手柄在左侧，面板向左展开
+/// YES = 手柄在左侧，图标向右（屏幕内）展开。
 @property (nonatomic, assign) BOOL expandsRight;
 
 @end

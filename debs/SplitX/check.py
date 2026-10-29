@@ -107,8 +107,15 @@ prefs_plist = plistlib.loads((PREFS / 'Package/Library/PreferenceBundles/SplitXP
 pref_keys = {i.get('key') for i in prefs_plist.get('items', [])}
 panel_plist = plistlib.loads((PREFS / 'Package/Library/PreferenceBundles/SplitXPreferences.bundle/Panel.plist').read_bytes())
 pref_keys |= {i.get('key') for i in panel_plist.get('items', [])}
-for token in ('iconSize', 'tileSize', 'itemSpacing', 'panelColumns', 'panelAlpha', 'panelRadius'):
+for token in ('iconSize', 'tileSize', 'itemSpacing', 'fanRadius', 'fanSpan'):
     need(token in pref_keys, f'prefs control {token}')
+for removed in ('panelColumns', 'panelAlpha', 'panelRadius'):
+    need(removed not in {item.get('key') for item in panel_plist['items']}, f'no dead board control {removed}')
+need('fanPathWithRadius' not in panel and '_backgroundView' not in panel and '_edgeLayer' not in panel,
+     'menu backing board physically removed')
+need('POFanBuild(' in panel and (SRC / 'POFanLayout.h').exists(), 'real-size tested fan geometry')
+need('pageCount' in panel and 'self.targets = [ordered subarrayWithRange:' in panel, 'overflow target paging')
+need('UIBlurEffectStyleSystemThinMaterial' in panel and 'alpha:0.92' not in panel, 'light glass icon surfaces')
 
 # 8d 选择防重入与失败恢复
 need('targetSwitchInFlight' in vc, 'switch reentrancy guard')
@@ -146,16 +153,63 @@ prefsctl = (PREFS / 'SplitXPreferencesController.m').read_text()
 need('showDiagnosticLog' in prefsctl and 'clearDiagnosticLog' in prefsctl, 'log viewer + clear in prefs')
 
 
-# 8g 滑杆范围必须与代码 clamp 一致
+# 8g 所有子页的范围、默认、运行时控件类型必须一起检查，不能只检查主 plist。
 settings_m = (SRC / 'POSplitXSettings.m').read_text()
-ranges = {(m[0]): (m[1], m[2], m[3]) for m in re.findall(r'doubleForKey:@"(\w+)" fallback:([\d.]+) min:([\d.]+) max:([\d.]+)', settings_m)}
-for item in prefs_plist.get('items', []):
-    key = item.get('key')
-    if key in ranges and item.get('cellClass') == 'POSliderTableCell':
-        fallback, low, high = ranges[key]
-        need(float(item.get('minimumValue', -1)) == float(low), f'{key} min matches code ({low})')
-        need(float(item.get('maximumValue', -1)) == float(high), f'{key} max matches code ({high})')
-        need(float(item.get('default', -1)) == float(fallback), f'{key} default matches code ({fallback})')
+ranges = {m[0]: tuple(float(v) for v in m[1:]) for m in re.findall(
+    r'doubleForKey:@"(\w+)" fallback:([\d.-]+) min:([\d.-]+) max:([\d.-]+)', settings_m)}
+subpage_m = (PREFS / 'POSubPageController.m').read_text()
+need(subpage_m.index('if ([_subPagePlistName isEqualToString:@"Clone"])') < subpage_m.index('if (items.count == 0)'),
+     'dynamic Clone built before missing-plist early return')
+need('[spec setProperty:cellClass forKey:@"cellClass"]' not in subpage_m, 'no NSString cellClass runtime override')
+need('detail:detailClass cell:PSLinkListCell' in subpage_m and 'setValues:values titles:titles' in subpage_m,
+     'choice row type and detail initialized')
+need('allTargetsForBundleIdentifier:bundle' in subpage_m and 'NSClassFromString(@"CraneManager")' not in subpage_m,
+     'preferences use shared bridge raw enumeration')
+need('applicationsWithNonDefaultContainers' in bridge and 'allTargetsForBundleIdentifier' in bridge,
+     'raw and menu visibility APIs separated')
+allowed = set(re.findall(r'@"(\w+)"', settings_m[settings_m.index('static NSArray<NSString *> *PXAllowedKeys'):
+                                                    settings_m.index('@implementation')]))
+for page in ('Panel', 'Window', 'Dock', 'Gesture', 'Keyboard'):
+    data = plistlib.loads((bundle / (page + '.plist')).read_bytes())
+    for item in data['items']:
+        key = item.get('key')
+        if key:
+            need(key in allowed, f'{page} {key} in settings cache whitelist')
+        if item.get('cell') == 'PSSliderCell':
+            need('cellClass' not in item, f'{page} {key} native slider without custom override')
+            need(item['min'] == item['minimumValue'] and item['max'] == item['maximumValue'],
+                 f'{page} {key} min/max converted')
+            need(key in ranges, f'{page} {key} has runtime range')
+            if key in ranges:
+                default, low, high = ranges[key]
+                need(float(item['min']) == low and float(item['max']) == high and float(item['default']) == default,
+                     f'{page} {key} range/default match actual settings')
+        elif item.get('cell') == 'PSLinkListCell':
+            values, titles = item.get('validValues', []), item.get('validTitles', [])
+            need(len(values) == len(titles) and bool(values) and item.get('default') in values,
+                 f'{page} {key} valid action values/titles/default')
+need('restoreRestingAppearance' in handle and 'self.alpha = [self restingAlpha]' not in handle,
+     'invisible handle preserves touch layer')
+need('bringSubviewToFront:windowResizeHandle' in vc and 'bringSubviewToFront:windowCloseButton' in vc,
+     'resize handle and close button stay above hosted content')
+need('performScaledProgrammaticCloseAnimationForced:YES' in vc and 'performDirectScaledProgrammaticCloseAnimation]' not in vc,
+     'all close paths use the scaled fade')
+need('CGFloat signed =' not in vc, 'signed keyword not used as variable')
+need('windowCornerHandles' in vc and 'resizeCorner' in vc and 'corner resize' in vc,
+     'resize supports four independent corners')
+need('windowZoomContainer' not in vc or True, 'window resize source checked')
+need('POHandlePanIntentVerticalHandleMove' in vc and 'handleVerticalPosition' in settings_m,
+     'handle vertical movement setting and gesture')
+need('quickSwitchBackdropDidTap' in vc and 'emptyAreaTapped' in panel, 'empty tap cancels menu')
+
+
+# 8h 每个源码 .m 必须同时出现在 Sources 和某个 group 里（漏 group 会 Build input not found）
+pbx_text = (ROOT / 'SplitX.xcodeproj/project.pbxproj').read_text()
+for f in list(SRC.glob('*.m')) + list(SRC.glob('*.mm')) + list(PREFS.glob('*.m')):
+    if f.name in ('POCameraCompatibility.m',):
+        continue
+    need(f'{f.name} in Sources' in pbx_text, f'{f.name} 在 Sources')
+    need(f'/* {f.name} */,' in pbx_text, f'{f.name} 挂在 group')
 
 # 9 旧品牌残留（README/LICENSE 除外）
 for pat in ('PullOverXPreferences.bundle', 'com.mlgm.pulloverx', 'PullOverViewController'):

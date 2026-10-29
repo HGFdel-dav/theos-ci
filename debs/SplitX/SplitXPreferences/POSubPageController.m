@@ -5,6 +5,12 @@
 #import <objc/message.h>
 #import "POCraneBridge.h"
 #import "POApplicationHelper.h"
+#import "POSliderTableCell.h"
+#import <math.h>
+
+@interface PSSpecifier (POSubPageValues)
+- (void)setValues:(NSArray *)values titles:(NSArray *)titles;
+@end
 
 @implementation POSubPageController {
     NSString *_subPagePlistName;
@@ -24,6 +30,13 @@
 - (NSArray *)specifiers {
     if (_specifiers) return _specifiers;
 
+    // 动态账号页没有 Clone.plist，必须在读取资源/空 items 判断之前构建。
+    if ([_subPagePlistName isEqualToString:@"Clone"]) {
+        _specifiers = [[self buildCloneSpecifiers] mutableCopy];
+        PXLog(@"prefs", @"分身动态页 count=%lu", (unsigned long)_specifiers.count);
+        return _specifiers;
+    }
+
     NSBundle *own = [NSBundle bundleForClass:[POSubPageController class]];
     NSString *path = [own pathForResource:_subPagePlistName ofType:@"plist"];
     NSDictionary *plist = path ? [NSDictionary dictionaryWithContentsOfFile:path] : nil;
@@ -31,12 +44,10 @@
     PXLog(@"prefs", @"子页自建 plist=%@ path=%@ items=%lu", _subPagePlistName, path ?: @"nil",
           (unsigned long)items.count);
     if (items.count == 0) {
-        _specifiers = @[];
-        return _specifiers;
-    }
-
-    if ([_subPagePlistName isEqualToString:@"Clone"]) {
-        _specifiers = [self buildCloneSpecifiers];
+        PSSpecifier *empty = [PSSpecifier groupSpecifierWithName:@"设置资源未加载"];
+        [empty setProperty:[NSString stringWithFormat:@"未找到 %@.plist，请提供本页日志。", _subPagePlistName]
+                    forKey:@"footerText"];
+        _specifiers = [NSMutableArray arrayWithObject:empty];
         return _specifiers;
     }
 
@@ -46,7 +57,6 @@
         NSString *label = item[@"label"];
         NSString *cell = item[@"cell"];
         NSString *cellClass = item[@"cellClass"];
-        BOOL hasKey = [item[@"key"] isKindOfClass:[NSString class]] && [item[@"key"] length] > 0;
 
         PSSpecifier *spec = nil;
         if ([cell isEqualToString:@"PSGroupCell"] || (!cell && !cellClass)) {
@@ -58,36 +68,85 @@
                                                      set:@selector(setValue:forSpecifier:)
                                                      get:@selector(getValueForSpecifier:)
                                                   detail:nil cell:PSSwitchCell edit:nil];
-        } else if ([cell isEqualToString:@"PSLinkCell"]) {
+        } else if ([cell isEqualToString:@"PSLinkListCell"]) {
+            Class detailClass = NSClassFromString(@"PSListItemsController");
+            NSArray *values = item[@"validValues"];
+            NSArray *titles = item[@"validTitles"];
+            if (!detailClass || ![values isKindOfClass:NSArray.class] ||
+                ![titles isKindOfClass:NSArray.class] || !values.count || values.count != titles.count) {
+                PXLogE(@"prefs", @"%@/%@ 动作选项结构无效", _subPagePlistName, item[@"key"]);
+                continue;
+            }
             spec = [PSSpecifier preferenceSpecifierNamed:label target:self
-                                                     set:NULL get:NULL detail:nil
+                                                     set:@selector(setValue:forSpecifier:)
+                                                     get:@selector(getValueForSpecifier:)
+                                                  detail:detailClass cell:PSLinkListCell edit:nil];
+            [spec setValues:values titles:titles];
+        } else if ([cell isEqualToString:@"PSLinkCell"]) {
+            NSString *detailName = item[@"detail"];
+            Class detailClass = [detailName isKindOfClass:NSString.class] ? NSClassFromString(detailName) : Nil;
+            spec = [PSSpecifier preferenceSpecifierNamed:label target:self
+                                                     set:NULL get:NULL detail:detailClass
                                                     cell:PSLinkCell edit:nil];
-        } else if ([cellClass isEqualToString:@"POSliderTableCell"]) {
-            // 系统滑杆，cellClass 在这里不可靠。
+        } else if ([cellClass isEqualToString:@"POSliderTableCell"] || [cell isEqualToString:@"PSSliderCell"]) {
             spec = [PSSpecifier preferenceSpecifierNamed:label target:self
                                                      set:@selector(setValue:forSpecifier:)
                                                      get:@selector(getValueForSpecifier:)
                                                   detail:nil cell:PSSliderCell edit:nil];
+            // Preferences 的 cellClass 运行时必须是 Class，不是 plist 字符串。
+            [spec setProperty:[POSliderTableCell class] forKey:@"cellClass"];
+            NSNumber *minimum = item[@"minimumValue"] ?: item[@"min"] ?: @0;
+            NSNumber *maximum = item[@"maximumValue"] ?: item[@"max"] ?: @100;
+            [spec setProperty:minimum forKey:@"min"];
+            [spec setProperty:maximum forKey:@"max"];
+            // 自定义单元仍读取原字段；系统 cell 也能读取标准 min/max。
+            [spec setProperty:minimum forKey:@"minimumValue"];
+            [spec setProperty:maximum forKey:@"maximumValue"];
+            [spec setProperty:@YES forKey:@"showValue"];
+            [spec setProperty:@NO forKey:@"isContinuous"];
         } else {
-            spec = [PSSpecifier preferenceSpecifierNamed:label target:self
-                                                     set:(hasKey ? @selector(setValue:forSpecifier:) : NULL)
-                                                     get:(hasKey ? @selector(getValueForSpecifier:) : NULL)
-                                                  detail:nil cell:PSGroupCell edit:nil];
+            PXLogE(@"prefs", @"%@/%@ unsupported cell=%@ custom=%@", _subPagePlistName, item[@"key"], cell, cellClass);
+            continue; // 不认识的交互行不能伪装成 PSGroupCell。
         }
         if (!spec) continue;
 
         for (NSString *key in item) {
-            if ([key isEqualToString:@"cell"]) continue;
+            // plist loader 的结构字段不是可直接复制的运行时对象/SEL。
+            if ([@[@"cell", @"cellClass", @"detail", @"get", @"set", @"validValues", @"validTitles"] containsObject:key]) continue;
             id value = item[key];
             if (value) [spec setProperty:value forKey:key];
         }
-        if (cellClass.length) [spec setProperty:cellClass forKey:@"cellClass"];
         [specifiers addObject:spec];
     }
 
     PXLog(@"prefs", @"子页自建完成 plist=%@ count=%lu", _subPagePlistName, (unsigned long)specifiers.count);
     _specifiers = specifiers;
     return _specifiers;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    PSSpecifier *specifier = [self specifierAtIndexPath:indexPath];
+    @try {
+        UITableViewCell *cell = [super tableView:tableView cellForRowAtIndexPath:indexPath];
+        PXLog(@"prefs", @"cell page=%@ row=%ld.%ld key=%@ type=%ld actual=%@", _subPagePlistName,
+              (long)indexPath.section, (long)indexPath.row, [specifier propertyForKey:@"key"] ?: @"(group)",
+              (long)specifier.cellType, NSStringFromClass([cell class]));
+        return cell;
+    } @catch (NSException *exception) {
+        // 记录真实 receiver/selector reason，不用吞异常伪装“修好”。
+        PXLogE(@"prefs", @"cell failure page=%@ row=%ld.%ld key=%@ type=%ld exception=%@: %@",
+               _subPagePlistName, (long)indexPath.section, (long)indexPath.row,
+               [specifier propertyForKey:@"key"], (long)specifier.cellType, exception.name, exception.reason);
+        @throw;
+    }
+}
+
+- (id)readPreferenceValue:(PSSpecifier *)specifier {
+    return [self getValueForSpecifier:specifier];
+}
+
+- (void)setPreferenceValue:(id)value specifier:(PSSpecifier *)specifier {
+    [self setValue:value forSpecifier:specifier];
 }
 
 - (void)viewDidLoad {
@@ -110,13 +169,33 @@
     NSString *suite = [specifier propertyForKey:@"defaults"];
     if (!key.length || !suite.length) return;
     NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:suite];
-    if (value) [defaults setObject:value forKey:key];
+    id before = [defaults objectForKey:key];
+    id storedValue = value;
+    if (specifier.cellType == PSSliderCell && [value respondsToSelector:@selector(doubleValue)]) {
+        double low = [[specifier propertyForKey:@"min"] doubleValue];
+        double high = [[specifier propertyForKey:@"max"] doubleValue];
+        double step = [[specifier propertyForKey:@"stepValue"] doubleValue];
+        double number = [value doubleValue];
+        if (!isfinite(number) || !isfinite(low) || !isfinite(high) || high < low) return;
+        // min/max 为边界，步长从 0 对齐；默认值和端点永远可选。
+        number = MIN(MAX(number, low), high);
+        if (step > 0 && number != low && number != high)
+            number = round(number / step) * step;
+        storedValue = @(MIN(MAX(number, low), high));
+    }
+    if (storedValue) [defaults setObject:storedValue forKey:key];
     else [defaults removeObjectForKey:key];
-    [defaults synchronize];
-    PXLog(@"prefs", @"子页写 %@=%@", key, value ?: @"(清空)");
+    BOOL synced = [defaults synchronize];
+    PXLog(@"prefs", @"子页写 %@ %@ -> %@ input=%@ sync=%d", key, before ?: @"(空)",
+          storedValue ?: @"(清空)", value ?: @"(清空)", synced);
+    [POApplicationHelper reloadSettings];
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
                                          CFSTR("com.niubiprass.splitx.settings-changed"),
                                          NULL, NULL, YES);
+    if (specifier.cellType == PSSliderCell && ![storedValue isEqual:value]) {
+        // 步长量化后重读，让显示数值与真正落盘数值一致。
+        dispatch_async(dispatch_get_main_queue(), ^{ [self reloadSpecifier:specifier animated:NO]; });
+    }
 }
 
 /// 每个有分身的应用一页开关，按账号勾选要不要出现在菜单里。
@@ -132,44 +211,55 @@
 }
 
 - (NSArray *)po_buildCloneSpecifiers {
-    NSMutableArray *result = [NSMutableArray array];
-    id manager = NSClassFromString(@"CraneManager");
-    SEL listSel = NSSelectorFromString(@"identfiersOfApplicationsThatHaveNonDefaultContainers");
-    if (!manager || ![manager respondsToSelector:listSel]) {
-        PXLogW(@"prefs", @"分身列表：CraneManager=%@ selector=%d", manager ? @"有" : @"无",
-               [manager respondsToSelector:listSel]);
-        PSSpecifier *empty = [PSSpecifier preferenceSpecifierNamed:@"没有可列的分身（Crane 未加载或不支持）"
-                                                            target:nil set:NULL get:NULL detail:nil
-                                                              cell:PSGroupCell edit:nil];
-        return @[empty];
+    PSSpecifier *header = [PSSpecifier groupSpecifierWithName:@"菜单账号选择"];
+    [header setProperty:@"开关只控制菜单是否显示，不删除或切换账号。关闭的账号仍会列在这里，可随时重新开启。默认号还受主页“显示默认号”总开关控制。"
+                forKey:@"footerText"];
+    NSMutableArray *result = [NSMutableArray arrayWithObject:header];
+    // 和 SpringBoard 共用 Bridge 的 RootHide 加载、sharedManager 实例及原始枚举。
+    if (![POCraneBridge isAvailable]) {
+        [header setProperty:@"本进程未能加载 Crane。请确认 Crane 已安装，并查看日志中的动态库路径与错误。" forKey:@"footerText"];
+        PXLogW(@"prefs", @"分身页 Crane unavailable");
+        return result;
     }
-    NSArray *bundles = ((id (*)(id, SEL))objc_msgSend)(manager, listSel);
-    PXLog(@"prefs", @"分身列表 apps=%lu", (unsigned long)bundles.count);
+    NSArray<NSString *> *bundles = [POCraneBridge applicationsWithNonDefaultContainers];
+    NSUInteger accounts = 0;
     for (NSString *bundle in bundles) {
-        if (![bundle isKindOfClass:NSString.class]) continue;
-        PSSpecifier *group = [PSSpecifier preferenceSpecifierNamed:
-            [POApplicationHelper displayNameForBundleId:bundle] ?: bundle
-            target:nil set:NULL get:NULL detail:nil cell:PSGroupCell edit:nil];
-        [result addObject:group];
-        NSArray *targets = [POCraneBridge targetsForBundleIdentifier:bundle];
         @try {
-        for (POSplitTarget *target in targets) {
-            if (target.isDefaultContainer) continue;
-            NSString *key = [NSString stringWithFormat:@"cloneShow.%@.%@", bundle, target.containerIdentifier];
-            PSSpecifier *row = [PSSpecifier preferenceSpecifierNamed:target.containerDisplayName
-                                                              target:self
-                                                                 set:@selector(setValue:forSpecifier:)
-                                                                 get:@selector(getValueForSpecifier:)
-                                                              detail:nil cell:PSSwitchCell edit:nil];
-            [row setProperty:key forKey:@"key"];
-            [row setProperty:@"com.niubiprass.splitx" forKey:@"defaults"];
-            [row setProperty:@YES forKey:@"default"];
-            [result addObject:row];
-        }
-        } @catch (NSException *e) {
-            PXLogW(@"prefs", @"%@ 分身行构建失败 %@", bundle, e.reason);
+            NSArray<POSplitTarget *> *targets = [POCraneBridge allTargetsForBundleIdentifier:bundle];
+            if (targets.count <= 1) continue;
+            PSSpecifier *group = [PSSpecifier groupSpecifierWithName:
+                [POApplicationHelper displayNameForBundleId:bundle] ?: bundle];
+            [result addObject:group];
+            for (POSplitTarget *target in targets) {
+                NSString *key = [POCraneBridge visibilityKeyForTarget:target];
+                NSString *name = target.isDefaultContainer ? @"默认账号" : target.containerDisplayName;
+                if (!name.length) name = target.containerIdentifier;
+                PSSpecifier *row = [PSSpecifier preferenceSpecifierNamed:name target:self
+                                                                     set:@selector(setValue:forSpecifier:)
+                                                                     get:@selector(getValueForSpecifier:)
+                                                                  detail:nil cell:PSSwitchCell edit:nil];
+                [row setProperty:key forKey:@"key"];
+                [row setProperty:@"com.niubiprass.splitx" forKey:@"defaults"];
+                [row setProperty:@YES forKey:@"default"];
+                [result addObject:row];
+                accounts++;
+                PXLog(@"prefs", @"分身行 %@ default=%d show=%@", target.identityKey,
+                      target.isDefaultContainer, [self getValueForSpecifier:row]);
+            }
+        } @catch (NSException *exception) {
+            PXLogE(@"prefs", @"%@ 分身行构建异常 %@: %@", bundle, exception.name, exception.reason);
+            PSSpecifier *error = [PSSpecifier groupSpecifierWithName:bundle];
+            [error setProperty:@"此应用账号读取失败，其他应用不受影响；请提供日志。" forKey:@"footerText"];
+            [result addObject:error];
         }
     }
+    if (!accounts) {
+        PSSpecifier *empty = [PSSpecifier groupSpecifierWithName:@"尚未读到分身账号"];
+        [empty setProperty:@"Crane 已加载，但未返回非默认容器。请提供日志中的 raw enumeration 记录。" forKey:@"footerText"];
+        [result addObject:empty];
+    }
+    PXLog(@"prefs", @"分身列表 rawApps=%lu rows=%lu specifiers=%lu", (unsigned long)bundles.count,
+          (unsigned long)accounts, (unsigned long)result.count);
     return result;
 }
 @end
