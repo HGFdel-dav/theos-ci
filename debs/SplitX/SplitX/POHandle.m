@@ -100,7 +100,6 @@
 }
 
 -(instancetype)initWithController:(id)hubController{
--(instancetype)initWithController:(id)hubController{
     if (self = [super initWithFrame:CGRectMake(0, 0, PO_HANDLE_DEFAULT_SIZE, PO_HANDLE_DEFAULT_SIZE)]) {
         self.backgroundColor = [UIColor colorWithWhite:1 alpha:0.10];
         // PX 风格三点握把
