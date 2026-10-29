@@ -3,6 +3,8 @@
 #import <Preferences/PSTableCell.h>
 #import "POSplitXLog.h"
 #import <objc/message.h>
+#import "POCraneBridge.h"
+#import "POApplicationHelper.h"
 
 @implementation POSubPageController {
     NSString *_subPagePlistName;
@@ -33,6 +35,11 @@
         return _specifiers;
     }
 
+    if ([_subPagePlistName isEqualToString:@"Clone"]) {
+        _specifiers = [self buildCloneSpecifiers];
+        return _specifiers;
+    }
+
     NSMutableArray *specifiers = [NSMutableArray array];
     for (NSDictionary *item in items) {
         if (![item isKindOfClass:[NSDictionary class]]) continue;
@@ -55,12 +62,17 @@
             spec = [PSSpecifier preferenceSpecifierNamed:label target:self
                                                      set:NULL get:NULL detail:nil
                                                     cell:PSLinkCell edit:nil];
+        } else if ([cellClass isEqualToString:@"POSliderTableCell"]) {
+            // 系统滑杆，cellClass 在这里不可靠。
+            spec = [PSSpecifier preferenceSpecifierNamed:label target:self
+                                                     set:@selector(setValue:forSpecifier:)
+                                                     get:@selector(getValueForSpecifier:)
+                                                  detail:nil cell:PSSliderCell edit:nil];
         } else {
-            // 自定义 cell 与滑杆：给 PSControlTableCell 作底，再用 cellClass 覆盖。
             spec = [PSSpecifier preferenceSpecifierNamed:label target:self
                                                      set:(hasKey ? @selector(setValue:forSpecifier:) : NULL)
                                                      get:(hasKey ? @selector(getValueForSpecifier:) : NULL)
-                                                  detail:nil cell:PSGroupCell edit:nil];   // 只当容器，真实 cell 由 cellClass 决定
+                                                  detail:nil cell:PSGroupCell edit:nil];
         }
         if (!spec) continue;
 
@@ -105,5 +117,44 @@
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
                                          CFSTR("com.niubiprass.splitx.settings-changed"),
                                          NULL, NULL, YES);
+}
+
+/// 每个有分身的应用一页开关，按账号勾选要不要出现在菜单里。
+- (NSArray *)buildCloneSpecifiers {
+    NSMutableArray *result = [NSMutableArray array];
+    id manager = NSClassFromString(@"CraneManager");
+    SEL listSel = NSSelectorFromString(@"identfiersOfApplicationsThatHaveNonDefaultContainers");
+    if (!manager || ![manager respondsToSelector:listSel]) {
+        PXLogW(@"prefs", @"分身列表：CraneManager=%@ selector=%d", manager ? @"有" : @"无",
+               [manager respondsToSelector:listSel]);
+        PSSpecifier *empty = [PSSpecifier preferenceSpecifierNamed:@"没有可列的分身（Crane 未加载或不支持）"
+                                                            target:nil set:NULL get:NULL detail:nil
+                                                              cell:PSGroupCell edit:nil];
+        return @[empty];
+    }
+    NSArray *bundles = ((id (*)(id, SEL))objc_msgSend)(manager, listSel);
+    PXLog(@"prefs", @"分身列表 apps=%lu", (unsigned long)bundles.count);
+    for (NSString *bundle in bundles) {
+        if (![bundle isKindOfClass:NSString.class]) continue;
+        PSSpecifier *group = [PSSpecifier preferenceSpecifierNamed:
+            [POApplicationHelper displayNameForBundleId:bundle] ?: bundle
+            target:nil set:NULL get:NULL detail:nil cell:PSGroupCell edit:nil];
+        [result addObject:group];
+        NSArray *targets = [POCraneBridge targetsForBundleIdentifier:bundle];
+        for (POSplitTarget *target in targets) {
+            if (target.isDefaultContainer) continue;
+            NSString *key = [NSString stringWithFormat:@"cloneShow.%@.%@", bundle, target.containerIdentifier];
+            PSSpecifier *row = [PSSpecifier preferenceSpecifierNamed:target.containerDisplayName
+                                                              target:self
+                                                                 set:@selector(setValue:forSpecifier:)
+                                                                 get:@selector(getValueForSpecifier:)
+                                                              detail:nil cell:PSSwitchCell edit:nil];
+            [row setProperty:key forKey:@"key"];
+            [row setProperty:@"com.niubiprass.splitx" forKey:@"defaults"];
+            [row setProperty:@YES forKey:@"default"];
+            [result addObject:row];
+        }
+    }
+    return result;
 }
 @end

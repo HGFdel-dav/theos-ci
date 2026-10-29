@@ -601,6 +601,11 @@ static NSString * const kPOEnabledPendingRespringKey = @"enabled-respring-pendin
         [self selectFavorites:specifier];
         return;
     }
+    if ([identifier isEqualToString:@"clonePrefs"]) {
+        [tableView deselectRowAtIndexPath:indexPath animated:YES];
+        [self openSubPage:@"Clone" title:@"选择分身账号"];
+        return;
+    }
     if ([identifier isEqualToString:@"panelPrefs"]) {
         [tableView deselectRowAtIndexPath:indexPath animated:YES];
         [self openSubPage:@"Panel" title:@"半圆面板与手柄"];

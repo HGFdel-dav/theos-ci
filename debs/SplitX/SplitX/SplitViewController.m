@@ -2384,7 +2384,6 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
         !scrollSnapAnimationInProgress && !scrollView.dragging && !scrollView.decelerating &&
         self.handle.layoutMode == POHandleLayoutModeVerticalRail &&
         !keyboardZoomContainer.hidden &&
-        fabs(appliedCardScale - 1.0) > PO_CARD_SCALE_EPSILON &&
         fabs(scrollView.contentOffset.x - [self maximumContentOffsetX]) <= CLOSED_CONTENT_OFFSET_EPSILON &&
         !CGRectIsEmpty(keyboardZoomBaseFrame);
 }

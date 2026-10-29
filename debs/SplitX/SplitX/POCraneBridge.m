@@ -279,6 +279,11 @@ static NSString *POCRaneRowString(id row, NSString *key) {
     for (NSString *identifier in ids) {
         BOOL isDefault = [identifier isEqualToString:POSplitDefaultContainerIdentifier];
         if (isDefault && multiple && ![POSplitXSettings shared].cloneShowDefault) continue;
+        if (!isDefault) {
+            NSString *showKey = [NSString stringWithFormat:@"cloneShow.%@.%@", bundleIdentifier, identifier];
+            id show = [[[NSUserDefaults alloc] initWithSuiteName:@"com.niubiprass.splitx"] objectForKey:showKey];
+            if ([show respondsToSelector:@selector(boolValue)] && ![show boolValue]) continue;
+        }
         NSString *name = isDefault ? @"默认" : [self displayNameForContainer:identifier bundle:bundleIdentifier];
         [targets addObject:[POSplitTarget targetWithBundleIdentifier:bundleIdentifier
                                                            container:identifier
