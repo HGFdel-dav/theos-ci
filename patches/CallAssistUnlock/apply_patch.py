@@ -13,13 +13,19 @@ CORE = [
     (0xf58e4, 'e8179f1a', '08008052', 'licensed-branch-1'),
     (0xf594c, 'e8179f1a', '08008052', 'licensed-branch-2'),
     (0xb3bf4, '9a180694', '20008052', 'force-global-license'),
+    (0xb86dc, '1fa11f39', '1f2003d5', 'keep-global-license'),
 ]
 PREFS = [
     (0x4c138, 'e8179f1a', '08008052', 'status-cell-authorized'),
-    (0x4e4a4, 'e923b96d', 'ff0f5fd6', 'manual-activation-noop'),
-    (0x543e4, 'ffc304d1', 'ff0f5fd6', 'auto-activation-noop-a'),
-    (0x61ef8, 'fc6fbaa9', 'ff0f5fd6', 'auto-activation-noop-b'),
-    (0x5a42c, 'fa67bba9', 'ff0f5fd6', 'preserve-license-on-reset'),
+    (0x4e4a0, '7f2303d5', 'ff0f5fd6', 'manual-activation-noop'),
+    (0x4e4a4, 'e923b96d', 'ff0f5fd6', 'manual-activation-noop-body'),
+    (0x543e0, '7f2303d5', 'ff0f5fd6', 'auto-activation-noop-a'),
+    (0x543e4, 'ffc304d1', 'ff0f5fd6', 'auto-activation-noop-a-body'),
+    (0x61ef4, '7f2303d5', 'ff0f5fd6', 'auto-activation-noop-b'),
+    (0x61ef8, 'fc6fbaa9', 'ff0f5fd6', 'auto-activation-noop-b-body'),
+    (0x5a428, '7f2303d5', 'ff0f5fd6', 'preserve-license-on-reset'),
+    (0x5a42c, 'fa67bba9', 'ff0f5fd6', 'preserve-license-on-reset-body'),
+    (0x4cd1c, '7f2303d5', 'ff0f5fd6', 'suppress-alert-dialogs'),
 ]
 CORE_BIN = 'Library/MobileSubstrate/DynamicLibraries/CallAssist.dylib'
 PREFS_BIN = 'Library/PreferenceBundles/CallAssistSetting.bundle/CallAssistSetting'
@@ -62,12 +68,15 @@ def main():
 <key>udid</key><string>00008030-0000000000000000</string>
 </dict></plist>
 ''')
+    core = root / CORE_BIN
+    data = bytearray(core.read_bytes()); data[CORE_BASE + 0x32d7e8] = 1; core.write_bytes(data)
     patch(root / CORE_BIN, CORE_BASE, CORE)
     patch(root / PREFS_BIN, PREFS_BASE, PREFS)
     subprocess.run(['ldid', '-s', str(root / CORE_BIN)], check=True)
     subprocess.run(['ldid', '-s', str(root / PREFS_BIN)], check=True)
-    if work_control(ctl):
-        pass
+    plist = root / 'Library/PreferenceBundles/CallAssistSetting.bundle/CallAssistSetting.plist'
+    plist.write_text(plist.read_text().replace('<key>get</key>\n\t\t\t<string>getSingValue:</string>', '<key>get</key>\n\t\t\t<string>getVerValue:</string>'))
+    work_control(ctl)
 
 
 def work_control(ctl):
