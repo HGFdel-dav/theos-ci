@@ -66,6 +66,58 @@
 			<key>cellClass</key>
 			<string>POSliderTableCell</string>
 			<key>default</key>
+			<integer>12</integer>
+			<key>defaults</key>
+			<string>com.niubiprass.splitx</string>
+			<key>get</key>
+			<string>getValueForSpecifier:</string>
+			<key>height</key>
+			<integer>80</integer>
+			<key>id</key>
+			<string>windowInsetLandscape</string>
+			<key>key</key>
+			<string>windowInsetLandscape</string>
+			<key>label</key>
+			<string>横屏距屏幕边缘</string>
+			<key>maximumValue</key>
+			<integer>60</integer>
+			<key>minimumValue</key>
+			<integer>0</integer>
+			<key>set</key>
+			<string>setValue:forSpecifier:</string>
+			<key>stepValue</key>
+			<integer>1</integer>
+		</dict>
+		<dict>
+			<key>cellClass</key>
+			<string>POSliderTableCell</string>
+			<key>default</key>
+			<integer>80</integer>
+			<key>defaults</key>
+			<string>com.niubiprass.splitx</string>
+			<key>get</key>
+			<string>getValueForSpecifier:</string>
+			<key>height</key>
+			<integer>80</integer>
+			<key>id</key>
+			<string>windowWidthLandscape</string>
+			<key>key</key>
+			<string>windowWidthLandscape</string>
+			<key>label</key>
+			<string>横屏窗口宽度（屏宽 %）</string>
+			<key>maximumValue</key>
+			<integer>100</integer>
+			<key>minimumValue</key>
+			<integer>40</integer>
+			<key>set</key>
+			<string>setValue:forSpecifier:</string>
+			<key>stepValue</key>
+			<integer>1</integer>
+		</dict>
+		<dict>
+			<key>cellClass</key>
+			<string>POSliderTableCell</string>
+			<key>default</key>
 			<integer>172</integer>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
@@ -111,6 +163,32 @@
 			<string>windowCornerRadius</string>
 			<key>label</key>
 			<string>窗口圆角</string>
+			<key>maximumValue</key>
+			<integer>60</integer>
+			<key>minimumValue</key>
+			<integer>0</integer>
+			<key>set</key>
+			<string>setValue:forSpecifier:</string>
+			<key>stepValue</key>
+			<integer>1</integer>
+		</dict>
+		<dict>
+			<key>cellClass</key>
+			<string>POSliderTableCell</string>
+			<key>default</key>
+			<integer>42</integer>
+			<key>defaults</key>
+			<string>com.niubiprass.splitx</string>
+			<key>get</key>
+			<string>getValueForSpecifier:</string>
+			<key>height</key>
+			<integer>80</integer>
+			<key>id</key>
+			<string>windowCornerRadiusLandscape</string>
+			<key>key</key>
+			<string>windowCornerRadiusLandscape</string>
+			<key>label</key>
+			<string>横屏窗口圆角</string>
 			<key>maximumValue</key>
 			<integer>60</integer>
 			<key>minimumValue</key>

@@ -24,7 +24,7 @@ static void PXSettingsChanged(CFNotificationCenterRef center, void *observer, CF
 }
 static NSArray<NSString *> *PXAllowedKeys(void) {
     return @[@"iconSize", @"tileSize", @"itemSpacing", @"panelRadius", @"panelAlpha",
-             @"panelColumns", @"fanRadius", @"fanSpan", @"animationSpeed", @"squareIcons", @"hapticFeedback", @"portraitExternalKeyboard", @"landscapeExternalKeyboard", @"closeOutsideWithKeyboard", @"internalKeyboardZoomPercent", @"externalKeyboardHorizontalPercent", @"keyboardDimOpacity", @"cloneEnabled", @"cloneShowDefault", @"ring1", @"ring2", @"ring3", @"ring4", @"ringGap", @"handleSlideDistance", @"panelEdgeInset", @"topGestureWidth", @"topGestureHeight", @"topGestureOffset", @"bottomGestureWidth", @"bottomGestureHeight", @"bottomGestureOffset", @"showGestureArea", @"windowWidthPercent", @"windowInset", @"windowMaxScalePercent", @"windowCornerRadius", @"windowShadowStrength", @"windowShadowBlur", @"dockNewSplitPushesCurrent", @"dockWidthPortrait", @"dockWidthLandscape", @"dockAutoStashSeconds", @"dockMaxCount", @"triggerWidth", @"triggerOffsetY", @"dockEnabled", @"dockScale"];
+             @"panelColumns", @"fanRadius", @"fanSpan", @"animationSpeed", @"squareIcons", @"hapticFeedback", @"portraitExternalKeyboard", @"landscapeExternalKeyboard", @"closeOutsideWithKeyboard", @"internalKeyboardZoomPercent", @"externalKeyboardHorizontalPercent", @"keyboardDimOpacity", @"cloneEnabled", @"cloneShowDefault", @"ring1", @"ring2", @"ring3", @"ring4", @"ringGap", @"handleSlideDistance", @"panelEdgeInset", @"topGestureWidth", @"topGestureHeight", @"topGestureOffset", @"bottomGestureWidth", @"bottomGestureHeight", @"bottomGestureOffset", @"showGestureArea", @"windowWidthPercent", @"windowInset", @"windowInsetLandscape", @"windowWidthLandscape", @"windowCornerRadiusLandscape", @"windowMaxScalePercent", @"windowCornerRadius", @"windowShadowStrength", @"windowShadowBlur", @"dockNewSplitPushesCurrent", @"dockWidthPortrait", @"dockWidthLandscape", @"dockAutoStashSeconds", @"dockMaxCount", @"triggerWidth", @"triggerOffsetY", @"dockEnabled", @"dockScale"];
 }
 
 @implementation POSplitXSettings {
@@ -110,6 +110,9 @@ static NSArray<NSString *> *PXAllowedKeys(void) {
 - (BOOL)showGestureArea { id v = _values[@"showGestureArea"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : NO; }
 - (CGFloat)windowWidthPercent { return [self doubleForKey:@"windowWidthPercent" fallback:62 min:40 max:100]; }
 - (CGFloat)windowInset { return [self doubleForKey:@"windowInset" fallback:12 min:0 max:40]; }
+- (CGFloat)windowInsetLandscape { return [self doubleForKey:@"windowInsetLandscape" fallback:12 min:0 max:60]; }
+- (CGFloat)windowWidthLandscape { return [self doubleForKey:@"windowWidthLandscape" fallback:80 min:40 max:100]; }
+- (CGFloat)windowCornerRadiusLandscape { return [self doubleForKey:@"windowCornerRadiusLandscape" fallback:42 min:0 max:60]; }
 - (CGFloat)windowMaxScalePercent { return [self doubleForKey:@"windowMaxScalePercent" fallback:172 min:100 max:200]; }
 - (CGFloat)windowCornerRadius { return [self doubleForKey:@"windowCornerRadius" fallback:42 min:0 max:60]; }
 - (CGFloat)windowShadowStrength { return [self doubleForKey:@"windowShadowStrength" fallback:41 min:0 max:100] / 100.0; }

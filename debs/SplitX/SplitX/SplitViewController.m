@@ -2607,7 +2607,9 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
         portraitHostedLandscapeHandleAnchorY = NAN;
     }
     CGSize logicalCanvas = [self contextManagerPreferredSceneStackSize:nil];
-    CGFloat edgeGap = [POSplitXSettings shared].windowInset;
+    BOOL layoutLandscape = CGRectGetWidth(bounds) > CGRectGetHeight(bounds);
+    POSplitXSettings *layoutSettings = [POSplitXSettings shared];
+    CGFloat edgeGap = layoutLandscape ? layoutSettings.windowInsetLandscape : layoutSettings.windowInset;
     CGFloat leadingInset = [self leadingSafeAreaInset] + edgeGap;
     CGFloat trailingInset = [self trailingSafeAreaInset] + edgeGap;
     CGFloat availableCardWidth = portraitHostedLandscapeOptimization
@@ -2622,7 +2624,9 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     CGFloat widthScale = availableCardWidth / MAX(1, logicalCanvas.width);
     CGFloat heightScale = availableCardHeight / MAX(1, logicalCanvas.height);
     // 宽度先按设置的比例定，再让高度去适配，别让高度把窗口压成一条。
-    CGFloat widthFactor = MAX(0.3, MIN(1.0, [POSplitXSettings shared].windowWidthPercent / 100.0));
+    CGFloat widthPercent = layoutLandscape ? layoutSettings.windowWidthLandscape
+                                           : layoutSettings.windowWidthPercent;
+    CGFloat widthFactor = MAX(0.3, MIN(1.0, widthPercent / 100.0));
     CGFloat screenWidth = CGRectGetWidth(bounds);
     scale = MIN(1.0, (screenWidth * widthFactor) / MAX(1, logicalCanvas.width));
     if (logicalCanvas.height * scale > availableCardHeight) {
@@ -3141,7 +3145,9 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
 }
 
 -(CGFloat)contentCornerRadius{
-    return [POSplitXSettings shared].windowCornerRadius;
+    BOOL landscape = CGRectGetWidth(self.view.bounds) > CGRectGetHeight(self.view.bounds);
+    POSplitXSettings *settings = [POSplitXSettings shared];
+    return landscape ? settings.windowCornerRadiusLandscape : settings.windowCornerRadius;
 }
 
 -(void)handleWindowResize:(UIPanGestureRecognizer *)recognizer{

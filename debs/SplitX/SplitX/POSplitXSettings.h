@@ -43,6 +43,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 // 窗口
 @property (nonatomic, readonly) CGFloat windowWidthPercent, windowInset, windowMaxScalePercent;
+@property (nonatomic, readonly) CGFloat windowInsetLandscape, windowWidthLandscape, windowCornerRadiusLandscape;
 @property (nonatomic, readonly) CGFloat windowCornerRadius, windowShadowStrength, windowShadowBlur;
 @property (nonatomic, readonly) BOOL dockNewSplitPushesCurrent;
 // 小窗
