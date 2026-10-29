@@ -8,7 +8,9 @@ permissions:
   contents: read
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-15-intel
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     strategy:
       fail-fast: false
       matrix:
@@ -21,6 +23,8 @@ jobs:
       - name: Toolchain and exact SDK
         run: |
           set -euo pipefail
+          test "$(uname -m)" = x86_64
+          xcodebuild -version
           brew install ldid xz dpkg
           git clone --depth 1 --recursive https://github.com/roothide/theos.git "$HOME/theos"
           git clone --depth 1 --filter=blob:none --sparse https://github.com/xybp888/iOS-SDKs.git "$HOME/sdks"

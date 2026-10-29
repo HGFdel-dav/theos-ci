@@ -4,15 +4,18 @@ R=Path(__file__).resolve().parent
 D=Path('/var/minis/attachments/ParticleX-0.1.0dev4');D.mkdir(parents=True,exist_ok=True)
 S=Path('/var/minis/shared/ParticleX-0.1.0dev4');S.mkdir(parents=True,exist_ok=True)
 state=json.loads((R/'ci-state.json').read_text())
+assert state['repo']=='HGFdel-dav/theos-ci' and state['branch']=='particlex-0.1.0dev4'
+assert state.get('conclusion')=='success' and state.get('run_id'), 'CI has not succeeded'
 for scheme in ('roothide','rootless'):
  a=R/'ci-downloads'/('particlex-'+scheme)
  for p in a.glob('*0.1.0dev4*.deb'):shutil.copyfile(p,D/p.name)
  shutil.copyfile(a/'build.log',D/(scheme+'-build.log'))
  shutil.copyfile(a/'package-list.txt',D/(scheme+'-package-list.txt'))
 shutil.copyfile(R/'README.md',D/'README.md')
+shutil.copyfile(R/'ci-downloads'/'build-provenance.json',D/'BUILD-PROVENANCE.json')
 shutil.copyfile(Path('/tmp/particlex-dev4-final-verify/verification.json'),D/'verification.json')
 excludes={'.git','.theos','packages','out','__pycache__','ci-downloads','verification'}
-omit={'ci-state.json','deliver.py','publish.py','ci_download.py'}
+omit={'ci-state.json','deliver.py','publish.py','ci_download.py','update_dev3_metadata.py','verify_build.py'}
 files=[p for p in sorted(R.rglob('*')) if p.is_file() and not excludes.intersection(p.relative_to(R).parts) and p.name not in omit and p.suffix not in ('.deb','.zip','.log')]
 with zipfile.ZipFile(D/'ParticleX-0.1.0dev4-Source.zip','w',zipfile.ZIP_DEFLATED,compresslevel=6) as z:
  for p in files:
@@ -20,7 +23,7 @@ with zipfile.ZipFile(D/'ParticleX-0.1.0dev4-Source.zip','w',zipfile.ZIP_DEFLATED
   to=S/rel;to.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(p,to)
 with zipfile.ZipFile(D/'ParticleX-0.1.0dev4-Source.zip') as z:
  assert not any(any(x in Path(n).parts for x in excludes) or n.endswith('.deb') for n in z.namelist())
-text=f'''ParticleX 0.1.0dev4\nSource commit: {state['commit']}\nBranch: {state['branch']}\nBuild: https://github.com/Niubiprass/theos-ci/actions/runs/PENDING-QQ-DEV4\n\nStatic source/plist/ABI checks: PASS (139 guards)\nPortable slider geometry: PASS (100010 cases)\nDirection wave/vector/random: PASS (10000 centers plus edge cases)\nClear-button native sizing/safe-area/gaps: PASS (40000 styles)\nFour density levels and bounded emitter rate: PASS (40000 comparisons)\nMetal shader preflight: PASS (xcrun metal, ios-metal2.3)\nGitHub macos-14 / roothide/theos / iPhoneOS15.5.sdk: PASS\nrootless and roothide CI jobs: SUCCESS\ndpkg-deb -e and -c: PASS; no maintainer scripts\nRootHide payload: /Library/ only; package architecture iphoneos-arm64e\nRootless payload: /var/jb/Library/ only; package architecture iphoneos-arm64\nEach dylib + prefs binary: arm64 and arm64e; all SHA1/SHA256 CodeDirectory pages matched\nFilter: com.apple.springboard only\nNo screenshot/notification body persisted; bounded local diagnostic log\nRootHide resource/preferences mapping uses libroothide jbroot()\n\nKnown build warnings: upstream -multiply_defined obsolete linker option; no project compiler warnings suppressed beyond unused-parameter.\n\nNOT performed: phone installation, SpringBoard reload, runtime injection proof, visual/gesture acceptance.\nBuild success is NOT runtime success. If SpringBoard crashes or preferences blank, provide CrashReporter .ips and ParticleX runtime.log.\n'''
+text=f'''ParticleX 0.1.0dev4\nSource commit: {state['commit']}\nBranch: {state['branch']}\nBuild: https://github.com/{state['repo']}/actions/runs/{state['run_id']}\n\nStatic source/plist/ABI checks: PASS (160 guards)\nPortable slider geometry: PASS (100010 cases)\nDirection wave/vector/random: PASS (10000 centers plus edge cases)\nClear-button native sizing/safe-area/gaps: PASS (40000 styles)\nFour density levels and bounded emitter rate: PASS (40000 comparisons)\nMetal shader preflight: PASS (xcrun metal, ios-metal2.3)\nGitHub macos-14 / roothide/theos / iPhoneOS15.5.sdk: PASS\nrootless and roothide CI jobs: SUCCESS\ndpkg-deb -e and -c: PASS; no maintainer scripts\nRootHide payload: /Library/ only; package architecture iphoneos-arm64e\nRootless payload: /var/jb/Library/ only; package architecture iphoneos-arm64\nEach dylib + prefs binary: arm64 and arm64e; all SHA1/SHA256 CodeDirectory pages matched\nFilter: com.apple.springboard only\nNo screenshot/notification body persisted; bounded local diagnostic log\nRootHide resource/preferences mapping uses libroothide jbroot()\n\nKnown build warnings: upstream -multiply_defined obsolete linker option; no project compiler warnings suppressed beyond unused-parameter.\n\nNOT performed: phone installation, SpringBoard reload, runtime injection proof, visual/gesture acceptance.\nBuild success is NOT runtime success. If SpringBoard crashes or preferences blank, provide CrashReporter .ips and ParticleX runtime.log.\n'''
 (D/'VERIFICATION.txt').write_text(text)
 (S/'BUILD-RESULT.txt').write_text(text)
 rows=[]
