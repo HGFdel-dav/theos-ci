@@ -10,7 +10,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 WORK = HERE / '.work'
 ROOT = WORK / 'root'
 CTL = WORK / 'ctl'
-OUT = HERE / 'CallAssist-2.5.1-unlock1.deb'
+OUT = HERE / 'CallAssist-2.5.1-unlock2.deb'
 
 EXEC = {
     'Library/MobileSubstrate/DynamicLibraries/CallAssist.dylib',
