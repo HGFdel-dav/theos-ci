@@ -25,6 +25,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) CGFloat animationSpeed; // 50...200, default 100（百分比）
 // 环形排列（0 关闭该环及后续）
 @property (nonatomic, readonly) NSInteger ring1, ring2, ring3, ring4;
+@property (nonatomic, readonly) BOOL hapticFeedback;     // 悬停/选中震动
 @property (nonatomic, readonly) BOOL cloneEnabled;     // 是否列分身
 @property (nonatomic, readonly) BOOL cloneShowDefault;   // 是否显示默认号
 @property (nonatomic, readonly) BOOL squareIcons;    // NO=圆形托

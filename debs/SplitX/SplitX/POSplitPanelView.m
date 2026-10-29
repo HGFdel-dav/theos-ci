@@ -124,8 +124,8 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
     CGFloat scale = _baseScale;
     CGFloat alpha = 0.75;
     CGFloat lift = 0.0;
-    if (_chosen) { scale = _baseScale * 1.20; alpha = 1.0; lift = 9.0; }
-    else if (_highlighted) { scale = _baseScale * 1.14; alpha = 1.0; lift = 6.0; }
+    if (_chosen) { scale = _baseScale * 1.38; alpha = 1.0; lift = 12.0; }
+    else if (_highlighted) { scale = _baseScale * 1.20; alpha = 1.0; lift = 8.0; }
 
     void (^apply)(void) = ^{
         self.alpha = alpha;
@@ -160,6 +160,9 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
 @property (nonatomic, assign) CGFloat itemIconSize;
 @property (nonatomic, assign) CGFloat span;          // 弧度
 @property (nonatomic, assign) CGFloat animationScale;
+@property (nonatomic, strong) UISelectionFeedbackGenerator *hoverHaptics;
+@property (nonatomic, strong) UIImpactFeedbackGenerator *confirmHaptics;
+@property (nonatomic, assign) BOOL hapticsEnabled;
 @end
 
 @implementation POSplitPanelView
@@ -185,6 +188,8 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
 
         _items = [NSMutableArray array];
         _hoveredIndex = -1;
+        _hoverHaptics = [[UISelectionFeedbackGenerator alloc] init];
+        _confirmHaptics = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
         self.hidden = YES;
     }
     return self;
@@ -234,6 +239,7 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
     self.itemIconSize = settings.iconSize;
     self.itemTileSize = settings.tileSize;
     self.animationScale = MAX(0.45, MIN(2.0, 100.0 / MAX(settings.animationSpeed, 1.0)));
+    self.hapticsEnabled = settings.hapticFeedback;
 
     NSArray<POSplitTarget *> *all = [POApplicationHelper quickSwitchTargets];
     if (all.count > PQMaxItems) all = [all subarrayWithRange:NSMakeRange(0, PQMaxItems)];
@@ -272,11 +278,11 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
     // 半径：先保证相邻图标的弧距够，再受上下边缘限制。
     // PX 那样铺满一片：分三圈，越外圈放得越多，角度交错。
     CGFloat ringUnit = self.itemTileSize + settings.ringGap;
-    CGFloat usable = MAX(90.0, self.radius);
+    CGFloat usable = MAX(120.0, self.radius);
     NSUInteger ringCountAtLeast = ordered.count > 16 ? 4 : (ordered.count > 6 ? 3 : 1);
-    CGFloat innerRadius = MAX(80.0, MIN(usable * 0.45,
-                                        usable - (CGFloat)(ringCountAtLeast - 1) * ringUnit));
-    if (innerRadius < 80.0) innerRadius = 80.0;
+    CGFloat innerRadius = usable * 0.45;
+    CGFloat maxRing = (CGFloat)(ringCountAtLeast - 1) * ringUnit;
+    if (innerRadius + maxRing > usable) innerRadius = MAX(70.0, usable - maxRing);
     self.span = (settings.fanSpan + 40.0) * M_PI / 180.0;
 
     // 按环容量填充：先填内环，满了才进下一环。
@@ -313,7 +319,7 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
         ringCount -= 1;
         CGFloat angle = centerAngle;
         if (ringCount > 1) angle += -self.span / 2.0 + self.span * ((CGFloat)posInRing / (CGFloat)(ringCount - 1));
-        CGFloat ringSpan = MAX(1.0, self.radius - innerRadius);
+        CGFloat ringSpan = MAX(6.0, self.radius - innerRadius);
         CGFloat ringRadius = innerRadius + ringSpan * ((CGFloat)ring / (CGFloat)MAX((int)ringCountAtLeast - 1, 1));
 
         POSplitPanelItem *item = [[POSplitPanelItem alloc] initWithTarget:ordered[i]
@@ -376,6 +382,10 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
     for (NSUInteger i = 0; i < self.items.count; i++) {
         self.items[i].highlighted = ((NSInteger)i == index);
     }
+    if (self.hapticsEnabled && index >= 0 && index < (NSInteger)self.targets.count) {
+        [self.hoverHaptics selectionChanged];
+        [self.hoverHaptics prepare];
+    }
     if (index >= 0 && index < (NSInteger)self.targets.count) {
         [self.selectionDelegate quickSwitchTableView:self didHoverTarget:self.targets[index]];
     } else {
@@ -399,8 +409,9 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
         CGFloat tile = settings.tileSize;
         // 先按屏幕到手的距离定半径，不要用还没定的 view 高度反推。
         CGFloat screenHeight = CGRectGetHeight(coordinateView.bounds);
-        CGFloat room = MIN(handleCenter.y, screenHeight - handleCenter.y) - tile - 10.0;
+        CGFloat room = MIN(handleCenter.y, screenHeight - handleCenter.y) - 16.0;
         CGFloat radius = MAX(90.0, MIN(settings.fanRadius, room));
+        self.radius = radius;
         CGFloat width = radius + tile + 26.0;
         CGFloat height = 2.0 * radius + tile + 16.0;
 
@@ -476,9 +487,14 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
 
     if (recognizer.state == UIGestureRecognizerStateEnded) {
         NSInteger index = [self indexAtPoint:point];
-        if (index >= 0 && index < (NSInteger)self.targets.count) {
+        if (self.hapticsEnabled && index >= 0 && index < (NSInteger)self.targets.count) {
+        [self.hoverHaptics selectionChanged];
+        [self.hoverHaptics prepare];
+    }
+    if (index >= 0 && index < (NSInteger)self.targets.count) {
             POSplitTarget *target = self.targets[index];
             PXLog(@"panel", @"select %@", target.identityKey);
+            if (self.hapticsEnabled) [self.confirmHaptics impactOccurred];
             for (NSUInteger i = 0; i < self.items.count; i++) {
                 self.items[i].chosen = ((NSInteger)i == index);
                 self.items[i].highlighted = NO;
@@ -505,9 +521,17 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
     PXLog(@"panel", @"dismiss hovered=%ld", (long)_hoveredIndex);
     _presenting = NO;
     _hoveredIndex = -1;
-    [UIView animateWithDuration:0.16 * self.animationScale animations:^{
+    for (POSplitPanelItem *item in self.items) {
+        [UIView animateWithDuration:0.18 * self.animationScale delay:0
+             usingSpringWithDamping:0.9 initialSpringVelocity:0.2
+                            options:UIViewAnimationOptionBeginFromCurrentState animations:^{
+            item.center = self.centerPoint;
+            item.alpha = 0;
+            item.transform = CGAffineTransformMakeScale(0.4, 0.4);
+        } completion:nil];
+    }
+    [UIView animateWithDuration:0.20 * self.animationScale animations:^{
         self.alpha = 0;
-        self.transform = CGAffineTransformMakeScale(0.9, 0.9);
     } completion:^(BOOL finished) {
         self.hidden = YES;
         self.transform = CGAffineTransformIdentity;

@@ -50,6 +50,7 @@
 		C9D000000000000000001 /* POCraneBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = C9A000000000000000000005; };
 		C9D000000000000000002 /* POSplitTarget.m in Sources */ = {isa = PBXBuildFile; fileRef = C9A000000000000000000002; };
 		C9D000000000000000003 /* POSplitXLog.m in Sources */ = {isa = PBXBuildFile; fileRef = C9C000000000000000002; };
+		C9F000000000000000001 /* POSplitXSettings.m in Sources */ = {isa = PBXBuildFile; fileRef = C9C000000000000000005; };
 		C9E000000000000000003 /* POSliderTableCell.m in Sources */ = {isa = PBXBuildFile; fileRef = C9E000000000000000002; };
 		C9C000000000000000006 /* POSplitXSettings.m in Sources */ = {isa = PBXBuildFile; fileRef = C9C000000000000000005; };
 /* End PBXBuildFile section */
@@ -407,6 +408,7 @@
 				C9D000000000000000001 /* POCraneBridge.m in Sources */,
 				C9D000000000000000002 /* POSplitTarget.m in Sources */,
 				C9D000000000000000003 /* POSplitXLog.m in Sources */,
+				C9F000000000000000001 /* POSplitXSettings.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
