@@ -51,6 +51,7 @@ def main():
     ctl.mkdir(parents=True)
     subprocess.run(['dpkg-deb', '-x', str(deb), str(root)], check=True)
     subprocess.run(['dpkg-deb', '-e', str(deb), str(ctl)], check=True)
+    subprocess.run(['chmod', '-R', 'u+rwX', str(root), str(ctl)], check=True)
     seed = root / 'var/mobile/Library/CallAssistActivation'
     seed.mkdir(parents=True)
     (seed / 'Activation.plist').write_text('''<?xml version="1.0" encoding="UTF-8"?>
