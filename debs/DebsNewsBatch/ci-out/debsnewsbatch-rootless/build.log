@@ -1,0 +1,28 @@
+[0;36m==> [1;36mNotice:[m Build may be slow as Theos isn’t using all available CPU cores on this computer. Consider upgrading GNU Make: https://theos.dev/docs/parallel-building
+[1;31m> [1;3;39mMaking all for tweak DebsNewsBatch…[m
+[0;32m==> [1;39mCompiling DebsNewsBatch/DNBCommon.m (arm64)…[m
+[0;32m==> [1;39mCompiling DebsNewsBatch/DNBDownloader.m (arm64)…[m
+[0;32m==> [1;39mCompiling DebsNewsBatch/DNBFloatingButton.m (arm64)…[m
+[0;32m==> [1;39mCompiling DebsNewsBatch/DNBNewsItem.m (arm64)…[m
+[0;32m==> [1;39mCompiling DebsNewsBatch/DNBNewsStore.m (arm64)…[m
+[0;32m==> [1;39mCompiling DebsNewsBatch/DNBPanelViewController.m (arm64)…[m
+[0;32m==> [1;39mCompiling DebsNewsBatch/Tweak.m (arm64)…[m
+[0;33m==> [1;39mLinking tweak DebsNewsBatch (arm64)…[m
+ld: warning: -multiply_defined is obsolete
+[0;34m==> [1;39mGenerating debug symbols for DebsNewsBatch…[m
+[0;34m==> [1;39mStripping DebsNewsBatch (arm64)…[m
+[0;32m==> [1;39mCompiling DebsNewsBatch/DNBCommon.m (arm64e)…[m
+[0;32m==> [1;39mCompiling DebsNewsBatch/DNBDownloader.m (arm64e)…[m
+[0;32m==> [1;39mCompiling DebsNewsBatch/DNBFloatingButton.m (arm64e)…[m
+[0;32m==> [1;39mCompiling DebsNewsBatch/DNBNewsItem.m (arm64e)…[m
+[0;32m==> [1;39mCompiling DebsNewsBatch/DNBNewsStore.m (arm64e)…[m
+[0;32m==> [1;39mCompiling DebsNewsBatch/DNBPanelViewController.m (arm64e)…[m
+[0;32m==> [1;39mCompiling DebsNewsBatch/Tweak.m (arm64e)…[m
+[0;33m==> [1;39mLinking tweak DebsNewsBatch (arm64e)…[m
+ld: warning: -multiply_defined is obsolete
+[0;34m==> [1;39mGenerating debug symbols for DebsNewsBatch…[m
+[0;34m==> [1;39mStripping DebsNewsBatch (arm64e)…[m
+[0;34m==> [1;39mMerging tweak DebsNewsBatch…[m
+[0;34m==> [1;39mSigning DebsNewsBatch…[m
+[1;31m> [1;3;39mMaking stage for tweak DebsNewsBatch…[m
+dm.pl: building package `com.niubiprass.debsnewsbatch:iphoneos-arm64' in `./packages/com.niubiprass.debsnewsbatch_0.1.0_iphoneos-arm64.deb'

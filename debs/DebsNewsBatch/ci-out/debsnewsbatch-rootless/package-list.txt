@@ -1,0 +1,21 @@
+ new Debian package, version 2.0.
+ size 45512 bytes: control archive=413 bytes.
+     335 bytes,    10 lines      control
+ Package: com.niubiprass.debsnewsbatch
+ Name: DebsNewsBatch
+ Description: 为 Debs 增加「新闻批量下载」：一次勾选多条新闻，自动从对应源把 deb 下到 Downloads/DEBs
+ Author: niubiprass
+ Maintainer: niubiprass
+ Section: Tweaks
+ Depends: mobilesubstrate
+ Architecture: iphoneos-arm64
+ Version: 0.1.0
+ Installed-Size: 308
+drwxr-xr-x root/wheel        0 2026-10-29 23:03 .
+drwxr-xr-x root/wheel        0 2026-10-29 23:03 var
+drwxr-xr-x root/wheel        0 2026-10-29 23:03 var/jb
+drwxr-xr-x root/wheel        0 2026-10-29 23:03 var/jb/Library
+drwxr-xr-x root/wheel        0 2026-10-29 23:03 var/jb/Library/MobileSubstrate
+drwxr-xr-x root/wheel        0 2026-10-29 23:03 var/jb/Library/MobileSubstrate/DynamicLibraries
+-rwxr-xr-x root/wheel   307472 2026-10-29 23:03 var/jb/Library/MobileSubstrate/DynamicLibraries/DebsNewsBatch.dylib
+-rw-r--r-- root/wheel       93 2026-10-29 23:03 var/jb/Library/MobileSubstrate/DynamicLibraries/DebsNewsBatch.plist
