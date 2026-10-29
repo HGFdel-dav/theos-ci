@@ -26,6 +26,8 @@ require(info['NSPrincipalClass']==entry['detail']=='PXCRootListController','entr
 require(entry['bundle']==info['CFBundleExecutable']=='ParticleXPrefs','entry bundle consistency')
 for key in ('enabled','notifications','widgets','controlCenter','duration','density','notificationDirection','widgetDirection','clearAllButton','groupByApp','clearButtonStyle','appDeletion','appDeletionDirection'):
  require(any(s.get('key')==key for s in root['items']),'setting '+key)
+keys=[s['key'] for s in root['items'] if 'key' in s]
+require(len(keys)==len(set(keys)),'no duplicated settings')
 for s in root['items']:
  require('cellClass' not in s,'no string cellClass overrides')
  if s.get('key'):

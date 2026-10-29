@@ -59,7 +59,6 @@ group('ParticleX · 原色粒子','Niubiprass · iOS 15.5\n只添加动画，不
 switch('启用 ParticleX','enabled')
 group('动画场景')
 switch('通知清除消散','notifications');switch('桌面小组件移除消散','widgets');switch('控制中心内部粒子','controlCenter');switch('删除 App 消散','appDeletion')
-items.append({'cell':'PSLinkListCell','label':'删除 App 消散方向','key':'appDeletionDirection','default':0,'detail':'PSListItemsController','validValues':[0,1,2,3,4],'validTitles':['左 → 右','右 → 左','上 → 下','下 → 上','随机'],'defaults':'com.niubiprass.particlex','get':'readPreferenceValue:','set':'setPreferenceValue:specifier:'});switch('删除 App 消散','appDeletion')
 items.append({'cell':'PSLinkListCell','label':'删除 App 消散方向','key':'appDeletionDirection','default':0,'detail':'PSListItemsController','validValues':[0,1,2,3,4],'validTitles':['左 → 右','右 → 左','上 → 下','下 → 上','随机'],'defaults':'com.niubiprass.particlex','get':'readPreferenceValue:','set':'setPreferenceValue:specifier:'})
 group('消散参数','省电显著减少颗粒；标准保持原有观感；细腻颗粒更细；密集在细腻上增加数量。动画参数立即生效。开启「减弱动态效果」会停用粒子。')
 items.append({'cell':'PSSliderCell','label':'消散时长','key':'duration','default':1.15,'min':0.65,'max':1.8,'showValue':True,'isSegmented':False,'defaults':'com.niubiprass.particlex','get':'readPreferenceValue:','set':'setPreferenceValue:specifier:'})
