@@ -15,29 +15,71 @@
     return self;
 }
 
+/// 不用 loadSpecifiersFromPlistName：实测它不认传入的名字，永远返回上一页的内容。
+/// 这里自己读 plist → 自己造 PSSpecifier，名字改了就是改了。
+- (NSArray *)specifiers {
+    if (_specifiers) return _specifiers;
+
+    NSBundle *own = [NSBundle bundleForClass:[POSubPageController class]];
+    NSString *path = [own pathForResource:_subPagePlistName ofType:@"plist"];
+    NSDictionary *plist = path ? [NSDictionary dictionaryWithContentsOfFile:path] : nil;
+    NSArray *items = [plist[@"items"] isKindOfClass:[NSArray class]] ? plist[@"items"] : @[];
+    PXLog(@"prefs", @"子页自建 plist=%@ path=%@ items=%lu", _subPagePlistName, path ?: @"nil",
+          (unsigned long)items.count);
+    if (items.count == 0) {
+        _specifiers = @[];
+        return _specifiers;
+    }
+
+    NSMutableArray *specifiers = [NSMutableArray array];
+    for (NSDictionary *item in items) {
+        if (![item isKindOfClass:[NSDictionary class]]) continue;
+        NSString *label = item[@"label"];
+        NSString *cell = item[@"cell"];
+        NSString *cellClass = item[@"cellClass"];
+        BOOL hasKey = [item[@"key"] isKindOfClass:[NSString class]] && [item[@"key"] length] > 0;
+
+        PSSpecifier *spec = nil;
+        if ([cell isEqualToString:@"PSGroupCell"] || (!cell && !cellClass)) {
+            spec = [PSSpecifier preferenceSpecifierNamed:label target:nil
+                                                     set:NULL get:NULL detail:nil
+                                                    cell:PSGroupCell edit:nil];
+        } else if ([cell isEqualToString:@"PSSwitchCell"]) {
+            spec = [PSSpecifier preferenceSpecifierNamed:label target:self
+                                                     set:@selector(setValue:forSpecifier:)
+                                                     get:@selector(getValueForSpecifier:)
+                                                  detail:nil cell:PSSwitchCell edit:nil];
+        } else if ([cell isEqualToString:@"PSLinkCell"]) {
+            spec = [PSSpecifier preferenceSpecifierNamed:label target:self
+                                                     set:NULL get:NULL detail:nil
+                                                    cell:PSLinkCell edit:nil];
+        } else {
+            // 自定义 cell 与滑杆：给 PSControlTableCell 作底，再用 cellClass 覆盖。
+            spec = [PSSpecifier preferenceSpecifierNamed:label target:self
+                                                     set:(hasKey ? @selector(setValue:forSpecifier:) : NULL)
+                                                     get:(hasKey ? @selector(getValueForSpecifier:) : NULL)
+                                                  detail:nil cell:PSControlTableCell edit:nil];
+        }
+        if (!spec) continue;
+
+        for (NSString *key in item) {
+            if ([key isEqualToString:@"cell"]) continue;
+            id value = item[key];
+            if (value) [spec setProperty:value forKey:key];
+        }
+        if (cellClass.length) [spec setProperty:cellClass forKey:@"cellClass"];
+        [specifiers addObject:spec];
+    }
+
+    PXLog(@"prefs", @"子页自建完成 plist=%@ count=%lu", _subPagePlistName, (unsigned long)specifiers.count);
+    _specifiers = specifiers;
+    return _specifiers;
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
-    @try {
-        // 不指定 bundle 时会去 Preferences.app 里找 plist，找不到就退回上一页的内容。
-        NSBundle *own = [NSBundle bundleForClass:[POSubPageController class]];
-        SEL setBundle = NSSelectorFromString(@"setBundle:");
-        if (own && [self respondsToSelector:setBundle]) {
-            ((void (*)(id, SEL, id))objc_msgSend)(self, setBundle, own);
-        }
-        // 父类真正用到的是它自己的 _plistName，试着直接写进去。
-        @try {
-            [self setValue:_subPagePlistName forKey:@"_plistName"];
-            PXLog(@"prefs", @"已写入父类 _plistName=%@", _subPagePlistName);
-        } @catch (NSException *e) {
-            PXLogW(@"prefs", @"写父类 _plistName 失败: %@", e.reason);
-        }
-        PXLog(@"prefs", @"子页 load plist=%@ bundle=%@", _subPagePlistName, own.bundlePath ?: @"nil");
-        [self loadSpecifiersFromPlistName:_subPagePlistName target:self];
-        PXLog(@"prefs", @"子页 load ok count=%lu", (unsigned long)self.specifiers.count);
-    } @catch (NSException *exception) {
-        PXLogE(@"prefs", @"子页 load 抛异常 %@: %@", exception.name, exception.reason);
-        @throw;
-    }
+    PXLog(@"prefs", @"子页 viewDidLoad plist=%@ count=%lu", _subPagePlistName,
+          (unsigned long)self.specifiers.count);
 }
 
 @end
