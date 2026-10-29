@@ -7,6 +7,7 @@
 //
 
 #import "SplitXPreferencesController.h"
+#import "POSplitXLog.h"
 #import <Preferences/PSSpecifier.h>
 #import <Preferences/PSControlTableCell.h>
 #import <math.h>
@@ -14,6 +15,7 @@
 #import "POApplicationWhitelistController.h"
 #import "../POLocalization.h"
 #import "POSubPageController.h"
+#import "POSplitXLog.h"
 #import <objc/message.h>
 
 typedef NS_OPTIONS(NSUInteger, SBSRelaunchActionOptions) {
