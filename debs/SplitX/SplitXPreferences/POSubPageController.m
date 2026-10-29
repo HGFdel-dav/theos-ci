@@ -1,5 +1,6 @@
 #import "POSubPageController.h"
 #import "POSplitXLog.h"
+#import <objc/message.h>
 
 @implementation POSubPageController {
     NSString *_plistName;
@@ -17,7 +18,13 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     @try {
-        PXLog(@"prefs", @"子页 load plist=%@ bundle=%@", _plistName, NSBundle.mainBundle.bundlePath);
+        // 不指定 bundle 时会去 Preferences.app 里找 plist，找不到就退回上一页的内容。
+        NSBundle *own = [NSBundle bundleForClass:[POSubPageController class]];
+        SEL setBundle = NSSelectorFromString(@"setBundle:");
+        if (own && [self respondsToSelector:setBundle]) {
+            ((void (*)(id, SEL, id))objc_msgSend)(self, setBundle, own);
+        }
+        PXLog(@"prefs", @"子页 load plist=%@ bundle=%@", _plistName, own.bundlePath ?: @"nil");
         [self loadSpecifiersFromPlistName:_plistName target:self];
         PXLog(@"prefs", @"子页 load ok count=%lu", (unsigned long)self.specifiers.count);
     } @catch (NSException *exception) {

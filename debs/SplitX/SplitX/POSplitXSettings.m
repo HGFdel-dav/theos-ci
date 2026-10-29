@@ -24,7 +24,7 @@ static void PXSettingsChanged(CFNotificationCenterRef center, void *observer, CF
 }
 static NSArray<NSString *> *PXAllowedKeys(void) {
     return @[@"iconSize", @"tileSize", @"itemSpacing", @"panelRadius", @"panelAlpha",
-             @"panelColumns", @"fanRadius", @"fanSpan", @"animationSpeed", @"squareIcons", @"hapticFeedback", @"portraitExternalKeyboard", @"landscapeExternalKeyboard", @"closeOutsideWithKeyboard", @"internalKeyboardZoomPercent", @"externalKeyboardHorizontalPercent", @"keyboardDimOpacity", @"cloneEnabled", @"cloneShowDefault", @"ring1", @"ring2", @"ring3", @"ring4", @"ringGap", @"handleSlideDistance", @"panelEdgeInset", @"topGestureWidth", @"topGestureHeight", @"topGestureOffset", @"bottomGestureWidth", @"bottomGestureHeight", @"bottomGestureOffset", @"showGestureArea", @"windowWidthPercent", @"windowInset", @"windowInsetLandscape", @"windowWidthLandscape", @"windowCornerRadiusLandscape", @"windowMaxScalePercent", @"windowCornerRadius", @"windowShadowStrength", @"windowShadowBlur", @"dockNewSplitPushesCurrent", @"dockWidthPortrait", @"dockWidthLandscape", @"dockAutoStashSeconds", @"dockMaxCount", @"triggerWidth", @"triggerOffsetY", @"dockEnabled", @"dockScale"];
+             @"panelColumns", @"fanRadius", @"fanSpan", @"animationSpeed", @"squareIcons", @"hapticFeedback", @"handleAlwaysVisible", @"portraitExternalKeyboard", @"landscapeExternalKeyboard", @"closeOutsideWithKeyboard", @"internalKeyboardZoomPercent", @"externalKeyboardHorizontalPercent", @"keyboardDimOpacity", @"cloneEnabled", @"cloneShowDefault", @"ring1", @"ring2", @"ring3", @"ring4", @"ringGap", @"handleSlideDistance", @"panelEdgeInset", @"topGestureWidth", @"topGestureHeight", @"topGestureOffset", @"bottomGestureWidth", @"bottomGestureHeight", @"bottomGestureOffset", @"showGestureArea", @"windowWidthPercent", @"windowInset", @"windowInsetLandscape", @"windowWidthLandscape", @"windowCornerRadiusLandscape", @"windowMaxScalePercent", @"windowCornerRadius", @"windowShadowStrength", @"windowShadowBlur", @"dockNewSplitPushesCurrent", @"dockWidthPortrait", @"dockWidthLandscape", @"dockAutoStashSeconds", @"dockMaxCount", @"triggerWidth", @"triggerOffsetY", @"dockEnabled", @"dockScale"];
 }
 
 @implementation POSplitXSettings {
@@ -84,6 +84,7 @@ static NSArray<NSString *> *PXAllowedKeys(void) {
 - (CGFloat)fanRadius { return [self doubleForKey:@"fanRadius" fallback:210 min:120 max:260]; }
 - (CGFloat)fanSpan { return [self doubleForKey:@"fanSpan" fallback:120 min:60 max:200]; }
 - (CGFloat)animationSpeed { return [self doubleForKey:@"animationSpeed" fallback:100 min:50 max:200]; }
+- (BOOL)handleAlwaysVisible { id v = _values[@"handleAlwaysVisible"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : NO; }
 - (BOOL)hapticFeedback { id v = _values[@"hapticFeedback"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : YES; }
 - (BOOL)portraitExternalKeyboard { id v=_values[@"portraitExternalKeyboard"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : YES; }
 - (BOOL)landscapeExternalKeyboard { id v=_values[@"landscapeExternalKeyboard"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : NO; }

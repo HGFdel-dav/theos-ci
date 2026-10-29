@@ -26,6 +26,7 @@ NS_ASSUME_NONNULL_BEGIN
 // 环形排列（0 关闭该环及后续）
 @property (nonatomic, readonly) NSInteger ring1, ring2, ring3, ring4;
 @property (nonatomic, readonly) BOOL hapticFeedback;
+@property (nonatomic, readonly) BOOL handleAlwaysVisible;   // 手柄常显
 @property (nonatomic, readonly) BOOL portraitExternalKeyboard, landscapeExternalKeyboard, closeOutsideWithKeyboard;
 @property (nonatomic, readonly) CGFloat internalKeyboardZoomPercent, externalKeyboardHorizontalPercent, keyboardDimOpacity;     // 悬停/选中震动
 @property (nonatomic, readonly) BOOL cloneEnabled;     // 是否列分身

@@ -11,6 +11,7 @@
 
 #import "POApplicationHelper.h"
 #import "POSplitXLog.h"
+#import "POSplitXSettings.h"
 
 #define PO_HANDLE_DEFAULT_SIZE 30.0
 #define PO_HANDLE_MINIMUM_SIZE 34.0
@@ -33,6 +34,7 @@
 }
 
 -(void)applyCurrentPresentationAnimated:(BOOL)animated;
+- (void)setHandleVisualsVisible:(BOOL)visible;
 
 @end
 
@@ -97,8 +99,15 @@
 
     blurView.frame = self.bounds;
     blurView.layer.cornerRadius = CGRectGetWidth(self.bounds) / 2.0;
-    self.backgroundColor = [UIColor colorWithWhite:1 alpha:0.28];
-    self.alpha = 0.0;   // 平时不挂在那儿，动它才出来
+    // 平时看不见，但必须保留 1.0 的 alpha，否则 hitTest 直接跳过、滑不出来。
+    self.alpha = 1.0;
+    self.backgroundColor = UIColor.clearColor;
+    BOOL alwaysVisible = [[POSplitXSettings shared] handleAlwaysVisible];
+    blurView.alpha = alwaysVisible ? 1.0 : 0.0;
+    if (alwaysVisible) self.backgroundColor = [UIColor colorWithWhite:1 alpha:0.28];
+    for (UIView *v in self.subviews) {
+        if (v != blurView && v != self.imageView) v.alpha = alwaysVisible ? 1.0 : 0.0;
+    }
     [self.superview setNeedsLayout];
     self.hidden = NO;
 }
@@ -291,14 +300,11 @@
 
 -(void)tap:(UIGestureRecognizer *)recognizer{
     CGPoint point = [recognizer locationInView:self];
-    PXLog(@"gesture", @"handle tap state=%ld point=%.0f,%.0f alpha=%.2f hidden=%d nubbed=%d layout=%ld",
-          (long)recognizer.state, point.x, point.y, self.alpha, self.hidden, self.isNubbed,
-          (long)self.layoutMode);
-    self.alpha = 1.0;
+    PXLog(@"gesture", @"handle tap state=%ld point=%.0f,%.0f hidden=%d nubbed=%d layout=%ld",
+          (long)recognizer.state, point.x, point.y, self.hidden, self.isNubbed, (long)self.layoutMode);
+    [self setHandleVisualsVisible:YES];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        [UIView animateWithDuration:0.3 animations:^{ self.alpha = 0.0; }];
-    });
+                   dispatch_get_main_queue(), ^{ [self setHandleVisualsVisible:NO]; });
     [self.delegate handle:self didReceiveTap:recognizer];
 }
 
@@ -313,13 +319,23 @@
     [self.delegate handle:self didLongPress:recognizer];
 }
 
+-(void)setHandleVisualsVisible:(BOOL)visible {
+    [UIView animateWithDuration:visible ? 0.12 : 0.28 animations:^{
+        self->blurView.alpha = visible ? 1.0 : 0.0;
+        self.backgroundColor = visible ? [UIColor colorWithWhite:1 alpha:0.28] : UIColor.clearColor;
+        for (UIView *v in self.subviews) {
+            if (v != self->blurView && v != self.imageView) v.alpha = visible ? 1.0 : 0.0;
+        }
+    }];
+}
+
 -(void)panelPan:(UIPanGestureRecognizer *)recognizer{
     if (recognizer.state == UIGestureRecognizerStateBegan) {
-        [UIView animateWithDuration:0.12 animations:^{ self.alpha = 1.0; }];
+        [self setHandleVisualsVisible:YES];
     } else if (recognizer.state == UIGestureRecognizerStateEnded ||
                recognizer.state == UIGestureRecognizerStateCancelled ||
                recognizer.state == UIGestureRecognizerStateFailed) {
-        [UIView animateWithDuration:0.28 animations:^{ self.alpha = 0.0; }];
+        [self setHandleVisualsVisible:NO];
     }
     NSTimeInterval timeStamp = NSDate.timeIntervalSinceReferenceDate;
     BOOL stateChanged = recognizer.state != _lastPanState;

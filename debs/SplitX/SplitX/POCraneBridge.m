@@ -191,7 +191,12 @@ static NSString *POCRaneRowString(id row, NSString *key) {
 
     id manager = POCraneManager();
     SEL listSel = NSSelectorFromString(@"containerIdentifiersOfApplicationWithIdentifier:");
-    if (!manager || !POCraneSignature(manager, NSStringFromSelector(listSel), "@", @[@"@"])) {
+    BOOL sigOK = manager && POCraneSignature(manager, NSStringFromSelector(listSel), "@", @[@"@"]);
+    if (!sigOK) {
+        PXLogW(@"clone", @"%@ 枚举失败 manager=%@ 有容器枚举=%@ 有settings=%@", bundleIdentifier,
+               manager ? NSStringFromClass([manager class]) : @"nil",
+               manager && [manager respondsToSelector:@selector(containerIdentifiersOfApplicationWithIdentifier:)] ? @"yes" : @"no",
+               manager && [manager respondsToSelector:@selector(applicationSettingsForApplicationWithIdentifier:)] ? @"yes" : @"no");
         [targets addObject:[POSplitTarget targetWithBundleIdentifier:bundleIdentifier]];
         return targets;
     }
