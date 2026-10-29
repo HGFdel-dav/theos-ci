@@ -835,10 +835,12 @@ static void POApplyCraneEnvironmentIfNeeded(FBScene *scene, NSString *bundleId) 
         PXLogW(@"clone", @"%@ 是分身但拿不到 crane_applyEnvironmentChanges", bundleId);
         return;
     }
-    id env = [scene respondsToSelector:@selector(environment)] ? [scene environment] : nil;
+    SEL getEnv = NSSelectorFromString(@"environment");
+    id env = [scene respondsToSelector:getEnv] ? ((id (*)(id, SEL))objc_msgSend)(scene, getEnv) : nil;
     id patched = ((id (*)(id, id))sym)([env isKindOfClass:NSDictionary.class] ? env : @{}, bundleId);
-    if ([patched isKindOfClass:NSDictionary.class]) {
-        [scene setEnvironment:patched];
+    SEL setEnv = NSSelectorFromString(@"setEnvironment:");
+    if ([patched isKindOfClass:NSDictionary.class] && [scene respondsToSelector:setEnv]) {
+        ((void (*)(id, SEL, id))objc_msgSend)(scene, setEnv, patched);
         PXLog(@"clone", @"%@ 已打分身环境针 keys=%lu", bundleId, (unsigned long)[patched count]);
     } else {
         PXLogW(@"clone", @"%@ 环境针返回 %@", bundleId, patched ? NSStringFromClass([patched class]) : @"nil");
