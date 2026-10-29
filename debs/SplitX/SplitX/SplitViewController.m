@@ -214,6 +214,7 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     UIViewAnimationOptions lastKeyboardAnimationOptions;
     NSNumber *origOffset;
     CGSize lastLaidOutSize;
+    CGFloat lastLoggedCardWidth;
 }
 
 -(void)retainPresentationAfterReleaseIfPossible;
@@ -1653,6 +1654,8 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     if (!isfinite(targetScale) || targetScale <= 0) {
         targetScale = 1.0;
     }
+    CGFloat maxScale = [POSplitXSettings shared].windowMaxScalePercent / 100.0;
+    targetScale = MIN(targetScale, MAX(1.0, maxScale));
     BOOL targetIsBase = fabs(targetScale - 1.0) <= PO_CARD_SCALE_EPSILON;
     if (targetIsBase) {
         targetScale = 1.0;
@@ -2561,13 +2564,14 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
         portraitHostedLandscapeHandleAnchorY = NAN;
     }
     CGSize logicalCanvas = [self contextManagerPreferredSceneStackSize:nil];
-    CGFloat leadingInset = [self leadingSafeAreaInset] + CONTENT_EDGE_GAP;
-    CGFloat trailingInset = [self trailingSafeAreaInset] + CONTENT_EDGE_GAP;
+    CGFloat edgeGap = [POSplitXSettings shared].windowInset;
+    CGFloat leadingInset = [self leadingSafeAreaInset] + edgeGap;
+    CGFloat trailingInset = [self trailingSafeAreaInset] + edgeGap;
     CGFloat availableCardWidth = portraitHostedLandscapeOptimization
         ? CGRectGetWidth(bounds) - leadingInset - trailingInset
-        : CGRectGetWidth(bounds) - CONTENT_EDGE_GAP - self.handle.frame.size.width - HANDLE_EDGE_GAP - trailingInset;
+        : CGRectGetWidth(bounds) - edgeGap - self.handle.frame.size.width - HANDLE_EDGE_GAP - trailingInset;
     CGFloat availableCardHeight = shellIsLandscape
-        ? CGRectGetHeight(bounds) - (CONTENT_EDGE_GAP * 2)
+        ? CGRectGetHeight(bounds) - (edgeGap * 2)
         : portraitCanvasHeight * chromeScale;
     availableCardWidth = MAX(1, availableCardWidth);
     availableCardHeight = MAX(1, availableCardHeight);
@@ -2583,6 +2587,13 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
 
     CGFloat screenScale = UIScreen.mainScreen.scale;
     contentLayoutWidth = round(logicalCanvas.width * scale * screenScale) / screenScale;
+    if (fabs(contentLayoutWidth - lastLoggedCardWidth) > 0.5) {
+        lastLoggedCardWidth = contentLayoutWidth;
+        PXLog(@"ui", @"layout width=%.1f scale=%.3f pct=%.0f inset=%.0f radius=%.0f shadow=%.2f/%.0f",
+              contentLayoutWidth, scale, [POSplitXSettings shared].windowWidthPercent,
+              edgeGap, [self contentCornerRadius], [POSplitXSettings shared].windowShadowStrength,
+              [POSplitXSettings shared].windowShadowBlur);
+    }
     CGFloat contentLayoutHeight = round(logicalCanvas.height * scale * screenScale) / screenScale;
     CGFloat anchoredCardBottomY = CGRectGetMidY(bounds);
     if (portraitHostedLandscapeOptimization) {
