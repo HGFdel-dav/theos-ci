@@ -74,7 +74,7 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
         [self addSubview:bubble];
         _tileView = bubble;
 
-        CGFloat inset = MAX(3.0, icon * 0.07);
+        CGFloat inset = MAX(2.0, icon * 0.05);
         _iconView = [[UIImageView alloc] initWithFrame:CGRectInset(bubble.frame, inset, inset)];
         _iconView.contentMode = UIViewContentModeScaleAspectFit;
         _iconView.layer.cornerRadius = square ? icon * 0.22 : icon * 0.50;
@@ -285,18 +285,25 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
     if (innerRadius + maxRing > usable) innerRadius = MAX(70.0, usable - maxRing);
     self.span = (settings.fanSpan + 40.0) * M_PI / 180.0;
 
-    // 按环容量填充：先填内环，满了才进下一环。
+    // 按环容量填充：先填内环，满了才进下一环；环距固定，宁少勿叠。
     NSInteger caps[4] = {settings.ring1, settings.ring2, settings.ring3, settings.ring4};
+    CGFloat ringUnit = self.itemTileSize * 1.15 + settings.ringGap;
+    CGFloat usableRadius = MAX(120.0, self.radius);
+    CGFloat innerRadius = MIN(usableRadius * 0.5, 96.0);
+    NSInteger maxRings = (NSInteger)floor((usableRadius - innerRadius) / MAX(ringUnit, 1.0)) + 1;
+    maxRings = MIN(MAX(maxRings, 1), 4);
+
     NSMutableArray<NSNumber *> *ringOf = [NSMutableArray array];
     NSUInteger capacity = 0;
     for (int r = 0; r < 4; r++) capacity += (NSUInteger)MAX(caps[r], 0);
+    for (int r = 0; r < maxRings; r++) capacity = MIN(capacity, (NSUInteger)MAX(caps[r], 0) + (r ? capacity : 0));
     if (capacity == 0) capacity = ordered.count;
     if (ordered.count > capacity) ordered = [ordered subarrayWithRange:NSMakeRange(0, capacity)];
 
     NSInteger ringIndex = 0;
     NSInteger usedInRing = 0;
     for (NSUInteger i = 0; i < ordered.count; i++) {
-        while (ringIndex < 3 && usedInRing >= MAX(caps[ringIndex], 0)) {
+        while (ringIndex < maxRings - 1 && usedInRing >= MAX(caps[ringIndex], 0)) {
             ringIndex++;
             usedInRing = 0;
         }
@@ -319,8 +326,7 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
         ringCount -= 1;
         CGFloat angle = centerAngle;
         if (ringCount > 1) angle += -self.span / 2.0 + self.span * ((CGFloat)posInRing / (CGFloat)(ringCount - 1));
-        CGFloat ringSpan = MAX(6.0, self.radius - innerRadius);
-        CGFloat ringRadius = innerRadius + ringSpan * ((CGFloat)ring / (CGFloat)MAX((int)ringCountAtLeast - 1, 1));
+        CGFloat ringRadius = MIN(self.radius, innerRadius + (CGFloat)ring * ringUnit);
 
         POSplitPanelItem *item = [[POSplitPanelItem alloc] initWithTarget:ordered[i]
                                                                  iconSize:self.itemIconSize
@@ -330,7 +336,7 @@ static const CGFloat PQMaxAngleStep = 30.0 * M_PI / 180.0;
                                                                    square:settings.squareIcons];
         item.angle = angle;
         item.radius = ringRadius;
-        item.baseScale = 0.96 + (CGFloat)((i * 53) % 7) / 7.0 * 0.14;
+        item.baseScale = 0.99 + (CGFloat)((i * 53) % 5) / 5.0 * 0.06;
         CGFloat x = self.centerPoint.x + cos(angle) * ringRadius;
         CGFloat y = self.centerPoint.y + sin(angle) * ringRadius;
         item.center = CGPointMake(x, y);

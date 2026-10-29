@@ -3313,7 +3313,21 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     }
 
     if (handlePanIntent == POHandlePanIntentMenuPending) {
-        CGFloat travelled = [recognizer translationInView:self.view].x;
+        CGPoint moved = [recognizer translationInView:self.view];
+        // 上下拖就当成移动手柄/卡片，菜单让位。
+        if (fabs(moved.y) > 14.0 && fabs(moved.y) > fabs(moved.x) &&
+            [self canMovePortraitHostedLandscapeCardVertically]) {
+            CGFloat currentY = [self currentHandleScreenY];
+            if (isfinite(currentY)) {
+                handlePanIntent = POHandlePanIntentVerticalCardMove;
+                portraitHostedLandscapeHandleAnchorY = currentY;
+                panelVerticalMoveStartAnchorY = currentY;
+                [self cancelAutoNubTimer];
+                [self restoreKeyboardZoomImmediately];
+                return;
+            }
+        }
+        CGFloat travelled = moved.x;
         if (fabs(travelled) >= [POSplitXSettings shared].handleSlideDistance) {
             UIView<POQuickSwitchMenuPresenting> *menu =
                 [self quickSwitchMenuForLayoutMode:[self currentQuickSwitchLayoutMode]];
