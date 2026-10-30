@@ -13,6 +13,18 @@
 #import "DNBLogic.h"
 #import "DNBPanelViewController.h"
 
+static BOOL DNBIsDescendant(UIViewController *child, UIViewController *ancestor)
+{
+    UIViewController *p = child.parentViewController;
+    while (p) {
+        if (p == ancestor) {
+            return YES;
+        }
+        p = p.parentViewController;
+    }
+    return NO;
+}
+
 static NSMutableArray<DNBSelectionController *> *DNBAllControllers(void)
 {
     static NSMutableArray *list;
@@ -68,7 +80,7 @@ static NSMutableArray<DNBSelectionController *> *DNBAllControllers(void)
         if (!other) {
             continue;
         }
-        if (other == vc || [vc isDescendantOfViewController:other] || [other isDescendantOfViewController:vc]) {
+        if (other == vc || DNBIsDescendant(vc, other) || DNBIsDescendant(other, vc)) {
             return c;
         }
     }
