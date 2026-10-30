@@ -131,6 +131,7 @@ static const CGFloat kMiniSightEdge       = 8.0;   // 拖动时距离屏幕边�
 
 static NSString *const kMiniSightStarted   = @"com.openminis.agent.started";
 static NSString *const kMiniSightStopped   = @"com.openminis.agent.stopped";
+static NSString *const kMiniSightSettingsChanged = @"com.openminis.minisight.settings";
 static NSString *const kMiniSightCenterX   = @"MiniSightCenterX";
 static NSString *const kMiniSightCenterY   = @"MiniSightCenterY";
 static NSString *const kMiniSightText      = @"Minis 操作中";
@@ -263,6 +264,7 @@ static void MiniSightUpdateGeometry(void);
 static void MiniSightApplySavedCenter(BOOL useSaved);
 static void MiniSightStartPulse(void);
 static void MiniSightToggleRecording(void);
+static void MiniSightReloadSettings(void);
 static void MiniSightStopPulse(void);
 
 #pragma mark - 窗口类
@@ -658,6 +660,24 @@ static void MiniSightHide(void) {
     }];
 }
 
+/// 彻底拆掉浮窗（设置变更时重建用）
+static void MiniSightDestroyUI(void) {
+    if (gMiniSightPet) { [gMiniSightPet stopPlaying]; gMiniSightPet = nil; }
+    MiniSightStopRecording();
+    gMiniSightWindow.hidden = YES;
+    gMiniSightWindow.rootViewController = nil;
+    gMiniSightWindow = nil;
+    gMiniSightPill = nil; gMiniSightDot = nil; gMiniSightPulse = nil; gMiniSightLabel = nil;
+    gMiniSightBuilt = NO;
+}
+
+/// 设置变了：按新设置重建（样式/常驻立即生效，不用注销）
+static void MiniSightReloadSettings(void) {
+    BOOL wasVisible = gMiniSightWindow && !gMiniSightWindow.hidden;
+    MiniSightDestroyUI();
+    if (wasVisible || MiniSightAlwaysShow()) MiniSightShow();
+}
+
 #pragma mark - Darwin 通知
 
 /// 注意：Darwin 通知的回调线程不保证是主线程，所有 UI 操作统一切回主线程
@@ -668,6 +688,11 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
                                     CFDictionaryRef userInfo) {
     NSString *note = (__bridge NSString *)name;
     if (note.length == 0) return;
+
+    if ([note isEqualToString:kMiniSightSettingsChanged]) {
+        dispatch_async(dispatch_get_main_queue(), ^{ MiniSightReloadSettings(); });
+        return;
+    }
 
     BOOL shouldShow = [note isEqualToString:kMiniSightStarted];
     BOOL shouldHide = [note isEqualToString:kMiniSightStopped];
@@ -695,6 +720,12 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
                                         (__bridge const void *)kMiniSightStarted,
                                         MiniSightDarwinCallback,
                                         (__bridge CFStringRef)kMiniSightStarted,
+                                        NULL,
+                                        CFNotificationSuspensionBehaviorDeliverImmediately);
+        CFNotificationCenterAddObserver(center,
+                                        (__bridge const void *)kMiniSightSettingsChanged,
+                                        MiniSightDarwinCallback,
+                                        (__bridge CFStringRef)kMiniSightSettingsChanged,
                                         NULL,
                                         CFNotificationSuspensionBehaviorDeliverImmediately);
         CFNotificationCenterAddObserver(center,
