@@ -23,6 +23,7 @@
 #pragma mark - MiniSight 配置（读 Minis 容器的偏好）
 
 static void MiniSightHide(void);
+static void MiniSightHideBubble(void);
 
 /// 找到 com.openminis.app 的容器（SpringBoard 不受沙盒限制，可按元数据扫描）。
 static NSString *MiniSightAppContainer(void) {
@@ -297,6 +298,7 @@ static UIView *MiniSightReferenceView(void) {
 static void MiniSightBuildUI(void);
 static void MiniSightShow(void);
 static void MiniSightHide(void);
+static void MiniSightHideBubble(void);
 static void MiniSightUpdateGeometry(void);
 static void MiniSightApplySavedCenter(BOOL useSaved);
 static void MiniSightStartPulse(void);
