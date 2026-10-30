@@ -117,7 +117,7 @@ def main():
     check("覆盖层按列表可视区裁剪", "clipsToBounds = YES" in sel)
     check("长按成立后吃掉触摸（松手不跳详情）", "cancelsTouchesInView = YES" in sel)
     check("覆盖层自己把拖动转给列表", "handleHostPan" in sel and "addGestureRecognizer:self.hostPan" in sel)
-    check("选择时给底部条留出空间", "contentInset.bottom + 70" in sel and "savedInset" in sel)
+    check("选择时给底部条留出空间", "self.savedInset.bottom + 70" in sel)
     check("刚拖动完不误判点击", "panEndedAt" in sel)
     check("选中色铺满整行", "rowInHost.size.width = self.host.bounds.size.width" in sel)
     check("滚动静默更新覆盖层", "contentOffset" in sel and "observeValueForKeyPath" in sel)
