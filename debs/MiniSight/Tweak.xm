@@ -22,6 +22,8 @@
 
 #pragma mark - MiniSight 配置（读 Minis 容器的偏好）
 
+static void MiniSightHide(void);
+
 /// 找到 com.openminis.app 的容器（SpringBoard 不受沙盒限制，可按元数据扫描）。
 static NSString *MiniSightAppContainer(void) {
     NSString *base = @"/var/mobile/Containers/Data/Application";
@@ -59,8 +61,28 @@ static BOOL MiniSightAlwaysShow(void) {
     if (!container) return NO;
     NSString *plist = [container stringByAppendingPathComponent:@"Library/Preferences/com.openminis.app.plist"];
     NSDictionary *prefs = [NSDictionary dictionaryWithContentsOfFile:plist];
-    return [prefs[@"minisight.alwaysShow"] boolValue];
+    return [prefs[@"minisight.mode"] integerValue] == 1;
 }
+/// 总开关（设置里的「显示桌宠」，文件里 0/1，默认开）
+static BOOL MiniSightShown(void) {
+    NSString *container = MiniSightAppContainer();
+    if (!container) return YES;
+    NSString *path = [container stringByAppendingPathComponent:@"Documents/MiniSight/shown"];
+    NSString *v = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
+    return ![v isEqualToString:@"0"];
+}
+
+/// 双击隐藏：写 0（去设置里打开才恢复）
+static void MiniSightUserHide(void) {
+    NSString *container = MiniSightAppContainer();
+    if (container) {
+        NSString *dir = [container stringByAppendingPathComponent:@"Documents/MiniSight"];
+        [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+        [[@"0" dataUsingEncoding:NSUTF8StringEncoding] writeToFile:[dir stringByAppendingPathComponent:@"shown"] atomically:YES];
+    }
+    MiniSightHide();
+}
+
 
 /// 录屏开关（App 设置里，默认关）
 static BOOL MiniSightRecordingEnabled(void) {
@@ -132,6 +154,8 @@ static const CGFloat kMiniSightEdge       = 8.0;   // 拖动时距离屏幕边�
 static NSString *const kMiniSightStarted   = @"com.openminis.agent.started";
 static NSString *const kMiniSightStopped   = @"com.openminis.agent.stopped";
 static NSString *const kMiniSightSettingsChanged = @"com.openminis.minisight.settings";
+static NSString *const kMiniSightStatus = @"com.openminis.minisight.status";
+static NSString *const kMiniSightShow = @"com.openminis.minisight.show";
 static NSString *const kMiniSightCenterX   = @"MiniSightCenterX";
 static NSString *const kMiniSightCenterY   = @"MiniSightCenterY";
 static NSString *const kMiniSightText      = @"Minis 操作中";
@@ -145,8 +169,14 @@ static UIView   *gMiniSightPulse  = nil;   // 圆点背后的脉动圈
 static UILabel  *gMiniSightLabel  = nil;   // 文字
 static id        gMiniSightGestureTarget = nil; // 手势/通知的 target（需强引用）
 static BOOL      gMiniSightBuilt  = NO;
+static BOOL      gMiniSightUserHidden = NO;   // 双击隐藏，下一次 MCP 调用自动恢复
 static MiniSightPetView *gMiniSightPet = nil;   // 可选桌宠（存在 pet.png 时启用）
 static dispatch_block_t gMiniSightMaxShow = nil; // 自保：App 没发 stopped 也要收
+static UIView *gMiniSightBubble = nil;
+static UILabel *gMiniSightBubbleLabel = nil;
+static CAShapeLayer *gMiniSightBubbleTail = nil;
+static dispatch_block_t gMiniSightBubbleHideWork = nil;
+static NSString *gMiniSightLastLine = nil;
 
 #pragma mark - 颜色 / 基础计算
 
@@ -236,8 +266,15 @@ static CGPoint MiniSightClampCenter(CGPoint center) {
 /// 默认位置：屏幕顶部、水平居中，顶部距离安全区 8pt
 static CGPoint MiniSightDefaultCenter(void) {
     CGRect bounds = gMiniSightWindow ? gMiniSightWindow.bounds : MiniSightScreenRect();
-    CGFloat y = MiniSightTopInset() + kMiniSightEdge + kMiniSightHeight / 2.0;
-    return CGPointMake(bounds.size.width / 2.0, y);
+    // 不固定在顶部中间：每次没记住位置时就随机落点（上半屏、留边）。
+    CGFloat half = 60.0;
+    CGFloat minX = kMiniSightEdge + half;
+    CGFloat maxX = MAX(bounds.size.width - minX, minX);
+    CGFloat minY = MiniSightTopInset() + kMiniSightEdge + half;
+    CGFloat maxY = MAX(bounds.size.height * 0.55, minY);
+    CGFloat x = minX + (CGFloat)arc4random_uniform((uint32_t)MAX(maxX - minX, 1));
+    CGFloat y = minY + (CGFloat)arc4random_uniform((uint32_t)MAX(maxY - minY, 1));
+    return CGPointMake(x, y);
 }
 
 /// 取一个「不会跟着浮窗一起动」的参照窗口，用来换算拖拽位移
@@ -266,6 +303,7 @@ static void MiniSightStartPulse(void);
 static void MiniSightToggleRecording(void);
 static void MiniSightReloadSettings(void);
 static void MiniSightBringMinisFront(void);
+static void MiniSightSpeakLine(void);
 static void MiniSightStopPulse(void);
 
 #pragma mark - 窗口类
@@ -342,6 +380,17 @@ static void MiniSightStopPulse(void);
 }
 
 /// 旋转：界面方向变化是异步的，稍等一下再重算并 clamp
+- (void)handleSingleTap:(UITapGestureRecognizer *)tap {
+    MiniSightSpeakLine();
+}
+
+- (void)handleDoubleTap:(UITapGestureRecognizer *)tap {
+    UIImpactFeedbackGenerator *feedback =
+        [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+    [feedback impactOccurred];
+    MiniSightUserHide();
+}
+
 - (void)handleLongPress:(UILongPressGestureRecognizer *)press {
     if (press.state != UIGestureRecognizerStateBegan) return;
     UIImpactFeedbackGenerator *feedback =
@@ -581,6 +630,16 @@ static void MiniSightBuildUI(void) {
         };
         [root addSubview:gMiniSightPet];
         [gMiniSightPet addGestureRecognizer:pan];
+        UITapGestureRecognizer *petDouble =
+            [[UITapGestureRecognizer alloc] initWithTarget:gMiniSightGestureTarget
+                                                    action:@selector(handleDoubleTap:)];
+        petDouble.numberOfTapsRequired = 2;
+        [gMiniSightPet addGestureRecognizer:petDouble];
+        UITapGestureRecognizer *petSingle =
+            [[UITapGestureRecognizer alloc] initWithTarget:gMiniSightGestureTarget
+                                                    action:@selector(handleSingleTap:)];
+        [petSingle requireGestureRecognizerToFail:petDouble];
+        [gMiniSightPet addGestureRecognizer:petSingle];
         pill.hidden = YES;
     } else {
         [pill addGestureRecognizer:pan];
@@ -589,6 +648,16 @@ static void MiniSightBuildUI(void) {
                                                           action:@selector(handleLongPress:)];
         pillPress.minimumPressDuration = 0.9;
         [pill addGestureRecognizer:pillPress];
+        UITapGestureRecognizer *pillDouble =
+            [[UITapGestureRecognizer alloc] initWithTarget:gMiniSightGestureTarget
+                                                    action:@selector(handleDoubleTap:)];
+        pillDouble.numberOfTapsRequired = 2;
+        [pill addGestureRecognizer:pillDouble];
+        UITapGestureRecognizer *pillSingle =
+            [[UITapGestureRecognizer alloc] initWithTarget:gMiniSightGestureTarget
+                                                    action:@selector(handleSingleTap:)];
+        [pillSingle requireGestureRecognizerToFail:pillDouble];
+        [pill addGestureRecognizer:pillSingle];
     }
 
     gMiniSightWindow = window;
@@ -603,6 +672,11 @@ static void MiniSightBuildUI(void) {
 #pragma mark - 显示 / 隐藏
 
 static void MiniSightShow(void) {
+    if (!MiniSightShown()) return;
+    if (gMiniSightUserHidden) {
+        gMiniSightUserHidden = NO;
+        [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"MiniSightUserHidden"];
+    }
     MiniSightBuildUI();
     if (!gMiniSightWindow) return;
 
@@ -639,7 +713,8 @@ static void MiniSightShow(void) {
 }
 
 static void MiniSightHide(void) {
-    if (MiniSightAlwaysShow()) return;   // 常驻模式：不随操作结束隐藏
+    MiniSightHideBubble();
+    if (MiniSightAlwaysShow() && !gMiniSightUserHidden) return;   // 常驻且未手动隐藏
     if (gMiniSightMaxShow) { dispatch_block_cancel(gMiniSightMaxShow); gMiniSightMaxShow = nil; }
     if (!gMiniSightWindow || gMiniSightWindow.hidden) return;
 
@@ -656,13 +731,13 @@ static void MiniSightHide(void) {
             gMiniSightWindow.alpha = 1.0; // 下次显示从 0 开始淡入
             MiniSightStopPulse();
             [gMiniSightPet stopPlaying];
-            MiniSightStopRecording();
         }
     }];
 }
 
 /// 彻底拆掉浮窗（设置变更时重建用）
 static void MiniSightDestroyUI(void) {
+    if (gMiniSightBubble) { [gMiniSightBubble removeFromSuperview]; gMiniSightBubble = nil; gMiniSightBubbleLabel = nil; gMiniSightBubbleTail = nil; }
     if (gMiniSightPet) { [gMiniSightPet stopPlaying]; gMiniSightPet = nil; }
     MiniSightStopRecording();
     gMiniSightWindow.hidden = YES;
@@ -676,7 +751,173 @@ static void MiniSightDestroyUI(void) {
 static void MiniSightReloadSettings(void) {
     BOOL wasVisible = gMiniSightWindow && !gMiniSightWindow.hidden;
     MiniSightDestroyUI();
+    if (!MiniSightShown()) return;
     if (wasVisible || MiniSightAlwaysShow()) MiniSightShow();
+}
+
+
+#pragma mark - 说话气泡（只在 MCP 调用时）
+
+static void MiniSightHideBubble(void) {
+    gMiniSightBubble.hidden = YES;
+}
+
+/// 纯文字气泡：动态深浅色、小尾巴指向指示器，最多 20 字。
+static void MiniSightShowBubble(NSString *raw) {
+    UIView *host = gMiniSightPet ?: gMiniSightPill;
+    UIView *root = gMiniSightWindow.rootViewController.view;
+    if (!host || !root || raw.length == 0) return;
+
+    NSString *text = raw.length > 20 ? [[raw substringToIndex:20] stringByAppendingString:@"…"] : raw;
+
+    if (!gMiniSightBubble) {
+        UIView *b = [[UIView alloc] init];
+        b.backgroundColor = [UIColor systemBackgroundColor];
+        b.layer.cornerRadius = 16;
+        b.layer.borderWidth = 0.5;
+        b.layer.borderColor = [UIColor separatorColor].CGColor;
+        b.userInteractionEnabled = NO;
+        b.hidden = YES;
+
+        UILabel *l = [[UILabel alloc] init];
+        l.font = [UIFont systemFontOfSize:11];
+        l.textColor = [UIColor labelColor];
+        l.numberOfLines = 0;
+        l.userInteractionEnabled = NO;
+        [b addSubview:l];
+        gMiniSightBubbleLabel = l;
+
+        CAShapeLayer *tail = [CAShapeLayer layer];
+        tail.fillColor = [UIColor systemBackgroundColor].CGColor;
+        [b.layer addSublayer:tail];
+        gMiniSightBubbleTail = tail;
+
+        [root addSubview:b];
+        gMiniSightBubble = b;
+    }
+
+    gMiniSightBubble.hidden = NO;
+    gMiniSightBubble.backgroundColor = [UIColor systemBackgroundColor];
+    gMiniSightBubbleLabel.textColor = [UIColor labelColor];
+    gMiniSightBubbleTail.fillColor = [UIColor systemBackgroundColor].CGColor;
+    gMiniSightBubbleLabel.text = text;
+
+    CGFloat maxW = 220.0;
+    CGSize fit = [gMiniSightBubbleLabel sizeThatFits:CGSizeMake(maxW, 60)];
+    CGFloat w = MIN(maxW, fit.width) + 16;
+    CGFloat h = fit.height + 12;
+
+    CGFloat x = host.center.x - w / 2.0;
+    x = MAX(8, MIN(x, root.bounds.size.width - w - 8));
+    BOOL above = CGRectGetMinY(host.frame) > (h + 14);
+    CGFloat y = above ? CGRectGetMinY(host.frame) - h - 7
+                      : CGRectGetMaxY(host.frame) + 7;
+    gMiniSightBubble.frame = CGRectMake(x, y, w, h);
+    gMiniSightBubbleLabel.frame = CGRectMake(8, 6, w - 16, h - 12);
+
+    UIBezierPath *path = [UIBezierPath bezierPath];
+    CGFloat cx = MIN(MAX(host.center.x - x, 14), w - 14);
+    if (above) {
+        [path moveToPoint:CGPointMake(cx - 5, h)];
+        [path addLineToPoint:CGPointMake(cx, h + 6)];
+        [path addLineToPoint:CGPointMake(cx + 5, h)];
+    } else {
+        [path moveToPoint:CGPointMake(cx - 5, 0)];
+        [path addLineToPoint:CGPointMake(cx, -6)];
+        [path addLineToPoint:CGPointMake(cx + 5, 0)];
+    }
+    [path closePath];
+    gMiniSightBubbleTail.path = path.CGPath;
+    gMiniSightBubbleTail.frame = gMiniSightBubble.bounds;
+}
+
+static void MiniSightReadStatus(void) {
+    NSString *container = MiniSightAppContainer();
+    if (!container) return;
+    NSString *path = [container stringByAppendingPathComponent:@"Documents/MiniSight/status.txt"];
+    NSString *text = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
+    if (text.length) MiniSightShowBubble(text);
+}
+
+
+/// 气泡显示一句话，3 秒后消失。
+static void MiniSightShowLine(NSString *line) {
+    MiniSightShowBubble(line);
+    if (gMiniSightBubbleHideWork) dispatch_block_cancel(gMiniSightBubbleHideWork);
+    gMiniSightBubbleHideWork = dispatch_block_create(DISPATCH_BLOCK_DETACHED, ^{
+        MiniSightHideBubble();
+    });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), gMiniSightBubbleHideWork);
+}
+
+/// 预置句子（AI 失败时兜底）。
+static void MiniSightSayPresetLine(void) {
+    static NSArray<NSString *> *lines = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        lines = @[@"你在干嘛呀？", @"想我了没啊？", @"摸摸我嘛", @"今天也要加油哦",
+                  @"我在这儿呢", @"别太久不理我", @"有点困了…", @"你在忙什么？",
+                  @"陪我一会儿嘛", @"有我在呢", @"别累坏了", @"我乖乖的",
+                  @"记得喝水哦", @"早点休息呀", @"我又来啦", @"看看我嘛"];
+    });
+    NSString *line = lines[arc4random_uniform((uint32_t)lines.count)];
+    if ([line isEqualToString:gMiniSightLastLine]) {
+        line = lines[arc4random_uniform((uint32_t)lines.count)];
+    }
+    gMiniSightLastLine = line;
+    MiniSightShowLine(line);
+}
+
+/// 单击：有配置就请求 AI 说一句，失败/超时用预置。
+static void MiniSightSpeakLine(void) {
+    NSString *container = MiniSightAppContainer();
+    NSString *path = [container stringByAppendingPathComponent:@"Documents/MiniSight/ai.json"];
+    NSData *data = [NSData dataWithContentsOfFile:path];
+    NSDictionary *cfg = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+    NSString *base = cfg[@"url"], *key = cfg[@"key"], *model = cfg[@"model"];
+    if (![base isKindOfClass:[NSString class]] || base.length == 0 ||
+        ![key isKindOfClass:[NSString class]] || key.length == 0 ||
+        ![model isKindOfClass:[NSString class]] || model.length == 0) {
+        MiniSightSayPresetLine();
+        return;
+    }
+    NSString *full = [base hasSuffix:@"/chat/completions"] ? base
+                                                           : [base stringByAppendingString:@"/chat/completions"];
+    NSURL *url = [NSURL URLWithString:full];
+    if (!url) { MiniSightSayPresetLine(); return; }
+
+    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
+    req.HTTPMethod = @"POST";
+    req.timeoutInterval = 4.0;
+    [req setValue:[@"Bearer " stringByAppendingString:key] forHTTPHeaderField:@"Authorization"];
+    [req setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+    NSDictionary *body = @{ @"model": model, @"max_tokens": @40,
+        @"messages": @[ @{@"role": @"system", @"content": @"你是可爱的桌宠，说一句不超过20字的中文撒娇话，不要引号。"},
+                        @{@"role": @"user", @"content": @"说一句"} ] };
+    req.HTTPBody = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
+
+    [[[NSURLSession sharedSession] dataTaskWithRequest:req
+        completionHandler:^(NSData *d, NSURLResponse *r, NSError *e) {
+        NSString *line = nil;
+        if (d) {
+            id obj = [NSJSONSerialization JSONObjectWithData:d options:0 error:nil];
+            if ([obj isKindOfClass:[NSDictionary class]]) {
+                NSArray *choices = obj[@"choices"];
+                if ([choices isKindOfClass:[NSArray class]] && choices.count) {
+                    id msg = choices[0][@"message"];
+                    if ([msg isKindOfClass:[NSDictionary class]] && [msg[@"content"] isKindOfClass:[NSString class]]) {
+                        line = [msg[@"content"] stringByTrimmingCharactersInSet:
+                                [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                    }
+                }
+            }
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (line.length) MiniSightShowLine(line);
+            else MiniSightSayPresetLine();
+        });
+    }] resume];
 }
 
 #pragma mark - Darwin 通知
@@ -690,6 +931,14 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
     NSString *note = (__bridge NSString *)name;
     if (note.length == 0) return;
 
+    if ([note isEqualToString:kMiniSightShow]) {
+        dispatch_async(dispatch_get_main_queue(), ^{ MiniSightShow(); });
+        return;
+    }
+    if ([note isEqualToString:kMiniSightStatus]) {
+        dispatch_async(dispatch_get_main_queue(), ^{ MiniSightReadStatus(); });
+        return;
+    }
     if ([note isEqualToString:kMiniSightSettingsChanged]) {
         dispatch_async(dispatch_get_main_queue(), ^{ MiniSightReloadSettings(); });
         return;
@@ -704,6 +953,7 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
             MiniSightShow();
         } else {
             MiniSightHide();
+            MiniSightStopRecording();
             MiniSightBringMinisFront();
         }
     });
@@ -730,6 +980,7 @@ static void MiniSightBringMinisFront(void) {
     @autoreleasepool {
         // 手势 / 旋转通知的 target（NSNotificationCenter 不持有 observer，必须自己保活）
         gMiniSightGestureTarget = [[MiniSightGestureHandler alloc] init];
+        gMiniSightUserHidden = [[NSUserDefaults standardUserDefaults] boolForKey:@"MiniSightUserHidden"];
 
         // 立刻注册 Darwin 通知：回调里会懒加载 UI，不会漏掉启动早期的事件
         CFNotificationCenterRef center = CFNotificationCenterGetDarwinNotifyCenter();
@@ -737,6 +988,18 @@ static void MiniSightBringMinisFront(void) {
                                         (__bridge const void *)kMiniSightStarted,
                                         MiniSightDarwinCallback,
                                         (__bridge CFStringRef)kMiniSightStarted,
+                                        NULL,
+                                        CFNotificationSuspensionBehaviorDeliverImmediately);
+        CFNotificationCenterAddObserver(center,
+                                        (__bridge const void *)kMiniSightShow,
+                                        MiniSightDarwinCallback,
+                                        (__bridge CFStringRef)kMiniSightShow,
+                                        NULL,
+                                        CFNotificationSuspensionBehaviorDeliverImmediately);
+        CFNotificationCenterAddObserver(center,
+                                        (__bridge const void *)kMiniSightStatus,
+                                        MiniSightDarwinCallback,
+                                        (__bridge CFStringRef)kMiniSightStatus,
                                         NULL,
                                         CFNotificationSuspensionBehaviorDeliverImmediately);
         CFNotificationCenterAddObserver(center,
@@ -755,7 +1018,7 @@ static void MiniSightBringMinisFront(void) {
         // SpringBoard 刚启动时 UI 还没准备好，延迟 2 秒再建浮窗 + 注册旋转监听
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
-            if (MiniSightAlwaysShow()) MiniSightShow();
+            if (MiniSightAlwaysShow() && MiniSightShown()) MiniSightShow();
             else MiniSightBuildUI();
 
             [[UIDevice currentDevice] beginGeneratingDeviceOrientationNotifications];
