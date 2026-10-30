@@ -1,0 +1,85 @@
+#ifndef MOCK_METAL_STDLIB
+#define MOCK_METAL_STDLIB
+#include <type_traits>
+#include <cmath>
+
+namespace metal {
+typedef unsigned int uint;
+
+
+struct float2 {
+  float x, y;
+  float2() : x(0), y(0) {}
+  explicit float2(float v) : x(v), y(v) {}
+  float2(float a, float b) : x(a), y(b) {}
+  float2(const float2 &) = default;
+};
+struct float4 {
+  float x, y, z, w, a; float2 rgb;
+  float4() : x(0), y(0), z(0), w(0), a(0), rgb(0,0) {}
+  float4(float2 p, float c) : x(p.x), y(p.y), z(c), w(c), a(c), rgb(p.x,p.y) {}
+  float4(float2 p, float b, float c) : x(p.x), y(p.y), z(b), w(c), a(c), rgb(p.x,p.y) {}
+  float4(float x0, float b, float c, float d) : x(x0), y(b), z(c), w(d), a(d), rgb(x0,b) {}
+};
+
+#define VEC_OPS(T)                                                              \
+  inline T operator+(T a, T b) { return T(a.x + b.x, a.y + b.y); }              \
+  inline T operator-(T a, T b) { return T(a.x - b.x, a.y - b.y); }              \
+  inline T operator*(T a, T b) { return T(a.x * b.x, a.y * b.y); }              \
+  inline T operator/(T a, T b) { return T(a.x / b.x, a.y / b.y); }              \
+  template <class S, typename std::enable_if<std::is_arithmetic<S>::value, int>::type = 0>                            \
+  inline T operator*(T a, S s) { return T(a.x * (float)s, a.y * (float)s); }    \
+  template <class S, typename std::enable_if<std::is_arithmetic<S>::value, int>::type = 0>                            \
+  inline T operator*(S s, T a) { return T(a.x * (float)s, a.y * (float)s); }    \
+  template <class S, typename std::enable_if<std::is_arithmetic<S>::value, int>::type = 0>                            \
+  inline T operator+(T a, S s) { return T(a.x + (float)s, a.y + (float)s); }    \
+  template <class S, typename std::enable_if<std::is_arithmetic<S>::value, int>::type = 0>                            \
+  inline T operator-(T a, S s) { return T(a.x - (float)s, a.y - (float)s); }    \
+  template <class S, typename std::enable_if<std::is_arithmetic<S>::value, int>::type = 0>                            \
+  inline T operator/(T a, S s) { return T(a.x / (float)s, a.y / (float)s); }
+VEC_OPS(float2)
+#undef VEC_OPS
+
+inline float length(float2 v) { return std::sqrt(v.x * v.x + v.y * v.y); }
+inline float dot(float2 a, float2 b) { return a.x * b.x + a.y * b.y; }
+inline float2 abs(float2 v) { return float2(std::fabs(v.x), std::fabs(v.y)); }
+inline float2 min(float2 a, float2 b) { return float2(std::fmin(a.x, b.x), std::fmin(a.y, b.y)); }
+inline float2 max(float2 a, float2 b) { return float2(std::fmax(a.x, b.x), std::fmax(a.y, b.y)); }
+inline float2 clamp(float2 v, float2 lo, float2 hi) { return min(max(v, lo), hi); }
+template <class A> inline float max(float a, A b) { return a > (float)b ? a : (float)b; }
+template <class A> inline float min(float a, A b) { return a < (float)b ? a : (float)b; }
+inline float clamp(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
+template <class S, class A, class B>
+inline float clamp(float v, A lo, B hi) { float l = (float)lo, h = (float)hi; return v < l ? l : (v > h ? h : v); }
+template <class A, class B, class C> inline float mix(A a, B b, C t) { return (float)a * (1.0f - (float)t) + (float)b * (float)t; }
+inline float2 mix(float2 a, float2 b, float t) { return a * (1.0f - t) + b * t; }
+inline float step(float e, float x) { return x < e ? 0.0f : 1.0f; }
+inline float smoothstep(float e0, float e1, float x) {
+  float t = clamp((x - e0) / (e1 - e0), 0.0f, 1.0f); return t * t * (3.0f - 2.0f * t);
+}
+template <class T> inline T sin(T v) { return std::sin(v); }
+template <class T> inline T cos(T v) { return std::cos(v); }
+template <class T> inline T exp(T v) { return std::exp(v); }
+template <class T> inline T sqrt(T v) { return std::sqrt(v); }
+template <class T> inline T atan2(T y, T x) { return std::atan2(y, x); }
+template <class T> inline T pow(T b, T e) { return std::pow(b, e); }
+
+namespace coord { constexpr int normalized = 0; }
+namespace address { constexpr int clamp_to_edge = 0; }
+namespace filter { constexpr int linear = 0; }
+class sampler { public: constexpr sampler(int, int, int) {} };
+
+template <class T> struct texture2d {
+  float4 sample(sampler s, float2 uv) const { (void)s; (void)uv; return float4(uv.x, uv.y, 0.f, 1.f); }
+};
+
+}  // namespace metal
+
+using namespace metal;
+#define constant const
+#define device
+#define thread
+#define vertex
+#define fragment
+#define discard_fragment() ((void)0)
+#endif
