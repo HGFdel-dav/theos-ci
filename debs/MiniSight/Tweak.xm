@@ -621,7 +621,7 @@ static void MiniSightShow(void) {
 
     // 自保：即使 App 被杀/信号丢了，3 分钟后也自动收起来
     if (gMiniSightMaxShow) dispatch_block_cancel(gMiniSightMaxShow);
-    gMiniSightMaxShow = dispatch_block_create(0, ^{ MiniSightHide(); });
+    gMiniSightMaxShow = dispatch_block_create(DISPATCH_BLOCK_DETACHED, ^{ MiniSightHide(); });
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(180 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), gMiniSightMaxShow);
 
