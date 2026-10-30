@@ -12,7 +12,7 @@ static void validate(POFanLayout x, double minX, double minY, double maxX, doubl
         assert(isfinite(p.x) && isfinite(p.y) && isfinite(p.angle));
         assert(p.x-x.reserve >= minX-0.001 && p.x+x.reserve <= maxX+0.001);
         assert(p.y-x.reserve >= minY-0.001 && p.y+x.reserve <= maxY+0.001);
-        for (int j=0; j<i; j++) assert(POFanSeparated(p,x.points[j],side*1.20+spacing));
+        for (int j=0; j<i; j++) assert(POFanSeparated(p,x.points[j],side+spacing));
     }
     if (x.count) {
         assert(fabs(x.side-side)<0.0001); /* Never shrink the requested icon. */

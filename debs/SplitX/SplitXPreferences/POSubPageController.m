@@ -149,6 +149,39 @@
     [self setValue:value forSpecifier:specifier];
 }
 
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    PSSpecifier *specifier = [self specifierAtIndexPath:indexPath];
+    if ([[specifier propertyForKey:@"id"] isEqualToString:@"resetPanelDefaults"]) {
+        NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.niubiprass.splitx"];
+        NSDictionary *recommended = @{
+            @"iconSize": @56, @"tileSize": @68, @"itemSpacing": @6,
+            @"fanRadius": @180, @"fanSpan": @180,
+            @"ring1": @12, @"ring2": @0, @"ring3": @0, @"ring4": @0,
+            @"ringGap": @0, @"handleSlideDistance": @45,
+            @"panelEdgeInset": @0, @"handleOnLeft": @NO,
+            @"handleVerticalPosition": @50, @"handleOpacity": @100,
+            @"handleHidden": @NO, @"handleAlwaysVisible": @YES,
+            @"squareIcons": @NO, @"animationSpeed": @100
+        };
+        [recommended enumerateKeysAndObjectsUsingBlock:^(NSString *key, id value, BOOL *stop) {
+            [defaults setObject:value forKey:key];
+        }];
+        [defaults synchronize];
+        [POApplicationHelper reloadSettings];
+        CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                             CFSTR("com.niubiprass.splitx.settings-changed"), NULL, NULL, YES);
+        PXLog(@"prefs", @"恢复推荐菜单布局 keys=%lu", (unsigned long)recommended.count);
+        [tableView deselectRowAtIndexPath:indexPath animated:YES];
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"已恢复推荐布局"
+                                                                       message:@"菜单半径、张角、环容量、图标尺寸和手柄位置已恢复。"
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:alert animated:YES completion:nil];
+        return;
+    }
+    [super tableView:tableView didSelectRowAtIndexPath:indexPath];
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
     PXLog(@"prefs", @"子页 viewDidLoad plist=%@ count=%lu", _subPagePlistName,

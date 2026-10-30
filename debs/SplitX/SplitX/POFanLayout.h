@@ -47,18 +47,20 @@ static inline POFanLayout POFanBuild(double minX, double minY, double maxX, doub
     /* Requested radius still moves the first ring outward, but only by half its
      * value so inner space is not wasted and big icons keep their rings. */
     double radiusLimit = room;
-    double inner = fmax(fmax(side * 1.38, 64.0), requestedRadius * 0.5);
+    double inner = fmax(fmax(side * 1.38, 64.0), requestedRadius);
+    inner = fmin(inner, radiusLimit);
     if (inner > radiusLimit) inner = radiusLimit;
     if (inner < side * 0.75) return out;
     double pitch = side * 1.28 + fmax(spacing, 0.0) + fmax(ringGap, 0.0);
     double desiredSpan = POFanClamp(spanDegrees, 10.0, 180.0) * PO_FAN_PI / 180.0;
-    double separation = side * 1.20 + fmax(spacing, 0.0);
+    double separation = side + fmax(spacing, 0.0);
     int caps[4], capSum = 0;
     for (int r = 0; r < 4; r++) { caps[r] = inputCaps[r] > 0 ? inputCaps[r] : 0; capSum += caps[r]; }
-    if (capSum == 0) { caps[0] = 7; caps[1] = 10; caps[2] = 13; caps[3] = 16; }
+    if (capSum == 0) { caps[0] = 12; caps[1] = 0; caps[2] = 0; caps[3] = 0; }
     out.minX = out.maxX = anchorX;
     out.minY = out.maxY = anchorY;
-    for (int ring = 0; ring < 4 && out.count < PO_FAN_LIMIT; ring++) {
+    // 用户明确要半圆扇形，不要 Galaxy 式同心环。只排单弧；放不下时由 UI 分页。
+    for (int ring = 0; ring < 1 && out.count < PO_FAN_LIMIT; ring++) {
         double radius = inner + ring * pitch;
         if (radius > radiusLimit + 0.0001) break;
         if (!caps[ring]) continue;

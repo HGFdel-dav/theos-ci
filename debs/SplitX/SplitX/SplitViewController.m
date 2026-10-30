@@ -1953,7 +1953,7 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
         CGFloat ratio = handlePoint.y / maximumOffset;
         [defaults setDouble:ratio forKey:@"handlePointRatio"];
         NSUserDefaults *suite = [[NSUserDefaults alloc] initWithSuiteName:@"com.niubiprass.splitx"];
-        [suite setObject:@(ratio * 100.0) forKey:@"handleVerticalPosition"];
+        [suite setObject:@((1.0 - ratio) * 100.0) forKey:@"handleVerticalPosition"];
         [suite synchronize];
     }
 }
@@ -2309,6 +2309,7 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     if (shouldOpen) {
         panelState = POPanelStateOpen;
         keyboardZoomContainer.hidden = NO;
+        self.handle.hidden = YES;
         [self.handle setHostedWindowOpen:YES];
         if (presentationSnapshotView && !presentationSnapshotView.hidden &&
             hostSession.state == POHostSessionStateLive) {
@@ -2341,6 +2342,7 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
             handleHandoffSnapshot = [self beginHandleVisualHandoffSnapshot];
         }
         panelState = POPanelStateClosed;
+        self.handle.hidden = NO;
         [self.handle setHostedWindowOpen:NO];
         if (previousLayoutMode != [self currentQuickSwitchLayoutMode]) {
             [self applyLayoutPreservingHandlePosition:YES];
@@ -2516,15 +2518,6 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     appliedCardScale = visualScale;
     closingFrozenCardScale = visualScale;
 
-    CGFloat maximumOffset = [self maximumContentOffsetX];
-    CGFloat handleCompanionX = handleVisualTransform.tx;
-    CGFloat enlargementOverflow = MAX(0.0, CGRectGetWidth(keyboardZoomBaseFrame) * (visualScale - 1.0));
-    CGFloat cardTravelX = maximumOffset + enlargementOverflow + CONTENT_SHADOW_FADE_DISTANCE;
-    CGFloat handleTravelX = maximumOffset - handleCompanionX;
-
-    CGPoint cardEndCenter = CGPointMake(cardStartCenter.x + cardTravelX, cardStartCenter.y);
-    CGPoint handleEndCenter = CGPointMake(handleStartCenter.x + handleTravelX, handleStartCenter.y);
-
     [UIView animateWithDuration:PO_SCALED_PROGRAMMATIC_CLOSE_DURATION
                           delay:0
                         options:(UIViewAnimationOptionCurveEaseInOut |
@@ -2532,12 +2525,12 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
                                  UIViewAnimationOptionAllowUserInteraction)
                      animations:^{
         // PX 那种：原地缩小并淡出，不是平移出屏。
-        CGFloat shrink = 0.55;
+        // 动态岛式：卡片原地向中心压缩，接近 compactScale 后淡出，不平移到屏外。
+        CGFloat shrink = 0.22;
         CGAffineTransform cardShrink = CGAffineTransformMakeScale(visualScale * shrink, visualScale * shrink);
-        cardShrink.tx = cardTravelX * 0.18;
         self->keyboardZoomContainer.transform = cardShrink;
         self->keyboardZoomContainer.alpha = 0;
-        self->handleScrollView.transform = CGAffineTransformMakeScale(0.6, 0.6);
+        self->handleScrollView.transform = CGAffineTransformMakeScale(0.35, 0.35);
         self->handleScrollView.alpha = 0;
         self->panelBackdropView.alpha = 0;
         self->quickSwitchBackdropView.alpha = 0;
@@ -2789,7 +2782,8 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
             }
         } else {
             CGFloat configured = [POSplitXSettings shared].handleVerticalPosition;
-            targetHandleOffset = configured * [self maximumHandleOffset];
+            // 设置 0=顶部、100=底部；UIScrollView offset 方向正好相反。
+            targetHandleOffset = (1.0 - configured) * [self maximumHandleOffset];
         }
         [handleScrollView setContentOffset:CGPointMake(0, [self clampedHandleOffset:targetHandleOffset]) animated:NO];
 
@@ -2798,8 +2792,8 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
             ? HANDLE_EDGE_GAP
             : handleRailWidth - HANDLE_EDGE_GAP - self.handle.frame.size.width;
         CGRect handleLayoutFrame = self.handle.frame;
-        CGFloat ratio = [POSplitXSettings shared].handleVerticalPosition;
-        handleLayoutFrame.origin.y = ratio * MAX(0, handleViewportHeight - CGRectGetHeight(self.handle.bounds));
+        // 垂直位置由 handleScrollView.contentOffset 统一决定，frame 固定在内容底端。
+        handleLayoutFrame.origin.y = handleViewportHeight - CGRectGetHeight(self.handle.bounds);
         if (!self.handle.isNubbed) {
             handleLayoutFrame.origin.x = self.handle.restingOriginX;
         }

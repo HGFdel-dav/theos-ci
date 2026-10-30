@@ -455,6 +455,7 @@
         insets.left += 8.0; insets.right += 8.0;
         self.coordinateBounds = UIEdgeInsetsInsetRect(coordinateView.bounds, insets);
         self.presentationAnchorFrame = handleFrame;
+        // 圆心严格跟随手柄中心；布局器只裁弧角，不移动菜单去别处。
         self.anchorInSuperview = CGPointMake(handleCenter.x + (handleOnLeft ? 1.0 : -1.0) * settings.panelEdgeInset,
                                              handleCenter.y);
         if (!_presenting) self.pageIndex = 0;

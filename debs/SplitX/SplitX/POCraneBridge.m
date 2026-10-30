@@ -425,6 +425,40 @@ static NSString *POCRaneRowString(id row, NSString *key) {
         };
 
         void (^switchNow)(void) = ^{
+            // ParallelX/Twin 在当前 Crane 上优先走无认证接口；带认证接口在第二账号上会直接回调 NO。
+            SEL plainSelector = NSSelectorFromString(@"setActiveContainerIdentifier:forApplicationWithIdentifier:reloadApplication:");
+            BOOL plainResponds = [manager respondsToSelector:plainSelector];
+            BOOL plainABI = POCraneSignature(manager, NSStringFromSelector(plainSelector), "v",
+                                             @[@"@", @"@", [NSString stringWithUTF8String:@encode(BOOL)]]);
+            PXLog(@"clone", @"plain selector responds=%d abi=%d", plainResponds, plainABI);
+            if (plainResponds && plainABI) {
+                PXLog(@"clone", @"%@ 使用 ParallelX 无认证切换 reload:NO target=%@", bundle, wanted);
+                @try {
+                    ((void (*)(id, SEL, id, id, BOOL))objc_msgSend)(manager, plainSelector, wanted, bundle, NO);
+                } @catch (NSException *exception) {
+                    finish(NO, POCraneError(POCraneVerificationFailed, [NSString stringWithFormat:@"无认证切换异常 %@", exception.reason]));
+                    return;
+                }
+                __block NSUInteger readbacks = 0;
+                __block void (^verifyPlain)(void);
+                verifyPlain = ^{
+                    if (finished) return;
+                    NSString *active = POCraneActive(manager, bundle);
+                    PXLog(@"clone", @"plain readback=%lu active=%@ want=%@", (unsigned long)readbacks, active ?: @"nil", wanted);
+                    if ([active isEqualToString:wanted]) {
+                        finish(YES, nil);
+                        return;
+                    }
+                    if (++readbacks >= 30) {
+                        finish(NO, POCraneError(POCraneVerificationFailed, @"无认证切换回读不一致"));
+                        return;
+                    }
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)),
+                                   dispatch_get_main_queue(), verifyPlain);
+                };
+                verifyPlain();
+                return;
+            }
             if (!POCraneSignature(manager, POCraneBioSelector, "v", @[@"@", @"@", @"@?"])) {
                 finish(NO, POCraneError(POCraneUnsupportedABI, @"Crane 切换接口签名不符"));
                 return;

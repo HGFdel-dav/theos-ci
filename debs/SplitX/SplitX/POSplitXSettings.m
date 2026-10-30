@@ -53,7 +53,27 @@ static NSArray<NSString *> *PXAllowedKeys(void) {
 - (void)reload {
     NSDictionary *before = [_values copy];
     [_values removeAllObjects];
-    NSDictionary *stored = [PXDefaults() dictionaryRepresentation];
+    NSUserDefaults *defaults = PXDefaults();
+    // r28 从四层同心环改为单层半圆扇形。旧版参数会把菜单挤成多排/窄条，
+    // 首次升级只迁移这些已废弃的布局值；其他偏好与账号选择不动。
+    if (![defaults boolForKey:@"singleArcLayoutMigrationR28"]) {
+        [defaults setInteger:56 forKey:@"iconSize"];
+        [defaults setInteger:68 forKey:@"tileSize"];
+        [defaults setInteger:6 forKey:@"itemSpacing"];
+        [defaults setInteger:180 forKey:@"fanRadius"];
+        [defaults setInteger:180 forKey:@"fanSpan"];
+        [defaults setInteger:12 forKey:@"ring1"];
+        [defaults setInteger:0 forKey:@"ring2"];
+        [defaults setInteger:0 forKey:@"ring3"];
+        [defaults setInteger:0 forKey:@"ring4"];
+        [defaults setInteger:0 forKey:@"ringGap"];
+        [defaults setInteger:0 forKey:@"panelEdgeInset"];
+        [defaults setInteger:50 forKey:@"handleVerticalPosition"];
+        [defaults setBool:YES forKey:@"singleArcLayoutMigrationR28"];
+        [defaults synchronize];
+        PXLog(@"prefs", @"r28 migration: reset legacy multi-ring geometry to recommended single arc");
+    }
+    NSDictionary *stored = [defaults dictionaryRepresentation];
     for (NSString *key in PXAllowedKeys()) {
         id value = stored[key];
         if (value) _values[key] = value;
@@ -75,15 +95,15 @@ static NSArray<NSString *> *PXAllowedKeys(void) {
     return MIN(MAX(v, min), max);
 }
 
-- (CGFloat)iconSize { return [self doubleForKey:@"iconSize" fallback:60 min:40 max:76]; }
+- (CGFloat)iconSize { return [self doubleForKey:@"iconSize" fallback:56 min:40 max:76]; }
 - (CGFloat)tileSize { return [self doubleForKey:@"tileSize" fallback:68 min:52 max:92]; }
 - (CGFloat)itemSpacing { return [self doubleForKey:@"itemSpacing" fallback:6 min:0 max:20]; }
 - (CGFloat)panelRadius { return [self doubleForKey:@"panelRadius" fallback:30 min:12 max:40]; }
 - (BOOL)showSplitAppIdentity { id v = _values[@"showSplitAppIdentity"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : YES; }
 - (CGFloat)panelAlpha { return [self doubleForKey:@"panelAlpha" fallback:0 min:0 max:100] / 100.0; }
 - (NSInteger)panelColumns { return (NSInteger)[self doubleForKey:@"panelColumns" fallback:2 min:1 max:3]; }
-- (CGFloat)fanRadius { return [self doubleForKey:@"fanRadius" fallback:210 min:120 max:260]; }
-- (CGFloat)fanSpan { return [self doubleForKey:@"fanSpan" fallback:120 min:60 max:200]; }
+- (CGFloat)fanRadius { return [self doubleForKey:@"fanRadius" fallback:180 min:120 max:260]; }
+- (CGFloat)fanSpan { return [self doubleForKey:@"fanSpan" fallback:180 min:60 max:200]; }
 - (CGFloat)animationSpeed { return [self doubleForKey:@"animationSpeed" fallback:100 min:50 max:200]; }
 - (BOOL)handleHidden { id v = _values[@"handleHidden"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : NO; }
 - (CGFloat)handleOpacity { return [self doubleForKey:@"handleOpacity" fallback:100 min:10 max:100] / 100.0; }
@@ -100,11 +120,11 @@ static NSArray<NSString *> *PXAllowedKeys(void) {
 - (BOOL)cloneEnabled { id v = _values[@"cloneEnabled"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : YES; }
 - (BOOL)cloneShowDefault { id v = _values[@"cloneShowDefault"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : YES; }
 - (BOOL)squareIcons { id v = _values[@"squareIcons"]; return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : NO; }
-- (NSInteger)ring1 { return (NSInteger)[self doubleForKey:@"ring1" fallback:7 min:0 max:12]; }
-- (NSInteger)ring2 { return (NSInteger)[self doubleForKey:@"ring2" fallback:10 min:0 max:16]; }
-- (NSInteger)ring3 { return (NSInteger)[self doubleForKey:@"ring3" fallback:13 min:0 max:20]; }
-- (NSInteger)ring4 { return (NSInteger)[self doubleForKey:@"ring4" fallback:16 min:0 max:24]; }
-- (CGFloat)ringGap { return [self doubleForKey:@"ringGap" fallback:0 min:0 max:40]; }
+- (NSInteger)ring1 { return (NSInteger)[self doubleForKey:@"ring1" fallback:12 min:0 max:12]; }
+- (NSInteger)ring2 { return (NSInteger)[self doubleForKey:@"ring2" fallback:0 min:0 max:16]; }
+- (NSInteger)ring3 { return (NSInteger)[self doubleForKey:@"ring3" fallback:0 min:0 max:20]; }
+- (NSInteger)ring4 { return (NSInteger)[self doubleForKey:@"ring4" fallback:0 min:0 max:24]; }
+- (CGFloat)ringGap { return [self doubleForKey:@"ringGap" fallback:4 min:0 max:40]; }
 - (CGFloat)handleSlideDistance { return [self doubleForKey:@"handleSlideDistance" fallback:45 min:10 max:120]; }
 - (CGFloat)panelEdgeInset { return [self doubleForKey:@"panelEdgeInset" fallback:0 min:0 max:60]; }
 - (CGFloat)topGestureWidth { return [self doubleForKey:@"topGestureWidth" fallback:190 min:80 max:300]; }

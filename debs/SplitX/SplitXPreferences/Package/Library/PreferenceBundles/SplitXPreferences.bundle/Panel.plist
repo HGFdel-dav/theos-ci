@@ -10,11 +10,11 @@
 			<key>label</key>
 			<string>图标与布局</string>
 			<key>footerText</key>
-			<string>菜单不再有整块底板，只有独立轻玻璃图标。图标大小按设置绘制；拥挤时分页，不叠在一起，也不偷偷缩小图标。环容量是每环上限，0 跳过该环；四环全 0 时采用默认容量。</string>
+			<string>单层半圆扇形菜单，不使用同心环；图标多于当前弧线容量时自动分页。图标不会因拥挤缩小。</string>
 		</dict>
 		<dict>
 			<key>default</key>
-			<real>60.0</real>
+			<integer>56</integer>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
 			<key>get</key>
@@ -116,7 +116,7 @@
 		</dict>
 		<dict>
 			<key>default</key>
-			<real>210.0</real>
+			<integer>180</integer>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
 			<key>get</key>
@@ -128,7 +128,7 @@
 			<key>key</key>
 			<string>fanRadius</string>
 			<key>label</key>
-			<string>最大展开半径</string>
+			<string>半圆展开半径</string>
 			<key>maximumValue</key>
 			<real>260.0</real>
 			<key>minimumValue</key>
@@ -150,7 +150,7 @@
 		</dict>
 		<dict>
 			<key>default</key>
-			<real>120.0</real>
+			<integer>180</integer>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
 			<key>get</key>
@@ -162,7 +162,7 @@
 			<key>key</key>
 			<string>fanSpan</string>
 			<key>label</key>
-			<string>最大展开张角</string>
+			<string>半圆展开角度</string>
 			<key>maximumValue</key>
 			<integer>200</integer>
 			<key>minimumValue</key>
@@ -184,7 +184,7 @@
 		</dict>
 		<dict>
 			<key>default</key>
-			<integer>7</integer>
+			<integer>12</integer>
 			<key>defaults</key>
 			<string>com.niubiprass.splitx</string>
 			<key>get</key>
@@ -196,7 +196,7 @@
 			<key>key</key>
 			<string>ring1</string>
 			<key>label</key>
-			<string>第一环最多图标</string>
+			<string>半圆每页最多图标</string>
 			<key>maximumValue</key>
 			<integer>12</integer>
 			<key>minimumValue</key>
@@ -211,142 +211,6 @@
 			<integer>0</integer>
 			<key>max</key>
 			<integer>12</integer>
-			<key>showValue</key>
-			<true/>
-			<key>isContinuous</key>
-			<false/>
-		</dict>
-		<dict>
-			<key>default</key>
-			<integer>10</integer>
-			<key>defaults</key>
-			<string>com.niubiprass.splitx</string>
-			<key>get</key>
-			<string>getValueForSpecifier:</string>
-			<key>height</key>
-			<integer>80</integer>
-			<key>id</key>
-			<string>ring2</string>
-			<key>key</key>
-			<string>ring2</string>
-			<key>label</key>
-			<string>第二环最多图标</string>
-			<key>maximumValue</key>
-			<integer>16</integer>
-			<key>minimumValue</key>
-			<integer>0</integer>
-			<key>set</key>
-			<string>setValue:forSpecifier:</string>
-			<key>stepValue</key>
-			<integer>1</integer>
-			<key>cell</key>
-			<string>PSSliderCell</string>
-			<key>min</key>
-			<integer>0</integer>
-			<key>max</key>
-			<integer>16</integer>
-			<key>showValue</key>
-			<true/>
-			<key>isContinuous</key>
-			<false/>
-		</dict>
-		<dict>
-			<key>default</key>
-			<integer>13</integer>
-			<key>defaults</key>
-			<string>com.niubiprass.splitx</string>
-			<key>get</key>
-			<string>getValueForSpecifier:</string>
-			<key>height</key>
-			<integer>80</integer>
-			<key>id</key>
-			<string>ring3</string>
-			<key>key</key>
-			<string>ring3</string>
-			<key>label</key>
-			<string>第三环最多图标</string>
-			<key>maximumValue</key>
-			<integer>20</integer>
-			<key>minimumValue</key>
-			<integer>0</integer>
-			<key>set</key>
-			<string>setValue:forSpecifier:</string>
-			<key>stepValue</key>
-			<integer>1</integer>
-			<key>cell</key>
-			<string>PSSliderCell</string>
-			<key>min</key>
-			<integer>0</integer>
-			<key>max</key>
-			<integer>20</integer>
-			<key>showValue</key>
-			<true/>
-			<key>isContinuous</key>
-			<false/>
-		</dict>
-		<dict>
-			<key>default</key>
-			<integer>16</integer>
-			<key>defaults</key>
-			<string>com.niubiprass.splitx</string>
-			<key>get</key>
-			<string>getValueForSpecifier:</string>
-			<key>height</key>
-			<integer>80</integer>
-			<key>id</key>
-			<string>ring4</string>
-			<key>key</key>
-			<string>ring4</string>
-			<key>label</key>
-			<string>第四环最多图标</string>
-			<key>maximumValue</key>
-			<integer>24</integer>
-			<key>minimumValue</key>
-			<integer>0</integer>
-			<key>set</key>
-			<string>setValue:forSpecifier:</string>
-			<key>stepValue</key>
-			<integer>1</integer>
-			<key>cell</key>
-			<string>PSSliderCell</string>
-			<key>min</key>
-			<integer>0</integer>
-			<key>max</key>
-			<integer>24</integer>
-			<key>showValue</key>
-			<true/>
-			<key>isContinuous</key>
-			<false/>
-		</dict>
-		<dict>
-			<key>default</key>
-			<integer>0</integer>
-			<key>defaults</key>
-			<string>com.niubiprass.splitx</string>
-			<key>get</key>
-			<string>getValueForSpecifier:</string>
-			<key>height</key>
-			<integer>80</integer>
-			<key>id</key>
-			<string>ringGap</string>
-			<key>key</key>
-			<string>ringGap</string>
-			<key>label</key>
-			<string>环间距</string>
-			<key>maximumValue</key>
-			<integer>40</integer>
-			<key>minimumValue</key>
-			<integer>0</integer>
-			<key>set</key>
-			<string>setValue:forSpecifier:</string>
-			<key>stepValue</key>
-			<integer>1</integer>
-			<key>cell</key>
-			<string>PSSliderCell</string>
-			<key>min</key>
-			<integer>0</integer>
-			<key>max</key>
-			<integer>40</integer>
 			<key>showValue</key>
 			<true/>
 			<key>isContinuous</key>
@@ -437,18 +301,54 @@
 			<string>setValue:forSpecifier:</string>
 		</dict>
 		<dict>
-			<key>cell</key><string>PSSwitchCell</string>
-			<key>default</key><false/>
-			<key>defaults</key><string>com.niubiprass.splitx</string>
-			<key>get</key><string>getValueForSpecifier:</string>
-			<key>key</key><string>handleOnLeft</string>
-			<key>label</key><string>手柄放左侧</string>
-			<key>set</key><string>setValue:forSpecifier:</string>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>default</key>
+			<false/>
+			<key>defaults</key>
+			<string>com.niubiprass.splitx</string>
+			<key>get</key>
+			<string>getValueForSpecifier:</string>
+			<key>key</key>
+			<string>handleOnLeft</string>
+			<key>label</key>
+			<string>手柄放左侧</string>
+			<key>set</key>
+			<string>setValue:forSpecifier:</string>
 		</dict>
 		<dict>
-			<key>cell</key><string>PSSliderCell</string><key>default</key><integer>50</integer><key>defaults</key><string>com.niubiprass.splitx</string>
-			<key>get</key><string>getValueForSpecifier:</string><key>height</key><integer>80</integer><key>id</key><string>handleVerticalPosition</string>
-			<key>key</key><string>handleVerticalPosition</string><key>label</key><string>手柄垂直位置 %</string><key>maximumValue</key><integer>100</integer><key>minimumValue</key><integer>0</integer><key>min</key><integer>0</integer><key>max</key><integer>100</integer><key>showValue</key><true/><key>isContinuous</key><false/><key>set</key><string>setValue:forSpecifier:</string><key>stepValue</key><integer>1</integer>
+			<key>cell</key>
+			<string>PSSliderCell</string>
+			<key>default</key>
+			<integer>50</integer>
+			<key>defaults</key>
+			<string>com.niubiprass.splitx</string>
+			<key>get</key>
+			<string>getValueForSpecifier:</string>
+			<key>height</key>
+			<integer>80</integer>
+			<key>id</key>
+			<string>handleVerticalPosition</string>
+			<key>key</key>
+			<string>handleVerticalPosition</string>
+			<key>label</key>
+			<string>手柄垂直位置 %</string>
+			<key>maximumValue</key>
+			<integer>100</integer>
+			<key>minimumValue</key>
+			<integer>0</integer>
+			<key>min</key>
+			<integer>0</integer>
+			<key>max</key>
+			<integer>100</integer>
+			<key>showValue</key>
+			<true/>
+			<key>isContinuous</key>
+			<false/>
+			<key>set</key>
+			<string>setValue:forSpecifier:</string>
+			<key>stepValue</key>
+			<integer>1</integer>
 		</dict>
 		<dict>
 			<key>default</key>
@@ -515,6 +415,14 @@
 			<string>方形图标</string>
 			<key>set</key>
 			<string>setValue:forSpecifier:</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSLinkCell</string>
+			<key>id</key>
+			<string>resetPanelDefaults</string>
+			<key>label</key>
+			<string>恢复推荐菜单布局</string>
 		</dict>
 		<dict>
 			<key>default</key>
