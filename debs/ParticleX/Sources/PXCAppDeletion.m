@@ -65,7 +65,7 @@ static void PXCDelAnimate(id icon) {
     if(last&&now-last.doubleValue<0.5)return;
     if(PXCDisintegrateView(view)) {
         objc_setAssociatedObject(view,PXCDelStamp,@(now),OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        PXCLog([NSString stringWithFormat:@"app deletion dust started=1",]);
+        PXCLog([NSString stringWithFormat:@"app deletion dust started=1"]);
     } else PXCLog(@"app deletion dust started=0: renderer skipped");
 }
 static BOOL PXCDelEnter(id icon,BOOL animated) {

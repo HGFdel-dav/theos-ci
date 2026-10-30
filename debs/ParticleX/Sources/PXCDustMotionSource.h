@@ -50,17 +50,6 @@
     "    float t = PXCMotionClamp01((x - low) / (high - low));\n" \
     "    return t * t * (3.0f - 2.0f * t);\n" \
     "}\n" \
-    "static inline float PXCWindReleaseProgress(float primary, float cross, float random) {\n" \
-    "    primary = PXCMotionClamp01(primary);\n" \
-    "    cross = PXCMotionClamp01(cross);\n" \
-    "    random = PXCMotionClamp01(random);\n" \
-    "    /* Crystal keeps the single irregular advancing front. */\n" \
-    "    float bend = PXC_MOTION_SIN(cross * 7.3f + 0.8f) * 0.035f\n" \
-    "               + PXC_MOTION_SIN(cross * 18.7f) * 0.014f;\n" \
-    "    float release = primary * 0.48f + bend + (random - 0.5f) * 0.13f;\n" \
-    "    return release < 0.0f ? 0.0f : release > 0.57f ? 0.57f : release;\n" \
-    "}\n" \
-    "\n" \
     "/* Three localized starting kernels per card. Phases come from one effect seed;\n" \
     " * all particles on a card share them so release is coherent, not random noise.\n" \
     " * Outputs are x0,y0,x1,y1,x2,y2. */\n" \
