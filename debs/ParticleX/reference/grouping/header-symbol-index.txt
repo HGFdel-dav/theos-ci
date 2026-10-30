@@ -1,0 +1,114 @@
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:18:@protocol NCNotificationGroupListDelegate;
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:20:@interface NCNotificationGroupList : NSObject <NCNotificationListViewDataSource, NCNotificationViewControllerDelegatePrivate, NCNotificationViewControllerObserving, NCNotificationListCellDelegate, NCNotificationListCoalescingControlsHandlerDelegate, NCNotificationManagementContentProviderDelegate, NCNotificationListComponent>
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:24:    _Bool _grouped;	// 10 = 0xa
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:25:    _Bool _clockNotificationGroup;	// 11 = 0xb
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:29:    id <NCNotificationGroupListDelegate> _delegate;	// 24 = 0x18
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:31:    NSString *_sectionIdentifier;	// 40 = 0x28
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:32:    NSString *_threadIdentifier;	// 48 = 0x30
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:34:    NCNotificationListView *_groupListView;	// 64 = 0x40
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:45:    NSString *_backgroundGroupNameBase;	// 152 = 0x98
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:55:@property(copy, nonatomic) NSString *backgroundGroupNameBase; // @synthesize backgroundGroupNameBase=_backgroundGroupNameBase;
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:66:@property(retain, nonatomic) NCNotificationListView *groupListView; // @synthesize groupListView=_groupListView;
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:67:@property(nonatomic, getter=isClockNotificationGroup) _Bool clockNotificationGroup; // @synthesize clockNotificationGroup=_clockNotificationGroup;
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:69:@property(nonatomic, getter=isGrouped) _Bool grouped; // @synthesize grouped=_grouped;
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:70:@property(readonly, nonatomic) NSString *threadIdentifier; // @synthesize threadIdentifier=_threadIdentifier;
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:71:@property(readonly, nonatomic) NSString *sectionIdentifier; // @synthesize sectionIdentifier=_sectionIdentifier;
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:73:@property(nonatomic) __weak id <NCNotificationGroupListDelegate> delegate; // @synthesize delegate=_delegate;
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:80:- (void)_reloadRecycledGroupedNotificationCells;	// IMP=0x00000000000a39aa
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:85:- (unsigned long long)_existingIndexForCriticalNotificationRequest:(id)arg1;	// IMP=0x00000000000a3497
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:86:- (unsigned long long)_existingIndexForNotificationRequest:(id)arg1;	// IMP=0x00000000000a337e
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:99:- (void)_toggleGroupedState;	// IMP=0x00000000000a2497
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:120:- (id)notificationListCellRequestsSectionSettings:(id)arg1 sectionIdentifier:(id)arg2;	// IMP=0x00000000000a1165
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:175:- (void)modifyNotificationRequest:(id)arg1;	// IMP=0x000000000009d214
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:176:- (void)removeNotificationRequest:(id)arg1;	// IMP=0x000000000009ceba
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:177:- (void)insertNotificationRequest:(id)arg1;	// IMP=0x000000000009cc0f
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:186:- (_Bool)isGroupForNotificationRequest:(id)arg1;	// IMP=0x000000000009c395
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:188:- (void)setGrouped:(_Bool)arg1 animated:(_Bool)arg2;	// IMP=0x000000000009bfff
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:189:- (void)mergeNotificationRequests:(id)arg1;	// IMP=0x000000000009be0f
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:190:- (_Bool)matchesGroup:(id)arg1;	// IMP=0x000000000009bcd3
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationGroupList.h:195:- (id)initWithSectionIdentifier:(id)arg1 threadIdentifier:(id)arg2;	// IMP=0x000000000009b5f5
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationMasterList.h:148:- (id)_filterNotificationsInGroupLists:(id)arg1 withDestinationsForSectionList:(id)arg2;	// IMP=0x000000000001d938
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationMasterList.h:149:- (void)_migrateNotificationsFromList:(id)arg1 toList:(id)arg2 passingTest:(CDUnknownBlockType)arg3 filterRequestsPassingTest:(CDUnknownBlockType)arg4 hideToList:(_Bool)arg5 clearRequests:(_Bool)arg6 filterForDestination:(_Bool)arg7 animateRemoval:(_Bool)arg8 reorderGroupNotifications:(_Bool)arg9;	// IMP=0x000000000001d542
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationMasterList.h:150:- (void)_insertNotificationRequest:(id)arg1;	// IMP=0x000000000001d2a6
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationMasterList.h:154:- (void)_sortNotificationGroupsIfNecessary;	// IMP=0x000000000001ceba
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationMasterList.h:155:- (void)_regroupAllNotificationGroups;	// IMP=0x000000000001cda5
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationMasterList.h:187:- (void)suggestionManager:(id)arg1 setMuted:(_Bool)arg2 untilDate:(id)arg3 forSectionIdentifier:(id)arg4 threadIdentifier:(id)arg5;	// IMP=0x000000000001a7d6
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationMasterList.h:201:- (_Bool)notificationStructuredSectionList:(id)arg1 shouldScrollToTopForGroupList:(id)arg2;	// IMP=0x0000000000019d73
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationMasterList.h:213:- (void)modifyNotificationRequest:(id)arg1;	// IMP=0x00000000000182a8
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationMasterList.h:214:- (void)removeNotificationRequest:(id)arg1;	// IMP=0x0000000000017870
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationMasterList.h:215:- (void)insertNotificationRequest:(id)arg1;	// IMP=0x00000000000177b6
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationMasterList.h:223:- (void)collapseGroupForNotificationRequest:(id)arg1 withCompletion:(CDUnknownBlockType)arg2;	// IMP=0x00000000000165fb
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationMasterList.h:224:- (void)expandGroupForNotificationRequest:(id)arg1 withCompletion:(CDUnknownBlockType)arg2;	// IMP=0x00000000000164a7
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationMasterList.h:225:- (id)notificationRequestWithNotificationIdentifier:(id)arg1 sectionIdentifier:(id)arg2;	// IMP=0x0000000000016055
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationRequest.h:17:    NSString *_sectionIdentifier;	// 8 = 0x8
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationRequest.h:19:    NSString *_threadIdentifier;	// 24 = 0x18
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationRequest.h:26:    _Bool _threadIdentifierUnique;	// 80 = 0x50
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationRequest.h:106:@property(readonly, nonatomic, getter=isUniqueThreadIdentifier) _Bool threadIdentifierUnique; // @synthesize threadIdentifierUnique=_threadIdentifierUnique;
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationRequest.h:113:@property(readonly, copy, nonatomic) NSString *threadIdentifier; // @synthesize threadIdentifier=_threadIdentifier;
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationRequest.h:115:@property(readonly, copy, nonatomic) NSString *sectionIdentifier; // @synthesize sectionIdentifier=_sectionIdentifier;
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationRequest.h:125:@property(readonly, copy, nonatomic) NSString *uniqueThreadIdentifier;
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationRequest.h:127:- (_Bool)matchesThreadForRequest:(id)arg1;	// IMP=0x000000000000cf40
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:9:#import <UserNotificationsUIKit/NCNotificationGroupListDelegate-Protocol.h>
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:17:@interface NCNotificationStructuredSectionList : NSObject <NCNotificationListViewDataSource, NCNotificationListSectionHeaderViewDelegate, NCNotificationGroupListDelegate, NCNotificationListComponent>
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:22:    _Bool _supportsDynamicGrouping;	// 11 = 0xb
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:27:    _Bool _performingDynamicGrouping;	// 16 = 0x10
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:28:    _Bool _dynamicGroupingActive;	// 17 = 0x11
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:29:    _Bool _deferDynamicGroupingForPresentedLongLookOnDeviceLock;	// 18 = 0x12
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:36:    NSMutableSet *_hiddenNotificationGroups;	// 72 = 0x48
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:39:    NSMutableDictionary *_preloadedNotificationGroups;	// 96 = 0x60
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:43:    unsigned long long _dynamicGroupingThreshold;	// 128 = 0x80
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:44:    id <NCNotificationListComponent> _groupListPresentingLongLook;	// 136 = 0x88
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:47:    NSMutableArray *_notificationGroups;	// 160 = 0xa0
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:48:    NSMutableSet *_groupListsToSort;	// 168 = 0xa8
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:52:@property(retain, nonatomic) NSMutableSet *groupListsToSort; // @synthesize groupListsToSort=_groupListsToSort;
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:53:@property(retain, nonatomic) NSMutableArray *notificationGroups; // @synthesize notificationGroups=_notificationGroups;
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:56:@property(nonatomic) _Bool deferDynamicGroupingForPresentedLongLookOnDeviceLock; // @synthesize deferDynamicGroupingForPresentedLongLookOnDeviceLock=_deferDynamicGroupingForPresentedLongLookOnDeviceLock;
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:57:@property(retain, nonatomic) id <NCNotificationListComponent> groupListPresentingLongLook; // @synthesize groupListPresentingLongLook=_groupListPresentingLongLook;
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:58:@property(nonatomic, getter=isDynamicGroupingActive) _Bool dynamicGroupingActive; // @synthesize dynamicGroupingActive=_dynamicGroupingActive;
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:59:@property(nonatomic, getter=isPerformingDynamicGrouping) _Bool performingDynamicGrouping; // @synthesize performingDynamicGrouping=_performingDynamicGrouping;
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:60:@property(nonatomic) unsigned long long dynamicGroupingThreshold; // @synthesize dynamicGroupingThreshold=_dynamicGroupingThreshold;
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:65:@property(retain, nonatomic) NSMutableDictionary *preloadedNotificationGroups; // @synthesize preloadedNotificationGroups=_preloadedNotificationGroups;
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:68:@property(retain, nonatomic) NSMutableSet *hiddenNotificationGroups; // @synthesize hiddenNotificationGroups=_hiddenNotificationGroups;
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:73:@property(nonatomic) _Bool supportsDynamicGrouping; // @synthesize supportsDynamicGrouping=_supportsDynamicGrouping;
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:86:- (id)_groupListForPreloadedNotificationRequest:(id)arg1 createNewIfNecessary:(_Bool)arg2;	// IMP=0x000000000002c4c9
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:89:- (void)_toggleDynamicGroupingIfNecessary;	// IMP=0x000000000002b92e
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:98:- (void)_showHiddenNotificationGroupsPassingTest:(CDUnknownBlockType)arg1;	// IMP=0x000000000002a30d
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:99:- (void)_hideNotificationGroupsPassingTest:(CDUnknownBlockType)arg1;	// IMP=0x0000000000029f44
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:100:- (void)_showHiddenNotificationGroupsOnDeviceAuthentication;	// IMP=0x0000000000029e63
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:101:- (void)_hideNotificationGroupsOnDeviceReauthentication;	// IMP=0x0000000000029dfe
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:102:- (void)_addHiddenNotificationGroupList:(id)arg1;	// IMP=0x0000000000029be5
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:104:- (_Bool)_shouldHideNotificationGroupList:(id)arg1;	// IMP=0x0000000000029ae5
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:107:- (id)_backgroundGroupNameBase;	// IMP=0x000000000002998b
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:110:- (void)_insertNotificationGroupList:(id)arg1;	// IMP=0x0000000000029720
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:111:- (void)_removeNotificationGroupList:(id)arg1 animated:(_Bool)arg2;	// IMP=0x00000000000295c2
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:112:- (void)_removeNotificationGroupList:(id)arg1;	// IMP=0x00000000000295ab
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:113:- (unsigned long long)_insertionIndexForGroup:(id)arg1;	// IMP=0x00000000000294e5
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:114:- (void)_updatePositionOfGroup:(id)arg1 atIndex:(unsigned long long)arg2;	// IMP=0x00000000000291d4
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:115:- (unsigned long long)_existingIndexOfGroupForNotificationRequest:(id)arg1 withSectionIdentifier:(id)arg2 threadIdentifier:(id)arg3 inNotificationGroupLists:(id)arg4;	// IMP=0x0000000000028cce
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:116:- (unsigned long long)_existingIndexOfGroupWithSectionIdentifier:(id)arg1 threadIdentifier:(id)arg2 inNotificationGroupLists:(id)arg3;	// IMP=0x0000000000028cb1
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:117:- (unsigned long long)_existingIndexOfGroupForNotificationRequest:(id)arg1 inNotificationGroupLists:(id)arg2;	// IMP=0x0000000000028bf9
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:118:- (unsigned long long)_existingIndexOfGroupForNotificationRequest:(id)arg1;	// IMP=0x0000000000028b88
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:119:- (unsigned long long)_existingIndexOfGroupForNotificationRequestForRemoval:(id)arg1;	// IMP=0x0000000000028aae
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:120:- (unsigned long long)_existingIndexOfGroupForNotificationRequestForInsertion:(id)arg1;	// IMP=0x00000000000289c6
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:122:- (id)_newGroupListForNotificationRequest:(id)arg1;	// IMP=0x0000000000028701
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:123:- (id)_notificationGroupsForInsertion;	// IMP=0x00000000000286ef
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:132:- (_Bool)shouldNotificationGroupListPanHorizontally:(id)arg1;	// IMP=0x0000000000028234
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:141:- (_Bool)isAttachmentImageFeaturedForNotificationGroupList:(id)arg1;	// IMP=0x0000000000027d76
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:142:- (_Bool)notificationGroupListShouldAllowRestacking:(id)arg1;	// IMP=0x0000000000027d6e
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:143:- (_Bool)isRichNotificationContentViewForNotificationGroupList:(id)arg1;	// IMP=0x0000000000027d66
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:144:- (_Bool)isNotificationGroupListInCollapsedStack:(id)arg1;	// IMP=0x0000000000027d22
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:145:- (_Bool)notificationGroupListShouldReloadNotificationCells:(id)arg1;	// IMP=0x0000000000027d1a
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:146:- (_Bool)isViewVisibleForNotificationGroupList:(id)arg1;	// IMP=0x0000000000027c55
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:147:- (_Bool)notificationGroupListShouldScrollToTop:(id)arg1;	// IMP=0x0000000000027bdb
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:148:- (void)notificationGroupList:(id)arg1 requestsScrollToTopOfGroupWithCompletion:(CDUnknownBlockType)arg2;	// IMP=0x0000000000027aac
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:149:- (id)notificationGroupList:(id)arg1 requestsAuxiliaryOptionsContentProviderForNotificationRequest:(id)arg2 isLongLook:(_Bool)arg3;	// IMP=0x0000000000027a20
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:168:- (void)modifyNotificationRequest:(id)arg1;	// IMP=0x000000000002585f
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:169:- (void)removeNotificationRequest:(id)arg1;	// IMP=0x00000000000251a8
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:170:- (void)insertNotificationRequest:(id)arg1;	// IMP=0x0000000000024a71
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:174:- (void)sortNotificationGroupListsIfNecessary;	// IMP=0x000000000002445c
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:175:- (void)collapseGroupForNotificationRequest:(id)arg1 withCompletion:(CDUnknownBlockType)arg2;	// IMP=0x000000000002430c
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:176:- (void)expandGroupForNotificationRequest:(id)arg1 withCompletion:(CDUnknownBlockType)arg2;	// IMP=0x00000000000241bf
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:179:- (void)regroupNotificationGroups;	// IMP=0x0000000000023ba7
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:180:- (void)mergeNotificationGroups:(id)arg1 reorderGroupNotifications:(_Bool)arg2;	// IMP=0x00000000000234d1
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:181:- (id)removeNotificationGroupListsForMigrationPassingTest:(CDUnknownBlockType)arg1 filterRequestsPassingTest:(CDUnknownBlockType)arg2 animate:(_Bool)arg3;	// IMP=0x0000000000022f84
+/var/minis/workspace/ParticleX/reference/grouping/NCNotificationStructuredSectionList.h:183:@property(readonly, nonatomic) NSArray *allNotificationGroups;
