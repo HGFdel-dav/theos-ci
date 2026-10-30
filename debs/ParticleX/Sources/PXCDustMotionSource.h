@@ -174,7 +174,8 @@
     "/* Visible sand uses its own time profile. Urgent means start immediately,\n" \
     " * not release the entire card at once. Legacy widget motion stays unchanged. */\n" \
     "static inline float PXCSandReleaseAt(float x,float y,float random,float phase) {\n" \
-    "    float r=PXCWindReleaseAt(x,y,random,phase,0.0f);\n" \
+    "    (void)random; /* same continuous release map for surface and grains */\n" \
+    "    float r=PXCWindReleaseAt(x,y,0.5f,phase,0.0f);\n" \
     "    return PXCMotionClamp(r*0.72f,0.002f,0.32f);\n" \
     "}\n" \
     "static inline float PXCSandReveal(float progress,float release) {\n" \

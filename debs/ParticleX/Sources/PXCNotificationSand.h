@@ -32,9 +32,10 @@ static inline PXCNotificationSandPlan PXCNotificationSandMakePlan(
     unsigned maxN=limited ? 6u : 7u;
     unsigned cap=limited ? 36000u : 60000u;
     if (cap>remainingDraws) cap=remainingDraws;
-    if (groups>cap) groups=cap;
+    /* Each parent uses nine continuous-surface patches plus n*n grains. */
+    if (groups>cap/10u) groups=cap/10u;
     if (!groups) return p;
-    while (n<maxN && (double)groups*n*n<desired && groups*(n+1)*(n+1)<=cap) n++;
+    while (n<maxN && (double)groups*n*n<desired && groups*((n+1)*(n+1)+9u)<=cap) n++;
     p.groups=groups;p.subdivisions=n;p.drawLimit=cap;
     return p;
 }

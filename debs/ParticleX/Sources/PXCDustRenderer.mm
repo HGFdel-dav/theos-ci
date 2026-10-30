@@ -396,6 +396,10 @@ static id<MTLTexture> PXCDustTextureFromImage(id<MTLDevice> device, UIImage *ima
 @property(nonatomic) double pxcAngle;
 @property(nonatomic,strong) NSData *pxcNoticeRegions;
 @property(nonatomic) NSUInteger pxcDrawCount;
+@property(nonatomic) NSUInteger pxcSurfaceDrawCount;
+@property(nonatomic) NSUInteger pxcFrameCount;
+@property(nonatomic) CGSize pxcLastDrawableSize;
+@property(nonatomic,copy) NSString *pxcFinishReason;
 @property(nonatomic) NSUInteger pxcReservedDrawCount;
 @property(nonatomic) PXUniformsGPU pxcUniforms;
 @property(nonatomic) CGRect pxcSourceFrame;
@@ -411,12 +415,14 @@ static id<MTLTexture> PXCDustTextureFromImage(id<MTLDevice> device, UIImage *ima
 - (void)pxcFinish {
     if (self.pxcFinished) return;
     self.pxcFinished=YES;
+    double elapsed=self.pxcStart ? CACurrentMediaTime()-self.pxcStart : 0;
+    PXCLog([NSString stringWithFormat:@"dust finish age=%.3f planned=%.3f frames=%lu reason=%@ mode=%u",elapsed,self.pxcUniforms.duration,(unsigned long)self.pxcFrameCount,self.pxcFinishReason ?: @"cancelled",self.pxcUniforms.effectStyle&12u]);
     self.pxcMetal.paused=YES;self.pxcMetal.delegate=nil;
     [self.pxcMetal releaseDrawables];[self.pxcMetal removeFromSuperview];
     self.pxcMetal.device=nil;self.pxcMetal=nil;
     self.pxcPreview.image=nil;[self.pxcPreview removeFromSuperview];self.pxcPreview=nil;
     self.pxcTexture=nil;self.pxcParticles=nil;self.pxcQueue=nil;self.pxcPipeline=nil;
-    self.pxcNoticeRegions=nil;self.pxcDrawCount=0;
+    self.pxcNoticeRegions=nil;self.pxcDrawCount=0;self.pxcSurfaceDrawCount=0;
     gPXCDustDrawCount-=MIN(gPXCDustDrawCount,self.pxcReservedDrawCount);
     self.pxcReservedDrawCount=0;
     self.pxcFrames=nil;
@@ -442,19 +448,20 @@ static id<MTLTexture> PXCDustTextureFromImage(id<MTLDevice> device, UIImage *ima
         id<MTLTexture> texture=PXCDustTextureFromImage(device,self.pxcPreview.image);
         NSUInteger count=0;
         double duration=self.pxcUniforms.duration;
-        BOOL notice=(self.pxcUniforms.effectStyle&4u)!=0;
-        NSMutableData *data=notice ? PXCDustMakeSandGroups(self.pxcSourceFrame.size,self.pxcNoticeRegions,self.pxcParticleCount,&count) :
+        BOOL fineSand=(self.pxcUniforms.effectStyle&12u)!=0;
+        NSMutableData *data=fineSand ? PXCDustMakeSandGroups(self.pxcSourceFrame.size,self.pxcNoticeRegions,self.pxcParticleCount,&count) :
             PXCDustMakeParticles(self.pxcSourceFrame.size,self.pxcDensity,duration,self.pxcAngle,self.pxcUniforms.effectStyle&1u,self.pxcUniforms.flowPhase,(self.pxcUniforms.effectStyle&2u)!=0,self.pxcParticleCount,&count);
         id<MTLBuffer> particles=data ? [device newBufferWithBytes:data.bytes length:data.length options:MTLResourceStorageModeShared] : nil;
         if (!texture || !particles || !count || texture.width*texture.height*4>self.pxcReservedBytes) { PXCLog(@"dust skip texture/buffer preparation");[self pxcFinish];return; }
         gPXCDustParticleCount-=self.pxcParticleCount-count;self.pxcParticleCount=count;
         self.pxcTexture=texture;self.pxcParticles=particles;self.pxcQueue=queue;self.pxcPipeline=pipeline;
         NSUInteger n=(self.pxcUniforms.effectStyle>>16)&15u;
-        self.pxcDrawCount=notice ? count*n*n : count;
+        self.pxcDrawCount=fineSand ? count*n*n : count;
+        self.pxcSurfaceDrawCount=fineSand ? count*9 : 0;
         self.pxcNoticeRegions=nil;
-        if (notice && (!n || n>7 || self.pxcDrawCount>self.pxcReservedDrawCount)) { [self pxcFinish];return; }
+        if (fineSand && (!n || n>7 || self.pxcDrawCount+self.pxcSurfaceDrawCount>self.pxcReservedDrawCount)) { [self pxcFinish];return; }
         self.pxcFrames=dispatch_semaphore_create(2);
-        if (notice) PXCLog([NSString stringWithFormat:@"notification sand groups=%lu grains=%lu subdivision=%lu independent=1",(unsigned long)count,(unsigned long)self.pxcDrawCount,(unsigned long)n]);
+        if (fineSand) PXCLog([NSString stringWithFormat:@"visible sand groups=%lu grains=%lu surfacePatches=%lu subdivision=%lu mode=%u independent=1",(unsigned long)count,(unsigned long)self.pxcDrawCount,(unsigned long)self.pxcSurfaceDrawCount,(unsigned long)n,self.pxcUniforms.effectStyle&12u]);
         PXUniformsGPU u=self.pxcUniforms;
         u.texelSize=simd_make_float2(1.0f/texture.width,1.0f/texture.height);self.pxcUniforms=u;
         MTKView *metal=[[MTKView alloc] initWithFrame:self.bounds device:device];
@@ -466,17 +473,24 @@ static id<MTLTexture> PXCDustTextureFromImage(id<MTLDevice> device, UIImage *ima
         self.pxcMetal=metal;[self insertSubview:metal atIndex:0];metal.delegate=self;
         self.pxcStart=CACurrentMediaTime();metal.paused=NO;
         __weak PXCDustOverlay *weak=self;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)((duration+0.2)*NSEC_PER_SEC)),dispatch_get_main_queue(), ^{ [weak pxcFinish]; });
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)((duration+0.2)*NSEC_PER_SEC)),dispatch_get_main_queue(), ^{ PXCDustOverlay *s=weak;s.pxcFinishReason=@"fallback-timeout";[s pxcFinish]; });
         PXCLog([NSString stringWithFormat:@"dust start particles=%lu angle=%u style=%u fps=%u",(unsigned long)count,(unsigned)(self.pxcAngle*57.2957795),u.effectStyle,PXCPerformanceGet().fps]);
     } @catch (NSException *e) { PXCLog([@"dust prepare exception " stringByAppendingString:e.name]);[self pxcFinish]; }
 }
 - (void)mtkView:(MTKView *)view drawableSizeWillChange:(CGSize)size {
-    if (self.pxcStart && CACurrentMediaTime()-self.pxcStart>0.05) [self pxcFinish];
+    CGSize before=self.pxcLastDrawableSize;self.pxcLastDrawableSize=size;
+    if (self.pxcFrameCount>1 && before.width>0 && before.height>0 &&
+        (fabs(before.width-size.width)>1 || fabs(before.height-size.height)>1)) {
+        self.pxcFinishReason=@"drawable-resize";[self pxcFinish];
+    }
 }
 - (void)drawInMTKView:(MTKView *)view {
     if (self.pxcFinished) return;
     float age=(float)(CACurrentMediaTime()-self.pxcStart);
-    if (!self.window || self.window.hidden || !PXCPerformanceGet().allowed || age>=self.pxcUniforms.duration) { [self pxcFinish];return; }
+    if (!self.window || self.window.hidden || !PXCPerformanceGet().allowed || age>=self.pxcUniforms.duration) {
+        self.pxcFinishReason=age>=self.pxcUniforms.duration ? @"duration" : !PXCPerformanceGet().allowed ? @"pressure" : @"window-hidden";
+        [self pxcFinish];return;
+    }
     if (dispatch_semaphore_wait(self.pxcFrames,DISPATCH_TIME_NOW)!=0) return;
     id<CAMetalDrawable> drawable=view.currentDrawable;
     MTLRenderPassDescriptor *pass=view.currentRenderPassDescriptor;
@@ -488,12 +502,21 @@ static id<MTLTexture> PXCDustTextureFromImage(id<MTLDevice> device, UIImage *ima
         self.pxcLoggedFirstFrame=YES;
         PXCLog([NSString stringWithFormat:@"dust first frame +%.0fms urgent=%d",(age)*1000.0,(self.pxcUniforms.effectStyle&2u)!=0]);
     }
+    self.pxcFrameCount++;
     PXUniformsGPU u=self.pxcUniforms;u.elapsed=MAX(0.0f,age);
     [encoder setRenderPipelineState:self.pxcPipeline];
     [encoder setVertexBuffer:self.pxcParticles offset:0 atIndex:0];
     [encoder setVertexBytes:&u length:sizeof(u) atIndex:1];
     [encoder setFragmentTexture:self.pxcTexture atIndex:0];
     [encoder setFragmentBytes:&u length:sizeof(u) atIndex:1];
+    if (self.pxcSurfaceDrawCount) {
+        PXUniformsGPU surface=u;surface.effectStyle|=16u;
+        [encoder setVertexBytes:&surface length:sizeof(surface) atIndex:1];
+        [encoder setFragmentBytes:&surface length:sizeof(surface) atIndex:1];
+        [encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4 instanceCount:self.pxcSurfaceDrawCount];
+        [encoder setVertexBytes:&u length:sizeof(u) atIndex:1];
+        [encoder setFragmentBytes:&u length:sizeof(u) atIndex:1];
+    }
     [encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4 instanceCount:self.pxcDrawCount];
     [encoder endEncoding];
     dispatch_semaphore_t frames=self.pxcFrames;
@@ -551,9 +574,10 @@ static BOOL PXCDustRenderImage(UIImage *image,UIWindow *window,CGRect sourceFram
     for (NSUInteger i=0;i<noticeRegions.length/sizeof(CGRect);i++) coveredArea+=rects[i].size.width*rects[i].size.height;
     NSUInteger maxDraws=budget.fps<=24 ? 36000 : 90000;
     NSUInteger remainingDraws=maxDraws-MIN(maxDraws,gPXCDustDrawCount);
-    PXCNotificationSandPlan sand=PXCNotificationSandMakePlan(coveredArea,(unsigned)density,(unsigned)limit,(unsigned)remainingDraws,budget);
+    NSUInteger parentLimit=appSand ? MIN(limit,(NSUInteger)MAX(1.0,ceil(coveredArea/12.0))) : limit;
+    PXCNotificationSandPlan sand=PXCNotificationSandMakePlan(coveredArea,(unsigned)density,(unsigned)parentLimit,(unsigned)remainingDraws,budget);
     NSUInteger count=noticeRegions ? sand.groups : MIN(PXCDustTargetCount(density),limit);
-    NSUInteger reserveDraws=noticeRegions ? count*sand.subdivisions*sand.subdivisions : count;
+    NSUInteger reserveDraws=noticeRegions ? count*(sand.subdivisions*sand.subdivisions+9u) : count;
     if (!count || reserveDraws>remainingDraws || !PXCDustReserveBudget(tw*th*4)) return NO;
     PXCDustOverlay *overlay=nil;
     BOOL transferred=NO;
@@ -574,7 +598,7 @@ static BOOL PXCDustRenderImage(UIImage *image,UIWindow *window,CGRect sourceFram
         u.sourceOrigin=simd_make_float2(sourceFrame.origin.x-frame.origin.x,sourceFrame.origin.y-frame.origin.y);
         u.basisX=simd_make_float2(1,0);u.basisY=simd_make_float2(0,1);
         u.duration=(float)PXCDustDuration(settings.duration);u.effectStyle=(uint32_t)MIN(settings.effectStyle,(NSUInteger)1)|(urgent?2u:0u)|(appSand?8u:0u);u.flowPhase=PXCDustUnit(arc4random());
-        if (noticeRegions) u.effectStyle|=4u|((uint32_t)sand.subdivisions<<16);
+        if (noticeRegions) u.effectStyle|=(appSand?8u:4u)|((uint32_t)sand.subdivisions<<16);
         u.flowDirection=simd_make_float2((float)cos(overlay.pxcAngle),(float)sin(overlay.pxcAngle));
         overlay.pxcUniforms=u;overlay.pxcReservedBytes=tw*th*4;overlay.pxcParticleCount=count;
         overlay.pxcReservedDrawCount=reserveDraws;
@@ -635,7 +659,7 @@ static BOOL PXCDustCaptureViews(NSArray<UIView *> *views,BOOL urgent,BOOL notice
     CGContextRef context=UIGraphicsGetCurrentContext();
     if (!context) { UIGraphicsEndImageContext();PXCLog(@"dust skip composite-context");return NO; }
     NSUInteger drawn=0;
-    NSMutableData *noticeRegions=notice ? [NSMutableData data] : nil;
+    NSMutableData *noticeRegions=(notice || appSand) ? [NSMutableData data] : nil;
     @try {
         for (NSUInteger i=0;i<sources.count;i++) {
             UIView *v=sources[i];
@@ -652,7 +676,7 @@ static BOOL PXCDustCaptureViews(NSArray<UIView *> *views,BOOL urgent,BOOL notice
                 [layer renderInContext:context];
             }
             CGContextRestoreGState(context);drawn++;
-            if (notice) [noticeRegions appendBytes:&clip length:sizeof(clip)];
+            if (notice || appSand) [noticeRegions appendBytes:&clip length:sizeof(clip)];
         }
     } @catch (NSException *e) { PXCLog([@"dust composite exception " stringByAppendingString:e.name]); }
     UIImage *image=drawn ? UIGraphicsGetImageFromCurrentImageContext() : nil;

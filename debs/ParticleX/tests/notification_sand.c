@@ -1,4 +1,5 @@
 #include "PXCNotificationSand.h"
+#include "PXCDustMotion.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -23,11 +24,11 @@ int main(void) {
         unsigned remaining=used==4?0:(b.perEffectParticles/(used+1));
         unsigned drawRemaining=used==4?0:60000/(used+1);
         PXCNotificationSandPlan p=PXCNotificationSandMakePlan(330.0*80*cards,tier,remaining,drawRemaining,b);
-        if(!b.allowed || !remaining || !drawRemaining) { assert(!p.groups && !p.subdivisions);continue; }
+        if(!b.allowed || !remaining || drawRemaining<10) { assert(!p.groups && !p.subdivisions);continue; }
         assert(p.groups>0 && p.groups<=remaining && p.groups<=b.perEffectParticles);
         assert(p.subdivisions>=1 && p.subdivisions<=(b.fps<=24?6u:7u));
-        assert(p.groups*p.subdivisions*p.subdivisions<=drawRemaining);
-        assert(p.groups*p.subdivisions*p.subdivisions<=p.drawLimit);
+        assert(p.groups*(p.subdivisions*p.subdivisions+9u)<=drawRemaining);
+        assert(p.groups*(p.subdivisions*p.subdivisions+9u)<=p.drawLimit);
         assert(p.groups<=1200 && p.groups*48<=57600);
         for(unsigned parent=0;parent<p.groups;parent+=17)
         for(unsigned child=0;child<p.subdivisions*p.subdivisions;child++) {
@@ -38,7 +39,8 @@ int main(void) {
             double v=(y+.05+.90*.18)/p.subdivisions;
             assert(u>0 && u<1 && v>0 && v<1);
             /* Child quads have a point-size diameter, not the parent's size. */
-            double size=(.95+.50*.51)/330.;assert(size*330<1.46);
+            float diameter=PXCSandDiameter(10,12,(float)p.subdivisions,.51f);
+            assert(diameter>=1.15f && diameter<=2.10f);
         }
         cases++;
     }
@@ -56,7 +58,7 @@ int main(void) {
     assert(!PXCNotificationSandKeep(0,78,20,20,0,0,330,75));
     /* Requesting fewer draws cannot allocate more work. */
     n=PXCNotificationSandMakePlan(area,0,1200,17,low);
-    assert(n.groups*n.subdivisions*n.subdivisions<=17);
-    printf("PASS notification sand: %u plans; independent indices, <=1.45pt, sparse coverage, buffer/draw caps\n",cases);
+    assert(n.groups*(n.subdivisions*n.subdivisions+9u)<=17);
+    printf("PASS notification sand: %u plans; independent indices, <=2.10pt nominal, sparse coverage, grains+surface draw caps\n",cases);
     return 0;
 }
