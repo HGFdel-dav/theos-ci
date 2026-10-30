@@ -265,6 +265,7 @@ static void MiniSightApplySavedCenter(BOOL useSaved);
 static void MiniSightStartPulse(void);
 static void MiniSightToggleRecording(void);
 static void MiniSightReloadSettings(void);
+static void MiniSightBringMinisFront(void);
 static void MiniSightStopPulse(void);
 
 #pragma mark - 窗口类
@@ -703,6 +704,22 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
             MiniSightShow();
         } else {
             MiniSightHide();
+            MiniSightBringMinisFront();
+        }
+    });
+}
+
+/// 操作结束时把 Minis 拉回前台。App 自己在后台 open 自己的 scheme
+/// 不会前台化（实测），SpringBoard 里用 LSApplicationWorkspace 才可靠。
+static void MiniSightBringMinisFront(void) {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        Class workspaceClass = NSClassFromString(@"LSApplicationWorkspace");
+        if (!workspaceClass) return;
+        id workspace = [workspaceClass performSelector:@selector(defaultWorkspace)];
+        if ([workspace respondsToSelector:@selector(openApplicationWithBundleID:)]) {
+            [workspace performSelector:@selector(openApplicationWithBundleID:)
+                           withObject:@"com.openminis.app"];
         }
     });
 }
