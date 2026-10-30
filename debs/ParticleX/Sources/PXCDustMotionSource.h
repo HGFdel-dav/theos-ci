@@ -9,11 +9,13 @@
     "#define PXC_MOTION_SIN sin\n" \
     "#define PXC_MOTION_EXP exp\n" \
     "#define PXC_MOTION_ATAN2 atan2\n" \
+    "#define PXC_MOTION_THREAD thread\n" \
     "#else\n" \
     "#include <math.h>\n" \
     "#define PXC_MOTION_SIN sinf\n" \
     "#define PXC_MOTION_EXP expf\n" \
     "#define PXC_MOTION_ATAN2 atan2f\n" \
+    "#define PXC_MOTION_THREAD\n" \
     "#endif\n" \
     "\n" \
     "typedef struct {\n" \
@@ -62,7 +64,7 @@
     "/* Three localized starting kernels per card. Phases come from one effect seed;\n" \
     " * all particles on a card share them so release is coherent, not random noise.\n" \
     " * Outputs are x0,y0,x1,y1,x2,y2. */\n" \
-    "static inline void PXCWindSeedPoints(float phase, float *out) {\n" \
+    "static inline void PXCWindSeedPoints(float phase, PXC_MOTION_THREAD float *out) {\n" \
     "    float a = phase * 6.28318530718f;\n" \
     "    out[0] = 0.11f + 0.13f * (0.5f + 0.5f * PXC_MOTION_SIN(a * 1.31f + 0.40f));\n" \
     "    out[1] = 0.76f + 0.13f * (0.5f + 0.5f * PXC_MOTION_SIN(a * 0.87f + 2.20f));\n" \
@@ -181,4 +183,5 @@
     "#undef PXC_MOTION_SIN\n" \
     "#undef PXC_MOTION_EXP\n" \
     "#undef PXC_MOTION_ATAN2\n" \
+    "#undef PXC_MOTION_THREAD\n" \
     "#endif\n"

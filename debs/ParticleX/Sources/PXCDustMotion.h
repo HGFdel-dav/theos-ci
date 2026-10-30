@@ -6,11 +6,13 @@
 #define PXC_MOTION_SIN sin
 #define PXC_MOTION_EXP exp
 #define PXC_MOTION_ATAN2 atan2
+#define PXC_MOTION_THREAD thread
 #else
 #include <math.h>
 #define PXC_MOTION_SIN sinf
 #define PXC_MOTION_EXP expf
 #define PXC_MOTION_ATAN2 atan2f
+#define PXC_MOTION_THREAD
 #endif
 
 typedef struct {
@@ -59,7 +61,7 @@ static inline float PXCWindReleaseProgress(float primary, float cross, float ran
 /* Three localized starting kernels per card. Phases come from one effect seed;
  * all particles on a card share them so release is coherent, not random noise.
  * Outputs are x0,y0,x1,y1,x2,y2. */
-static inline void PXCWindSeedPoints(float phase, float *out) {
+static inline void PXCWindSeedPoints(float phase, PXC_MOTION_THREAD float *out) {
     float a = phase * 6.28318530718f;
     out[0] = 0.11f + 0.13f * (0.5f + 0.5f * PXC_MOTION_SIN(a * 1.31f + 0.40f));
     out[1] = 0.76f + 0.13f * (0.5f + 0.5f * PXC_MOTION_SIN(a * 0.87f + 2.20f));
@@ -178,4 +180,5 @@ static inline PXCWindMotion PXCWindEvaluate(float age01, float seed, float drift
 #undef PXC_MOTION_SIN
 #undef PXC_MOTION_EXP
 #undef PXC_MOTION_ATAN2
+#undef PXC_MOTION_THREAD
 #endif
