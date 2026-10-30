@@ -101,7 +101,7 @@ def main():
     row = src.get("DNBRowTarget.m", "")
     check("底条文案固定", "新闻批量下载 · 选择软件包" in src.get("DNBNewsBarView.m", ""))
     check("底条有取消/全选/下载", all(k in bar for k in ('@"取消"', '@"全选"', '@"下载"')))
-    check("行控件画勾选圈", "cornerRadius = 11" in row and 'systemImageNamed:@"checkmark"' in row)
+    check("行控件画勾选圈", "cornerRadius = 10" in row and 'systemImageNamed:@"checkmark"' in row)
     check("选择态盖住行避免跳转", "sendActionsForControlEvents" in row)
     check("行标签用纯 C 解析", "dnb_parse_row_label" in sel)
     check("行标签按名称+版本+架构匹配", "dnblogic_row_matches" in sel)
