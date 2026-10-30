@@ -123,13 +123,15 @@ need('recoverFromTargetSwitchFailure' in vc and 'showTargetSwitchFailure' in vc,
 need('POCraneTimedOut' in vc, 'switch watchdog')
 need('setExpectedContainer' in vc, 'remember chosen container')
 
-# 8e 外部唤起按目标容器预先切换
+# 8e 普通打开必须原生放行；不劫持桌面/分身的系统打开请求
 mm = (SRC / 'SplitX.mm').read_text()
 hook = mm[mm.index('POHookSBMainWorkspaceHandleOpenApplicationRequest'):]
-need('expectedContainerForBundleIdentifier' in hook, 'external open resolves expected container')
-need('prepareForContainerSwitchToBundleId' in hook, 'external open prepares host snapshot')
-need('NSEC_PER_SEC' in hook and 'forward' in hook, 'external open has timeout fallback')
-need('forwarded' in hook, 'external open forwards once only')
+need('native open passthrough' in hook, 'ordinary open passes through native SpringBoard route')
+need('POOriginalSBMainWorkspaceHandleOpenApplicationRequest' in hook, 'ordinary open calls original exactly')
+need('prepareForContainerSwitchToBundleId' not in hook and 'expectedContainerForBundleIdentifier' not in hook,
+     'ordinary open has no forced pre-switch')
+er = (SRC / 'POExternalActivationCoordinator.m').read_text()
+need('targetBundleIdentifierForRequest' in er, 'request target resolver retained for hosted flows')
 er = (SRC / 'POExternalActivationCoordinator.m').read_text()
 need('targetBundleIdentifierForRequest' in er, 'request target resolver')
 

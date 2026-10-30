@@ -954,46 +954,13 @@ static void POHookSBMainWorkspaceHandleOpenApplicationRequest(id self, SEL _cmd,
     id routedCompletion = [[POExternalActivationCoordinator sharedInstance]
         prepareOpenApplicationRequestIfNeeded:request completion:completion];
 
-    // 目标账号：用户最后一次为这个应用选的容器。只有“选了分身且当前不在那个容器”才预先切换，
-    // 普通默认号、没装 Crane、应用不支持分身都直接放行，不拖慢。
-    NSString *bundle = [POExternalActivationCoordinator targetBundleIdentifierForRequest:request];
-    NSString *expected = bundle.length ? [[POSplitXSettings shared] expectedContainerForBundleIdentifier:bundle] : nil;
-    NSString *active = bundle.length ? [POCraneBridge activeContainerForBundleIdentifier:bundle] : nil;
-    BOOL needSwitch = bundle.length > 0 && expected.length > 0 &&
-        [POCraneBridge isBundleSupported:bundle] &&
-        ![(active ?: POSplitDefaultContainerIdentifier) isEqualToString:expected];
-
-    PXLog(@"route", @"open %@ url=%@ expected=%@ active=%@ switch=%d",
-          bundle ?: @"?", [POExternalActivationCoordinator openURLStringForRequest:request] ?: @"-",
-          expected ?: @"-", active ?: @"-", needSwitch);
-
-    if (!needSwitch) {
-        POOriginalSBMainWorkspaceHandleOpenApplicationRequest(self, _cmd, systemService, request,
-                                                              routedCompletion ?: completion);
-        return;
-    }
-
-    PXLog(@"route", @"开始预切换 -> %@/%@", bundle, expected);
-    __block BOOL forwarded = NO;
-    void (^forward)(void) = ^{
-        if (forwarded) return;
-        forwarded = YES;
-        PXLog(@"route", @"forward %@ routed=%d", bundle, routedCompletion != nil);
-        POOriginalSBMainWorkspaceHandleOpenApplicationRequest(self, _cmd, systemService, request,
-                                                              routedCompletion ?: completion);
-    };
-    POSplitTarget *target = [POSplitTarget targetWithBundleIdentifier:bundle
-                                                            container:expected
-                                                          displayName:nil];
-    POXWindow *poWindow = (POXWindow *)[POXWindow sharedWindow];
-    [poWindow.controller prepareForContainerSwitchToBundleId:bundle];
-    [POCraneBridge activateTarget:target completion:^(BOOL success, NSError *error) {
-        PXLog(@"route", @"pre-switch ok=%d err=%@", success, error.localizedDescription ?: @"none");
-        dispatch_async(dispatch_get_main_queue(), forward);
-    }];
-    // 切不动也得让付款继续，4 秒后按当前容器放行。
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), forward);
+    // 普通桌面图标/分身图标打开必须完全交给系统和 Crane 原生路由。
+    // 旧版这里按 expectedContainer 预切换，会把普通打开变成“先注销再认证”，
+    // 导致用户从桌面打开分身失败；SplitX 只处理自己的宿主来源，不劫持普通打开。
+    PXLog(@"route", @"native open passthrough url=%@", [POExternalActivationCoordinator openURLStringForRequest:request] ?: @"-");
+    POOriginalSBMainWorkspaceHandleOpenApplicationRequest(self, _cmd, systemService, request,
+                                                          routedCompletion ?: completion);
+    return;
 }
 
 static void POHookSBMainWorkspaceHandleTrustedOpenApplicationRequest(id self, SEL _cmd,
@@ -1347,7 +1314,7 @@ static NSString *PXJailbreakDescription(void) {
 }
 
 static __attribute__((constructor)) static void PXBootLog(void) {
-    PXLogBeginSession(@"0.1.0~r29");
+    PXLogBeginSession(@"0.1.0~r30");
     [POSplitXSettings.shared reload];
 
     static char machine[32] = {0};
