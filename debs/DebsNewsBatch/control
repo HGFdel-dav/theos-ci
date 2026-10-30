@@ -1,0 +1,9 @@
+Package: com.niubiprass.debsnewsbatch
+Name: DebsNewsBatch
+Version: 0.8.0
+Architecture: iphoneos-arm64
+Description: 在 Debs 新闻页底部加一条「新闻批量下载」，点开后直接在新闻列表里勾选，一次下到 Downloads/DEBs
+Author: niubiprass
+Maintainer: niubiprass
+Section: Tweaks
+Depends: mobilesubstrate
