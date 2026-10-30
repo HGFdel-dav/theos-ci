@@ -521,7 +521,7 @@ static char kDNBTokenIPKey;
         DNBLog(@"长按没落在行上 (%.0f,%.0f)", p.x, p.y);
         return;
     }
-    NSString *token = [self tokenForKey:key row:[self rowViewAtPoint:p]];
+    NSString *token = [self tokenForRow:[self rowViewAtPoint:p]];
     [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium] impactOccurred];
     if (!self.insetSaved && self.scroll) {
         self.savedInset = self.scroll.contentInset;
@@ -628,7 +628,7 @@ static char kDNBTokenIPKey;
         for (UIView *row in [self rowViews]) {
             NSString *k = [self keyForView:row depth:0];
             if (k) {
-                [keys addObject:[self tokenForKey:k row:row]];
+                [keys addObject:[self tokenForRow:row]];
             }
         }
     }
