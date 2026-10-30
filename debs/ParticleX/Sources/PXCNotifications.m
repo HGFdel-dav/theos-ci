@@ -97,7 +97,7 @@ static BOOL PXCNRequestMatch(id a,id b) {
     return [ai isKindOfClass:NSString.class] && [bi isKindOfClass:NSString.class] && [as isKindOfClass:NSString.class] && [bs isKindOfClass:NSString.class] && [ai isEqual:bi] && [as isEqual:bs];
 }
 static BOOL PXCNAnimateCells(NSArray<UIView *> *cells,NSString *route,BOOL urgent) {
-    if (!PXCNEnabled() || CACurrentMediaTime()<PXCNotificationBatchUntil) return;
+    if (!PXCNEnabled() || CACurrentMediaTime()<PXCNotificationBatchUntil) return NO;
     NSMutableArray *sources=[NSMutableArray array],*chosen=[NSMutableArray array];
     double now=CACurrentMediaTime();
     for (UIView *cell in cells) {
