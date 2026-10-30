@@ -136,6 +136,7 @@ static UILabel  *gMiniSightLabel  = nil;   // 文字
 static id        gMiniSightGestureTarget = nil; // 手势/通知的 target（需强引用）
 static BOOL      gMiniSightBuilt  = NO;
 static MiniSightPetView *gMiniSightPet = nil;   // 可选桌宠（存在 pet.png 时启用）
+static dispatch_block_t gMiniSightMaxShow = nil; // 自保：App 没发 stopped 也要收
 
 #pragma mark - 颜色 / 基础计算
 
@@ -607,6 +608,12 @@ static void MiniSightShow(void) {
     [gMiniSightPet startPlaying];
     if (MiniSightRecordingEnabled()) MiniSightStartRecording();
 
+    // 自保：即使 App 被杀/信号丢了，3 分钟后也自动收起来
+    if (gMiniSightMaxShow) dispatch_block_cancel(gMiniSightMaxShow);
+    gMiniSightMaxShow = dispatch_block_create(0, ^{ MiniSightHide(); });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(180 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), gMiniSightMaxShow);
+
     // 先透明再取消 hidden，然后 0.18s 淡入
     gMiniSightWindow.alpha = 0.0;
     gMiniSightWindow.hidden = NO;
@@ -620,6 +627,7 @@ static void MiniSightShow(void) {
 }
 
 static void MiniSightHide(void) {
+    if (gMiniSightMaxShow) { dispatch_block_cancel(gMiniSightMaxShow); gMiniSightMaxShow = nil; }
     if (!gMiniSightWindow || gMiniSightWindow.hidden) return;
 
     [UIView animateWithDuration:0.18
