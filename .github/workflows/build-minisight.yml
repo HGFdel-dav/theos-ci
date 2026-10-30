@@ -1,0 +1,53 @@
+name: MiniSight Build
+
+on:
+  push:
+    paths:
+      - 'debs/MiniSight/**'
+      - '.github/workflows/build-minisight.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15-intel
+    strategy:
+      fail-fast: false
+      matrix:
+        scheme: [roothide, rootless]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            debs/MiniSight
+      - name: Toolchain
+        run: |
+          set -euo pipefail
+          brew install ldid xz dpkg
+          git clone --depth 1 --recursive https://github.com/roothide/theos.git "$HOME/theos"
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/xybp888/iOS-SDKs.git "$HOME/sdks"
+          (cd "$HOME/sdks" && git sparse-checkout set iPhoneOS15.5.sdk)
+      - name: Build
+        working-directory: debs/MiniSight
+        run: |
+          set -euo pipefail
+          export THEOS="$HOME/theos"
+          SDK_PATH="$(find "$HOME/sdks" -maxdepth 3 -type d -name 'iPhoneOS15.5.sdk' -print -quit)"
+          if [ -z "$SDK_PATH" ]; then echo 'SDK not found:'; ls -la "$HOME/sdks"; exit 1; fi
+          mkdir -p "$HOME/theos/sdks"
+          cp -R "$SDK_PATH" "$HOME/theos/sdks/"
+          make clean || true
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=${{ matrix.scheme }}
+          mkdir -p out
+          cp packages/*.deb out/
+          (cd out && shasum -a 256 *.deb > SHA256SUMS)
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: minisight-${{ matrix.scheme }}
+          path: debs/MiniSight/out/
+          if-no-files-found: warn

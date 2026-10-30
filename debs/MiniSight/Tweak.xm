@@ -16,6 +16,98 @@
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 #import <CoreFoundation/CoreFoundation.h>
+#import <ReplayKit/ReplayKit.h>
+#import "MiniSightPet.h"
+
+
+#pragma mark - MiniSight 配置（读 Minis 容器的偏好）
+
+/// 找到 com.openminis.app 的容器（SpringBoard 不受沙盒限制，可按元数据扫描）。
+static NSString *MiniSightAppContainer(void) {
+    NSString *base = @"/var/mobile/Containers/Data/Application";
+    NSFileManager *fm = [NSFileManager defaultManager];
+    for (NSString *uuid in [fm contentsOfDirectoryAtPath:base error:nil]) {
+        NSString *dir = [base stringByAppendingPathComponent:uuid];
+        NSString *meta = [dir stringByAppendingPathComponent:
+                          @".com.apple.mobile_container_manager.metadata.plist"];
+        NSDictionary *info = [NSDictionary dictionaryWithContentsOfFile:meta];
+        if ([info[@"MCMMetadataIdentifier"] isEqualToString:@"com.openminis.app"]) {
+            return dir;
+        }
+    }
+    return nil;
+}
+
+/// 0 = 胶囊，1 = 桌宠。写在 App 的 NSUserDefaults 里。
+static NSInteger MiniSightStyle(void) {
+    NSString *container = MiniSightAppContainer();
+    if (!container) return 0;
+    NSString *plist = [container stringByAppendingPathComponent:@"Library/Preferences/com.openminis.app.plist"];
+    NSDictionary *prefs = [NSDictionary dictionaryWithContentsOfFile:plist];
+    return [prefs[@"minisight.style"] integerValue];
+}
+
+static NSString *MiniSightPetPath(void) {
+    NSString *container = MiniSightAppContainer();
+    if (!container) return nil;
+    return [container stringByAppendingPathComponent:@"Documents/MiniSight/pet.png"];
+}
+
+/// 录屏开关（App 设置里，默认关）
+static BOOL MiniSightRecordingEnabled(void) {
+    NSString *container = MiniSightAppContainer();
+    if (!container) return NO;
+    NSString *plist = [container stringByAppendingPathComponent:@"Library/Preferences/com.openminis.app.plist"];
+    NSDictionary *prefs = [NSDictionary dictionaryWithContentsOfFile:plist];
+    return [prefs[@"minisight.record"] boolValue];
+}
+
+static BOOL gMiniSightRecording = NO;
+
+static NSString *MiniSightRecordingDir(void) {
+    NSString *container = MiniSightAppContainer();
+    NSString *dir = container
+        ? [container stringByAppendingPathComponent:@"Documents/MiniSight/recordings"]
+        : @"/var/mobile/Documents/MiniSight/recordings";
+    [[NSFileManager defaultManager] createDirectoryAtPath:dir
+                              withIntermediateDirectories:YES attributes:nil error:nil];
+    return dir;
+}
+
+static void MiniSightStartRecording(void) {
+    if (gMiniSightRecording) return;
+    RPScreenRecorder *recorder = [RPScreenRecorder sharedRecorder];
+    if (!recorder.isAvailable) {
+        NSLog(@"[MiniSight] recorder unavailable");
+        return;
+    }
+    gMiniSightRecording = YES;
+    [recorder startRecordingWithHandler:^(NSError *error) {
+        if (error) {
+            gMiniSightRecording = NO;
+            NSLog(@"[MiniSight] startRecording failed: %@", error.localizedDescription);
+        }
+    }];
+}
+
+static void MiniSightStopRecording(void) {
+    if (!gMiniSightRecording) return;
+    gMiniSightRecording = NO;
+    NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
+    fmt.dateFormat = @"yyyyMMdd-HHmmss";
+    NSString *name = [NSString stringWithFormat:@"rec-%@.mp4", [fmt stringFromDate:[NSDate date]]];
+    NSString *path = [MiniSightRecordingDir() stringByAppendingPathComponent:name];
+    [[RPScreenRecorder sharedRecorder] stopRecordingWithOutputURL:[NSURL fileURLWithPath:path]
+                                                completionHandler:^(NSError *error) {
+        if (error) NSLog(@"[MiniSight] stopRecording failed: %@", error.localizedDescription);
+        else NSLog(@"[MiniSight] saved %@", path);
+    }];
+}
+
+static void MiniSightToggleRecording(void) {
+    if (gMiniSightRecording) MiniSightStopRecording();
+    else MiniSightStartRecording();
+}
 
 #pragma mark - 常量
 
@@ -43,6 +135,7 @@ static UIView   *gMiniSightPulse  = nil;   // 圆点背后的脉动圈
 static UILabel  *gMiniSightLabel  = nil;   // 文字
 static id        gMiniSightGestureTarget = nil; // 手势/通知的 target（需强引用）
 static BOOL      gMiniSightBuilt  = NO;
+static MiniSightPetView *gMiniSightPet = nil;   // 可选桌宠（存在 pet.png 时启用）
 
 #pragma mark - 颜色 / 基础计算
 
@@ -159,6 +252,7 @@ static void MiniSightHide(void);
 static void MiniSightUpdateGeometry(void);
 static void MiniSightApplySavedCenter(BOOL useSaved);
 static void MiniSightStartPulse(void);
+static void MiniSightToggleRecording(void);
 static void MiniSightStopPulse(void);
 
 #pragma mark - 窗口类
@@ -235,6 +329,14 @@ static void MiniSightStopPulse(void);
 }
 
 /// 旋转：界面方向变化是异步的，稍等一下再重算并 clamp
+- (void)handleLongPress:(UILongPressGestureRecognizer *)press {
+    if (press.state != UIGestureRecognizerStateBegan) return;
+    UIImpactFeedbackGenerator *feedback =
+        [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+    [feedback impactOccurred];
+    MiniSightToggleRecording();
+}
+
 - (void)handleOrientationChange:(NSNotification *)note {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
@@ -286,6 +388,10 @@ static void MiniSightUpdateGeometry(void) {
 
     CGRect rect = MiniSightScreenRect();
     gMiniSightWindow.frame = rect;
+
+    if (gMiniSightPet) {
+        gMiniSightPet.center = CGPointMake(CGRectGetMidX(rect), CGRectGetMidY(rect));
+    }
 
     if (gMiniSightPill) {
         gMiniSightPill.frame = CGRectMake((rect.size.width - kMiniSightWidth) / 2.0,
@@ -448,7 +554,29 @@ static void MiniSightBuildUI(void) {
     UIPanGestureRecognizer *pan =
         [[UIPanGestureRecognizer alloc] initWithTarget:gMiniSightGestureTarget
                                                 action:@selector(handlePan:)];
-    [pill addGestureRecognizer:pan];
+
+    // ---- 桌宠（可选）：放了 /var/mobile/Documents/MiniSight/pet.png 就用它，否则仍是胶囊 ----
+    NSString *petPath = MiniSightPetPath();
+    UIImage *petSprite = (MiniSightStyle() == 1 && petPath.length > 0)
+        ? [UIImage imageWithContentsOfFile:petPath] : nil;
+    if (petSprite) {
+        gMiniSightPet = [[MiniSightPetView alloc] initWithSprite:petSprite
+                                                    displaySize:CGSizeMake(96.0, 104.0)];
+        gMiniSightPet.center = CGPointMake(CGRectGetMidX(root.bounds), CGRectGetMidY(root.bounds));
+        gMiniSightPet.onLongPress = ^{
+            MiniSightToggleRecording();
+        };
+        [root addSubview:gMiniSightPet];
+        [gMiniSightPet addGestureRecognizer:pan];
+        pill.hidden = YES;
+    } else {
+        [pill addGestureRecognizer:pan];
+        UILongPressGestureRecognizer *pillPress =
+            [[UILongPressGestureRecognizer alloc] initWithTarget:gMiniSightGestureTarget
+                                                          action:@selector(handleLongPress:)];
+        pillPress.minimumPressDuration = 0.9;
+        [pill addGestureRecognizer:pillPress];
+    }
 
     gMiniSightWindow = window;
     gMiniSightPill   = pill;
@@ -476,6 +604,8 @@ static void MiniSightShow(void) {
     MiniSightUpdateGeometry();
     MiniSightApplySavedCenter(YES);
     MiniSightStartPulse();
+    [gMiniSightPet startPlaying];
+    if (MiniSightRecordingEnabled()) MiniSightStartRecording();
 
     // 先透明再取消 hidden，然后 0.18s 淡入
     gMiniSightWindow.alpha = 0.0;
@@ -504,6 +634,8 @@ static void MiniSightHide(void) {
             gMiniSightWindow.hidden = YES;
             gMiniSightWindow.alpha = 1.0; // 下次显示从 0 开始淡入
             MiniSightStopPulse();
+            [gMiniSightPet stopPlaying];
+            MiniSightStopRecording();
         }
     }];
 }
