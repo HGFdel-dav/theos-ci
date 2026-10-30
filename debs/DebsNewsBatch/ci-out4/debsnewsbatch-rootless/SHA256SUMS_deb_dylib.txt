@@ -1,0 +1,2 @@
+b26ea10a4c8718d493c436cd6f35c5adc40c94c48de12cfe570d17ff8bed02d4  com.niubiprass.debsnewsbatch_0.4.0_iphoneos-arm64.deb
+7739a0072b4b3a0d121db7b558c29c7f9e6503497802ea3ced00c53ef6af0251  DebsNewsBatch-rootless.dylib
