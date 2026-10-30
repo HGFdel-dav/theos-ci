@@ -2309,7 +2309,7 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
     if (shouldOpen) {
         panelState = POPanelStateOpen;
         keyboardZoomContainer.hidden = NO;
-        self.handle.hidden = YES;
+        // 手柄不再从视图树 hidden；只隐藏视觉层，避免关闭动画/窗口异常后永远消失。
         [self.handle setHostedWindowOpen:YES];
         if (presentationSnapshotView && !presentationSnapshotView.hidden &&
             hostSession.state == POHostSessionStateLive) {
@@ -2344,6 +2344,7 @@ static CGFloat POPresentationAngleForOrientation(UIInterfaceOrientation orientat
         panelState = POPanelStateClosed;
         self.handle.hidden = NO;
         [self.handle setHostedWindowOpen:NO];
+        [self.handle restoreRestingAppearance];
         if (previousLayoutMode != [self currentQuickSwitchLayoutMode]) {
             [self applyLayoutPreservingHandlePosition:YES];
             [self inheritVerticalHandleScreenY:inheritedHandleScreenY];
