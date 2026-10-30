@@ -53,6 +53,15 @@ static NSString *MiniSightPetPath(void) {
     return [container stringByAppendingPathComponent:@"Documents/MiniSight/pet.png"];
 }
 
+/// 常驻开关：开着的时候不随 stopped 隐藏，桌面一直留着。
+static BOOL MiniSightAlwaysShow(void) {
+    NSString *container = MiniSightAppContainer();
+    if (!container) return NO;
+    NSString *plist = [container stringByAppendingPathComponent:@"Library/Preferences/com.openminis.app.plist"];
+    NSDictionary *prefs = [NSDictionary dictionaryWithContentsOfFile:plist];
+    return [prefs[@"minisight.alwaysShow"] boolValue];
+}
+
 /// 录屏开关（App 设置里，默认关）
 static BOOL MiniSightRecordingEnabled(void) {
     NSString *container = MiniSightAppContainer();
@@ -627,6 +636,7 @@ static void MiniSightShow(void) {
 }
 
 static void MiniSightHide(void) {
+    if (MiniSightAlwaysShow()) return;   // 常驻模式：不随操作结束隐藏
     if (gMiniSightMaxShow) { dispatch_block_cancel(gMiniSightMaxShow); gMiniSightMaxShow = nil; }
     if (!gMiniSightWindow || gMiniSightWindow.hidden) return;
 
@@ -697,7 +707,8 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
         // SpringBoard 刚启动时 UI 还没准备好，延迟 2 秒再建浮窗 + 注册旋转监听
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
-            MiniSightBuildUI();
+            if (MiniSightAlwaysShow()) MiniSightShow();
+            else MiniSightBuildUI();
 
             [[UIDevice currentDevice] beginGeneratingDeviceOrientationNotifications];
             [[NSNotificationCenter defaultCenter] addObserver:gMiniSightGestureTarget
