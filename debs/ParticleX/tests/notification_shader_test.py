@@ -60,7 +60,9 @@ int main() {
 }
 '''
 with tempfile.TemporaryDirectory() as d:
-    cpp=Path(d)/'notice.cpp';cpp.write_text(extract(R)+'\n'+HARNESS)
+    # Metal address-space stand-ins must not rewrite libc++'s std::thread.
+    cleanup='\n#undef thread\n#undef device\n#undef constant\n#undef vertex\n#undef fragment\n#undef discard_fragment\n'
+    cpp=Path(d)/'notice.cpp';cpp.write_text(extract(R)+cleanup+HARNESS)
     exe=Path(d)/'notice'
     subprocess.run(['clang++','-std=c++17','-D__METAL_VERSION__','-Wno-unknown-attributes','-I'+str(R/'tests'),str(cpp),'-o',str(exe)],check=True)
     subprocess.run([str(exe)],check=True)
