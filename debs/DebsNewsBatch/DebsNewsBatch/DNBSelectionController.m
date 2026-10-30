@@ -4,6 +4,7 @@
 //
 
 #import "DNBSelectionController.h"
+#import <objc/runtime.h>
 #import "DNBNewsBarView.h"
 #import "DNBRowTarget.h"
 #import "DNBDownloader.h"
