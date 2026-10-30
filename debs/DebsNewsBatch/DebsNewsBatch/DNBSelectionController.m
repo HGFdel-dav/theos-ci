@@ -404,6 +404,16 @@
     return YES;
 }
 
+- (UIView *)rowViewAtPoint:(CGPoint)pointInScroll
+{
+    for (UIView *row in [self rowViews]) {
+        if (CGRectContainsPoint(row.frame, pointInScroll)) {
+            return row;
+        }
+    }
+    return nil;
+}
+
 - (void)handleRowLongPress:(UILongPressGestureRecognizer *)g
 {
     if (g.state != UIGestureRecognizerStateBegan) {
