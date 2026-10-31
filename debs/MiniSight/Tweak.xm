@@ -356,7 +356,7 @@ static void MiniSightRefreshGravityConfiguration(void) {
 }
 
 static void MiniSightStopGravity(void) {
-    NSAssert([NSThread isMainThread], @"Motion UI must be stopped on main thread");
+    NSCAssert([NSThread isMainThread], @"Motion UI must be stopped on main thread");
     ++gMiniSightMotionGeneration;
     gMiniSightMotionRunning = NO;
     if (gMiniSightMotionManager.deviceMotionActive) {
@@ -376,7 +376,7 @@ static void MiniSightStopGravity(void) {
 }
 
 static void MiniSightStartGravity(void) {
-    NSAssert([NSThread isMainThread], @"Motion UI must start on main thread");
+    NSCAssert([NSThread isMainThread], @"Motion UI must start on main thread");
     if (!MiniSightGravityEnabled() || !gMiniSightWindow ||
         gMiniSightWindow.hidden || gMiniSightScreenBlanked ||
         [NSProcessInfo processInfo].lowPowerModeEnabled) {
