@@ -35,6 +35,16 @@ Darwin 通知（`CFNotificationCenterGetDarwinNotifyCenter()`）：
 浮窗是一枚全屏透明 `UIWindow`（`UIWindowLevelAlert + 1`），但只有胶囊本身接收触摸，
 其余区域的 `hitTest` 返回 `nil`，触摸会穿透到桌面 / 前台 App；窗口也不允许成为 key window。
 
+## 桌宠（可选）
+
+设置 → 插件开发 → 操作指示器里可把胶囊换成桌宠，并导入 9 行动作图集。
+桌宠只在自己的可见范围内走动：所有落点来自宿主算出的可行中心区，手动拖动同样夹紧；
+浮动窗口永远整屏固定，只有子视图移动，所以不会再把「局部合法坐标」带出屏幕。
+
+「重力感应」默认关闭。开启后倾斜手机左右摇摆（子层旋转，命中区域不变），
+快速晃动会触发一次短促的失衡/摔倒回弹；关闭、低电量、息屏、窗口不可见时
+都不保留传感器采样和额外时钟。
+
 ## 构建
 
 源码目录 `debs/MiniSight/`，由仓库的 GitHub Actions（`.github/workflows/build-theos.yml`）

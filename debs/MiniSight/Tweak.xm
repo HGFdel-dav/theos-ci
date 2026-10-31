@@ -9,7 +9,8 @@
 //   2. 只有胶囊本身接收触摸，屏幕其它区域全部穿透给下层窗口；
 //   3. 132×36 圆角胶囊 + 暖米色脉动圆点 + 白色小字；
 //   4. 可以拖动，位置写 NSUserDefaults（MiniSightCenterX / MiniSightCenterY）；
-//   5. 旋转时重新计算并 clamp，保证浮窗不会跑出屏幕。
+//   5. 旋转时重新计算并 clamp。注意 clamp 的是「子视图在整屏窗口里的位置」，
+//      窗口本身永远整屏不动 —— 移窗口会让局部合法坐标在屏幕上越界（0.3.2 的坑）。
 //
 // 目标系统：iOS 15.x（SpringBoard，arm64 / arm64e）
 
@@ -17,7 +18,11 @@
 #import <QuartzCore/QuartzCore.h>
 #import <CoreFoundation/CoreFoundation.h>
 #import <ReplayKit/ReplayKit.h>
+#import <AVFoundation/AVFoundation.h>
+#import <CoreMotion/CoreMotion.h>
+#import <math.h>
 #import "MiniSightPet.h"
+#import "MiniSightLayout.h"
 
 
 #pragma mark - MiniSight 配置（读 Minis 容器的偏好）
@@ -28,6 +33,11 @@ static void MiniSightShowConfirm(void);
 static void MiniSightAnswerConfirm(BOOL allow);
 static void MiniSightSay(NSString *line);
 static void MiniSightShowBubble(NSString *raw);
+static void MiniSightStartRecording(void);
+static void MiniSightStopRecording(void);
+static void MiniSightSetAnchor(CGPoint want, BOOL save);
+static void MiniSightFollowBubble(void);
+static void MiniSightPlaceBubble(CGFloat w, CGFloat h);
 
 /// 找到 com.openminis.app 的容器（SpringBoard 不受沙盒限制，可按元数据扫描）。
 static NSString *MiniSightAppContainer(void) {
@@ -100,16 +110,32 @@ static void MiniSightUserHide(void) {
 }
 
 
-/// 录屏开关（App 设置里，默认关）
-static BOOL MiniSightRecordingEnabled(void) {
+/// 读 App 的偏好（key 不存在时返回 nil，交调用方决定默认值）
+static id MiniSightPref(NSString *key) {
     NSString *container = MiniSightAppContainer();
-    if (!container) return NO;
+    if (!container) return nil;
     NSString *plist = [container stringByAppendingPathComponent:@"Library/Preferences/com.openminis.app.plist"];
     NSDictionary *prefs = [NSDictionary dictionaryWithContentsOfFile:plist];
-    return [prefs[@"minisight.record"] boolValue];
+    return prefs[key];
 }
 
-static BOOL gMiniSightRecording = NO;
+/// 录屏开关（App 设置里，默认关）
+static BOOL MiniSightRecordingEnabled(void) {
+    return [MiniSightPref(@"minisight.record") boolValue];
+}
+
+/// 长按切换录屏（App 设置里，默认开）。
+/// 以前只画了这个开关、插件从没读过它 —— 关掉也照样长按生效。
+static BOOL MiniSightLongPressEnabled(void) {
+    id v = MiniSightPref(@"minisight.longPress");
+    if (!v) return YES;
+    return [v boolValue];
+}
+
+/// 短提示：直接写气泡，不走 3 秒消失逻辑（长按场景要留得住）
+static void MiniSightSay(NSString *line) {
+    MiniSightShowBubble(line);
+}
 
 static NSString *MiniSightRecordingDir(void) {
     NSString *container = MiniSightAppContainer();
@@ -121,48 +147,133 @@ static NSString *MiniSightRecordingDir(void) {
     return dir;
 }
 
+#pragma mark - 录屏状态机（启动/保存成功之前不提示成功）
+
+typedef NS_ENUM(NSInteger, MiniSightRecState) {
+    MiniSightRecIdle = 0,   // 没在录
+    MiniSightRecStarting,   // 已请求开始，等回调
+    MiniSightRecRecording,  // 回调确认成功，真的在录
+    MiniSightRecStopping,   // 已请求停止，等保存结果
+};
+
+static MiniSightRecState gMiniSightRecState = MiniSightRecIdle;
+static BOOL gMiniSightRecAdopted = NO;     // 进插件时系统已经在录（不是本插件起的）
+static BOOL gMiniSightRecStopWanted = NO;  // 正在启动时用户又按了一次
+static dispatch_block_t gMiniSightRecLimit = nil;
+static NSString *gMiniSightRecPath = nil;
+static const NSTimeInterval kMiniSightRecMaxDuration = 600.0;   // 忘关也不会无限录
+
+static void MiniSightRecCancelLimit(void) {
+    if (gMiniSightRecLimit) { dispatch_block_cancel(gMiniSightRecLimit); gMiniSightRecLimit = nil; }
+}
+
+/// 只带 domain/code，不回显系统给的整段描述（可能含路径或标识）
+static NSString *MiniSightRecHint(NSString *prefix, NSError *error) {
+    if (!error) return prefix;
+    return [NSString stringWithFormat:@"%@（%ld）", prefix, (long)error.code];
+}
+
 static void MiniSightStartRecording(void) {
-    if (gMiniSightRecording) return;
+    if (gMiniSightRecState != MiniSightRecIdle) return;
     RPScreenRecorder *recorder = [RPScreenRecorder sharedRecorder];
     if (!recorder.isAvailable) {
         NSLog(@"[MiniSight] recorder unavailable");
         MiniSightSay(@"这台机器现在不能录屏");
         return;
     }
-    gMiniSightRecording = YES;
-    MiniSightSay(@"开始录屏");
+    if (recorder.isRecording) {          // 别的途径已经在录：接管状态，不重复启动
+        gMiniSightRecState = MiniSightRecRecording;
+        gMiniSightRecAdopted = YES;
+        MiniSightSay(@"已经在录屏了");
+        return;
+    }
+    gMiniSightRecState = MiniSightRecStarting;
+    gMiniSightRecStopWanted = NO;
+    MiniSightSay(@"录屏启动中…");
     [recorder startRecordingWithHandler:^(NSError *error) {
-        if (error) {
-            gMiniSightRecording = NO;
-            NSLog(@"[MiniSight] startRecording failed: %@", error.localizedDescription);
-            MiniSightSay(@"录屏没起来");
-        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (error) {
+                gMiniSightRecState = MiniSightRecIdle;
+                gMiniSightRecStopWanted = NO;
+                NSLog(@"[MiniSight] startRecording failed: %@ %ld", error.domain, (long)error.code);
+                MiniSightSay(MiniSightRecHint(@"录屏没起来", error));
+                return;
+            }
+            gMiniSightRecState = MiniSightRecRecording;
+            gMiniSightRecAdopted = NO;
+            MiniSightSay(@"开始录屏");
+            MiniSightRecCancelLimit();
+            gMiniSightRecLimit = dispatch_block_create(DISPATCH_BLOCK_DETACHED, ^{
+                MiniSightStopRecording();
+            });
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+                                         (int64_t)(kMiniSightRecMaxDuration * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), gMiniSightRecLimit);
+            if (gMiniSightRecStopWanted) {      // 启动期间按过停止，成功了立刻停
+                gMiniSightRecStopWanted = NO;
+                MiniSightStopRecording();
+            }
+        });
     }];
 }
 
 static void MiniSightStopRecording(void) {
-    if (!gMiniSightRecording) return;
-    gMiniSightRecording = NO;
-    MiniSightSay(@"录屏已保存");
+    if (gMiniSightRecState == MiniSightRecStarting) {   // 还没起来：记下来，成功后立刻停
+        gMiniSightRecStopWanted = YES;
+        return;
+    }
+    if (gMiniSightRecState != MiniSightRecRecording) return;
+    RPScreenRecorder *recorder = [RPScreenRecorder sharedRecorder];
+    gMiniSightRecState = MiniSightRecStopping;
+    MiniSightRecCancelLimit();
+    if (gMiniSightRecAdopted && !recorder.isRecording) {   // 接管的那次已经被系统停了
+        gMiniSightRecState = MiniSightRecIdle;
+        gMiniSightRecAdopted = NO;
+        return;
+    }
+
     NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
     fmt.dateFormat = @"yyyyMMdd-HHmmss";
     NSString *name = [NSString stringWithFormat:@"rec-%@.mp4", [fmt stringFromDate:[NSDate date]]];
     NSString *path = [MiniSightRecordingDir() stringByAppendingPathComponent:name];
-    [[RPScreenRecorder sharedRecorder] stopRecordingWithOutputURL:[NSURL fileURLWithPath:path]
-                                                completionHandler:^(NSError *error) {
-        if (error) NSLog(@"[MiniSight] stopRecording failed: %@", error.localizedDescription);
-        else NSLog(@"[MiniSight] saved %@", path);
+    gMiniSightRecPath = path;
+    MiniSightSay(@"正在保存录屏…");
+    [recorder stopRecordingWithOutputURL:[NSURL fileURLWithPath:path]
+                       completionHandler:^(NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            gMiniSightRecState = MiniSightRecIdle;
+            gMiniSightRecAdopted = NO;
+            if (error) {
+                NSLog(@"[MiniSight] stopRecording failed: %@ %ld", error.domain, (long)error.code);
+                MiniSightSay(MiniSightRecHint(@"录屏保存失败", error));
+                return;
+            }
+            // 真落盘才算成功：先看字节数，再看时长（空文件/0 时长都当没录上）
+            NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfItemAtPath:path error:nil];
+            double bytes = [attrs[NSFileSize] doubleValue];
+            if (bytes < 1024.0) {
+                NSLog(@"[MiniSight] recording empty: %@ %.0f bytes", path, bytes);
+                MiniSightSay(@"录屏是空的，没录上");
+                return;
+            }
+            AVURLAsset *asset = [AVURLAsset URLAssetWithURL:[NSURL fileURLWithPath:path] options:nil];
+            CMTime duration = asset.duration;
+            double secs = CMTIME_IS_NUMERIC(duration) ? CMTimeGetSeconds(duration) : 0.0;
+            if (!(secs > 0.0)) {
+                NSLog(@"[MiniSight] recording has no duration: %@", path);
+                MiniSightSay(@"录屏没有时长，可能没生成");
+                return;
+            }
+            NSLog(@"[MiniSight] saved %@ %.1fs %.0fKB", path, secs, bytes / 1024.0);
+            MiniSightSay([NSString stringWithFormat:@"录屏已保存 %.0f 秒", secs]);
+        });
     }];
 }
 
-/// 短提示：直接写气泡，不走 3 秒消失逻辑（长按场景要留得住）
-static void MiniSightSay(NSString *line) {
-    MiniSightShowBubble(line);
-}
-
 static void MiniSightToggleRecording(void) {
-    if (gMiniSightRecording) MiniSightStopRecording();
-    else MiniSightStartRecording();
+    if (!MiniSightLongPressEnabled()) return;   // 设置里关掉长按就完全不响应
+    if (gMiniSightRecState == MiniSightRecIdle) MiniSightStartRecording();
+    else MiniSightStopRecording();
 }
 
 #pragma mark - 常量
@@ -175,6 +286,9 @@ static const CGFloat kMiniSightDotLeft    = 12.0;  // 圆点左边距
 static const CGFloat kMiniSightDotGap     = 8.0;   // 圆点到文字的距离
 static const CGFloat kMiniSightTextRight  = 15.0;  // 文字右边距
 static const CGFloat kMiniSightEdge       = 8.0;   // 拖动时距离屏幕边缘的最小留白
+static const CGFloat kMiniSightBubbleGap     = 7.0;   // 气泡与头顶的间距
+static const CGFloat kMiniSightBubbleReserve = 52.0;  // 普通气泡预留在头顶的高度
+static const CGFloat kMiniSightConfirmReserve = 124.0; // 确认气泡（两行按钮）预留高度
 
 static NSString *const kMiniSightStarted   = @"com.openminis.agent.started";
 static NSString *const kMiniSightStopped   = @"com.openminis.agent.stopped";
@@ -212,6 +326,129 @@ static UILabel *gMiniSightBubbleLabel = nil;
 static CAShapeLayer *gMiniSightBubbleTail = nil;
 static dispatch_block_t gMiniSightBubbleHideWork = nil;
 static NSString *gMiniSightLastLine = nil;
+static CGPoint   gMiniSightAnchor = {0, 0};   // 身体中心（整屏窗口坐标，绝不是 window.center）
+static BOOL      gMiniSightAnchorValid = NO;
+static CGPoint   gMiniSightDragOrigin = {0, 0}; // 本次 pan 开始时的身体中心
+static BOOL      gMiniSightDragOriginValid = NO;
+static BOOL gMiniSightDragging = NO;     // 拖动中：气泡不再让位移动身体
+
+// 重力输入只存在于桌宠、可见且开启时；manager 本身不跨线程碰 UI。
+static CMMotionManager *gMiniSightMotionManager = nil;
+static NSUInteger gMiniSightMotionGeneration = 0;
+static BOOL gMiniSightMotionRunning = NO;
+static BOOL gMiniSightScreenBlanked = NO;
+static CGFloat gMiniSightGravityRoll = 0.0;
+static BOOL gMiniSightGravityRollValid = NO;
+static BOOL gMiniSightGravityShakeLatched = NO;
+static NSTimeInterval gMiniSightGravityLastImpulseTime = 0.0;
+static BOOL gMiniSightGravityConfigured = NO;
+
+static UIInterfaceOrientation MiniSightOrientation(void);
+static void MiniSightUpdateGeometry(void);
+
+static BOOL MiniSightGravityEnabled(void) {
+    return gMiniSightPet != nil && gMiniSightGravityConfigured;
+}
+
+static void MiniSightRefreshGravityConfiguration(void) {
+    gMiniSightGravityConfigured = gMiniSightPet != nil && MiniSightStyle() == 1 &&
+        [MiniSightPref(@"minisight.gravity") boolValue];
+}
+
+static void MiniSightStopGravity(void) {
+    NSAssert([NSThread isMainThread], @"Motion UI must be stopped on main thread");
+    ++gMiniSightMotionGeneration;
+    gMiniSightMotionRunning = NO;
+    if (gMiniSightMotionManager.deviceMotionActive) {
+        [gMiniSightMotionManager stopDeviceMotionUpdates];
+    }
+    gMiniSightGravityRoll = 0.0;
+    gMiniSightGravityRollValid = NO;
+    gMiniSightGravityShakeLatched = NO;
+    gMiniSightGravityLastImpulseTime = 0.0;
+    if (gMiniSightPet) {
+        BOOL wasOn = gMiniSightPet.gravityEnabled;
+        gMiniSightPet.gravityEnabled = NO;
+        gMiniSightPet.gravityRoll = 0.0;
+        // 关掉后不再需要倾斜包络，收回多余留白（窗口存在时才跑布局）。
+        if (wasOn && gMiniSightWindow) MiniSightUpdateGeometry();
+    }
+}
+
+static void MiniSightStartGravity(void) {
+    NSAssert([NSThread isMainThread], @"Motion UI must start on main thread");
+    if (!MiniSightGravityEnabled() || !gMiniSightWindow ||
+        gMiniSightWindow.hidden || gMiniSightScreenBlanked ||
+        [NSProcessInfo processInfo].lowPowerModeEnabled) {
+        MiniSightStopGravity();
+        return;
+    }
+    if (!gMiniSightMotionManager) gMiniSightMotionManager = [[CMMotionManager alloc] init];
+    if (!gMiniSightMotionManager.isDeviceMotionAvailable) {
+        gMiniSightMotionRunning = NO;
+        if (!gMiniSightPet.gravityEnabled) {
+            gMiniSightPet.gravityEnabled = YES;   // 传感器坏了也保留包络
+            MiniSightUpdateGeometry();
+        }
+        return;
+    }
+
+    BOOL wasOn = gMiniSightPet.gravityEnabled;
+    gMiniSightPet.gravityEnabled = YES;
+    if (!wasOn && gMiniSightWindow) MiniSightUpdateGeometry();  // 先按倾斜包络预留空间
+    if (gMiniSightMotionRunning) return;
+    gMiniSightMotionManager.deviceMotionUpdateInterval = 1.0 / 30.0;
+    NSUInteger generation = ++gMiniSightMotionGeneration;
+    gMiniSightMotionRunning = YES;
+    gMiniSightGravityRollValid = NO;
+    __weak MiniSightPetView *weakPet = gMiniSightPet;
+    [gMiniSightMotionManager startDeviceMotionUpdatesToQueue:[NSOperationQueue mainQueue]
+                                                 withHandler:^(CMDeviceMotion *motion, NSError *error) {
+        if (error || !motion || !gMiniSightMotionRunning ||
+            generation != gMiniSightMotionGeneration) return;
+        MiniSightPetView *pet = weakPet;
+        if (!pet || pet != gMiniSightPet || !MiniSightGravityEnabled() ||
+            !gMiniSightWindow || gMiniSightWindow.hidden || gMiniSightScreenBlanked ||
+            [NSProcessInfo processInfo].lowPowerModeEnabled) {
+            MiniSightStopGravity();
+            return;
+        }
+
+        UIInterfaceOrientation orientation = MiniSightOrientation();
+        CGFloat lateral = 0.0;
+        switch (orientation) {
+            case UIInterfaceOrientationLandscapeLeft:  lateral = (CGFloat)motion.gravity.y; break;
+            case UIInterfaceOrientationLandscapeRight: lateral = (CGFloat)-motion.gravity.y; break;
+            case UIInterfaceOrientationPortraitUpsideDown: lateral = (CGFloat)-motion.gravity.x; break;
+            default: lateral = (CGFloat)motion.gravity.x; break;
+        }
+        CGFloat sample = MIN(1.0, MAX(-1.0, lateral / 0.72));
+        if (fabs(sample) < 0.045) sample = 0.0;
+        if (!gMiniSightGravityRollValid) {
+            gMiniSightGravityRoll = sample;
+            gMiniSightGravityRollValid = YES;
+        } else {
+            gMiniSightGravityRoll = gMiniSightGravityRoll * 0.82 + sample * 0.18;
+        }
+        pet.gravityRoll = gMiniSightGravityRoll;
+
+        CMAcceleration a = motion.userAcceleration;
+        CGFloat magnitude = sqrt((CGFloat)(a.x * a.x + a.y * a.y + a.z * a.z));
+        NSTimeInterval now = CACurrentMediaTime();
+        if (magnitude > 1.55) {
+            if (!gMiniSightGravityShakeLatched && now - gMiniSightGravityLastImpulseTime > 0.75) {
+                CGFloat direction = gMiniSightGravityRoll;
+                if (fabs(direction) < 0.08) direction = (a.x >= 0.0 ? 1.0 : -1.0);
+                CGFloat strength = MIN(1.0, MAX(0.25, (magnitude - 1.35) / 1.8));
+                [pet triggerGravityImpulseWithDirection:direction strength:strength];
+                gMiniSightGravityShakeLatched = YES;
+                gMiniSightGravityLastImpulseTime = now;
+            }
+        } else if (magnitude < 0.85) {
+            gMiniSightGravityShakeLatched = NO;
+        }
+    }];
+}
 
 #pragma mark - 颜色 / 基础计算
 
@@ -278,53 +515,107 @@ static CGFloat MiniSightTopInset(void) {
     return inset;
 }
 
-/// 把浮窗中心点限制在屏幕内（四周留 kMiniSightEdge 的边距）
-static CGPoint MiniSightClampCenter(CGPoint center) {
-    CGRect bounds = gMiniSightWindow ? gMiniSightWindow.bounds : MiniSightScreenRect();
-    CGFloat halfW = (gMiniSightPet ? gMiniSightPet.bounds.size.width : kMiniSightWidth) / 2.0;
-    CGFloat halfH = (gMiniSightPet ? gMiniSightPet.bounds.size.height : kMiniSightHeight) / 2.0;
-
-    CGFloat minX = kMiniSightEdge + halfW;
-    CGFloat maxX = bounds.size.width - kMiniSightEdge - halfW;
-    CGFloat minY = kMiniSightEdge + halfH;
-    CGFloat maxY = bounds.size.height - kMiniSightEdge - halfH;
-
-    // 极端情况（屏幕比浮窗还窄）时直接居中，避免 min > max
-    if (maxX < minX) minX = maxX = bounds.size.width / 2.0;
-    if (maxY < minY) minY = maxY = bounds.size.height / 2.0;
-
-    center.x = MIN(MAX(center.x, minX), maxX);
-    center.y = MIN(MAX(center.y, minY), maxY);
-    return center;
+/// 底部安全区（Home 指示条），取不到时保守留 8
+static CGFloat MiniSightBottomInset(void) {
+    if (@available(iOS 11.0, *)) {
+        CGFloat inset = gMiniSightWindow.safeAreaInsets.bottom;
+        if (inset > 0.5) return inset;
+    }
+    return 8.0;
 }
 
-/// 默认位置：屏幕顶部、水平居中，顶部距离安全区 8pt
-static CGPoint MiniSightDefaultCenter(void) {
-    CGRect bounds = gMiniSightWindow ? gMiniSightWindow.bounds : MiniSightScreenRect();
-    // 不固定在顶部中间：每次没记住位置时就随机落点（上半屏、留边）。
-    CGFloat half = 60.0;
-    CGFloat minX = kMiniSightEdge + half;
-    CGFloat maxX = MAX(bounds.size.width - minX, minX);
-    CGFloat minY = MiniSightTopInset() + kMiniSightEdge + half;
-    CGFloat maxY = MAX(bounds.size.height * 0.55, minY);
-    CGFloat x = minX + (CGFloat)arc4random_uniform((uint32_t)MAX(maxX - minX, 1));
-    CGFloat y = minY + (CGFloat)arc4random_uniform((uint32_t)MAX(maxY - minY, 1));
+/// 身体尺寸：有桌宠就是桌宠尺寸，否则是胶囊
+static MSSize MiniSightBodySize(void) {
+    CGSize size = gMiniSightPet
+        ? (gMiniSightPet.gravityEnabled ? gMiniSightPet.gravitySafeSize : gMiniSightPet.bounds.size)
+        : CGSizeMake(kMiniSightWidth, kMiniSightHeight);
+    if (!(size.width > 1.0) || !(size.height > 1.0)) {
+        size = CGSizeMake(kMiniSightWidth, kMiniSightHeight);
+    }
+    return (MSSize){size.width, size.height};
+}
+
+/// 头顶要留出的高度：确认气泡更高，普通气泡一句话
+static double MiniSightBubbleReserve(void) {
+    return gMiniSightConfirming ? kMiniSightConfirmReserve : kMiniSightBubbleReserve;
+}
+
+/// 统一布局：窗口整屏不动，宠物/胶囊只在这个可行范围里移动
+static MSLayout MiniSightLayoutNow(void) {
+    CGRect screen = MiniSightScreenRect();
+    CGFloat top = MiniSightTopInset();
+    CGFloat bottom = MiniSightBottomInset();
+    CGFloat left = 0.0, right = 0.0;
+    if (@available(iOS 11.0, *)) {
+        UIEdgeInsets insets = gMiniSightWindow.safeAreaInsets;
+        if (insets.left > 0.5) left = insets.left;
+        if (insets.right > 0.5) right = insets.right;
+    }
+    MSSize body = MiniSightBodySize();
+    return MSLayoutMake(screen.size.width, screen.size.height,
+                        top, bottom, left, right,
+                        kMiniSightEdge, body.w, body.h,
+                        kMiniSightBubbleGap, MiniSightBubbleReserve());
+}
+
+/// 默认落点：没记住位置时随机撒在上半屏（范围来自同一套边界）
+static CGPoint MiniSightDefaultAnchor(void) {
+    MSLayout L = MiniSightLayoutNow();
+    CGRect screen = MiniSightScreenRect();
+    CGFloat minX = L.centers.x, maxX = L.centers.x + L.centers.w;
+    CGFloat minY = L.centers.y;
+    CGFloat maxY = MIN(L.centers.y + L.centers.h, screen.size.height * 0.55);
+    if (maxY < minY) maxY = minY;
+    CGFloat x = minX + (maxX > minX ? (CGFloat)arc4random_uniform((uint32_t)(maxX - minX)) : 0.0);
+    CGFloat y = minY + (maxY > minY ? (CGFloat)arc4random_uniform((uint32_t)(maxY - minY)) : 0.0);
     return CGPointMake(x, y);
 }
 
-/// 取一个「不会跟着浮窗一起动」的参照窗口，用来换算拖拽位移
-static UIView *MiniSightReferenceView(void) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    UIWindow *key = [UIApplication sharedApplication].keyWindow;
-#pragma clang diagnostic pop
-    if (key && key != gMiniSightWindow && !key.hidden) return key;
+/// 落地锚点：更新桌宠可行范围 → 移动子视图（窗口不动）→ 气泡跟上。
+/// save = YES 时写入 NSUserDefaults（只有用户拖动结束才写，随机走动不写）。
+/// 这是全插件唯一能改「位置」的入口：拖动、旋转、默认落点、桌宠自己走动都走它。
+static void MiniSightSetAnchor(CGPoint want, BOOL save) {
+    if (!gMiniSightWindow) return;
+    MSLayout L = MiniSightLayoutNow();
+    MSPoint fixed = MSLayoutClamp(L, (MSPoint){want.x, want.y});
+    CGPoint center = CGPointMake(fixed.x, fixed.y);
 
-    for (UIWindow *window in [UIApplication sharedApplication].windows) {
-        if (window == gMiniSightWindow || window.hidden) continue;
-        return window;
+    if (gMiniSightPet) {
+        // 可行中心范围交给桌宠，它的每一次移动都夹在这里面
+        gMiniSightPet.centerBounds = CGRectMake(L.centers.x, L.centers.y, L.centers.w, L.centers.h);
+        gMiniSightPet.center = center;
+        center = gMiniSightPet.center;
     }
-    return nil;
+    if (gMiniSightPill) {
+        gMiniSightPill.center = center;
+    }
+    gMiniSightAnchor = center;
+    gMiniSightAnchorValid = YES;
+    MiniSightFollowBubble();
+
+    if (save) {
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        [defaults setDouble:center.x forKey:kMiniSightCenterX];
+        [defaults setDouble:center.y forKey:kMiniSightCenterY];
+    }
+}
+
+/// 手指按住/拖动期间：冻在真实位置（不是停“播放意图”），松手恢复
+static void MiniSightInteractionBegin(void) {
+    gMiniSightPet.roamingPaused = YES;
+    gMiniSightPet.interactionActive = YES;
+}
+
+static void MiniSightInteractionEnd(void) {
+    gMiniSightPet.interactionActive = NO;
+    gMiniSightPet.roamingPaused = NO;
+}
+
+/// 取一个「不会跟着浮窗一起动」的参照视图，用来换算拖拽位移
+static UIView *MiniSightReferenceView(void) {
+    UIView *root = gMiniSightWindow.rootViewController.view;
+    if (root) return root;
+    return gMiniSightWindow;
 }
 
 #pragma mark - 前置声明
@@ -384,35 +675,64 @@ static void MiniSightStopPulse(void);
 
 @interface MiniSightGestureHandler : NSObject
 - (void)handlePan:(UIPanGestureRecognizer *)pan;
-- (void)handleOrientationChange:(NSNotification *)note;
+- (void)handleLongPress:(UILongPressGestureRecognizer *)press;
+- (void)handlePowerStateChange:(NSNotification *)notification;
+- (void)handleOrientationChange:(NSNotification *)notification;
 @end
 
 @implementation MiniSightGestureHandler
 
-/// 拖动：实时改 window.center，松手后把位置写进 NSUserDefaults
+/// 拖动：只移动宠物/胶囊（窗口整屏不动），松手才记住位置。
+/// translationInView: 是从 Began 起累计的位移；因此必须始终加到本次
+/// 拖动开始时的 dragOrigin，不能在每个 Changed 又加到已更新的 anchor 上。
 - (void)handlePan:(UIPanGestureRecognizer *)pan {
     if (!gMiniSightWindow) return;
 
-    // 关键点：窗口本身会跟着手指移动，如果用「本窗口内」的坐标算位移，
-    // 坐标系会跟着窗口一起动，translation 会永远接近 0（拖不动 / 抖动）。
-    // 所以这里取一个固定的参照窗口来换算位移。
-    UIView *reference = MiniSightReferenceView();
-    CGPoint translation = reference ? [pan translationInView:reference]
-                                    : [pan translationInView:pan.view];
+    UIView *reference = MiniSightReferenceView(); // 固定的整屏 root 坐标系
+    UIView *host = pan.view ?: (gMiniSightPet ?: gMiniSightPill);
+    UIView *translationView = reference ?: host;
+    CGPoint translation = translationView ? [pan translationInView:translationView] : CGPointZero;
 
-    CGPoint center = gMiniSightWindow.center;
-    center.x += translation.x;
-    center.y += translation.y;
-    gMiniSightWindow.center = MiniSightClampCenter(center);
-
-    [pan setTranslation:CGPointZero inView:(reference ? reference : pan.view)];
-
-    if (pan.state == UIGestureRecognizerStateEnded ||
-        pan.state == UIGestureRecognizerStateCancelled) {
-        // 记住位置，下次显示直接恢复（只写 NSUserDefaults，不碰 plist 文件）
-        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-        [defaults setDouble:gMiniSightWindow.center.x forKey:kMiniSightCenterX];
-        [defaults setDouble:gMiniSightWindow.center.y forKey:kMiniSightCenterY];
+    switch (pan.state) {
+        case UIGestureRecognizerStateBegan: {
+            // 以手势开始瞬间的真实中心为原点；这里不调用 DefaultAnchor，
+            // 默认落点的上半屏策略不能限制手动拖动。
+            CGPoint origin = gMiniSightAnchorValid ? gMiniSightAnchor :
+                (host ? host.center : CGPointZero);
+            if (host.superview && reference) {
+                origin = [host.superview convertPoint:host.center toView:reference];
+            }
+            gMiniSightDragOrigin = origin;
+            gMiniSightDragOriginValid = YES;
+            gMiniSightDragging = YES;
+            MiniSightInteractionBegin();
+            break;
+        }
+        case UIGestureRecognizerStateChanged: {
+            if (!gMiniSightDragOriginValid) break; // 防御异常的无 Began 回调
+            CGPoint want = CGPointMake(gMiniSightDragOrigin.x + translation.x,
+                                       gMiniSightDragOrigin.y + translation.y);
+            MiniSightSetAnchor(want, NO);
+            break;
+        }
+        case UIGestureRecognizerStateEnded: {
+            if (gMiniSightDragOriginValid) {
+                // Ended 也可能带最后一段 translation，落地一次完整的最终位置。
+                CGPoint want = CGPointMake(gMiniSightDragOrigin.x + translation.x,
+                                           gMiniSightDragOrigin.y + translation.y);
+                // 保持 dragging 到 SetAnchor 完成，避免气泡让位把刚拖到的中心改掉。
+                MiniSightSetAnchor(want, YES); // 只有用户拖动才写盘
+            }
+            gMiniSightDragOriginValid = NO;
+            gMiniSightDragging = NO;
+            MiniSightInteractionEnd();
+            break;
+        }
+        default:   // Cancelled / Failed：当前位置保留，但本次不写盘
+            gMiniSightDragOriginValid = NO;
+            gMiniSightDragging = NO;
+            MiniSightInteractionEnd();
+            break;
     }
 }
 
@@ -428,12 +748,32 @@ static void MiniSightStopPulse(void);
     MiniSightUserHide();
 }
 
+/// 长按：手势由宿主拥有（不是桌宠内部），所以漫游动画期间也按得住。
+/// 设置里「长按指示器切换录屏」关掉时，这里完全不响应。
 - (void)handleLongPress:(UILongPressGestureRecognizer *)press {
-    if (press.state != UIGestureRecognizerStateBegan) return;
-    UIImpactFeedbackGenerator *feedback =
-        [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
-    [feedback impactOccurred];
-    MiniSightToggleRecording();
+    switch (press.state) {
+        case UIGestureRecognizerStateBegan:
+            MiniSightInteractionBegin();
+            if (!MiniSightLongPressEnabled()) return;
+            [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium] impactOccurred];
+            MiniSightToggleRecording();
+            break;
+        case UIGestureRecognizerStateEnded:
+        case UIGestureRecognizerStateCancelled:
+        case UIGestureRecognizerStateFailed:
+            MiniSightInteractionEnd();
+            break;
+        default:
+            break;
+    }
+}
+
+/// 低电量：桌宠只留可触摸的静止帧，不做时钟与大幅运动
+- (void)handlePowerStateChange:(NSNotification *)notification {
+    BOOL low = [NSProcessInfo processInfo].lowPowerModeEnabled;
+    gMiniSightPet.reducedWork = low;
+    if (low) MiniSightStopGravity();
+    else if (gMiniSightWindow && !gMiniSightWindow.hidden) MiniSightStartGravity();
 }
 
 - (void)handleOrientationChange:(NSNotification *)note {
@@ -481,33 +821,32 @@ static UIWindowScene *MiniSightFindScene(void) {
 
 #pragma mark - 布局
 
-/// 重设窗口尺寸 + 把胶囊摆回窗口正中（胶囊的绝对位置由 window.center 决定）
+/// 重设窗口尺寸（永远整屏）+ 子视图位置；位置只由 MiniSightSetAnchor 决定
 static void MiniSightUpdateGeometry(void) {
     if (!gMiniSightWindow) return;
 
     CGRect rect = MiniSightScreenRect();
-    gMiniSightWindow.frame = rect;
+    gMiniSightWindow.frame = rect;   // 整屏固定：这是全插件唯一一次改 window.frame
 
-    if (gMiniSightPet) {
-        gMiniSightPet.center = CGPointMake(CGRectGetMidX(rect), CGRectGetMidY(rect));
-    }
+    UIView *root = gMiniSightWindow.rootViewController.view;
+    if (root) root.frame = rect;
 
     if (gMiniSightPill) {
-        gMiniSightPill.frame = CGRectMake((rect.size.width - kMiniSightWidth) / 2.0,
-                                          (rect.size.height - kMiniSightHeight) / 2.0,
-                                          kMiniSightWidth, kMiniSightHeight);
+        gMiniSightPill.bounds = CGRectMake(0, 0, kMiniSightWidth, kMiniSightHeight);
         // 尺寸变了要同步阴影路径，否则阴影还是旧形状
         gMiniSightPill.layer.shadowPath =
             [UIBezierPath bezierPathWithRoundedRect:gMiniSightPill.bounds
                                        cornerRadius:kMiniSightRadius].CGPath;
     }
+
+    // 位置统一交给锚点逻辑：旋转/换尺寸后可行范围会变，必须重新夹一次
+    MiniSightSetAnchor(gMiniSightAnchorValid ? gMiniSightAnchor : MiniSightDefaultAnchor(), NO);
 }
 
-/// 恢复位置：useSaved = YES 时优先用 NSUserDefaults 里记的坐标，否则回默认顶部居中
 static void MiniSightApplySavedCenter(BOOL useSaved) {
     if (!gMiniSightWindow) return;
 
-    CGPoint center = MiniSightDefaultCenter();
+    CGPoint center = MiniSightDefaultAnchor();
 
     if (useSaved) {
         NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
@@ -519,8 +858,8 @@ static void MiniSightApplySavedCenter(BOOL useSaved) {
         }
     }
 
-    // 不管来自默认值还是历史记录，都要 clamp 到当前屏幕内
-    gMiniSightWindow.center = MiniSightClampCenter(center);
+    // 统一入口：夹到当前可行范围后移动子视图（窗口永远不动）
+    MiniSightSetAnchor(center, NO);
 }
 
 #pragma mark - 脉动动画
@@ -661,12 +1000,25 @@ static void MiniSightBuildUI(void) {
     if (petSprite) {
         gMiniSightPet = [[MiniSightPetView alloc] initWithSprite:petSprite
                                                     displaySize:CGSizeMake(MiniSightPetSize(), MiniSightPetSize() * 104.0 / 96.0)];
-        gMiniSightPet.center = CGPointMake(CGRectGetMidX(root.bounds), CGRectGetMidY(root.bounds));
-        gMiniSightPet.onLongPress = ^{
-            MiniSightToggleRecording();
+        // 桌宠每次真实移动（漫游/跳跃/被夹住）都从这儿回报：气泡跟着它走，
+        // 锚点也随之更新 —— 这比原来「自己猜窗口中心」靠谱。
+        gMiniSightPet.onGeometryChanged = ^{
+            if (!gMiniSightPet) return;
+            gMiniSightAnchor = gMiniSightPet.center;
+            gMiniSightAnchorValid = YES;
+            MiniSightFollowBubble();
         };
+        gMiniSightPet.longPressEnabled = MiniSightLongPressEnabled();
+        gMiniSightPet.reducedWork = [NSProcessInfo processInfo].lowPowerModeEnabled;
         [root addSubview:gMiniSightPet];
         [gMiniSightPet addGestureRecognizer:pan];
+        // 长按由宿主拥有：桌宠自己在漫游动画里不再碰手势，所以动起来也按得住
+        UILongPressGestureRecognizer *petPress =
+            [[UILongPressGestureRecognizer alloc] initWithTarget:gMiniSightGestureTarget
+                                                          action:@selector(handleLongPress:)];
+        petPress.minimumPressDuration = 0.9;
+        petPress.allowableMovement = 10.0;
+        [gMiniSightPet addGestureRecognizer:petPress];
         UITapGestureRecognizer *petDouble =
             [[UITapGestureRecognizer alloc] initWithTarget:gMiniSightGestureTarget
                                                     action:@selector(handleDoubleTap:)];
@@ -684,6 +1036,7 @@ static void MiniSightBuildUI(void) {
             [[UILongPressGestureRecognizer alloc] initWithTarget:gMiniSightGestureTarget
                                                           action:@selector(handleLongPress:)];
         pillPress.minimumPressDuration = 0.9;
+        pillPress.allowableMovement = 10.0;
         [pill addGestureRecognizer:pillPress];
         UITapGestureRecognizer *pillDouble =
             [[UITapGestureRecognizer alloc] initWithTarget:gMiniSightGestureTarget
@@ -703,6 +1056,7 @@ static void MiniSightBuildUI(void) {
     gMiniSightPulse  = pulse;
     gMiniSightLabel  = label;
 
+    MiniSightRefreshGravityConfiguration();
     MiniSightUpdateGeometry();
 }
 
@@ -725,9 +1079,15 @@ static void MiniSightShow(void) {
         }
     }
 
+    // 重力包络参与布局，必须在第一次 UpdateGeometry 前设置。
+    gMiniSightPet.gravityEnabled = MiniSightGravityEnabled();
     MiniSightUpdateGeometry();
     MiniSightApplySavedCenter(YES);
     MiniSightStartPulse();
+    // 每次显示都按当前设置刷新：长按开关、低电量省电、调用期间才有走动
+    gMiniSightPet.longPressEnabled = MiniSightLongPressEnabled();
+    gMiniSightPet.reducedWork = [NSProcessInfo processInfo].lowPowerModeEnabled;
+    gMiniSightPet.activityActive = YES;
     [gMiniSightPet startPlaying];
     if (MiniSightRecordingEnabled()) MiniSightStartRecording();
 
@@ -740,6 +1100,7 @@ static void MiniSightShow(void) {
     // 先透明再取消 hidden，然后 0.18s 淡入
     gMiniSightWindow.alpha = 0.0;
     gMiniSightWindow.hidden = NO;
+    MiniSightStartGravity();
     [UIView animateWithDuration:0.18
                           delay:0.0
                         options:(UIViewAnimationOptionCurveEaseOut |
@@ -752,7 +1113,11 @@ static void MiniSightShow(void) {
 static void MiniSightHide(void) {
     if (gMiniSightConfirming) return;   // 等问题回答完再收，否则气泡跟着窗口一起没
     MiniSightHideBubble();
-    if (MiniSightAlwaysShow() && !gMiniSightUserHidden) return;   // 常驻且未手动隐藏
+    if (MiniSightAlwaysShow() && !gMiniSightUserHidden) {
+        if (gMiniSightWindow && !gMiniSightWindow.hidden) MiniSightStartGravity();
+        return;   // 常驻桌宠仍可见，重力采样不能被 stopped 错误关掉
+    }
+    MiniSightStopGravity();
     if (gMiniSightMaxShow) { dispatch_block_cancel(gMiniSightMaxShow); gMiniSightMaxShow = nil; }
     if (!gMiniSightWindow || gMiniSightWindow.hidden) return;
 
@@ -768,6 +1133,7 @@ static void MiniSightHide(void) {
             gMiniSightWindow.hidden = YES;
             gMiniSightWindow.alpha = 1.0; // 下次显示从 0 开始淡入
             MiniSightStopPulse();
+            gMiniSightPet.activityActive = NO;
             [gMiniSightPet stopPlaying];
         }
     }];
@@ -775,6 +1141,8 @@ static void MiniSightHide(void) {
 
 /// 彻底拆掉浮窗（设置变更时重建用）
 static void MiniSightDestroyUI(void) {
+    MiniSightStopGravity();
+    gMiniSightGravityConfigured = NO;
     // 确认态要一起清，否则气泡永远"正在确认"、再也收不起来
     if (gMiniSightConfirmTimeout) { dispatch_block_cancel(gMiniSightConfirmTimeout); gMiniSightConfirmTimeout = nil; }
     gMiniSightConfirming = NO;
@@ -783,6 +1151,14 @@ static void MiniSightDestroyUI(void) {
     gMiniSightConfirmBar = nil;
     if (gMiniSightPet) { [gMiniSightPet stopPlaying]; gMiniSightPet = nil; }
     MiniSightStopRecording();
+    if (gMiniSightRecLimit) { dispatch_block_cancel(gMiniSightRecLimit); gMiniSightRecLimit = nil; }
+    gMiniSightRecState = MiniSightRecIdle;
+    gMiniSightRecAdopted = NO;
+    gMiniSightRecStopWanted = NO;
+    gMiniSightRecPath = nil;
+    gMiniSightAnchorValid = NO;
+    gMiniSightDragOriginValid = NO;
+    gMiniSightDragging = NO;
     gMiniSightWindow.hidden = YES;
     gMiniSightWindow.rootViewController = nil;
     gMiniSightWindow = nil;
@@ -793,6 +1169,7 @@ static void MiniSightDestroyUI(void) {
 /// 设置变了：按新设置重建（样式/常驻立即生效，不用注销）
 static void MiniSightReloadSettings(void) {
     BOOL wasVisible = gMiniSightWindow && !gMiniSightWindow.hidden;
+    MiniSightStopGravity();
     MiniSightDestroyUI();
     if (!MiniSightShown()) return;
     if (wasVisible && (gMiniSightBurst || MiniSightAlwaysShow())) MiniSightShow();
@@ -808,36 +1185,58 @@ static void MiniSightHideBubble(void) {
 }
 
 /// 纯文字气泡：动态深浅色、小尾巴指向指示器，最多 20 字。
-/// 把气泡摆在宠物上方（上面放不下就放下面），尾巴指向宠物。
+/// 气泡永远在上方（可行范围已经预留了头顶空间），放不下就把身体整体下移；
+/// 不再「上面放不下就翻到下面」，也不再夹到屏幕外。
 static void MiniSightPlaceBubble(CGFloat w, CGFloat h) {
     UIView *host = gMiniSightPet ?: gMiniSightPill;
     UIView *root = gMiniSightWindow.rootViewController.view;
-    if (!host || !root) return;
+    if (!host || !root || !gMiniSightBubble) return;
 
-    CGFloat x = host.center.x - w / 2.0;
-    x = MAX(8, MIN(x, root.bounds.size.width - w - 8));
-    BOOL above = CGRectGetMinY(host.frame) > (h + 14);
-    CGFloat y = above ? CGRectGetMinY(host.frame) - h - 7
-                      : CGRectGetMaxY(host.frame) + 7;
-    gMiniSightBubble.frame = CGRectMake(x, y, w, h);
-    // 圆角永远取高度一半（短句是胶囊），再加一点内边距让文字不贴边
-    gMiniSightBubble.layer.cornerRadius = MIN(18.0, h / 2.0);
-    gMiniSightBubbleLabel.frame = CGRectMake(10, 6, w - 20, h - 12);
+    static BOOL placing = NO;
+    if (placing) return;    // 让位动作会再回调一次，防重入
+    placing = YES;
+
+    MSLayout L = MiniSightLayoutNow();
+    MSPoint anchor = (MSPoint){host.center.x, host.center.y};
+    MSPoint wanted = MSLayoutAnchorForBubble(L, anchor, (MSSize){w, h});
+    if (fabs(wanted.y - anchor.y) > 0.5 && !gMiniSightDragging) {
+        // 气泡比预留的还高（比如长句子/确认条）：整体下移，而不是让气泡出屏
+        CGPoint moved = CGPointMake(wanted.x, wanted.y);
+        host.center = moved;
+        anchor = (MSPoint){host.center.x, host.center.y};
+        gMiniSightAnchor = host.center;
+    }
+
+    MSRect box = MSLayoutBubble(L, anchor, (MSSize){w, h});
+    gMiniSightBubble.frame = CGRectMake(box.x, box.y, box.w, box.h);
+
+    // 圆润的聊天气泡：主体圆角不超过 16，尾巴用两段二次曲线（不是三条直线的尖三角）
+    CGFloat radius = MIN(16.0, box.h / 2.0);
+    gMiniSightBubble.layer.cornerRadius = radius;
+    if (@available(iOS 13.0, *)) {
+        gMiniSightBubble.layer.cornerCurve = kCACornerCurveContinuous;
+    }
+
+    CGFloat pad = 6.0;
+    CGFloat bottomSpace = gMiniSightConfirming ? 46.0 : 12.0;
+    gMiniSightBubbleLabel.frame = CGRectMake(10.0, pad, box.w - 20.0,
+                                            MAX(box.h - pad - bottomSpace, 0.0));
+    if (gMiniSightConfirming && gMiniSightConfirmBar) {
+        gMiniSightConfirmBar.frame = CGRectMake(10.0, box.h - 40.0, box.w - 20.0, 30.0);
+    }
 
     UIBezierPath *path = [UIBezierPath bezierPath];
-    CGFloat cx = MIN(MAX(host.center.x - x, 14), w - 14);
-    if (above) {
-        [path moveToPoint:CGPointMake(cx - 5, h)];
-        [path addLineToPoint:CGPointMake(cx, h + 6)];
-        [path addLineToPoint:CGPointMake(cx + 5, h)];
-    } else {
-        [path moveToPoint:CGPointMake(cx - 5, 0)];
-        [path addLineToPoint:CGPointMake(cx, -6)];
-        [path addLineToPoint:CGPointMake(cx + 5, 0)];
-    }
+    CGFloat cx = MIN(MAX(host.center.x - box.x, radius + 4.0), box.w - radius - 4.0);
+    [path moveToPoint:CGPointMake(cx - 6.0, box.h)];
+    [path addQuadCurveToPoint:CGPointMake(cx, box.h + 6.0)
+                 controlPoint:CGPointMake(cx - 3.2, box.h + 4.4)];
+    [path addQuadCurveToPoint:CGPointMake(cx + 6.0, box.h)
+                 controlPoint:CGPointMake(cx + 3.2, box.h + 4.4)];
     [path closePath];
     gMiniSightBubbleTail.path = path.CGPath;
     gMiniSightBubbleTail.frame = gMiniSightBubble.bounds;
+
+    placing = NO;
 }
 
 static void MiniSightShowBubbleWidth(NSString *raw, CGFloat maxW, NSUInteger cap) {
@@ -934,6 +1333,8 @@ static void MiniSightAnswerConfirm(BOOL allow) {
     gMiniSightBubble.userInteractionEnabled = NO;
     gMiniSightBubble.hidden = YES;
     gMiniSightBubbleShown = NO;
+    // 确认态结束：把头顶空间收回普通值，桌宠可行范围也跟着还原
+    MiniSightSetAnchor(gMiniSightAnchor, NO);
     if (!gMiniSightBurst && !MiniSightAlwaysShow()) MiniSightHide();
 }
 
@@ -986,13 +1387,12 @@ static void MiniSightShowConfirm(void) {
     }
     gMiniSightConfirmBar.hidden = NO;
 
-    // 加高气泡，文字上、按钮下
-    CGRect f = gMiniSightBubble.frame;
-    f.origin.y -= 38; f.size.height += 38;
-    gMiniSightBubble.frame = f;
-    CGFloat w = f.size.width;
-    gMiniSightBubbleLabel.frame = CGRectMake(8, 6, w - 16, f.size.height - 50);
-    gMiniSightConfirmBar.frame = CGRectMake(8, f.size.height - 38, w - 16, 30);
+    // 加高气泡：走统一布局（头顶按确认态预留，必要时身体整体下移），
+    // 不再手改 origin.y —— 手改就等于再引入一次「气泡出屏」。
+    CGFloat w = gMiniSightBubble.bounds.size.width;
+    CGFloat h = gMiniSightBubble.bounds.size.height + 38.0;
+    gMiniSightBubble.bounds = CGRectMake(0.0, 0.0, w, h);
+    MiniSightPlaceBubble(w, h);
 
     if (gMiniSightConfirmTimeout) dispatch_block_cancel(gMiniSightConfirmTimeout);
     gMiniSightConfirmTimeout = dispatch_block_create(DISPATCH_BLOCK_DETACHED, ^{ MiniSightAnswerConfirm(NO); });
@@ -1038,6 +1438,20 @@ static void MiniSightShowLine(NSString *line) {
                    dispatch_get_main_queue(), gMiniSightBubbleHideWork);
 }
 
+/// 诊断/状态行：比撒娇话长（最多 60 字），多留两秒才收
+static void MiniSightShowStatusLine(NSString *text) {
+    if (!text.length) return;
+    if ((!gMiniSightWindow || gMiniSightWindow.hidden) && !gMiniSightBurst) return;
+    MiniSightShowBubbleWidth(text, 280.0, 60.0);
+    if (gMiniSightBubbleHideWork) { dispatch_block_cancel(gMiniSightBubbleHideWork); gMiniSightBubbleHideWork = nil; }
+    if (gMiniSightBurst) return;
+    gMiniSightBubbleHideWork = dispatch_block_create(DISPATCH_BLOCK_DETACHED, ^{
+        MiniSightHideBubble();
+    });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), gMiniSightBubbleHideWork);
+}
+
 /// 预置句子（AI 失败时兜底）。
 static void MiniSightSayPresetLine(void) {
     static NSArray<NSString *> *lines = nil;
@@ -1056,6 +1470,61 @@ static void MiniSightSayPresetLine(void) {
     MiniSightShowLine(line);
 }
 
+/// 取出报错体里的一句话（OpenAI 风格 error.message / 纯文本都吃），顺手删掉 key
+static NSString *MiniSightAIDetail(NSData *data, NSString *key) {
+    if (!data.length) return @"";
+    NSString *text = nil;
+    id obj = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    if ([obj isKindOfClass:[NSDictionary class]]) {
+        id err = obj[@"error"];
+        if ([err isKindOfClass:[NSDictionary class]]) text = err[@"message"];
+        else if ([err isKindOfClass:[NSString class]]) text = err;
+        if (![text isKindOfClass:[NSString class]]) text = obj[@"message"];
+    }
+    if (![text isKindOfClass:[NSString class]]) {
+        text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    }
+    if (![text isKindOfClass:[NSString class]]) return @"";
+    text = [[text stringByReplacingOccurrencesOfString:@"\n" withString:@" "]
+            stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    // 报错体可能回显请求头/地址，绝不把 key 带进气泡、日志或诊断文件
+    if (key.length >= 8) text = [text stringByReplacingOccurrencesOfString:key withString:@"***"];
+    if (text.length > 120) text = [[text substringToIndex:120] stringByAppendingString:@"…"];
+    return text;
+}
+
+/// 一句话说清是哪种毛病（气泡一行，最多 60 字，够诊断又不糊一屏）
+static NSString *MiniSightAIShortReason(NSInteger status, NSString *detail) {
+    if (status == 401 || status == 403) return @"AI 鉴权失败，检查 Key";
+    if (status == 404) return @"AI 地址不对（404），看设置里的地址";
+    if (status == 429) {
+        return detail.length ? [NSString stringWithFormat:@"AI 被限流（429）：%@", detail]
+                             : @"AI 被限流（429），等一会儿再点";
+    }
+    if (status == 400 || status == 422) {
+        return detail.length ? [NSString stringWithFormat:@"AI 说请求不对（%ld）：%@", (long)status, detail]
+                             : [NSString stringWithFormat:@"AI 说请求不对（%ld）", (long)status];
+    }
+    if (status >= 500) return [NSString stringWithFormat:@"AI 服务出错（%ld），过会儿再试", (long)status];
+    if (status > 0) {
+        return detail.length ? [NSString stringWithFormat:@"AI 报错（%ld）：%@", (long)status, detail]
+                             : [NSString stringWithFormat:@"AI 报错（%ld）", (long)status];
+    }
+    return @"AI 这次没回话";
+}
+
+/// 把完整诊断写进 App 容器的 Documents/MiniSight/ai-last.txt（Files 里能直接翻）
+static void MiniSightAIWriteDiagnosis(NSInteger status, NSString *path, NSString *detail) {
+    NSString *dir = [MiniSightRecordingDir() stringByDeletingLastPathComponent];
+    NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
+    fmt.dateFormat = @"yyyy-MM-dd HH:mm:ss";
+    NSString *text = [NSString stringWithFormat:@"%@\nstatus=%ld\npath=%@\ndetail=%@\n",
+                      [fmt stringFromDate:[NSDate date]], (long)status,
+                      path.length ? path : @"(none)", detail.length ? detail : @"(empty)"];
+    [text writeToFile:[dir stringByAppendingPathComponent:@"ai-last.txt"]
+           atomically:YES encoding:NSUTF8StringEncoding error:nil];
+}
+
 /// 单击：有配置就请求 AI 说一句，失败/超时用预置。
 static void MiniSightSpeakLine(void) {
     NSString *container = MiniSightAppContainer();
@@ -1066,7 +1535,9 @@ static void MiniSightSpeakLine(void) {
     if (![base isKindOfClass:[NSString class]] || base.length == 0 ||
         ![key isKindOfClass:[NSString class]] || key.length == 0 ||
         ![model isKindOfClass:[NSString class]] || model.length == 0) {
-        MiniSightSayPresetLine();
+        // 填过但没填全 → 明说；从来没配过 → 照旧说预设话
+        if (data.length) MiniSightShowStatusLine(@"AI 设置没填全（地址/Key/模型）");
+        else MiniSightSayPresetLine();
         return;
     }
     // 只填域名时补 /v1；只填到 /v1 时补 /chat/completions
@@ -1079,11 +1550,11 @@ static void MiniSightSpeakLine(void) {
         else full = [base stringByAppendingString:@"/chat/completions"];
     }
     NSURL *url = [NSURL URLWithString:full];
-    if (!url) { MiniSightSayPresetLine(); return; }
+    if (!url) { MiniSightShowStatusLine(@"AI 地址不对，填不出可用链接"); return; }
 
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
     req.HTTPMethod = @"POST";
-    req.timeoutInterval = 4.0;
+    req.timeoutInterval = 6.0;
     [req setValue:[@"Bearer " stringByAppendingString:key] forHTTPHeaderField:@"Authorization"];
     [req setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
     NSDictionary *body = @{ @"model": model, @"max_tokens": @40,
@@ -1093,8 +1564,13 @@ static void MiniSightSpeakLine(void) {
 
     [[[NSURLSession sharedSession] dataTaskWithRequest:req
         completionHandler:^(NSData *d, NSURLResponse *r, NSError *e) {
+        // 先看 HTTP 状态码：以前不看，429/401 的报错体解析不出 choices，
+        // 就静默换成预设话，用户只看到「AI 没反应」。
+        NSInteger status = [r isKindOfClass:[NSHTTPURLResponse class]]
+            ? ((NSHTTPURLResponse *)r).statusCode : 0;
         NSString *line = nil;
-        if (d) {
+        NSString *why = nil;
+        if (!e && status >= 200 && status < 300) {
             id obj = [NSJSONSerialization JSONObjectWithData:d options:0 error:nil];
             if ([obj isKindOfClass:[NSDictionary class]]) {
                 NSArray *choices = obj[@"choices"];
@@ -1106,9 +1582,21 @@ static void MiniSightSpeakLine(void) {
                     }
                 }
             }
+            if (!line.length) why = @"AI 返回了空内容（200）";
+        } else if (e) {
+            why = (e.code == NSURLErrorTimedOut)
+                ? @"AI 超时了（6 秒没回）"
+                : [NSString stringWithFormat:@"AI 连不上（%ld）", (long)e.code];
+            NSLog(@"[MiniSight] ai network error %@ %ld", e.domain, (long)e.code);
+        } else {
+            NSString *detail = MiniSightAIDetail(d, key);
+            why = MiniSightAIShortReason(status, detail);
+            NSLog(@"[MiniSight] ai status=%ld path=%@ detail=%@", (long)status, url.path, detail);
+            MiniSightAIWriteDiagnosis(status, url.path, detail);
         }
         dispatch_async(dispatch_get_main_queue(), ^{
             if (line.length) MiniSightShowLine(line);
+            else if (why.length) MiniSightShowStatusLine(why);   // 出错就说清楚，不悄悄换预设话
             else MiniSightSayPresetLine();
         });
     }] resume];
@@ -1147,7 +1635,12 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
         static BOOL blanked = NO;
         blanked = !blanked;
         BOOL b = blanked;
-        dispatch_async(dispatch_get_main_queue(), ^{ [gMiniSightPet setSuspended:b]; });
+        dispatch_async(dispatch_get_main_queue(), ^{
+            gMiniSightScreenBlanked = b;
+            [gMiniSightPet setSuspended:b];
+            if (b) MiniSightStopGravity();
+            else if (gMiniSightWindow && !gMiniSightWindow.hidden) MiniSightStartGravity();
+        });
         return;
     }
     if ([note isEqualToString:kMiniSightSettingsChanged]) {
@@ -1265,6 +1758,11 @@ static void MiniSightBringMinisFront(void) {
             [[NSNotificationCenter defaultCenter] addObserver:gMiniSightGestureTarget
                                                      selector:@selector(handleOrientationChange:)
                                                          name:UIDeviceOrientationDidChangeNotification
+                                                       object:nil];
+            // 低电量变化：桌宠立刻降档（不再按帧播放/大幅走动），省电但不能看不出效果
+            [[NSNotificationCenter defaultCenter] addObserver:gMiniSightGestureTarget
+                                                     selector:@selector(handlePowerStateChange:)
+                                                         name:NSProcessInfoPowerStateDidChangeNotification
                                                        object:nil];
         });
     }

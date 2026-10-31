@@ -2,19 +2,20 @@
 //  MiniSightPet.m
 //  MiniSight
 //
-//  Sprite playback + light roaming. The sheet is 9 rows; each row is one
-//  state (idle / run-right / run-left / waving / jumping / ...). Frames are
-//  cropped out of the sheet with CGImageCreateWithImageInRect and swapped on
-//  a CADisplayLink, so no per-frame image assets are needed.
+//  One 9-row atlas, one sprite clock, and actual-center motion.
+//
+//  Every movement of this view is confined to `centerBounds`: the feasible CENTER
+//  range the host computes from the safe area plus the bubble headroom. This file
+//  never derives a body rectangle from superview.bounds, creates no gesture
+//  recognizer, and links to no tweak global. Roaming pace comes from the
+//  `activityActive` property only.
 //
 
 #import "MiniSightPet.h"
-#import <stdlib.h>
+#import "MiniSightGeometry.h"
+#import <QuartzCore/QuartzCore.h>
 #import <math.h>
-
-extern BOOL gMiniSightBurst;
-extern void MiniSightFollowBubble(void);
-extern BOOL gMiniSightBubbleShown;
+#import <stdlib.h>
 
 typedef NS_ENUM(NSInteger, MiniSightPetState) {
     MiniSightPetStateIdle = 0,
@@ -22,330 +23,763 @@ typedef NS_ENUM(NSInteger, MiniSightPetState) {
     MiniSightPetStateRunLeft = 2,
     MiniSightPetStateWaving = 3,
     MiniSightPetStateJumping = 4,
-    MiniSightPetStateFailed = 5,
-    MiniSightPetStateWaiting = 6,
-    MiniSightPetStateRunning = 7,
-    MiniSightPetStateReview = 8,
 };
 
 static const NSInteger kMiniSightPetRows = 9;
 static const NSInteger kMiniSightPetMaxCols = 8;
+static const NSTimeInterval kMiniSightSpriteInterval = 1.0 / 7.0;
 
-@interface MiniSightPetView ()
-@property (nonatomic, strong) UIImage *sheet;
-@property (nonatomic, assign) NSInteger row;
-@property (nonatomic, assign) NSInteger col;
-@property (nonatomic, assign) NSTimeInterval frameElapsed;
-@property (nonatomic, assign) NSTimeInterval frameDuration;
-@property (nonatomic, strong) NSTimer *frameTimer;
-@property (nonatomic, strong) NSMutableDictionary<NSNumber *, UIImage *> *frameCache;
-@property (nonatomic, assign) BOOL suspended;
-@property (nonatomic, assign) NSTimeInterval extraRest;
-@property (nonatomic, assign) NSTimeInterval tickInterval;
-@property (nonatomic, strong) NSTimer *roamTimer;
-@property (nonatomic, assign) CGSize displaySize;
-@property (nonatomic, assign) BOOL roaming;
+// Roaming delays. Only the delay between actions changes; FPS never does.
+static const NSTimeInterval kMiniSightRoamActiveLo = 2.0;   // activityActive == YES
+static const NSTimeInterval kMiniSightRoamActiveHi = 5.0;
+static const NSTimeInterval kMiniSightRoamIdleLo = 9.0;     // activityActive == NO (resident idle)
+static const NSTimeInterval kMiniSightRoamIdleHi = 15.0;
+
+static const double kMiniSightWalkSpeed = 160.0;            // points per second
+static const double kMiniSightWalkMinDuration = 0.55;
+static const double kMiniSightWalkMaxDuration = 2.2;
+static const double kMiniSightJumpDuration = 0.5;
+static const double kMiniSightJumpDesiredHeight = 26.0;     // still capped by MSJumpHeight()
+static const double kMiniSightJumpMinHeight = 6.0;          // below this a "jump" is a no-op
+static const NSTimeInterval kMiniSightWaveHold = 1.2;
+
+// Gravity is rendered on a child layer so the UIView's own transform and
+// coordinate conversion remain identity for hit testing and host layout.
+static const CGFloat kMiniSightGravityMaxAngle = (CGFloat)(M_PI / 18.0); // 10° tilt
+static const CGFloat kMiniSightGravityEnvelopeAngle = (CGFloat)(M_PI / 6.0); // conservative 30° envelope
+static const CGFloat kMiniSightGravityImpulseAngle = (CGFloat)(M_PI / 11.25); // 16° transient peak
+static const NSTimeInterval kMiniSightGravityImpulseDuration = 0.42;
+
+static CGFloat MSPetClampUnit(CGFloat value) {
+    if (!isfinite(value)) return 0.0;
+    return MIN(1.0, MAX(-1.0, value));
+}
+
+static CGSize MSPetGravityEnvelope(CGSize size) {
+    CGFloat w = fmax(1.0, size.width);
+    CGFloat h = fmax(1.0, size.height);
+    CGFloat c = cos(kMiniSightGravityEnvelopeAngle);
+    CGFloat s = sin(kMiniSightGravityEnvelopeAngle);
+    return CGSizeMake(w * c + h * s, w * s + h * c);
+}
+
+static double MSPetRandomUnit(void) { return arc4random_uniform(1000001) / 1000000.0; }
+static double MSPetRandomRange(double lo, double hi) {
+    return (hi <= lo) ? lo : (lo + (hi - lo) * MSPetRandomUnit());
+}
+static MSPoint MSPetPoint(CGPoint p) { return (MSPoint){(double)p.x, (double)p.y}; }
+static CGPoint MSPetCGPoint(MSPoint p) { return CGPointMake((CGFloat)p.x, (CGFloat)p.y); }
+
+// CADisplayLink retains its target: the target must not retain the view.
+@interface MiniSightPetDisplayLinkProxy : NSObject
+@property (nonatomic, weak) MiniSightPetView *owner;
+- (void)displayTick:(CADisplayLink *)link;
+- (void)gravityDisplayTick:(CADisplayLink *)link;
+@end
+
+@interface MiniSightPetView () {
+    UIImage *_sheet;
+    NSTimer *_frameTimer;
+    NSTimer *_roamTimer;
+    CADisplayLink *_motionLink;
+    MiniSightPetDisplayLinkProxy *_motionProxy;
+    CADisplayLink *_gravityLink;
+    MiniSightPetDisplayLinkProxy *_gravityProxy;
+    CALayer *_gravityLayer;
+    MiniSightPetState _state;
+    NSInteger _column;
+    CFTimeInterval _lastSpriteTime;
+    BOOL _wantsPlaying, _suspended, _hasCenterBounds;
+    BOOL _geometryReady, _settingGeometry, _motionActive;
+    CGPoint _lastNotifiedCenter;
+    CGRect _lastNotifiedBounds;
+    MSPoint _motionStart, _motionEnd;
+    double _jumpHeight;
+    CFTimeInterval _motionBegan, _motionDuration;
+    CFTimeInterval _stateHoldUntil;
+    NSTimeInterval _restAfterMotion;
+    BOOL _gravityEnabled;
+    CGFloat _gravityRoll;
+    CGFloat _gravityImpulseAngle;
+    CFTimeInterval _gravityImpulseBegan;
+    CFTimeInterval _gravityImpulseDuration;
+    NSUInteger _gravityGeneration;
+    NSUInteger _activeGravityGeneration;
+    NSUInteger _motionGeneration, _activeMotionGeneration, _roamGeneration;
+    CGRect _centerBounds;
+    BOOL _activityActive, _longPressEnabled, _roamingPaused, _interactionActive, _reducedWork;
+    void (^_onGeometryChanged)(void);
+    void (^_onLongPress)(void);
+}
+- (instancetype)initWithSprite:(UIImage *)sprite displaySize:(CGSize)displaySize;
+- (BOOL)isActuallyVisible;
+- (BOOL)shouldAnimate;
+- (BOOL)mayRoam;
+- (void)reconcilePlayback;
+- (void)invalidateFrameTimer;
+- (void)invalidateRoamTimer;
+- (void)ensureFrameTimer;
+- (void)frameTick:(NSTimer *)timer;
+- (NSInteger)frameCountForRow:(NSInteger)row;
+- (void)setSpriteState:(MiniSightPetState)state;
+- (void)advanceSpriteAtTime:(CFTimeInterval)now;
+- (void)applySpriteFrame;
+- (MSRect)feasibleCenters;
+- (CGPoint)clampedCenter:(CGPoint)point;
+- (void)geometryDidChange;
+- (void)windowVisibilityChanged:(NSNotification *)notification;
+- (void)scheduleRoam;
+- (void)armRoamTimerWithDelay:(NSTimeInterval)delay;
+- (void)roamOnce;
+- (void)holdState:(MiniSightPetState)state forDuration:(NSTimeInterval)duration;
+- (void)startMotionTo:(CGPoint)target jump:(BOOL)jump rest:(NSTimeInterval)rest;
+- (void)ensureMotionLink;
+- (void)finishMotion;
+- (void)cancelMotion;
+- (void)motionTick:(CADisplayLink *)link;
+- (void)ensureGravityLayer;
+- (void)updateGravityLayerGeometry;
+- (CGFloat)gravityAngleAtTime:(CFTimeInterval)now;
+- (void)setGravityLayerAngle:(CGFloat)angle animated:(BOOL)animated;
+- (void)applyGravityTransformAtTime:(CFTimeInterval)now;
+- (void)ensureGravityLink;
+- (void)cancelGravityImpulse;
+- (void)gravityTick:(CADisplayLink *)link;
+@end
+
+@implementation MiniSightPetDisplayLinkProxy
+- (void)displayTick:(CADisplayLink *)link {
+    MiniSightPetView *owner = self.owner;
+    if (owner) [owner motionTick:link];
+    else [link invalidate];
+}
+
+- (void)gravityDisplayTick:(CADisplayLink *)link {
+    MiniSightPetView *owner = self.owner;
+    if (owner) [owner gravityTick:link];
+    else [link invalidate];
+}
 @end
 
 @implementation MiniSightPetView
+@synthesize centerBounds = _centerBounds, onGeometryChanged = _onGeometryChanged;
+@synthesize activityActive = _activityActive, longPressEnabled = _longPressEnabled;
+@synthesize roamingPaused = _roamingPaused, interactionActive = _interactionActive;
+@synthesize reducedWork = _reducedWork, onLongPress = _onLongPress;
 
 - (instancetype)initWithSprite:(UIImage *)sprite displaySize:(CGSize)displaySize {
-    self = [super initWithFrame:CGRectMake(0, 0, displaySize.width, displaySize.height)];
+    NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
+    CGSize size = CGSizeMake(fmax(1., MSFinite(displaySize.width, 1.)),
+                             fmax(1., MSFinite(displaySize.height, 1.)));
+    self = [super initWithFrame:(CGRect){CGPointZero, size}];
     if (self) {
         _sheet = sprite;
-        _displaySize = displaySize;
+        _longPressEnabled = YES; // Configuration storage; the host owns gestures.
         self.contentMode = UIViewContentModeScaleAspectFit;
         self.userInteractionEnabled = YES;
-        _row = MiniSightPetStateIdle;
-        _col = 0;
-        _frameDuration = 0.16;
-        _frameCache = [NSMutableDictionary dictionary];
-        _tickInterval = 0.1;
-        [self applyFrame];
-
-        UILongPressGestureRecognizer *press =
-            [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleLongPress:)];
-        press.minimumPressDuration = 0.9;
-        [self addGestureRecognizer:press];
+        self.layer.contentsGravity = kCAGravityResizeAspect;
+        self.layer.contentsScale = sprite.scale;
+        self.layer.minificationFilter = kCAFilterLinear;
+        self.layer.magnificationFilter = kCAFilterLinear;
+        self.layer.masksToBounds = NO;
+        // Keep the UIView's layer untransformed. The child layer carries the
+        // visual tilt, so UIView hit testing and coordinate conversion remain
+        // based on the original bounds.
+        _gravityLayer = [CALayer layer];
+        _gravityLayer.contentsGravity = kCAGravityResizeAspect;
+        _gravityLayer.contentsScale = sprite.scale;
+        _gravityLayer.minificationFilter = kCAFilterLinear;
+        _gravityLayer.magnificationFilter = kCAFilterLinear;
+        // Host guarantees an upright, already decoded/downsampled atlas.
+        _gravityLayer.contents = (__bridge id)sprite.CGImage;
+        self.layer.contents = nil;
+        [self.layer addSublayer:_gravityLayer];
+        [self updateGravityLayerGeometry];
+        _state = MiniSightPetStateIdle;
+        _lastSpriteTime = CACurrentMediaTime();
+        [self applySpriteFrame];
+        _lastNotifiedCenter = self.center;
+        _lastNotifiedBounds = self.bounds;
+        _geometryReady = YES;
+        NSNotificationCenter *nc = NSNotificationCenter.defaultCenter;
+        [nc addObserver:self selector:@selector(windowVisibilityChanged:)
+                   name:UIWindowDidBecomeHiddenNotification object:nil];
+        [nc addObserver:self selector:@selector(windowVisibilityChanged:)
+                   name:UIWindowDidBecomeVisibleNotification object:nil];
     }
     return self;
 }
 
-#pragma mark - Playback
+- (void)dealloc {
+    [NSNotificationCenter.defaultCenter removeObserver:self];
+    [_frameTimer invalidate];
+    [_roamTimer invalidate];
+    [_motionLink invalidate];
+    [_gravityLink invalidate];
+    _motionProxy.owner = nil;
+    _gravityProxy.owner = nil;
+}
+
+#pragma mark - Playback intent and lifecycle (main thread)
 
 - (void)startPlaying {
-    if (self.frameTimer) { _suspended = NO; return; }
-    _suspended = NO;   // 直接写 ivar：走 setter 会再调回本方法，无限递归
-    // 10 Hz 定时器代替 60 Hz 的 CADisplayLink：动画只要 6~8 帧/秒，
-    // 多出来的 50 次回调纯耗电。
-    self.frameTimer = [NSTimer scheduledTimerWithTimeInterval:self.tickInterval
-                                                       target:self
-                                                     selector:@selector(tick:)
-                                                     userInfo:nil
-                                                      repeats:YES];
-    self.frameTimer.tolerance = 0.03;
-    [self setState:MiniSightPetStateIdle];
-    [self scheduleRoam];
+    NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
+    _wantsPlaying = YES;
+    [self reconcilePlayback];
 }
 
 - (void)stopPlaying {
-    [self.frameTimer invalidate];
-    self.frameTimer = nil;
-    [self.roamTimer invalidate];
-    self.roamTimer = nil;
-    self.suspended = YES;
+    NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
+    _wantsPlaying = NO;
+    [self invalidateFrameTimer];
+    [self invalidateRoamTimer];
+    [self cancelMotion];
+    [self cancelGravityImpulse];
 }
 
-/// 屏幕熄灭/被盖住时暂停，回来再续。
 - (void)setSuspended:(BOOL)suspended {
+    NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
+    if (_suspended == suspended) return;
     _suspended = suspended;
-    if (suspended) {
-        [self.frameTimer invalidate];
-        self.frameTimer = nil;
-        [self.roamTimer invalidate];
-        self.roamTimer = nil;
-    } else if (!self.frameTimer && self.sheet) {
-        [self startPlaying];
+    if (suspended) [self cancelGravityImpulse];
+    [self reconcilePlayback]; // Never invents playback intent; startPlaying is not called.
+}
+
+- (void)setActivityActive:(BOOL)active {
+    NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
+    if (_activityActive == active) return;
+    _activityActive = active;
+    [self invalidateRoamTimer];
+    [self scheduleRoam]; // Only the roaming delay changes; no FPS change.
+}
+
+- (void)setRoamingPaused:(BOOL)paused {
+    NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
+    if (_roamingPaused == paused) return;
+    _roamingPaused = paused;
+    [self reconcilePlayback];
+}
+
+- (void)setInteractionActive:(BOOL)active {
+    NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
+    if (_interactionActive == active) return;
+    _interactionActive = active;
+    [self reconcilePlayback];
+}
+
+- (void)setReducedWork:(BOOL)reduced {
+    NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
+    if (_reducedWork == reduced) return;
+    _reducedWork = reduced;
+    if (reduced) [self cancelGravityImpulse];
+    [self reconcilePlayback]; // Freeze a touchable idle frame, not a hidden view.
+}
+
+- (void)setHidden:(BOOL)hidden {
+    [super setHidden:hidden];
+    if (_geometryReady) [self reconcilePlayback];
+}
+
+- (void)setAlpha:(CGFloat)alpha {
+    [super setAlpha:alpha];
+    if (_geometryReady) [self reconcilePlayback];
+}
+
+- (void)didMoveToWindow {
+    [super didMoveToWindow];
+    if (!_geometryReady) return;
+    [self geometryDidChange];
+    [self reconcilePlayback];
+}
+
+- (void)windowVisibilityChanged:(NSNotification *)notification {
+    if (notification.object == self.window) [self reconcilePlayback];
+}
+
+- (BOOL)isActuallyVisible {
+    if (!self.window || self.window.hidden || self.window.alpha <= 0.01) return NO;
+    for (UIView *view = self; view; view = view.superview) {
+        if (view.hidden || view.alpha <= 0.01) return NO;
     }
+    return YES;
 }
 
-/// 只在真正走动时提到 20 帧，站着还是 10 帧。
-- (void)syncTimerRate {
-    NSTimeInterval want = (self.row == MiniSightPetStateRunRight ||
-                           self.row == MiniSightPetStateRunLeft ||
-                           self.row == MiniSightPetStateJumping) ? 0.05 : 0.16;
-    if (fabs(want - self.tickInterval) < 0.001) return;
-    self.tickInterval = want;
-    if (!self.frameTimer) return;
-    [self.frameTimer invalidate];
-    self.frameTimer = [NSTimer scheduledTimerWithTimeInterval:want
-                                                       target:self
-                                                     selector:@selector(tick:)
-                                                     userInfo:nil
-                                                      repeats:YES];
-    self.frameTimer.tolerance = 0.02;
+- (BOOL)shouldAnimate {
+    return _wantsPlaying && !_suspended && [self isActuallyVisible] && _sheet.CGImage;
 }
 
-- (void)tick:(NSTimer *)timer {
-    if (!self.sheet || self.suspended || !self.window) return;
-    BOOL moving = (self.row == MiniSightPetStateRunRight ||
-                   self.row == MiniSightPetStateRunLeft ||
-                   self.row == MiniSightPetStateJumping);
-    if (moving) [self keepInside];
-    if (moving || gMiniSightBubbleShown) MiniSightFollowBubble();
-    self.frameElapsed += timer.timeInterval;
-    if (self.frameElapsed < self.frameDuration) return;
-    self.frameElapsed = 0;
+- (BOOL)mayRoam {
+    MSRect area = [self feasibleCenters];
+    return [self shouldAnimate] && _hasCenterBounds && !_reducedWork &&
+           !_roamingPaused && !_interactionActive && (area.w > 0. || area.h > 0.);
+}
 
-    NSInteger count = [self frameCountForRow:self.row];
-    self.col = (self.col + 1) % MAX(count, 1);
-    [self applyFrame];
+- (void)reconcilePlayback {
+    if (![self shouldAnimate] || _reducedWork) {
+        [self invalidateFrameTimer];
+        [self invalidateRoamTimer];
+        [self cancelMotion];
+        [self cancelGravityImpulse];
+        return;
+    }
+    if (![self mayRoam]) {
+        [self invalidateRoamTimer];
+        [self cancelMotion];
+    }
+    if (!_motionActive) [self ensureFrameTimer];
+    if (!_motionActive && !_roamTimer && _stateHoldUntil <= 0.) [self scheduleRoam];
+}
+
+- (void)invalidateFrameTimer {
+    [_frameTimer invalidate];
+    _frameTimer = nil;
+}
+
+- (void)invalidateRoamTimer {
+    ++_roamGeneration;
+    [_roamTimer invalidate];
+    _roamTimer = nil;
+}
+
+#pragma mark - Atlas playback (7 sprite frames per second, never a frame cache)
+
+- (void)ensureFrameTimer {
+    if (_frameTimer || _motionActive || ![self shouldAnimate] || _reducedWork) return;
+    _lastSpriteTime = CACurrentMediaTime();
+    __weak typeof(self) weakSelf = self;
+    _frameTimer = [NSTimer timerWithTimeInterval:kMiniSightSpriteInterval repeats:YES
+                                         block:^(NSTimer *timer) {
+        [weakSelf frameTick:timer];
+    }];
+    _frameTimer.tolerance = 0.025;
+    [NSRunLoop.mainRunLoop addTimer:_frameTimer forMode:NSRunLoopCommonModes];
+}
+
+- (void)frameTick:(NSTimer *)timer {
+    if (timer != _frameTimer) return;
+    if (![self shouldAnimate] || _reducedWork) { [self reconcilePlayback]; return; }
+    CFTimeInterval now = CACurrentMediaTime();
+    if (_stateHoldUntil > 0. && now >= _stateHoldUntil) {
+        _stateHoldUntil = 0.;
+        [self setSpriteState:MiniSightPetStateIdle];
+        if (!_roamTimer && !_motionActive) [self scheduleRoam];
+    }
+    [self advanceSpriteAtTime:now];
 }
 
 - (NSInteger)frameCountForRow:(NSInteger)row {
-    static NSInteger counts[9] = {6, 8, 8, 4, 5, 8, 6, 6, 6};
-    if (row < 0 || row >= 9) return 1;
-    return counts[row];
+    static const NSInteger counts[9] = {6, 8, 8, 4, 5, 8, 6, 6, 6};
+    return (row >= 0 && row < kMiniSightPetRows) ? counts[row] : 1;
 }
 
-- (void)setState:(MiniSightPetState)state {
-    self.row = state;
-    self.col = 0;
-    self.frameElapsed = 0;
-    // Idle breathes slowly; a run/jump is quicker.
-    self.frameDuration = (state == MiniSightPetStateIdle) ? 0.16 : 0.12;
-    [self syncTimerRate];
-    [self applyFrame];
+- (void)setSpriteState:(MiniSightPetState)state {
+    if (_state == state) return;
+    _state = state;
+    _column = 0;
+    _lastSpriteTime = CACurrentMediaTime();
+    [self applySpriteFrame];
 }
 
-- (void)applyFrame {
-    UIImage *cached = self.frameCache[@(self.row * 16 + self.col)];
-    if (cached) {
-        if (self.image != cached) self.image = cached;   // 同帧不重复赋值
+- (void)advanceSpriteAtTime:(CFTimeInterval)now {
+    double elapsed = fmax(0., now - _lastSpriteTime);
+    if (elapsed < kMiniSightSpriteInterval) return;
+    double steps = floor(elapsed / kMiniSightSpriteInterval);
+    NSInteger count = [self frameCountForRow:_state];
+    _lastSpriteTime = now - fmod(elapsed, kMiniSightSpriteInterval);
+    NSInteger next = (_column + (NSInteger)fmod(steps, (double)count)) % count;
+    if (next == _column) return;
+    _column = next;
+    [self applySpriteFrame];
+}
+
+- (void)applySpriteFrame {
+    if (!_sheet.CGImage || !_gravityLayer) return;
+    CGRect rect = CGRectMake((CGFloat)_column / kMiniSightPetMaxCols,
+                             (CGFloat)_state / kMiniSightPetRows,
+                             1.0 / kMiniSightPetMaxCols, 1.0 / kMiniSightPetRows);
+    if (CGRectEqualToRect(_gravityLayer.contentsRect, rect)) return;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    _gravityLayer.contentsRect = rect;
+    [CATransaction commit];
+}
+
+#pragma mark - Gravity visual layer
+
+- (CGSize)gravitySafeSize {
+    NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
+    CGSize size = self.bounds.size;
+    return _gravityEnabled ? MSPetGravityEnvelope(size) : size;
+}
+
+- (void)updateGravityLayerGeometry {
+    if (!_gravityLayer) return;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    _gravityLayer.frame = self.bounds;
+    _gravityLayer.anchorPoint = CGPointMake(0.5, 0.5);
+    _gravityLayer.position = CGPointMake(CGRectGetMidX(self.bounds), CGRectGetMidY(self.bounds));
+    [CATransaction commit];
+}
+
+- (CGFloat)gravityAngleAtTime:(CFTimeInterval)now {
+    CGFloat base = _gravityEnabled ? MSPetClampUnit(_gravityRoll) * kMiniSightGravityMaxAngle : 0.0;
+    if (_gravityImpulseDuration <= 0.0 || _gravityImpulseAngle == 0.0) return base;
+    CGFloat progress = (CGFloat)((now - _gravityImpulseBegan) / _gravityImpulseDuration);
+    if (!isfinite(progress) || progress <= 0.0) return base;
+    if (progress >= 1.0) return base;
+    // A short damped fall/rebound: it returns to the live tilt rather than
+    // fighting the sensor's current orientation.
+    CGFloat envelope = sin((CGFloat)(M_PI * progress));
+    CGFloat damping = exp((CGFloat)(-2.8 * progress));
+    return base + _gravityImpulseAngle * envelope * damping;
+}
+
+- (void)setGravityLayerAngle:(CGFloat)angle animated:(BOOL)animated {
+    (void)animated;
+    if (!_gravityLayer || !isfinite(angle)) angle = 0.0;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    _gravityLayer.affineTransform = CGAffineTransformMakeRotation(angle);
+    [CATransaction commit];
+}
+
+- (void)applyGravityTransformAtTime:(CFTimeInterval)now {
+    [self setGravityLayerAngle:[self gravityAngleAtTime:now] animated:NO];
+}
+
+- (void)setGravityEnabled:(BOOL)enabled {
+    NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
+    if (_gravityEnabled == enabled) {
+        [self applyGravityTransformAtTime:CACurrentMediaTime()];
         return;
     }
-    CGImageRef sheetRef = self.sheet.CGImage;
-    if (!sheetRef) return;
-
-    CGFloat w = CGImageGetWidth(sheetRef);
-    CGFloat h = CGImageGetHeight(sheetRef);
-    CGFloat frameW = w / (CGFloat)kMiniSightPetMaxCols;
-    CGFloat frameH = h / (CGFloat)kMiniSightPetRows;
-
-    CGRect rect = CGRectMake(frameW * self.col, frameH * self.row, frameW, frameH);
-    CGImageRef frame = CGImageCreateWithImageInRect(sheetRef, rect);
-    if (!frame) return;
-
-    UIImage *image = [UIImage imageWithCGImage:frame scale:self.sheet.scale orientation:UIImageOrientationUp];
-    CGImageRelease(frame);
-    if (self.frameCache.count < 32) self.frameCache[@(self.row * 16 + self.col)] = image;
-    self.image = image;
+    _gravityEnabled = enabled;
+    if (!enabled) {
+        _gravityRoll = 0.0;
+        [self cancelGravityImpulse];
+    }
+    [self updateGravityLayerGeometry];
+    [self applyGravityTransformAtTime:CACurrentMediaTime()];
 }
 
-#pragma mark - Roaming
+- (BOOL)gravityEnabled {
+    return _gravityEnabled;
+}
+
+- (CGFloat)gravityRoll {
+    return _gravityRoll;
+}
+
+- (void)setGravityRoll:(CGFloat)roll {
+    NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
+    _gravityRoll = MSPetClampUnit(roll);
+    [self applyGravityTransformAtTime:CACurrentMediaTime()];
+}
+
+- (void)ensureGravityLink {
+    if (_gravityLink || !_gravityEnabled || !_gravityImpulseDuration) return;
+    if (![self shouldAnimate] || _reducedWork || _suspended) return;
+    if (!_gravityProxy) _gravityProxy = [[MiniSightPetDisplayLinkProxy alloc] init];
+    _gravityProxy.owner = self;
+    CADisplayLink *link = [CADisplayLink displayLinkWithTarget:_gravityProxy
+                                                      selector:@selector(gravityDisplayTick:)];
+    if (!link) return;
+    link.preferredFramesPerSecond = 30;
+    [link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+    _gravityLink = link;
+}
+
+- (void)cancelGravityImpulse {
+    ++_gravityGeneration;
+    _gravityImpulseAngle = 0.0;
+    _gravityImpulseBegan = 0.0;
+    _gravityImpulseDuration = 0.0;
+    [_gravityLink invalidate];
+    _gravityLink = nil;
+    [self applyGravityTransformAtTime:CACurrentMediaTime()];
+}
+
+- (void)triggerGravityImpulseWithDirection:(CGFloat)direction strength:(CGFloat)strength {
+    NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
+    if (!_gravityEnabled || !_wantsPlaying || _suspended || _reducedWork || ![self isActuallyVisible]) return;
+    direction = MSPetClampUnit(direction);
+    strength = MIN(1.0, MAX(0.0, isfinite(strength) ? strength : 0.0));
+    if (fabs(direction) < 0.01 || strength < 0.05) return;
+    _gravityImpulseAngle = direction * strength * kMiniSightGravityImpulseAngle;
+    _gravityImpulseBegan = CACurrentMediaTime();
+    _gravityImpulseDuration = kMiniSightGravityImpulseDuration;
+    _activeGravityGeneration = ++_gravityGeneration;
+    [self ensureGravityLink];
+    [self applyGravityTransformAtTime:_gravityImpulseBegan];
+}
+
+- (void)gravityTick:(CADisplayLink *)link {
+    if (link != _gravityLink) return;
+    if (!_gravityEnabled || !_wantsPlaying || _suspended || _reducedWork || ![self isActuallyVisible]) {
+        [self cancelGravityImpulse];
+        return;
+    }
+    if (_activeGravityGeneration != _gravityGeneration) return;
+    CFTimeInterval now = CACurrentMediaTime();
+    if (now - _gravityImpulseBegan >= _gravityImpulseDuration) {
+        [self cancelGravityImpulse];
+        return;
+    }
+    [self applyGravityTransformAtTime:now];
+}
+
+#pragma mark - Actual geometry, shared with hit testing and the bubble
+
+- (void)setCenterBounds:(CGRect)bounds {
+    NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
+    CGRect clean = CGRectMake(MSFinite(bounds.origin.x, self.center.x),
+                              MSFinite(bounds.origin.y, self.center.y),
+                              fmax(0., MSFinite(bounds.size.width, 0.)),
+                              fmax(0., MSFinite(bounds.size.height, 0.)));
+    if (_hasCenterBounds && CGRectEqualToRect(clean, _centerBounds)) return;
+    _hasCenterBounds = YES;
+    _centerBounds = clean;
+    // A new feasible range invalidates the old trajectory before clamping.
+    [self invalidateRoamTimer];
+    [self cancelMotion];
+    self.center = self.center;
+    [self reconcilePlayback];
+}
+
+- (MSRect)feasibleCenters {
+    return (MSRect){_centerBounds.origin.x, _centerBounds.origin.y,
+                    _centerBounds.size.width, _centerBounds.size.height};
+}
+
+- (CGPoint)clampedCenter:(CGPoint)point {
+    if (!_hasCenterBounds) return point;
+    return MSPetCGPoint(MSClampCenter([self feasibleCenters], MSPetPoint(point)));
+}
+
+- (void)setCenter:(CGPoint)center {
+    center = [self clampedCenter:center];
+    BOOL nested = _settingGeometry;
+    _settingGeometry = YES;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    [super setCenter:center];
+    [CATransaction commit];
+    _settingGeometry = nested;
+    if (!nested) [self geometryDidChange];
+}
+
+- (void)setBounds:(CGRect)bounds {
+    BOOL nested = _settingGeometry;
+    _settingGeometry = YES;
+    [super setBounds:bounds];
+    [self updateGravityLayerGeometry];
+    _settingGeometry = nested;
+    if (!nested) [self geometryDidChange];
+}
+
+- (void)setFrame:(CGRect)frame {
+    BOOL nested = _settingGeometry;
+    _settingGeometry = YES;
+    [super setFrame:frame];
+    [self updateGravityLayerGeometry];
+    _settingGeometry = nested;
+    if (!nested) [self geometryDidChange];
+}
+
+- (void)geometryDidChange {
+    if (!_geometryReady) return;
+    CGPoint center = [self clampedCenter:self.center];
+    if (!CGPointEqualToPoint(center, self.center)) {
+        BOOL nested = _settingGeometry;
+        _settingGeometry = YES;
+        [CATransaction begin];
+        [CATransaction setDisableActions:YES];
+        [super setCenter:center];
+        [CATransaction commit];
+        _settingGeometry = nested;
+    }
+    // Notify on real changes only, and save the geometry first: a callback may
+    // clamp, hide or stop us, and must not be re-entered with the same values.
+    if (CGPointEqualToPoint(center, _lastNotifiedCenter) &&
+        CGRectEqualToRect(self.bounds, _lastNotifiedBounds)) return;
+    _lastNotifiedCenter = center;
+    _lastNotifiedBounds = self.bounds;
+    NSAssert([NSThread isMainThread], @"Geometry callbacks are main-thread only");
+    void (^callback)(void) = _onGeometryChanged;
+    if (callback) callback();
+}
+
+#pragma mark - Roaming (every target comes from centerBounds)
 
 - (void)scheduleRoam {
-    [self.roamTimer invalidate];
+    // A state hold (waving) owns the sprite state: frameTick arms the next roam.
+    // A running motion arms the next roam itself, in finishMotion.
+    if (_stateHoldUntil > 0. || _motionActive || ![self mayRoam]) {
+        [self invalidateRoamTimer];
+        return;
+    }
+    // activityActive replaces the old tweak global: YES while the assistant is
+    // acting (lively), NO for the resident idle pet (a move every 9-15 s).
+    NSTimeInterval delay = _activityActive
+        ? MSPetRandomRange(kMiniSightRoamActiveLo, kMiniSightRoamActiveHi)
+        : MSPetRandomRange(kMiniSightRoamIdleLo, kMiniSightRoamIdleHi);
+    delay += _restAfterMotion;
+    _restAfterMotion = 0.;
+    [self armRoamTimerWithDelay:delay];
+}
+
+- (void)armRoamTimerWithDelay:(NSTimeInterval)delay {
+    if (![self mayRoam]) { [self invalidateRoamTimer]; return; }
+    [self invalidateRoamTimer]; // At most one roam timer, ever.
+    NSUInteger generation = _roamGeneration;
     __weak typeof(self) weakSelf = self;
-    // 调用期间活泼一点；常驻且空闲时 9~15 秒动一次就够。
-    // 调用期间活泼一点；常驻且空闲时 9~15 秒动一次就够。
-    NSTimeInterval delay = gMiniSightBurst ? (2.0 + arc4random_uniform(300) / 100.0)
-                                           : (9.0 + arc4random_uniform(600) / 100.0);
-    delay += self.extraRest;
-    self.extraRest = 0;
-    self.roamTimer = [NSTimer scheduledTimerWithTimeInterval:delay repeats:NO block:^(NSTimer *timer) {
-        [weakSelf roamOnce];
+    NSTimer *timer = [NSTimer timerWithTimeInterval:fmax(0.05, delay) repeats:NO
+                                              block:^(NSTimer *fired) {
+        MiniSightPetView *strongSelf = weakSelf;
+        if (!strongSelf || strongSelf->_roamGeneration != generation || fired != strongSelf->_roamTimer) return;
+        [strongSelf roamOnce];
     }];
-}
-
-/// 目标点必须整个身子留在屏内
-- (CGPoint)clampPoint:(CGPoint)p {
-    UIView *parent = self.superview;
-    if (!parent) return p;
-    CGFloat halfW = self.bounds.size.width / 2, halfH = self.bounds.size.height / 2;
-    CGFloat minX = 8 + halfW, maxX = parent.bounds.size.width - 8 - halfW;
-    CGFloat minY = 30 + halfH, maxY = parent.bounds.size.height - 20 - halfH;
-    if (maxX < minX) return CGPointMake(parent.bounds.size.width / 2, p.y);
-    if (maxY < minY) return CGPointMake(p.x, parent.bounds.size.height / 2);
-    return CGPointMake(MIN(MAX(p.x, minX), maxX), MIN(MAX(p.y, minY), maxY));
-}
-
-/// 万一被动画/旋转带出界，直接夹回来
-- (void)keepInside {
-    CGPoint c = self.center, k = [self clampPoint:c];
-    if (fabs(c.x - k.x) > 0.5 || fabs(c.y - k.y) > 0.5) self.center = k;
-}
-
-- (CGRect)roamArea {
-    UIView *parent = self.superview;
-    if (!parent) return CGRectZero;
-    CGFloat halfW = self.bounds.size.width / 2, halfH = self.bounds.size.height / 2;
-    CGFloat top = 34 + halfH, bottom = parent.bounds.size.height - 24 - halfH;
-    CGFloat left = 12 + halfW, right = parent.bounds.size.width - 12 - halfW;
-    if (right <= left || bottom <= top) return CGRectZero;
-    return CGRectMake(left, top, right - left, bottom - top);
-}
-
-/// 走到任意一点（不只是左右），距离越远走得越久。
-- (void)walkTo:(CGPoint)target {
-    target = [self clampPoint:target];
-    BOOL right = target.x > self.center.x;
-    [self setState:right ? MiniSightPetStateRunRight : MiniSightPetStateRunLeft];
-    CGFloat dist = hypot(target.x - self.center.x, target.y - self.center.y);
-    NSTimeInterval duration = MIN(2.2, MAX(0.7, dist / 160.0));
-    __weak typeof(self) weakSelf = self;
-    [UIView animateWithDuration:duration
-                          delay:0
-                        options:UIViewAnimationOptionCurveEaseInOut | UIViewAnimationOptionBeginFromCurrentState
-                     animations:^{ weakSelf.center = target; }
-                     completion:^(BOOL finished) {
-        [weakSelf keepInside];
-        [weakSelf setState:MiniSightPetStateIdle];
-        [weakSelf scheduleRoam];
-    }];
-}
-
-- (void)walkToRandomPoint {
-    CGRect area = [self roamArea];
-    if (CGRectIsEmpty(area)) { [self scheduleRoam]; return; }
-    CGPoint p = CGPointMake(area.origin.x + arc4random_uniform((uint32_t)area.size.width),
-                            area.origin.y + arc4random_uniform((uint32_t)area.size.height));
-    [self walkTo:p];
-}
-
-/// 偶尔跑到某个角落待一会儿，像真的在找地方窝着。
-- (void)goCorner {
-    CGRect area = [self roamArea];
-    if (CGRectIsEmpty(area)) { [self scheduleRoam]; return; }
-    CGFloat x = (arc4random_uniform(2) ? CGRectGetMinX(area) : CGRectGetMaxX(area));
-    CGFloat y = (arc4random_uniform(2) ? CGRectGetMinY(area) : CGRectGetMaxY(area));
-    self.extraRest = 2.5 + arc4random_uniform(250) / 100.0;   // 到角落多待一会儿
-    [self walkTo:CGPointMake(x, y)];
+    _roamTimer = timer;
+    [NSRunLoop.mainRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
 }
 
 - (void)roamOnce {
-    if (!self.window || self.suspended) return;
-
+    if (![self mayRoam] || _motionActive) { [self invalidateRoamTimer]; return; }
+    MSRect area = [self feasibleCenters];
     uint32_t roll = arc4random_uniform(100);
-    if (roll < 38) {
-        [self walkRandomly];
-    } else if (roll < 60) {
-        [self walkToRandomPoint];
-    } else if (roll < 72) {
-        [self goCorner];
-    } else if (roll < 88) {
-        [self jump];
+    if (roll < 52) {
+        // Wander to a random feasible CENTER; y is never taken from the row above.
+        MSPoint target = {MSPetRandomRange(area.x, area.x + area.w),
+                          MSPetRandomRange(area.y, area.y + area.h)};
+        [self startMotionTo:MSPetCGPoint(target) jump:NO rest:MSPetRandomRange(0.6, 2.2)];
+    } else if (roll < 80) {
+        // Hop in place. The height is capped by MSJumpHeight(), so the apex can
+        // never rise above the top of the feasible range; if there is no room
+        // left overhead, walk instead of "jumping" zero pixels.
+        CGPoint origin = self.center;
+        double height = MSJumpHeight(area, MSPetPoint(origin), kMiniSightJumpDesiredHeight);
+        if (height < kMiniSightJumpMinHeight) {
+            MSPoint target = {MSPetRandomRange(area.x, area.x + area.w), origin.y};
+            [self startMotionTo:MSPetCGPoint(target) jump:NO rest:MSPetRandomRange(0.6, 2.2)];
+        } else {
+            [self startMotionTo:origin jump:YES rest:MSPetRandomRange(1.0, 2.4)];
+        }
+    } else if (roll < 90) {
+        [self holdState:MiniSightPetStateWaving forDuration:kMiniSightWaveHold];
     } else {
-        [self setState:MiniSightPetStateWaving];
-        __weak typeof(self) weakSelf = self;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{
-            [weakSelf setState:MiniSightPetStateIdle];
-            [weakSelf scheduleRoam];
-        });
-        return;
+        // Do nothing this beat, then wait a visibly longer stretch.
+        _restAfterMotion = MSPetRandomRange(2.0, 5.0);
+        [self scheduleRoam];
     }
 }
 
-- (void)walkRandomly {
-    UIView *parent = self.superview;
-    if (!parent) return;
-
-    CGFloat minX = 12 + self.bounds.size.width / 2;
-    CGFloat maxX = parent.bounds.size.width - 12 - self.bounds.size.width / 2;
-    if (maxX <= minX) { [self scheduleRoam]; return; }
-
-    CGFloat targetX = minX + (CGFloat)arc4random_uniform((uint32_t)MAX(maxX - minX, 1.0));
-    BOOL right = targetX > self.center.x;
-    [self setState:right ? MiniSightPetStateRunRight : MiniSightPetStateRunLeft];
-
-    NSTimeInterval duration = 0.8 + (arc4random_uniform(80) / 100.0);
-    __weak typeof(self) weakSelf = self;
-    [UIView animateWithDuration:duration
-                          delay:0
-                        options:UIViewAnimationOptionCurveEaseInOut | UIViewAnimationOptionBeginFromCurrentState
-                     animations:^{
-        CGPoint c = weakSelf.center;
-        c.x = targetX;
-        weakSelf.center = c;
-    } completion:^(BOOL finished) {
-        [weakSelf setState:MiniSightPetStateIdle];
-        [weakSelf scheduleRoam];
-    }];
+- (void)holdState:(MiniSightPetState)state forDuration:(NSTimeInterval)duration {
+    [self invalidateRoamTimer]; // No walking during the hold; frameTick arms the next one.
+    [self setSpriteState:state];
+    _stateHoldUntil = CACurrentMediaTime() + fmax(0., duration);
+    [self reconcilePlayback];
 }
 
-- (void)jump {
-    [self setState:MiniSightPetStateJumping];
-    CGPoint origin = self.center;
-    __weak typeof(self) weakSelf = self;
-    [UIView animateWithDuration:0.22
-                          delay:0
-                        options:UIViewAnimationOptionCurveEaseOut
-                     animations:^{
-        CGPoint c = weakSelf.center;
-        c.y -= 26;
-        weakSelf.center = c;
-    } completion:^(BOOL finished) {
-        [UIView animateWithDuration:0.24
-                              delay:0
-                            options:UIViewAnimationOptionCurveEaseIn
-                         animations:^{
-            weakSelf.center = origin;
-        } completion:^(BOOL finished2) {
-            [weakSelf setState:MiniSightPetStateIdle];
-            [weakSelf scheduleRoam];
-        }];
-    }];
+#pragma mark - Motion (one CADisplayLink; position and sprite for the same frame)
+
+- (void)startMotionTo:(CGPoint)target jump:(BOOL)jump rest:(NSTimeInterval)rest {
+    NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
+    // Without a host-provided feasible range there is nothing safe to move to.
+    if (!_hasCenterBounds || ![self shouldAnimate] || _reducedWork) return;
+    if (_roamingPaused || _interactionActive) return;
+    _stateHoldUntil = 0.;
+
+    CGPoint start = [self clampedCenter:self.center];
+    CGPoint end = [self clampedCenter:target];
+    double height = 0.;
+    if (jump) {
+        height = MSJumpHeight([self feasibleCenters], MSPetPoint(start), kMiniSightJumpDesiredHeight);
+        if (height < kMiniSightJumpMinHeight) height = 0.;
+        else end = start; // A hop stays in place: no horizontal drift under the apex.
+    }
+    double distance = hypot((double)end.x - start.x, (double)end.y - start.y);
+    if (distance < 1. && height <= 0.) {
+        _restAfterMotion = rest;
+        [self scheduleRoam];
+        return;
+    }
+
+    _motionStart = MSPetPoint(start);
+    _motionEnd = MSPetPoint(end);
+    _jumpHeight = height;
+    _motionDuration = jump ? kMiniSightJumpDuration
+                           : MSClamp(distance / kMiniSightWalkSpeed,
+                                     kMiniSightWalkMinDuration, kMiniSightWalkMaxDuration);
+    _motionBegan = CACurrentMediaTime();
+    _restAfterMotion = rest;
+    _motionActive = YES;
+    _activeMotionGeneration = ++_motionGeneration;
+
+    if (height > 0.) [self setSpriteState:MiniSightPetStateJumping];
+    else if (end.x > start.x) [self setSpriteState:MiniSightPetStateRunRight];
+    else [self setSpriteState:MiniSightPetStateRunLeft];
+
+    // While the link runs it also advances the atlas; one clock, never two.
+    [self invalidateFrameTimer];
+    [self invalidateRoamTimer];
+    self.center = start; // No UIView animation: the model geometry is the truth.
+    [self ensureMotionLink];
+    if (!_motionActive) [self reconcilePlayback]; // Link creation failed: restart the clock.
 }
 
-#pragma mark - Gesture
+- (void)ensureMotionLink {
+    if (_motionLink || !_motionActive) return; // Only a live motion may hold the link.
+    if (!_motionProxy) _motionProxy = [[MiniSightPetDisplayLinkProxy alloc] init];
+    _motionProxy.owner = self; // Weak: the link retains the proxy, never the view.
+    CADisplayLink *link = [CADisplayLink displayLinkWithTarget:_motionProxy
+                                                      selector:@selector(displayTick:)];
+    if (!link) { [self cancelMotion]; return; } // Never leave a motion without a clock.
+    link.preferredFramesPerSecond = 60;
+    [link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+    _motionLink = link;
+}
 
-- (void)handleLongPress:(UILongPressGestureRecognizer *)press {
-    if (press.state != UIGestureRecognizerStateBegan) return;
-    UIImpactFeedbackGenerator *feedback =
-        [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
-    [feedback impactOccurred];
-    if (self.onLongPress) self.onLongPress();
+- (void)motionTick:(CADisplayLink *)link {
+    if (link != _motionLink) return;
+    if (!_motionActive || _activeMotionGeneration != _motionGeneration) return;
+    if (![self shouldAnimate] || _reducedWork || _roamingPaused || _interactionActive) {
+        // Freeze at the actual position, then let reconcile resume the sprite clock.
+        [self cancelMotion];
+        [self reconcilePlayback];
+        return;
+    }
+    double t = _motionDuration > 0. ? (CACurrentMediaTime() - _motionBegan) / _motionDuration : 1.;
+    if (t >= 1.) { [self finishMotion]; return; }
+    if (t < 0.) t = 0.;
+
+    MSPoint sample = MSMotionPoint(_motionStart, _motionEnd, t);
+    if (_jumpHeight > 0.) sample.y -= _jumpHeight * sin(M_PI * t);
+    // Clamp every intermediate sample too: a bubble resize or rotation can shrink
+    // the feasible range while the pet is mid-flight.
+    self.center = [self clampedCenter:MSPetCGPoint(sample)];
+    if (!_motionActive) return; // A geometry callback may have cancelled the motion.
+    [self advanceSpriteAtTime:CACurrentMediaTime()];
+}
+
+- (void)finishMotion {
+    _motionActive = NO;
+    [_motionLink invalidate];
+    _motionLink = nil;
+    self.center = [self clampedCenter:MSPetCGPoint(_motionEnd)];
+    [self setSpriteState:MiniSightPetStateIdle];
+    [self reconcilePlayback]; // Restarts the sprite clock and arms the next roam.
+}
+
+- (void)cancelMotion {
+    ++_motionGeneration; // Fence any already-delivered callback before it can rearm.
+    _motionActive = NO;
+    _jumpHeight = 0.;
+    _stateHoldUntil = 0.;
+    _restAfterMotion = 0.;
+    [_motionLink invalidate];
+    _motionLink = nil;
+    [self setSpriteState:MiniSightPetStateIdle];
 }
 
 @end

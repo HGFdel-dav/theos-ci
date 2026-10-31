@@ -10,6 +10,7 @@ TWEAK_NAME = MiniSight
 MiniSight_FILES = Tweak.xm MiniSightPet.m
 MiniSight_CFLAGS = -fobjc-arc -Wno-deprecated-declarations
 # UIKit/QuartzCore 需要显式链接（浮窗绘制 + CABasicAnimation）
-MiniSight_FRAMEWORKS = UIKit Foundation QuartzCore ReplayKit
+# AVFoundation：录屏保存后要读真实时长，确认文件真的生成了
+MiniSight_FRAMEWORKS = UIKit Foundation QuartzCore CoreMotion ReplayKit AVFoundation
 
 include $(THEOS_MAKE_PATH)/tweak.mk
