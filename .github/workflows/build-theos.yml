@@ -90,6 +90,13 @@ jobs:
             cp -v "$p" packages/ || true
           done
 
+      - name: Upload deb artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: debs-${{ github.run_id }}
+          path: packages/*.deb
+          if-no-files-found: warn
+
       - name: Commit packages
         run: |
           git config user.name "github-actions"
@@ -98,7 +105,7 @@ jobs:
           git commit -m "自动构建 deb 包" || true
           # 2.0.5: 并行 run 的产物提交可能冲突——以本次构建产物为准（rebase 时 -X theirs 指本次提交）
           git pull --rebase -X theirs origin main || { git rebase --abort 2>/dev/null || true; git pull --no-rebase -X theirs origin main --no-edit || true; git add -A; git commit -m "自动构建 deb 包(冲突取本次)" || true; }
-          git push origin main || { git pull --rebase -X theirs origin main || true; git push origin main; }
+          git push origin HEAD:main || { git pull --rebase -X theirs origin main || true; git push origin HEAD:main; }
 
       - name: Verify source remains available
         run: |
