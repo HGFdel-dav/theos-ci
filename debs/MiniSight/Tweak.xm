@@ -124,13 +124,16 @@ static void MiniSightStartRecording(void) {
     RPScreenRecorder *recorder = [RPScreenRecorder sharedRecorder];
     if (!recorder.isAvailable) {
         NSLog(@"[MiniSight] recorder unavailable");
+        MiniSightSay(@"这台机器现在不能录屏");
         return;
     }
     gMiniSightRecording = YES;
+    MiniSightSay(@"开始录屏");
     [recorder startRecordingWithHandler:^(NSError *error) {
         if (error) {
             gMiniSightRecording = NO;
             NSLog(@"[MiniSight] startRecording failed: %@", error.localizedDescription);
+            MiniSightSay(@"录屏没起来");
         }
     }];
 }
@@ -138,6 +141,7 @@ static void MiniSightStartRecording(void) {
 static void MiniSightStopRecording(void) {
     if (!gMiniSightRecording) return;
     gMiniSightRecording = NO;
+    MiniSightSay(@"录屏已保存");
     NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
     fmt.dateFormat = @"yyyyMMdd-HHmmss";
     NSString *name = [NSString stringWithFormat:@"rec-%@.mp4", [fmt stringFromDate:[NSDate date]]];
@@ -147,6 +151,11 @@ static void MiniSightStopRecording(void) {
         if (error) NSLog(@"[MiniSight] stopRecording failed: %@", error.localizedDescription);
         else NSLog(@"[MiniSight] saved %@", path);
     }];
+}
+
+/// 短提示：直接写气泡，不走 3 秒消失逻辑（长按场景要留得住）
+static void MiniSightSay(NSString *line) {
+    MiniSightShowBubble(line);
 }
 
 static void MiniSightToggleRecording(void) {
@@ -323,6 +332,8 @@ static void MiniSightUpdateGeometry(void);
 static void MiniSightApplySavedCenter(BOOL useSaved);
 static void MiniSightStartPulse(void);
 static void MiniSightToggleRecording(void);
+static void MiniSightSay(NSString *line);
+static void MiniSightShowBubble(NSString *raw);
 static void MiniSightReloadSettings(void);
 static void MiniSightBringMinisFront(void);
 static void MiniSightSpeakLine(void);
@@ -872,7 +883,7 @@ static void MiniSightShowBubbleWidth(NSString *raw, CGFloat maxW, NSUInteger cap
 }
 
 /// 只重算位置：气泡在，宠物怎么动它就跟到哪。
-void MiniSightFollowBubble(void) {
+extern "C" void MiniSightFollowBubble(void) {
     UIView *host = gMiniSightPet ?: gMiniSightPill;
     UIView *root = gMiniSightWindow.rootViewController.view;
     if (!gMiniSightBubble || gMiniSightBubble.hidden || !gMiniSightBubble.superview) return;
@@ -1034,8 +1045,15 @@ static void MiniSightSpeakLine(void) {
         MiniSightSayPresetLine();
         return;
     }
-    NSString *full = [base hasSuffix:@"/chat/completions"] ? base
-                                                           : [base stringByAppendingString:@"/chat/completions"];
+    // 只填域名时补 /v1；只填到 /v1 时补 /chat/completions
+    NSString *full = base;
+    if ([full hasSuffix:@"/chat/completions"]) {
+        // 已经是完整端点
+    } else {
+        NSURLComponents *c = [NSURLComponents componentsWithString:base];
+        if (c && (c.path.length == 0 || [c.path isEqualToString:@"/"])) full = [base stringByAppendingString:@"/v1/chat/completions"];
+        else full = [base stringByAppendingString:@"/chat/completions"];
+    }
     NSURL *url = [NSURL URLWithString:full];
     if (!url) { MiniSightSayPresetLine(); return; }
 
