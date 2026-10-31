@@ -1,0 +1,16 @@
+{
+  "name": "SafariModernizer",
+  "version": "1.0.1+ios15.5.rh2",
+  "upstream_version": "1.0.1",
+  "scope": "Compatibility rebuild only; preserve every upstream runtime feature",
+  "device": "iPhone 12 / A14",
+  "runtime_target": "iOS 15.x; current device is iOS 15.5 / RootHide",
+  "sdk": "iPhoneOS15.5.sdk",
+  "deployment_target": "15.0",
+  "arch": "arm64e",
+  "scheme": "roothide",
+  "stage": "release_delivered_local_followup_unbuilt",
+  "authorization": {"push": true, "ci": true, "install": false, "respring": false, "reboot": false},
+  "verification": {"release_source_static": "PASS_89", "release_macho_tool_tests": "PASS_21", "release_upstream_js_tests": "PASS_9_CI", "release_ios_build": "SUCCESS_41210314581", "release_device_load": "not_run", "release_runtime_features": "not_run", "local_followup_static": "PASS_92", "local_followup_tests": "PASS_23", "local_followup_js_tests": "blocked_esbuild_EACCES_before_generated_assets", "local_followup_ios_build": "not_run", "local_followup_device_test": "not_run"},
+  "local_followup": "Freeze during module scan/rewrite now targets at least mode 2 (Lighter); local source only, not built or pushed."
+}
