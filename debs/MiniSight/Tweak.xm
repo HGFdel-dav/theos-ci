@@ -759,7 +759,7 @@ static void MiniSightReloadSettings(void) {
     BOOL wasVisible = gMiniSightWindow && !gMiniSightWindow.hidden;
     MiniSightDestroyUI();
     if (!MiniSightShown()) return;
-    if ((gMiniSightBurst && MiniSightShown()) || MiniSightAlwaysShow()) MiniSightShow();
+    if (wasVisible && (gMiniSightBurst || MiniSightAlwaysShow())) MiniSightShow();
 }
 
 
