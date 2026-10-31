@@ -160,7 +160,10 @@ static const NSInteger kMiniSightPetMaxCols = 8;
 
 - (void)applyFrame {
     UIImage *cached = self.frameCache[@(self.row * 16 + self.col)];
-    if (cached) { self.image = cached; return; }
+    if (cached) {
+        if (self.image != cached) self.image = cached;   // 同帧不重复赋值
+        return;
+    }
     CGImageRef sheetRef = self.sheet.CGImage;
     if (!sheetRef) return;
 
