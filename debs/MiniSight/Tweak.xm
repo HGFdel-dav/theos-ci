@@ -1106,7 +1106,10 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
         return;
     }
     if ([note isEqualToString:kMiniSightSettingsChanged]) {
-        dispatch_async(dispatch_get_main_queue(), ^{ MiniSightReloadSettings(); });
+        // 设置是异步落盘的，等一拍再读；否则第一次收到通知读到的还是旧值，
+        // 表现为要拨两次开关才生效。
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{ MiniSightReloadSettings(); });
         return;
     }
 
