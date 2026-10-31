@@ -37,6 +37,7 @@ static const NSInteger kMiniSightPetMaxCols = 8;
 @property (nonatomic, strong) NSTimer *frameTimer;
 @property (nonatomic, strong) NSMutableDictionary<NSNumber *, UIImage *> *frameCache;
 @property (nonatomic, assign) BOOL suspended;
+@property (nonatomic, assign) NSTimeInterval extraRest;
 @property (nonatomic, strong) NSTimer *roamTimer;
 @property (nonatomic, assign) CGSize displaySize;
 @property (nonatomic, assign) BOOL roaming;
@@ -156,20 +157,72 @@ static const NSInteger kMiniSightPetMaxCols = 8;
     [self.roamTimer invalidate];
     __weak typeof(self) weakSelf = self;
     // 调用期间活泼一点；常驻且空闲时 9~15 秒动一次就够。
+    // 调用期间活泼一点；常驻且空闲时 9~15 秒动一次就够。
     NSTimeInterval delay = gMiniSightBurst ? (2.0 + arc4random_uniform(300) / 100.0)
                                            : (9.0 + arc4random_uniform(600) / 100.0);
+    delay += self.extraRest;
+    self.extraRest = 0;
     self.roamTimer = [NSTimer scheduledTimerWithTimeInterval:delay repeats:NO block:^(NSTimer *timer) {
         [weakSelf roamOnce];
     }];
+}
+
+- (CGRect)roamArea {
+    UIView *parent = self.superview;
+    if (!parent) return CGRectZero;
+    CGFloat halfW = self.bounds.size.width / 2, halfH = self.bounds.size.height / 2;
+    CGFloat top = 34 + halfH, bottom = parent.bounds.size.height - 24 - halfH;
+    CGFloat left = 12 + halfW, right = parent.bounds.size.width - 12 - halfW;
+    if (right <= left || bottom <= top) return CGRectZero;
+    return CGRectMake(left, top, right - left, bottom - top);
+}
+
+/// 走到任意一点（不只是左右），距离越远走得越久。
+- (void)walkTo:(CGPoint)target {
+    BOOL right = target.x > self.center.x;
+    [self setState:right ? MiniSightPetStateRunRight : MiniSightPetStateRunLeft];
+    CGFloat dist = hypot(target.x - self.center.x, target.y - self.center.y);
+    NSTimeInterval duration = MIN(2.2, MAX(0.7, dist / 160.0));
+    __weak typeof(self) weakSelf = self;
+    [UIView animateWithDuration:duration
+                          delay:0
+                        options:UIViewAnimationOptionCurveEaseInOut | UIViewAnimationOptionBeginFromCurrentState
+                     animations:^{ weakSelf.center = target; }
+                     completion:^(BOOL finished) {
+        [weakSelf setState:MiniSightPetStateIdle];
+        [weakSelf scheduleRoam];
+    }];
+}
+
+- (void)walkToRandomPoint {
+    CGRect area = [self roamArea];
+    if (CGRectIsEmpty(area)) { [self scheduleRoam]; return; }
+    CGPoint p = CGPointMake(area.origin.x + arc4random_uniform((uint32_t)area.size.width),
+                            area.origin.y + arc4random_uniform((uint32_t)area.size.height));
+    [self walkTo:p];
+}
+
+/// 偶尔跑到某个角落待一会儿，像真的在找地方窝着。
+- (void)goCorner {
+    CGRect area = [self roamArea];
+    if (CGRectIsEmpty(area)) { [self scheduleRoam]; return; }
+    CGFloat x = (arc4random_uniform(2) ? CGRectGetMinX(area) : CGRectGetMaxX(area));
+    CGFloat y = (arc4random_uniform(2) ? CGRectGetMinY(area) : CGRectGetMaxY(area));
+    self.extraRest = 2.5 + arc4random_uniform(250) / 100.0;   // 到角落多待一会儿
+    [self walkTo:CGPointMake(x, y)];
 }
 
 - (void)roamOnce {
     if (!self.window || self.suspended) return;
 
     uint32_t roll = arc4random_uniform(100);
-    if (roll < 55) {
+    if (roll < 38) {
         [self walkRandomly];
-    } else if (roll < 80) {
+    } else if (roll < 60) {
+        [self walkToRandomPoint];
+    } else if (roll < 72) {
+        [self goCorner];
+    } else if (roll < 88) {
         [self jump];
     } else {
         [self setState:MiniSightPetStateWaving];
