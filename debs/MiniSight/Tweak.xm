@@ -200,6 +200,7 @@ static BOOL      gMiniSightUserHidden = NO;   // 双击隐藏，下一次 MCP �
 static MiniSightPetView *gMiniSightPet = nil;   // 可选桌宠（存在 pet.png 时启用）
 static dispatch_block_t gMiniSightMaxShow = nil; // 自保：App 没发 stopped 也要收
 BOOL gMiniSightBurst = NO;   // 只在 MCP 调用期间为 YES
+BOOL gMiniSightBubbleShown = NO;   // 气泡是否显示（供桌宠决定要不要算位置）
 static BOOL gMiniSightConfirming = NO;
 static NSString *gMiniSightConfirmId = nil;
 static UIStackView *gMiniSightConfirmBar = nil;
@@ -801,6 +802,7 @@ static void MiniSightReloadSettings(void) {
 static void MiniSightHideBubble(void) {
     if (gMiniSightConfirming) return;
     gMiniSightBubble.hidden = YES;
+    gMiniSightBubbleShown = NO;
 }
 
 /// 纯文字气泡：动态深浅色、小尾巴指向指示器，最多 20 字。
@@ -871,6 +873,7 @@ static void MiniSightShowBubbleWidth(NSString *raw, CGFloat maxW, NSUInteger cap
     }
 
     gMiniSightBubble.hidden = NO;
+    gMiniSightBubbleShown = YES;
     gMiniSightBubble.backgroundColor = [UIColor systemBackgroundColor];
     gMiniSightBubbleLabel.textColor = [UIColor labelColor];
     gMiniSightBubbleTail.fillColor = [UIColor systemBackgroundColor].CGColor;
@@ -889,6 +892,9 @@ extern "C" void MiniSightFollowBubble(void) {
     UIView *root = gMiniSightWindow.rootViewController.view;
     if (!gMiniSightBubble || gMiniSightBubble.hidden || !gMiniSightBubble.superview) return;
     if (!host || !root) return;
+    static CGPoint last;
+    if (CGPointEqualToPoint(last, host.center) && gMiniSightBubble.frame.size.height > 0) return;
+    last = host.center;
     MiniSightPlaceBubble(gMiniSightBubble.bounds.size.width, gMiniSightBubble.bounds.size.height);
 }
 
@@ -925,6 +931,7 @@ static void MiniSightAnswerConfirm(BOOL allow) {
     gMiniSightConfirmBar.hidden = YES;
     gMiniSightBubble.userInteractionEnabled = NO;
     gMiniSightBubble.hidden = YES;
+    gMiniSightBubbleShown = NO;
     if (!gMiniSightBurst && !MiniSightAlwaysShow()) MiniSightHide();
 }
 

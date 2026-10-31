@@ -14,6 +14,7 @@
 
 extern BOOL gMiniSightBurst;
 extern void MiniSightFollowBubble(void);
+extern BOOL gMiniSightBubbleShown;
 
 typedef NS_ENUM(NSInteger, MiniSightPetState) {
     MiniSightPetStateIdle = 0,
@@ -112,7 +113,7 @@ static const NSInteger kMiniSightPetMaxCols = 8;
 - (void)syncTimerRate {
     NSTimeInterval want = (self.row == MiniSightPetStateRunRight ||
                            self.row == MiniSightPetStateRunLeft ||
-                           self.row == MiniSightPetStateJumping) ? 0.05 : 0.1;
+                           self.row == MiniSightPetStateJumping) ? 0.05 : 0.16;
     if (fabs(want - self.tickInterval) < 0.001) return;
     self.tickInterval = want;
     if (!self.frameTimer) return;
@@ -127,8 +128,11 @@ static const NSInteger kMiniSightPetMaxCols = 8;
 
 - (void)tick:(NSTimer *)timer {
     if (!self.sheet || self.suspended || !self.window) return;
-    [self keepInside];
-    MiniSightFollowBubble();
+    BOOL moving = (self.row == MiniSightPetStateRunRight ||
+                   self.row == MiniSightPetStateRunLeft ||
+                   self.row == MiniSightPetStateJumping);
+    if (moving) [self keepInside];
+    if (moving || gMiniSightBubbleShown) MiniSightFollowBubble();
     self.frameElapsed += timer.timeInterval;
     if (self.frameElapsed < self.frameDuration) return;
     self.frameElapsed = 0;
