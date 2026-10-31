@@ -26,6 +26,8 @@ static void MiniSightHide(void);
 static void MiniSightHideBubble(void);
 static void MiniSightShowConfirm(void);
 static void MiniSightAnswerConfirm(BOOL allow);
+static void MiniSightSay(NSString *line);
+static void MiniSightShowBubble(NSString *raw);
 
 /// 找到 com.openminis.app 的容器（SpringBoard 不受沙盒限制，可按元数据扫描）。
 static NSString *MiniSightAppContainer(void) {
@@ -332,7 +334,6 @@ static void MiniSightUpdateGeometry(void);
 static void MiniSightApplySavedCenter(BOOL useSaved);
 static void MiniSightStartPulse(void);
 static void MiniSightToggleRecording(void);
-static void MiniSightSay(NSString *line);
 static void MiniSightShowBubble(NSString *raw);
 static void MiniSightReloadSettings(void);
 static void MiniSightBringMinisFront(void);
