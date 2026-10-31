@@ -13,6 +13,7 @@
 
 #import "MiniSightPet.h"
 #import "MiniSightGeometry.h"
+#import "MiniSightGravity.h"
 #import <QuartzCore/QuartzCore.h>
 #import <math.h>
 #import <stdlib.h>
@@ -45,10 +46,9 @@ static const NSTimeInterval kMiniSightWaveHold = 1.2;
 
 // Gravity is rendered on a child layer so the UIView's own transform and
 // coordinate conversion remain identity for hit testing and host layout.
-static const CGFloat kMiniSightGravityMaxAngle = (CGFloat)(M_PI / 18.0); // 10° tilt
-static const CGFloat kMiniSightGravityEnvelopeAngle = (CGFloat)(M_PI / 6.0); // conservative 30° envelope
-static const CGFloat kMiniSightGravityImpulseAngle = (CGFloat)(M_PI / 11.25); // 16° transient peak
-static const NSTimeInterval kMiniSightGravityImpulseDuration = 0.42;
+// Angle + lateral sway remain inside the shared conservative envelope.
+static const CGFloat kMiniSightGravityImpulseAngle = (CGFloat)(M_PI * 42.0 / 180.0);
+static const NSTimeInterval kMiniSightGravityImpulseDuration = 0.62;
 
 static CGFloat MSPetClampUnit(CGFloat value) {
     if (!isfinite(value)) return 0.0;
@@ -56,11 +56,8 @@ static CGFloat MSPetClampUnit(CGFloat value) {
 }
 
 static CGSize MSPetGravityEnvelope(CGSize size) {
-    CGFloat w = fmax(1.0, size.width);
-    CGFloat h = fmax(1.0, size.height);
-    CGFloat c = cos(kMiniSightGravityEnvelopeAngle);
-    CGFloat s = sin(kMiniSightGravityEnvelopeAngle);
-    return CGSizeMake(w * c + h * s, w * s + h * c);
+    MSSize envelope = MSGravityEnvelope((MSSize){size.width, size.height});
+    return CGSizeMake(envelope.w, envelope.h);
 }
 
 static double MSPetRandomUnit(void) { return arc4random_uniform(1000001) / 1000000.0; }
@@ -256,6 +253,7 @@ static CGPoint MSPetCGPoint(MSPoint p) { return CGPointMake((CGFloat)p.x, (CGFlo
     NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
     if (_interactionActive == active) return;
     _interactionActive = active;
+    if (active) [self cancelGravityImpulse];
     [self reconcilePlayback];
 }
 
@@ -263,8 +261,10 @@ static CGPoint MSPetCGPoint(MSPoint p) { return CGPointMake((CGFloat)p.x, (CGFlo
     NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
     if (_reducedWork == reduced) return;
     _reducedWork = reduced;
-    if (reduced) [self cancelGravityImpulse];
-    [self reconcilePlayback]; // Freeze a touchable idle frame, not a hidden view.
+    // Do not freeze the sprite or gravity as a substitute for optimization.
+    // Only the gap before the NEXT resident-idle roam is extended.
+    [self invalidateRoamTimer];
+    [self scheduleRoam];
 }
 
 - (void)setHidden:(BOOL)hidden {
@@ -302,12 +302,12 @@ static CGPoint MSPetCGPoint(MSPoint p) { return CGPointMake((CGFloat)p.x, (CGFlo
 
 - (BOOL)mayRoam {
     MSRect area = [self feasibleCenters];
-    return [self shouldAnimate] && _hasCenterBounds && !_reducedWork &&
+    return [self shouldAnimate] && _hasCenterBounds &&
            !_roamingPaused && !_interactionActive && (area.w > 0. || area.h > 0.);
 }
 
 - (void)reconcilePlayback {
-    if (![self shouldAnimate] || _reducedWork) {
+    if (![self shouldAnimate]) {
         [self invalidateFrameTimer];
         [self invalidateRoamTimer];
         [self cancelMotion];
@@ -336,7 +336,7 @@ static CGPoint MSPetCGPoint(MSPoint p) { return CGPointMake((CGFloat)p.x, (CGFlo
 #pragma mark - Atlas playback (7 sprite frames per second, never a frame cache)
 
 - (void)ensureFrameTimer {
-    if (_frameTimer || _motionActive || ![self shouldAnimate] || _reducedWork) return;
+    if (_frameTimer || _motionActive || ![self shouldAnimate]) return;
     _lastSpriteTime = CACurrentMediaTime();
     __weak typeof(self) weakSelf = self;
     _frameTimer = [NSTimer timerWithTimeInterval:kMiniSightSpriteInterval repeats:YES
@@ -349,7 +349,7 @@ static CGPoint MSPetCGPoint(MSPoint p) { return CGPointMake((CGFloat)p.x, (CGFlo
 
 - (void)frameTick:(NSTimer *)timer {
     if (timer != _frameTimer) return;
-    if (![self shouldAnimate] || _reducedWork) { [self reconcilePlayback]; return; }
+    if (![self shouldAnimate]) { [self reconcilePlayback]; return; }
     CFTimeInterval now = CACurrentMediaTime();
     if (_stateHoldUntil > 0. && now >= _stateHoldUntil) {
         _stateHoldUntil = 0.;
@@ -420,34 +420,51 @@ static CGPoint MSPetCGPoint(MSPoint p) { return CGPointMake((CGFloat)p.x, (CGFlo
 
 - (void)updateGravityLayerGeometry {
     if (!_gravityLayer) return;
+    // Setting frame while affineTransform is nonidentity is undefined. bounds +
+    // position keeps atlas sizing stable across rotations and pet-size changes.
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
-    _gravityLayer.frame = self.bounds;
+    _gravityLayer.bounds = (CGRect){CGPointZero, self.bounds.size};
     _gravityLayer.anchorPoint = CGPointMake(0.5, 0.5);
     _gravityLayer.position = CGPointMake(CGRectGetMidX(self.bounds), CGRectGetMidY(self.bounds));
     [CATransaction commit];
 }
 
+- (CGPoint)speechAnchor {
+    CGFloat sway = _gravityEnabled ? MSPetClampUnit(_gravityRoll) * MSGravitySway(self.bounds.size.width) : 0.;
+    return CGPointMake(self.center.x + sway, self.center.y);
+}
+
+- (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
+    // The visible sprite can tilt outside the original UIImageView bounds.
+    // Only its bounded envelope catches touches; the rest of the window passes.
+    CGSize envelope = self.gravitySafeSize;
+    CGRect target = CGRectMake(CGRectGetMidX(self.bounds) - envelope.width * .5,
+                               CGRectGetMidY(self.bounds) - envelope.height * .5,
+                               envelope.width, envelope.height);
+    return CGRectContainsPoint(CGRectInset(target, -4., -4.), point);
+}
+
 - (CGFloat)gravityAngleAtTime:(CFTimeInterval)now {
-    CGFloat base = _gravityEnabled ? MSPetClampUnit(_gravityRoll) * kMiniSightGravityMaxAngle : 0.0;
-    if (_gravityImpulseDuration <= 0.0 || _gravityImpulseAngle == 0.0) return base;
-    CGFloat progress = (CGFloat)((now - _gravityImpulseBegan) / _gravityImpulseDuration);
-    if (!isfinite(progress) || progress <= 0.0) return base;
-    if (progress >= 1.0) return base;
-    // A short damped fall/rebound: it returns to the live tilt rather than
-    // fighting the sensor's current orientation.
-    CGFloat envelope = sin((CGFloat)(M_PI * progress));
-    CGFloat damping = exp((CGFloat)(-2.8 * progress));
-    return base + _gravityImpulseAngle * envelope * damping;
+    if (!_gravityEnabled) return 0.;
+    double progress = _gravityImpulseDuration > 0. ? (now - _gravityImpulseBegan) / _gravityImpulseDuration : 1.;
+    return MSGravityAngle(_gravityRoll, _gravityImpulseAngle, progress);
 }
 
 - (void)setGravityLayerAngle:(CGFloat)angle animated:(BOOL)animated {
     (void)animated;
-    if (!_gravityLayer || !isfinite(angle)) angle = 0.0;
+    if (!_gravityLayer) return;
+    angle = MSClamp(angle, -MS_GRAVITY_MAX_ANGLE, MS_GRAVITY_MAX_ANGLE);
+    CGFloat sway = _gravityEnabled ? MSPetClampUnit(_gravityRoll) * MSGravitySway(self.bounds.size.width) : 0.;
+    CGAffineTransform transform = CGAffineTransformMakeRotation(angle);
+    transform.tx = sway;
+    if (CGAffineTransformEqualToTransform(_gravityLayer.affineTransform, transform)) return;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
-    _gravityLayer.affineTransform = CGAffineTransformMakeRotation(angle);
+    _gravityLayer.affineTransform = transform;
     [CATransaction commit];
+    // This callback is cheap and position-only in the host (no text measurement).
+    if (_geometryReady && _onGeometryChanged) _onGeometryChanged();
 }
 
 - (void)applyGravityTransformAtTime:(CFTimeInterval)now {
@@ -479,13 +496,14 @@ static CGPoint MSPetCGPoint(MSPoint p) { return CGPointMake((CGFloat)p.x, (CGFlo
 
 - (void)setGravityRoll:(CGFloat)roll {
     NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
+    if (_interactionActive) return; // finger-down freezes the visible tilt too
     _gravityRoll = MSPetClampUnit(roll);
     [self applyGravityTransformAtTime:CACurrentMediaTime()];
 }
 
 - (void)ensureGravityLink {
     if (_gravityLink || !_gravityEnabled || !_gravityImpulseDuration) return;
-    if (![self shouldAnimate] || _reducedWork || _suspended) return;
+    if (![self shouldAnimate] || _suspended) return;
     if (!_gravityProxy) _gravityProxy = [[MiniSightPetDisplayLinkProxy alloc] init];
     _gravityProxy.owner = self;
     CADisplayLink *link = [CADisplayLink displayLinkWithTarget:_gravityProxy
@@ -508,7 +526,7 @@ static CGPoint MSPetCGPoint(MSPoint p) { return CGPointMake((CGFloat)p.x, (CGFlo
 
 - (void)triggerGravityImpulseWithDirection:(CGFloat)direction strength:(CGFloat)strength {
     NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
-    if (!_gravityEnabled || !_wantsPlaying || _suspended || _reducedWork || ![self isActuallyVisible]) return;
+    if (!_gravityEnabled || !_wantsPlaying || _suspended || _interactionActive || ![self isActuallyVisible]) return;
     direction = MSPetClampUnit(direction);
     strength = MIN(1.0, MAX(0.0, isfinite(strength) ? strength : 0.0));
     if (fabs(direction) < 0.01 || strength < 0.05) return;
@@ -522,7 +540,7 @@ static CGPoint MSPetCGPoint(MSPoint p) { return CGPointMake((CGFloat)p.x, (CGFlo
 
 - (void)gravityTick:(CADisplayLink *)link {
     if (link != _gravityLink) return;
-    if (!_gravityEnabled || !_wantsPlaying || _suspended || _reducedWork || ![self isActuallyVisible]) {
+    if (!_gravityEnabled || !_wantsPlaying || _suspended || _interactionActive || ![self isActuallyVisible]) {
         [self cancelGravityImpulse];
         return;
     }
@@ -630,6 +648,7 @@ static CGPoint MSPetCGPoint(MSPoint p) { return CGPointMake((CGFloat)p.x, (CGFlo
     NSTimeInterval delay = _activityActive
         ? MSPetRandomRange(kMiniSightRoamActiveLo, kMiniSightRoamActiveHi)
         : MSPetRandomRange(kMiniSightRoamIdleLo, kMiniSightRoamIdleHi);
+    if (_reducedWork && !_activityActive) delay *= 1.5;
     delay += _restAfterMotion;
     _restAfterMotion = 0.;
     [self armRoamTimerWithDelay:delay];
@@ -692,7 +711,7 @@ static CGPoint MSPetCGPoint(MSPoint p) { return CGPointMake((CGFloat)p.x, (CGFlo
 - (void)startMotionTo:(CGPoint)target jump:(BOOL)jump rest:(NSTimeInterval)rest {
     NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
     // Without a host-provided feasible range there is nothing safe to move to.
-    if (!_hasCenterBounds || ![self shouldAnimate] || _reducedWork) return;
+    if (!_hasCenterBounds || ![self shouldAnimate]) return;
     if (_roamingPaused || _interactionActive) return;
     _stateHoldUntil = 0.;
 
@@ -749,7 +768,7 @@ static CGPoint MSPetCGPoint(MSPoint p) { return CGPointMake((CGFloat)p.x, (CGFlo
 - (void)motionTick:(CADisplayLink *)link {
     if (link != _motionLink) return;
     if (!_motionActive || _activeMotionGeneration != _motionGeneration) return;
-    if (![self shouldAnimate] || _reducedWork || _roamingPaused || _interactionActive) {
+    if (![self shouldAnimate] || _roamingPaused || _interactionActive) {
         // Freeze at the actual position, then let reconcile resume the sprite clock.
         [self cancelMotion];
         [self reconcilePlayback];

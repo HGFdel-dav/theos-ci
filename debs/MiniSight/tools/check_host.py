@@ -41,20 +41,38 @@ ok(place.count('addQuadCurveToPoint') == 2, '2d 尾巴应为两段二次曲线')
 ok('addLineToPoint' not in place, '2e 尾巴里仍有直线段')
 ok('cornerCurve' in place, '2f 缺少 continuous 圆角')
 
-# ---- 3. 录屏：成功提示只能出现在真实回调里 ----
-i_req  = tweak.index('startRecordingWithHandler')
-i_start_msg = tweak.index('MiniSightSay(@"开始录屏")')
-ok(i_start_msg > i_req, '3a “开始录屏” 出现在启动回调之前')
-i_err = tweak.index('if (error) {', i_req)
-ok(i_err < i_start_msg, '3b 启动失败分支未在成功提示之前 return')
-i_stop = tweak.index('stopRecordingWithOutputURL')
-i_saved = tweak.index('录屏已保存')
-ok(i_saved > i_stop, '3c “录屏已保存” 出现在停止回调之前')
-i_serr = tweak.index('if (error) {', i_stop)
-ok(i_serr < i_saved, '3d 保存失败分支未在成功提示之前')
-ok('MiniSightRecStarting' in tweak and 'MiniSightRecStopping' in tweak, '3e 缺少启停中间态')
-ok('attributesOfItemAtPath' in tweak and 'AVURLAsset' in tweak, '3f 保存后未校验文件字节/时长')
-ok('bytes < 1024.0' in tweak or 'bytes < 1024' in tweak, '3g 未拒绝空文件')
+# ---- 3. Recording uses the owned, fail-closed SpringBoard controller ----
+recorder = read('MiniSightRecorder.m')
+recorder_header = read('MiniSightRecorder.h')
+recorder_core = read('tools/recorder/MiniSightRecorderCore.h')
+ok('MiniSightRecorder.m' in makefile and 'MiniSightRecorder.h' in tweak, '3a recorder implementation is not built/imported')
+ok('MiniSightRecorder.sharedRecorder toggle' in tweak and 'gMiniSightRecorderConfigured' in tweak,
+   '3b manual long-press is not routed behind configuration readiness')
+ok('configureAutomaticEnabled:automatic' in tweak and 'setAutomaticActive:active' in tweak,
+   '3c automatic source is not configured/edge-triggered')
+config_body = tweak[tweak.index('static void MiniSightConfigureRecorder(void) {'):]
+config_body = config_body[:config_body.index('\n}\n')]
+ok('if (gMiniSightRecorderConfigured)' in config_body and
+   config_body.index('configureAutomaticEnabled:automatic') < config_body.index('setAutomaticActive:gMiniSightActivityExecuting'),
+   '3c2 recorder auto-edge runs before destination configuration')
+ok('executingCount' in tweak and 'MiniSightActivityNote' in tweak and 'pendingApprovalCount' not in tweak[tweak.index('static void MiniSightApplyActivitySnapshot'):tweak.index('static void MiniSightReadActivitySnapshot')],
+   '3d automatic capture must depend only on valid device-execution phase')
+ok('gMiniSightActivityPID' in tweak and 'gMiniSightActivityInstanceID' in tweak and 'activeProcessAlive' in tweak,
+   '3d2 transient snapshot read failure can stop a live owned recording')
+ok('setAutomaticActive:NO' not in tweak[tweak.index('static void MiniSightDestroyUI(void) {'):tweak.index('static void MiniSightReloadSettings(void) {')],
+   '3d3 UI reconstruction must not end an active automatic recording')
+ok('MiniSightRecorderSourceAutomatic' in recorder_core and 'owner != MiniSightRecorderSourceAutomatic' in recorder_core,
+   '3e automatic stop is not owner-scoped')
+ok('MSRMethodMatches' in recorder and 'os.majorVersion != 15 || os.minorVersion != 5' in recorder,
+   '3f backend ABI or exact OS gate is missing')
+ok('MiniSightRecorderStartReply' not in recorder and 'MSRStartReply' in recorder_core,
+   '3g recorder state transitions bypass shared reducer')
+ok('loadValuesAsynchronouslyForKeys:' in recorder and 'AVKeyValueStatusLoaded' in recorder,
+   '3h saved video is not asynchronously verified')
+ok('startRecordingWithHandler' not in tweak and 'stopRecordingWithOutputURL' not in tweak,
+   '3i legacy ReplayKit path remains active')
+ok('MiniSightRecorderIssueText' in tweak and 'systemErrorCode' in tweak,
+   '3j recorder error code is not surfaced')
 
 # ---- 4. 长按开关真正生效 ----
 ok('minisight.longPress' in tweak, '4a 未读取长按开关')
@@ -86,6 +104,17 @@ ok('setSuspended' in tweak or 'suspend' in tweak.lower(), '5b 未处理息屏挂
 ok('roamingPaused' in tweak and 'interactionActive' in tweak, '5c 拖动/长按未与漫游互斥')
 ok('reducedWork' in tweak, '5d 低电量未降档')
 ok('NSProcessInfoPowerStateDidChangeNotification' in tweak, '5e 未监听低电量变化')
+power = tweak[tweak.rindex('- (void)handlePowerStateChange:'):]
+power = power[:power.index('\n}\n')]
+ok('dispatch_async(dispatch_get_main_queue()' in power and power.index('dispatch_async(dispatch_get_main_queue()') < power.index('gMiniSightPet.reducedWork'),
+   '5f 电源通知回调未先切主线程再操作 UI')
+ok('MiniSightResources.m' in makefile and 'ImageIO' in makefile, '8c 资源加载实现/框架未纳入插件构建')
+ok('gMiniSightBubbleScroll.contentSize' in tweak and 'scrollEnabled' in tweak,
+   '8d 气泡正文缺少限高滚动')
+ok('NSString *text = action.length ? [NSString stringWithFormat:@"%@\\n%@", action, command] : command;' in tweak,
+   '8e 审批命令仍被 UI 截断')
+ok('MiniSightCancelConfirm(void) {' in tweak and 'kMiniSightConfirmCancel' in tweak,
+   '8f 审批隐藏/取消未拒绝收口')
 
 # ---- 6. 桌宠侧：不再自己吃手势、不再递归 ----
 ok('addGestureRecognizer' not in pet_m.split('@implementation')[1], '6a 桌宠内部仍在创建手势')
@@ -115,10 +144,29 @@ ok('withString:@"***"' in tweak, '10g 诊断文本没做 key 脱敏')
 ok('timeoutInterval = 6.0' in tweak, '10h 超时时间与提示不一致')
 ok('AI 被限流（429）' in tweak, '10i 429 文案缺失')
 
+# ---- 11. 两种显示模式严格隔离：常驻 vs MCP 活动 ----
+show_body = tweak[tweak.index('static void MiniSightShow(void) {'):]
+show_body = show_body[:show_body.index('\n}\n')]
+reload_body = tweak[tweak.index('static void MiniSightReloadSettings(void) {'):]
+reload_body = reload_body[:reload_body.index('\n}\n')]
+callback = tweak[tweak.index('static void MiniSightDarwinCallback('):]
+callback = callback[:callback.index('\n}\n')]
+confirm = tweak[tweak.index('static void MiniSightShowConfirm(void) {'):]
+confirm = confirm[:confirm.index('\n}\n')]
+ok('if (!MiniSightAlwaysShow() && !gMiniSightBurst) return;' in show_body,
+   '11a 调用模式 show 缺少活动门禁')
+ok('MiniSightAlwaysShow() || (gMiniSightBurst && wasVisible)' in reload_body and 'MiniSightShow();' in reload_body,
+   '11b 切换常驻后未主动显示')
+ok('if (!MiniSightShown() || (!MiniSightAlwaysShow() && !gMiniSightBurst)) return;' in confirm,
+   '11c 空闲确认通知仍可唤醒窗口')
+ok('if (gMiniSightBurst || MiniSightAlwaysShow()) {' in callback,
+   '11d 状态通知未受活动/常驻约束')
+ok('gMiniSightIdleHide' not in tweak and 'gMiniSightMaxShow' not in tweak,
+   '11e 存在会截断有效 MCP 调用的自动隐藏计时器')
+ok('dispatch_after' not in tweak[tweak.index('static void MiniSightArmIdleHide(void)'):tweak.index('static void MiniSightShowLine(')],
+   '11f 状态通知仍能启动空闲自动隐藏')
+
 print('检查项：%d' % checks)
-for f in fails:
-    print('FAIL ' + f)
-sys.exit(1 if fails else 0)
 for f in fails:
     print('FAIL ' + f)
 sys.exit(1 if fails else 0)

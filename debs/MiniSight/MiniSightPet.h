@@ -34,6 +34,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// tilt/fall envelope on-screen. This is stable while gravityEnabled is set and
 /// does not change the view's bounds.
 @property (nonatomic, readonly) CGSize gravitySafeSize;
+/// Visual centre in the parent coordinates, including the bounded sway.
+/// The bubble tail follows this point; UIView geometry remains untransformed.
+@property (nonatomic, readonly) CGPoint speechAnchor;
 /// Apply one transient fall/rebound. direction is normalized to -1...1 and
 /// strength is normalized to 0...1. The impulse uses a display link only while
 /// it is settling and is discarded when playback is stopped/hidden.
@@ -54,7 +57,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// The host brackets drag/press with interactionActive = YES / NO.
 @property (nonatomic) BOOL roamingPaused;
 @property (nonatomic) BOOL interactionActive;
-/// Low power / serious thermal mode: no clocks or large motions, touchable still.
+/// Low power: longer resident-idle gaps only; sprite/movement/gravity stay fluid.
 @property (nonatomic) BOOL reducedWork;
 
 /// Compatibility callback storage only. The host owns/invokes the unified press.

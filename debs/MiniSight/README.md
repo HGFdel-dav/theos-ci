@@ -45,8 +45,12 @@ Darwin 通知（`CFNotificationCenterGetDarwinNotifyCenter()`）：
 快速晃动会触发一次短促的失衡/摔倒回弹；关闭、低电量、息屏、窗口不可见时
 都不保留传感器采样和额外时钟。
 
+## 录屏
+
+手动长按由共享录屏控制器管理；自动录屏只在 Minis 设备操作进入执行阶段时启用，审批等待不会启动录屏。控制器仅在 iOS 15.5 SpringBoard 且运行时 ABI 校验通过时使用系统后端；外部录屏不会被接管。停止后只有实际视频文件通过大小、时长及内容校验才提示保存成功。此构建仍需真机确认系统是否接受录制请求；`-5803` 不会被静态测试视为已解决。
+
 ## 构建
 
-源码目录 `debs/MiniSight/`，由仓库的 GitHub Actions（`.github/workflows/build-theos.yml`）
-自动编译 rootless（arm64）与 roothide（arm64e）两种包，产物落在仓库根目录 `packages/`。
+源码目录 `debs/MiniSight/`，由仓库专用 GitHub Actions（`.github/workflows/build-minisight.yml`）
+使用 iPhoneOS 15.5 SDK 分别构建 roothide 与 rootless 包，并上传带 SHA256 的 CI artifacts。
 本机不需要（也不应该）安装 Theos。
