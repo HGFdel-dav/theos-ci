@@ -21,7 +21,7 @@
 #if !TARGET_OS_IOS || TARGET_OS_SIMULATOR || TARGET_OS_MACCATALYST
 #error Build for the iOS device, not the simulator or Catalyst.
 #endif
-#if __IPHONE_OS_VERSION_MAX_ALLOWED != 155000
+#if __IPHONE_OS_VERSION_MAX_ALLOWED != 150500
 #error The SDK must be exactly iPhoneOS15.5.sdk, without latest-SDK fallback.
 #endif
 #if __IPHONE_OS_VERSION_MIN_REQUIRED != 150000

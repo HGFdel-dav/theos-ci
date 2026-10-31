@@ -8,8 +8,8 @@ if [ "$(uname -s)" != Darwin ]; then
 fi
 : "${THEOS:?Set THEOS to the pinned roothide/theos checkout}"
 : "${DEVELOPER_DIR:?Set DEVELOPER_DIR to the approved Xcode 16.4}"
-xcrun clang --version | grep -q 'Apple clang'
-xcodebuild -version | grep -q '^Xcode 16\.4$'
+xcrun clang --version | grep 'Apple clang'
+xcodebuild -version | grep '^Xcode 16\.4$'
 python3 "$ROOT/tools/check_sdk.py" "$THEOS/sdks/iPhoneOS15.5.sdk"
 python3 "$ROOT/tools/check.py" --headers
 cd "$ROOT/tweak"

@@ -52,7 +52,7 @@ for name, needle in [('exact SDK/minOS', 'override TARGET := iphone:clang:15.5:1
 check('no no-PAC/no-fixups workaround', not any(v in make for v in ['-fno-ptrauth', '-no_fixup_chains', '-arch arm64 ']))
 guard = text('tweak/SMBuildGuard.h')
 for needle in ['__apple_build_version__', '__arm64e__', '__has_feature(ptrauth_calls)',
-               '__IPHONE_OS_VERSION_MAX_ALLOWED != 155000',
+               '__IPHONE_OS_VERSION_MAX_ALLOWED != 150500',
                '__IPHONE_OS_VERSION_MIN_REQUIRED != 150000', 'TARGET_OS_SIMULATOR']:
     check('compile guard ' + needle, needle in guard)
 check('compile guard has no runtime implementation', not any(v in guard for v in ['@implementation', 'ptrauth_strip(', 'ptrauth_sign_unauthenticated(']))
