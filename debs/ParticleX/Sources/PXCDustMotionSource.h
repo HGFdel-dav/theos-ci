@@ -143,18 +143,21 @@
     "    return stream;\n" \
     "}\n" \
     "\n" \
-    "static inline PXCWindMotion PXCWindEvaluate(float age01, float seed, float drift, float swirl) {\n" \
+    "static inline PXCWindMotion PXCWindEvaluateUrgent(float age01, float seed, float drift, float swirl, float urgent) {\n" \
     "    float t = PXCMotionClamp01(age01);\n" \
     "    seed = PXCMotionClamp01(seed);\n" \
     "    drift = PXCMotionClamp01(drift);\n" \
     "    swirl = PXCMotionClamp01((swirl + 1.0f) * 0.5f) * 2.0f - 1.0f;\n" \
-    "    float caught = PXCMotionSmooth(0.0f, 0.24f, t);\n" \
+    "    urgent = PXCMotionClamp01(urgent);\n" \
+    "    float caught = PXCMotionSmooth(0.0f, 0.24f - 0.16f * urgent, t);\n" \
     "    /* Surface breaks into a grain quickly; the grain itself then travels. */\n" \
     "    float grain = PXCMotionSmooth(0.005f, 0.085f, t);\n" \
     "    float phase = seed * 6.28318530718f;\n" \
-    "    /* Zero displacement and zero speed at release. Turbulence is introduced\n" \
-    "     * smoothly; never add a seeded sine offset instantaneously at t=0. */\n" \
-    "    float carry = (0.34f + 0.72f * drift) * t * t * (1.18f - 0.18f * t);\n" \
+    "    /* Urgent removal has a non-zero initial velocity. It still starts at the\n" \
+    "     * source position, but avoids a multi-frame static preview after a tap. */\n" \
+    "    float regularCarry = (0.34f + 0.72f * drift) * t * t * (1.18f - 0.18f * t);\n" \
+    "    float urgentCarry = (0.42f + 0.68f * drift) * t * (1.42f - 0.42f * t);\n" \
+    "    float carry = regularCarry * (1.0f - urgent) + urgentCarry * urgent;\n" \
     "    float eddy = caught * (0.54f * swirl * PXC_MOTION_SIN(phase + t * 5.6f)\n" \
     "               + 0.24f * PXC_MOTION_SIN(phase * 1.7f + t * 10.4f));\n" \
     "    float lift = caught * (drift - 0.5f) * 0.16f * t;\n" \
@@ -170,21 +173,30 @@
     "    m.fade = 1.0f - PXCMotionSmooth(0.28f + seed * 0.10f, 1.0f, t);\n" \
     "    return m;\n" \
     "}\n" \
+    "static inline PXCWindMotion PXCWindEvaluate(float age01, float seed, float drift, float swirl) {\n" \
+    "    return PXCWindEvaluateUrgent(age01,seed,drift,swirl,0.0f);\n" \
+    "}\n" \
     "\n" \
     "/* Visible sand uses its own time profile. Urgent means start immediately,\n" \
     " * not release the entire card at once. Legacy widget motion stays unchanged. */\n" \
-    "static inline float PXCSandReleaseAt(float x,float y,float random,float phase) {\n" \
+    "static inline float PXCSandReleaseAtUrgent(float x,float y,float random,float phase,float urgent) {\n" \
     "    (void)random; /* same continuous release map for surface and grains */\n" \
-    "    float r=PXCWindReleaseAt(x,y,0.5f,phase,0.0f);\n" \
-    "    return PXCMotionClamp(r*0.72f,0.002f,0.32f);\n" \
+    "    urgent=PXCMotionClamp01(urgent);\n" \
+    "    float r=PXCWindReleaseAt(x,y,0.5f,phase,urgent);\n" \
+    "    return PXCMotionClamp(r*(0.72f-0.20f*urgent),0.002f,0.32f-0.22f*urgent);\n" \
+    "}\n" \
+    "static inline float PXCSandReleaseAt(float x,float y,float random,float phase) {\n" \
+    "    return PXCSandReleaseAtUrgent(x,y,random,phase,0.0f);\n" \
     "}\n" \
     "static inline float PXCSandReveal(float progress,float release) {\n" \
     "    return PXCMotionSmooth(release-0.006f,release+0.065f,progress);\n" \
     "}\n" \
     "static inline float PXCSandCarry(float age01,float drift) {\n" \
     "    float t=PXCMotionClamp01(age01);\n" \
-    "    float caught=PXCMotionSmooth(0.0f,0.10f,t);\n" \
-    "    return (0.65f+0.35f*PXCMotionClamp01(drift))*t*(2.0f-t)*caught;\n" \
+    "    /* Give the first rendered frames a real velocity; the old cubic catch-up\n" \
+    "     * was visually stationary even though the particle had been accepted. */\n" \
+    "    float caught=PXCMotionSmooth(0.0f,0.045f,t);\n" \
+    "    return (0.78f+0.42f*PXCMotionClamp01(drift))*t*(1.55f-0.55f*t)*caught;\n" \
     "}\n" \
     "static inline float PXCSandFade(float age01,float seed) {\n" \
     "    float t=PXCMotionClamp01(age01);\n" \

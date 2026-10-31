@@ -75,12 +75,14 @@ static void PXCCellClear(id self,SEL cmd) {
 }
 static void (*PXCOrigRequests)(id,SEL,id,id);
 static void PXCRequests(id self,SEL cmd,id component,id requests) {
-    PXCNotificationCapture(self,requests,nil,NO,@"controller-requests");
+    /* The controller receives the callback, but the component owns the
+     * authoritative _currentCellForNotificationRequest: lookup. */
+    PXCNotificationCapture(component ?: self,requests,nil,NO,@"controller-requests");
     PXCOrigRequests(self,cmd,component,requests);
 }
 static void (*PXCOrigSections)(id,SEL,id,id);
 static void PXCSections(id self,SEL cmd,id component,id sections) {
-    PXCNotificationCapture(self,nil,sections,NO,@"controller-sections");
+    PXCNotificationCapture(component ?: self,nil,sections,NO,@"controller-sections");
     PXCOrigSections(self,cmd,component,sections);
 }
 static void (*PXCOrigAll)(id,SEL,id);
@@ -225,7 +227,7 @@ __attribute__((constructor)) static void PXCEntry(void) {
     if (![[NSBundle mainBundle].bundleIdentifier isEqualToString:@"com.apple.springboard"]) return;
     dispatch_async(dispatch_get_main_queue(), ^{
         PXCSettingsStart();
-        PXCLog(@"ParticleX 0.1.0dev11 loaded; no notification data persisted");
+        PXCLog(@"ParticleX 0.1.0dev12 loaded; no notification data persisted");
         PXCInstallHooks();
         _dyld_register_func_for_add_image(PXCImageAdded);
     });

@@ -39,7 +39,7 @@ include $(THEOS_MAKE_PATH)/bundle.mk
 ''')
 text('control','''Package: com.niubiprass.particlex
 Name: ParticleX
-Version: 0.1.0dev11
+Version: 0.1.0dev12
 Architecture: iphoneos-arm
 Description: Original-color notification and widget dust, and particles inside native Control Center sliders. iOS 15.5.
 Maintainer: Niubiprass
@@ -48,7 +48,7 @@ Section: Tweaks
 Depends: mobilesubstrate, preferenceloader, firmware (>= 15.0)
 ''')
 plist('ParticleX.plist',{'Filter':{'Bundles':['com.apple.springboard']}})
-plist('Prefs/Resources/Info.plist',{'CFBundleDevelopmentRegion':'zh_CN','CFBundleDisplayName':'ParticleX','CFBundleExecutable':'ParticleXPrefs','CFBundleIdentifier':'com.niubiprass.particlex.prefs','CFBundleInfoDictionaryVersion':'6.0','CFBundleName':'ParticleXPrefs','CFBundlePackageType':'BNDL','CFBundleShortVersionString':'0.1.0dev11','CFBundleVersion':'0.1.0dev11','NSPrincipalClass':'PXCRootListController'})
+plist('Prefs/Resources/Info.plist',{'CFBundleDevelopmentRegion':'zh_CN','CFBundleDisplayName':'ParticleX','CFBundleExecutable':'ParticleXPrefs','CFBundleIdentifier':'com.niubiprass.particlex.prefs','CFBundleInfoDictionaryVersion':'6.0','CFBundleName':'ParticleXPrefs','CFBundlePackageType':'BNDL','CFBundleShortVersionString':'0.1.0dev12','CFBundleVersion':'0.1.0dev12','NSPrincipalClass':'PXCRootListController'})
 items=[]
 def group(label,footer=None):
  d={'cell':'PSGroupCell','label':label}

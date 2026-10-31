@@ -18,7 +18,9 @@ static inline PXCNotificationSandPlan PXCNotificationSandMakePlan(
     double coveredArea, unsigned density, unsigned remaining, unsigned remainingDraws, PXCPerformanceBudget b) {
     PXCNotificationSandPlan p={0,0,0};
     if (!b.allowed || !isfinite(coveredArea) || coveredArea<=0 || !remaining || !remainingDraws) return p;
-    bool limited=b.fps<=24 || b.maxDensity==0;
+    /* The constrained profile stays at 30fps but still needs the bounded
+     * sparse plan; do not infer visibility from frame rate alone. */
+    bool limited=b.maxDensity<=1 || b.perEffectParticles<=2400u;
     unsigned maxGroups=limited ? 1000u : 1200u;
     unsigned requested=PXCDensityGet(density>3 ? 3 : density).dustParticles;
     unsigned groups=requested<maxGroups ? requested : maxGroups;

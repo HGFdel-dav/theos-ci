@@ -90,11 +90,34 @@ static UIView *PXCNContent(UIView *cell) {
     if (!PXCNVisible(v)) v=PXCNObject(cell,@"contentView");
     return PXCNVisible(v) ? v : cell;
 }
+static id PXCNRequestForCell(UIView *cell) {
+    id vc=PXCNObject(cell,@"contentViewController");
+    id request=PXCNObject(vc,@"notificationRequest");
+    if (!request) request=PXCNObject(cell,@"notificationRequest");
+    return request;
+}
+static UIView *PXCNCellForRequest(id owner,id request) {
+    if (!owner || !request) return nil;
+    SEL selector=NSSelectorFromString(@"_currentCellForNotificationRequest:");
+    if (!PXCNMethod(owner,selector,@"@",@"@")) return nil;
+    id cell=((id(*)(id,SEL,id))objc_msgSend)(owner,selector,request);
+    return [cell isKindOfClass:UIView.class] && PXCNVisible(cell) ? cell : nil;
+}
 static BOOL PXCNRequestMatch(id a,id b) {
-    if (!a || !b) return NO;if (a==b || [a isEqual:b]) return YES;
+    if (!a || !b) return NO;
+    if (a==b || [a isEqual:b]) return YES;
+    SEL matches=NSSelectorFromString(@"matchesRequest:");
+    if (PXCNMethod(a,matches,@"Bc",@"@") && ((BOOL(*)(id,SEL,id))objc_msgSend)(a,matches,b)) return YES;
+    if (PXCNMethod(b,matches,@"Bc",@"@") && ((BOOL(*)(id,SEL,id))objc_msgSend)(b,matches,a)) return YES;
     id ai=PXCNObject(a,@"notificationIdentifier"),bi=PXCNObject(b,@"notificationIdentifier");
     id as=PXCNObject(a,@"sectionIdentifier"),bs=PXCNObject(b,@"sectionIdentifier");
-    return [ai isKindOfClass:NSString.class] && [bi isKindOfClass:NSString.class] && [as isKindOfClass:NSString.class] && [bs isKindOfClass:NSString.class] && [ai isEqual:bi] && [as isEqual:bs];
+    BOOL ids=[ai isKindOfClass:NSString.class] && [bi isKindOfClass:NSString.class] && [ai isEqual:bi];
+    BOOL sections=(!as || !bs) || ([(id)as isKindOfClass:NSString.class] && [(id)bs isKindOfClass:NSString.class] && [as isEqual:bs]);
+    if (ids && sections) return YES;
+    id au=PXCNObject(a,@"uuid"),bu=PXCNObject(b,@"uuid");
+    if (au && bu && [au isEqual:bu]) return YES;
+    id at=PXCNObject(a,@"uniqueThreadIdentifier"),bt=PXCNObject(b,@"uniqueThreadIdentifier");
+    return at && bt && [at isEqual:bt] && !ai && !bi;
 }
 static BOOL PXCNAnimateCells(NSArray<UIView *> *cells,NSString *route,BOOL urgent) {
     if (!PXCNEnabled() || CACurrentMediaTime()<PXCNotificationBatchUntil) return NO;
@@ -126,9 +149,14 @@ void PXCNotificationCapture(id owner,id requests,id sections,BOOL all,NSString *
     if (!PXCNEnabled()) { PXCLog([@"notification disabled/off-main " stringByAppendingString:route]);return; }
     if (CACurrentMediaTime()<PXCNotificationBatchUntil) return;
     NSArray *req=PXCNArray(requests),*sec=PXCNArray(sections),*cells=PXCNFindCells(owner);
-    NSMutableArray *matched=[NSMutableArray array];
+    NSMutableOrderedSet *matchedSet=[NSMutableOrderedSet orderedSet];
+    NSUInteger direct=0;
+    for (id r in req) {
+        UIView *cell=PXCNCellForRequest(owner,r);
+        if (cell) { [matchedSet addObject:cell];direct++; }
+    }
     for (UIView *cell in cells) {
-        id request=PXCNObject(PXCNObject(cell,@"contentViewController"),@"notificationRequest");
+        id request=PXCNRequestForCell(cell);
         BOOL match=all;
         for (id r in req) if (PXCNRequestMatch(request,r)) { match=YES;break; }
         if (!match && sec.count) {
@@ -138,9 +166,10 @@ void PXCNotificationCapture(id owner,id requests,id sections,BOOL all,NSString *
                 if (candidate && [candidate isEqual:section]) { match=YES;break; }
             }
         }
-        if (match) [matched addObject:cell];
+        if (match) [matchedSet addObject:cell];
     }
-    PXCLog([NSString stringWithFormat:@"notification event=%@ owner=%@ payload=%@/%@ scanned=%lu matched=%lu",route,NSStringFromClass([owner class]),requests?NSStringFromClass([requests class]):@"-",sections?NSStringFromClass([sections class]):@"-",(unsigned long)cells.count,(unsigned long)matched.count]);
+    NSArray *matched=matchedSet.array;
+    PXCLog([NSString stringWithFormat:@"notification event=%@ owner=%@ payload=%@/%@ scanned=%lu matched=%lu direct=%lu",route,NSStringFromClass([owner class]),requests?NSStringFromClass([requests class]):@"-",sections?NSStringFromClass([sections class]):@"-",(unsigned long)cells.count,(unsigned long)matched.count,(unsigned long)direct]);
     PXCNAnimateCells(matched,route,all || [route isEqualToString:@"one-key-clear"]);
 }
 

@@ -24,6 +24,7 @@ FOUNDATION_EXPORT void PXCSettingsStart(void);
 FOUNDATION_EXPORT void PXCRemoveAllEffects(void);
 FOUNDATION_EXPORT BOOL PXCDisintegrateView(UIView *view);
 FOUNDATION_EXPORT BOOL PXCDisintegrateAppView(UIView *view);
+FOUNDATION_EXPORT BOOL PXCDisintegrateAppViewUrgent(UIView *view);
 FOUNDATION_EXPORT BOOL PXCDisintegrateViews(NSArray<UIView *> *views);
 /* urgent=YES removes the release/mesh startup pause after an explicit tap.
  * The preview is already on screen; native removal may continue underneath. */

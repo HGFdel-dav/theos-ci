@@ -210,11 +210,17 @@ static BOOL PXCDustReadPose(UIView *view,UIWindow **windowOut,PXCDustPose *pose,
     return YES;
 }
 
-static BOOL PXCDustMayStart(void) {
+static NSString *PXCDustAdmissionReason(void) {
     PXCPerformanceBudget b=PXCPerformanceGet();
-    if (!b.allowed || gPXCDustGPUState==3 || gPXCDustOverlayCount>=b.overlays || gPXCDustParticleCount>=b.totalParticles ||
-        CACurrentMediaTime()-gPXCDustLastStart<0.12) return NO;
-    return YES;
+    if (!b.allowed) return @"performance-not-allowed";
+    if (gPXCDustGPUState==3) return @"gpu-unavailable";
+    if (gPXCDustOverlayCount>=b.overlays) return @"overlay-cap";
+    if (gPXCDustParticleCount>=b.totalParticles) return @"particle-cap";
+    if (CACurrentMediaTime()-gPXCDustLastStart<0.12) return @"cooldown";
+    return nil;
+}
+static BOOL PXCDustMayStart(void) {
+    return PXCDustAdmissionReason()==nil;
 }
 static BOOL PXCDustReserveBudget(size_t bytes) {
     PXCPerformanceBudget b=PXCPerformanceGet();
@@ -470,8 +476,11 @@ static id<MTLTexture> PXCDustTextureFromImage(id<MTLDevice> device, UIImage *ima
         metal.framebufferOnly=YES;metal.contentScaleFactor=MIN(1.5,self.window.screen.scale);
         metal.preferredFramesPerSecond=PXCPerformanceGet().fps;
         metal.autoResizeDrawable=YES;metal.enableSetNeedsDisplay=NO;metal.paused=YES;
-        self.pxcMetal=metal;[self insertSubview:metal atIndex:0];metal.delegate=self;
+        self.pxcMetal=metal;[self insertSubview:metal aboveSubview:self.pxcPreview];metal.delegate=self;
         self.pxcStart=CACurrentMediaTime();metal.paused=NO;
+        /* Request the first drawable immediately. MTKView will continue on its
+         * display loop, but the initial frame must not wait for a full tick. */
+        [metal draw];
         __weak PXCDustOverlay *weak=self;
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)((duration+0.2)*NSEC_PER_SEC)),dispatch_get_main_queue(), ^{ PXCDustOverlay *s=weak;s.pxcFinishReason=@"fallback-timeout";[s pxcFinish]; });
         PXCLog([NSString stringWithFormat:@"dust start particles=%lu angle=%u style=%u fps=%u",(unsigned long)count,(unsigned)(self.pxcAngle*57.2957795),u.effectStyle,PXCPerformanceGet().fps]);
@@ -500,6 +509,10 @@ static id<MTLTexture> PXCDustTextureFromImage(id<MTLDevice> device, UIImage *ima
     if (!command || !encoder) { dispatch_semaphore_signal(self.pxcFrames);return; }
     if (!self.pxcLoggedFirstFrame) {
         self.pxcLoggedFirstFrame=YES;
+        /* Once a valid encoder exists, hide the fallback screenshot. Keeping
+         * it visible above/below the transparent MTKView was the source of a
+         * static pause and made the first moving frame look late. */
+        self.pxcPreview.hidden=YES;
         PXCLog([NSString stringWithFormat:@"dust first frame +%.0fms urgent=%d",(age)*1000.0,(self.pxcUniforms.effectStyle&2u)!=0]);
     }
     self.pxcFrameCount++;
@@ -561,7 +574,8 @@ void PXCDustRemoveAll(void) {
 }
 
 static BOOL PXCDustRenderImage(UIImage *image,UIWindow *window,CGRect sourceFrame,BOOL urgent,BOOL appSand,NSString *label,NSData *noticeRegions) {
-    if (!PXCDustMayStart()) { PXCLog(@"dust skip pressure/concurrency/cooldown");return NO; }
+    NSString *admission=PXCDustAdmissionReason();
+    if (admission) { PXCLog([NSString stringWithFormat:@"dust skip reason=%@",admission]);return NO; }
     PXCPerformanceBudget budget=PXCPerformanceGet();
     CGImageRef cg=image.CGImage;
     size_t tw=cg?CGImageGetWidth(cg):0,th=cg?CGImageGetHeight(cg):0;
@@ -633,10 +647,13 @@ static BOOL PXCDustCaptureViews(NSArray<UIView *> *views,BOOL urgent,BOOL notice
 BOOL PXCDisintegrateViews(NSArray<UIView *> *views) { return PXCDustCaptureViews(views,NO,NO,NO); }
 BOOL PXCDisintegrateView(UIView *view) { return PXCDisintegrateViews(view ? @[view] : @[]); }
 BOOL PXCDisintegrateAppView(UIView *view) { return PXCDustCaptureViews(view ? @[view] : @[],NO,NO,YES); }
+BOOL PXCDisintegrateAppViewUrgent(UIView *view) { return PXCDustCaptureViews(view ? @[view] : @[],YES,NO,YES); }
 BOOL PXCDisintegrateViewsUrgent(NSArray<UIView *> *views,BOOL urgent) { return PXCDustCaptureViews(views,urgent,NO,NO); }
 BOOL PXCDisintegrateNotificationViews(NSArray<UIView *> *views,BOOL urgent) { return PXCDustCaptureViews(views,urgent,YES,NO); }
 static BOOL PXCDustCaptureViews(NSArray<UIView *> *views,BOOL urgent,BOOL notice,BOOL appSand) {
-    if (!NSThread.isMainThread || UIAccessibilityIsReduceMotionEnabled() || !PXCSettingsGet().enabled || !views.count || !PXCDustMayStart()) return NO;
+    if (!NSThread.isMainThread || UIAccessibilityIsReduceMotionEnabled() || !PXCSettingsGet().enabled || !views.count) return NO;
+    NSString *admission=PXCDustAdmissionReason();
+    if (admission) { PXCLog([NSString stringWithFormat:@"dust capture skip reason=%@",admission]);return NO; }
     // Notification cells can exceed the screen's content height. Composite only
     // mounted visible platters into one screen-local transparent texture; gaps,
     // clock, wallpaper and our clear button must NOT become dust.

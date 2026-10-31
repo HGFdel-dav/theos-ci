@@ -10,6 +10,7 @@
 static const void *PXCDelStamp=&PXCDelStamp;
 // Only accessed on main; nested uninstall overloads must not spawn duplicates.
 static NSUInteger PXCDelUninstallDepth;
+static BOOL PXCDelEditingActive;
 static BOOL PXCDelInstallReported;
 static id PXCDelObject(id o,SEL s) {
     Method m=o?class_getInstanceMethod(object_getClass(o),s):NULL;
@@ -63,10 +64,30 @@ static void PXCDelAnimate(id icon) {
     if(!view) { PXCLog(@"app deletion skip: no mounted visible matching icon");return; }
     NSNumber *last=objc_getAssociatedObject(view,PXCDelStamp);double now=CACurrentMediaTime();
     if(last&&now-last.doubleValue<0.5)return;
-    if(PXCDisintegrateAppView(view)) {
+    if(PXCDisintegrateAppViewUrgent(view)) {
         objc_setAssociatedObject(view,PXCDelStamp,@(now),OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         PXCLog([NSString stringWithFormat:@"app deletion dust started=1"]);
     } else PXCLog(@"app deletion dust started=0: renderer skipped");
+}
+void PXCAppDeletionEditingChanged(BOOL editing) {
+    if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(), ^{ PXCAppDeletionEditingChanged(editing); });return; }
+    PXCSettings s=PXCSettingsGet();
+    if (!editing && PXCDelEditingActive) {
+        PXCDelEditingActive=NO;PXCDustEndSession();
+    }
+    if (!s.enabled || !s.appDeletion || UIAccessibilityIsReduceMotionEnabled()) return;
+    if (editing) {
+        if (!PXCDelEditingActive) {
+            PXCDelEditingActive=YES;
+            /* Only edit mode owns the small pipeline reservation. It is not a
+             * boot/idle prewarm and is released as soon as editing ends. */
+            PXCDustBeginSession();
+            PXCLog(@"app deletion edit session: Metal pipeline warm-up requested");
+        }
+    } else if (PXCDelEditingActive) {
+        PXCDelEditingActive=NO;
+        PXCDustEndSession();
+    }
 }
 static BOOL PXCDelEnter(id icon,BOOL animated) {
     if (!NSThread.isMainThread) return NO;
@@ -77,6 +98,11 @@ static BOOL PXCDelEnter(id icon,BOOL animated) {
         @catch (NSException *e) { PXCLog([@"app deletion snapshot exception " stringByAppendingString:e.name]); }
     }
     return YES;
+}
+static void (*PXCOrigEditing)(id,SEL,BOOL,id);
+static void PXCDelEditing(id self,SEL cmd,BOOL editing,id feedback) {
+    PXCOrigEditing(self,cmd,editing,feedback);
+    PXCAppDeletionEditingChanged(editing);
 }
 static void (*PXCOrigUninstall3)(id,SEL,id,BOOL,id);
 static void PXCDelUninstall3(id self,SEL cmd,id icon,BOOL animate,id completion) {
@@ -110,12 +136,13 @@ static BOOL PXCDelMethod(Class cls,SEL s,const char *ret,const char *args) {
 void PXCAppDeletionInstallHooks(void) {
     Class cls=objc_getClass("SBHIconManager");if(!cls)return;
     struct {const char *n;const char *a;IMP h;IMP *o;} defs[]={
+        {"setEditing:withFeedbackBehavior:","b@",(IMP)PXCDelEditing,(IMP *)&PXCOrigEditing},
         {"uninstallIcon:animate:completion:","@bk",(IMP)PXCDelUninstall3,(IMP *)&PXCOrigUninstall3},
         {"uninstallIcon:animate:","@b",(IMP)PXCDelUninstall2,(IMP *)&PXCOrigUninstall2},
         {"uninstallIcon:","@",(IMP)PXCDelUninstall1,(IMP *)&PXCOrigUninstall1}
     };
     BOOL available=NO;
-    for(unsigned i=0;i<3;i++){
+    for(unsigned i=0;i<4;i++){
         if (*defs[i].o) { available=YES;continue; }
         SEL s=sel_registerName(defs[i].n);if(!PXCDelMethod(cls,s,"v",defs[i].a))continue;
         MSHookMessageEx(cls,s,defs[i].h,defs[i].o);

@@ -1,0 +1,15 @@
+ParticleX 0.1.0dev12
+Source base: particlex-0.1.0dev11 @ 68148eaa49efa89e22d5f90526589d55affa1c9d
+Status: local candidate before CI
+
+Local source/plist/ABI checks: PASS (183 guards)
+Portable math and rendering-plan tests: PASS (768 notification plans; 47040 extracted grains; 10368 surface vertices; 810000 wind samples; 10000 poses; 100010 slider cases; 40000 clear-layout cases)
+MSL syntax stub and shared C/Metal motion source: PASS
+
+Changes under test:
+- Urgent App/one-key-clear motion has non-zero early travel; Metal is above fallback preview and explicitly draws the first frame.
+- Group-clear requests use the owning component's _currentCellForNotificationRequest: before visible-cell fallback; diagnostics include direct matches.
+- Memory warning uses an 8-second bounded visible budget instead of a 20-second hard mute.
+- Low-power/Fair keeps 30fps with bounded particles/concurrency; edit mode owns the only pipeline warm-up reservation and releases it on exit.
+
+Not yet performed: GitHub CI build, DEB extraction/hash verification, phone installation, SpringBoard reload, runtime injection proof, visual/gesture acceptance. This local result must not be described as a successful iOS build.

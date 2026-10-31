@@ -62,7 +62,7 @@ def verify_deb(deb,out):
  pkg,version,arch=subprocess.check_output(['dpkg-deb','-f',str(deb),'Package','Version','Architecture'],text=True).splitlines()
  # dpkg-deb prefixes field labels when multiple fields were requested.
  vals=[x.split(': ',1)[-1] for x in (pkg,version,arch)];pkg,version,arch=vals
- assert pkg=='com.niubiprass.particlex' and version=='0.1.0dev11'
+ assert pkg=='com.niubiprass.particlex' and version=='0.1.0dev12'
  assert arch in ('iphoneos-arm64e','iphoneos-arm64')
  target=out/arch;target.mkdir(parents=True,exist_ok=True)
  payload=target/'payload';control=target/'control'

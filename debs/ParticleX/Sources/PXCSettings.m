@@ -9,6 +9,7 @@
 
 extern void PXCDustRemoveAll(void);
 extern void PXCSlidersRemoveAll(void);
+extern void PXCAppDeletionEditingChanged(BOOL editing);
 static PXCSettings PXCState = {YES, YES, YES, YES, 1.15, 1, YES, NO, 0, YES, 0};
 static dispatch_queue_t PXCLogQueue;
 static NSUInteger PXCLogLines;
@@ -31,6 +32,7 @@ static void PXCReload(void) {
     if ([p[@"appDeletion"] respondsToSelector:@selector(boolValue)]) s.appDeletion = [p[@"appDeletion"] boolValue];
     if ([p[@"effectStyle"] respondsToSelector:@selector(integerValue)]) s.effectStyle = (NSUInteger)MAX(0,MIN(1,[p[@"effectStyle"] integerValue]));
     PXCState = s;
+    if (!s.enabled || !s.appDeletion || UIAccessibilityIsReduceMotionEnabled()) PXCAppDeletionEditingChanged(NO);
     PXCRemoveAllEffects();
     PXCNotificationSettingsChanged();
     PXCLog([NSString stringWithFormat:@"config enabled=%d notifications=%d widgets=%d cc=%d duration=%.2f density=%lu clearAllButton=%d groupByApp=%d clearButtonStyle=%lu appDeletion=%d effectStyle=%lu", s.enabled,s.notifications,s.widgets,s.controlCenter,s.duration,(unsigned long)s.density,s.clearAllButton,s.groupByApp,(unsigned long)s.clearButtonStyle,s.appDeletion,(unsigned long)s.effectStyle]);
@@ -86,29 +88,37 @@ void PXCSettingsStart(void) {
 }
 
 static PXCPerformanceBudget PXCPerfBudget;
-static CFTimeInterval PXCPerfMemoryQuietUntil;
+static PXCPerformanceBudget PXCPerfMemoryBudget;
+static CFTimeInterval PXCPerfMemoryDegradedUntil;
 PXCPerformanceBudget PXCPerformanceGet(void) {
-    PXCPerformanceBudget b=PXCPerfBudget;
-    if (PXCPerfMemoryQuietUntil>CACurrentMediaTime()) b.allowed=false;
-    return b;
+    if (PXCPerfMemoryDegradedUntil>CACurrentMediaTime()) return PXCPerfMemoryBudget;
+    return PXCPerfBudget;
 }
 static void PXCPerformanceRefresh(void) {
     NSProcessInfo *info=NSProcessInfo.processInfo;
     PXCPerfBudget=PXCPerformancePolicy(info.isLowPowerModeEnabled,(unsigned)info.thermalState);
+    if (PXCPerfMemoryDegradedUntil>CACurrentMediaTime())
+        PXCPerfMemoryBudget=PXCPerformanceMemoryPolicy(info.isLowPowerModeEnabled,(unsigned)info.thermalState);
     PXCRemoveAllEffects();
-    PXCLog([NSString stringWithFormat:@"performance allowed=%d maxDensity=%u fps=%u overlays=%u",PXCPerfBudget.allowed,PXCPerfBudget.maxDensity,PXCPerfBudget.fps,PXCPerfBudget.overlays]);
+    PXCPerformanceBudget effective=PXCPerformanceGet();
+    PXCLog([NSString stringWithFormat:@"performance allowed=%d maxDensity=%u fps=%u overlays=%u memoryDegraded=%d",effective.allowed,effective.maxDensity,effective.fps,effective.overlays,PXCPerfMemoryDegradedUntil>CACurrentMediaTime()]);
 }
 void PXCPerformanceStart(void) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         NSProcessInfo *info=NSProcessInfo.processInfo;
         PXCPerfBudget=PXCPerformancePolicy(info.isLowPowerModeEnabled,(unsigned)info.thermalState);
+        PXCPerfMemoryBudget=PXCPerformanceMemoryPolicy(info.isLowPowerModeEnabled,(unsigned)info.thermalState);
         NSNotificationCenter *center=NSNotificationCenter.defaultCenter;
         for (NSString *name in @[NSProcessInfoPowerStateDidChangeNotification,NSProcessInfoThermalStateDidChangeNotification])
             [center addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n) { PXCPerformanceRefresh(); }];
         [center addObserverForName:UIApplicationDidReceiveMemoryWarningNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n) {
-            PXCPerfMemoryQuietUntil=CACurrentMediaTime()+20.0;
-            PXCRemoveAllEffects();PXCLog(@"performance memory-pressure: animations paused for 20s");
+            PXCPerfMemoryDegradedUntil=CACurrentMediaTime()+8.0;
+            NSProcessInfo *info=NSProcessInfo.processInfo;
+            PXCPerfMemoryBudget=PXCPerformanceMemoryPolicy(info.isLowPowerModeEnabled,(unsigned)info.thermalState);
+            PXCRemoveAllEffects();
+            PXCPerformanceBudget b=PXCPerformanceGet();
+            PXCLog([NSString stringWithFormat:@"performance memory-pressure: degraded visible mode for 8s allowed=%d maxDensity=%u fps=%u",b.allowed,b.maxDensity,b.fps]);
         }];
     });
 }

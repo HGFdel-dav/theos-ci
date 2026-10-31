@@ -1,6 +1,6 @@
 Package: com.niubiprass.particlex
 Name: ParticleX
-Version: 0.1.0dev11
+Version: 0.1.0dev12
 Architecture: iphoneos-arm
 Description: Original-color notification and widget dust, and particles inside native Control Center sliders. iOS 15.5.
 Maintainer: Niubiprass

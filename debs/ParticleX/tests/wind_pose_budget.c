@@ -72,7 +72,7 @@ int main(void) {
         if (b.allowed) {
             assert(b.overlays<=2 && b.perEffectParticles<=16000 && b.totalParticles<=20000);
             assert(b.fps<=30 && b.textureSide<=1280 && b.totalTextureBytes<=6u*1024u*1024u);
-            if (power || heat==1) assert(b.maxDensity==0 && b.overlays==1);
+            if (power || heat==1) assert(b.maxDensity==1 && b.overlays==1 && b.fps==30);
         }
     }
     for (unsigned i=0;i<10000;i++) {
