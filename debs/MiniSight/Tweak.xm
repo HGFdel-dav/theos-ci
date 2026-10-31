@@ -42,6 +42,8 @@ static void MiniSightShowBubble(NSString *raw);
 static void MiniSightSetAnchor(CGPoint want, BOOL save);
 static void MiniSightFollowBubble(void);
 static void MiniSightPlaceBubble(CGFloat w, CGFloat h);
+static void MiniSightDestroyUI(void);
+static void MiniSightBringMinisFront(void);
 
 // Immutable main-thread snapshot. Resource refresh owns ALL directory/plist/image I/O.
 static NSString *gMiniSightContainer;
@@ -1609,11 +1611,11 @@ static void MiniSightSpeakLine(void) {
         return;
     }
     parts.scheme = scheme;
-    NSString *path = parts.percentEncodedPath ?: @"";
-    while ([path hasSuffix:@"/"]) path = [path substringToIndex:path.length - 1];
-    if (path.length == 0) path = @"/v1/chat/completions";
-    else if (![path hasSuffix:@"/chat/completions"]) path = [path stringByAppendingString:@"/chat/completions"];
-    parts.percentEncodedPath = path;
+    NSString *endpointPath = parts.percentEncodedPath ?: @"";
+    while ([endpointPath hasSuffix:@"/"]) endpointPath = [endpointPath substringToIndex:endpointPath.length - 1];
+    if (endpointPath.length == 0) endpointPath = @"/v1/chat/completions";
+    else if (![endpointPath hasSuffix:@"/chat/completions"]) endpointPath = [endpointPath stringByAppendingString:@"/chat/completions"];
+    parts.percentEncodedPath = endpointPath;
     NSURL *url = parts.URL;
     if (!url) { MiniSightShowStatusLine(@"AI 地址不对，填不出可用链接"); return; }
 
