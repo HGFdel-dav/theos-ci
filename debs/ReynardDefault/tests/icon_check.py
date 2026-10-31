@@ -41,17 +41,20 @@ for name, size in [("icon.png", 29), ("icon@2x.png", 58), ("icon@3x.png", 87)]:
         check(im.convert("RGBA").getpixel((0, 0))[3] < 40, f"{name} corner is transparent")
         check(im.convert("RGBA").getpixel((size // 2, size // 2))[3] == 255, f"{name} centre is opaque")
 
-for name, size in [("SettingsIcon@2x.png", 116), ("SettingsIcon@3x.png", 174)]:
+for name, size, want in [("SettingsIcon@2x.png", (116, 116), "40f3"), ("SettingsIcon@3x.png", (174, 174), "9b1e")]:
     p = CCRES / name
-    check(p.is_file(), f"{name} kept")
+    check(p.is_file() and Image.open(p).size == size, f"{name} kept {size}")
     if p.is_file():
-        check(Image.open(p).size == (size, size), f"{name} stays {size}x{size}")
+        check(Image.open(p).mode == "RGBA", f"{name} stays the coloured image")
 
 for name, size in [("icon@2x.png", (140, 192)), ("icon@3x.png", (210, 288))]:
     p = CCRES / name
-    check(p.is_file() and Image.open(p).size == size, f"CC glyph {name} untouched {size}")
+    check(p.is_file() and Image.open(p).size == size, f"CC glyph {name} canvas {size}")
     if p.is_file():
-        check(Image.open(p).mode == "LA", f"CC glyph {name} stays a template (LA)")
+        g = Image.open(p).convert("RGBA")
+        check(g.mode == "RGBA" and Image.open(p).mode == "LA", f"CC glyph {name} stays a template (LA)")
+        check(g.getpixel((0, 0))[3] == 0, f"CC glyph {name} has no coloured block (transparent corner)")
+        check(any(a > 200 for a in g.split()[3].getdata()), f"CC glyph {name} is not empty")
 
 print(f"\n{len(fails)} failure(s)")
 sys.exit(1 if fails else 0)

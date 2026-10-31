@@ -12,11 +12,13 @@ When enabled, any link that would normally open in Safari is intercepted at the 
 
 ## Icon
 
-The Settings row and Control Centre artwork use Reynard's app icon from
+The Settings row icon uses Reynard's app icon from
 [minh-ton/reynard-browser](https://github.com/minh-ton/reynard-browser)
-(`browser/Reynard/Resources/Assets.xcassets/AppIcon.appiconset/icon.png`).
-Rendered at 29/58/87 px for the Settings row and 116/174 px for the Control
-Centre settings icon, with the rounded mask baked in.
+(`browser/Reynard/Resources/Assets.xcassets/AppIcon.appiconset/icon.png`),
+rendered at 29/58/87 px with the rounded mask baked in. The Settings →
+Control Center icon (116/174 px) is the upstream artwork and is left alone.
+The Control Centre toggle itself uses the fox alone as a plain template
+silhouette, so the tile keeps the system look instead of an orange block.
 
 ## Requirements
 
