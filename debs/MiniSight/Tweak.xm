@@ -199,6 +199,7 @@ static BOOL      gMiniSightBuilt  = NO;
 static BOOL      gMiniSightUserHidden = NO;   // 双击隐藏，下一次 MCP 调用自动恢复
 static MiniSightPetView *gMiniSightPet = nil;   // 可选桌宠（存在 pet.png 时启用）
 static dispatch_block_t gMiniSightMaxShow = nil; // 自保：App 没发 stopped 也要收
+static dispatch_block_t gMiniSightIdleHide = nil; // 仅调用模式：长时间没动静就收
 BOOL gMiniSightBurst = NO;   // 只在 MCP 调用期间为 YES
 BOOL gMiniSightBubbleShown = NO;   // 气泡是否显示（供桌宠决定要不要算位置）
 static BOOL gMiniSightConfirming = NO;
@@ -1011,6 +1012,18 @@ static void MiniSightReadStatus(void) {
 
 
 /// 气泡显示一句话，3 秒后消失。
+/// 仅调用模式的安全阀：15 秒没有新的调用/状态就自己收，不靠对面发 stopped。
+static void MiniSightArmIdleHide(void) {
+    if (MiniSightAlwaysShow()) return;
+    if (gMiniSightIdleHide) dispatch_block_cancel(gMiniSightIdleHide);
+    gMiniSightIdleHide = dispatch_block_create(DISPATCH_BLOCK_DETACHED, ^{
+        gMiniSightBurst = NO;
+        MiniSightHide();
+    });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(15 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), gMiniSightIdleHide);
+}
+
 static void MiniSightShowLine(NSString *line) {
     if ((!gMiniSightWindow || gMiniSightWindow.hidden) && !gMiniSightBurst) return;
     MiniSightShowBubble(line);
@@ -1115,7 +1128,10 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
     }
     if ([note isEqualToString:kMiniSightStatus]) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (gMiniSightBurst || MiniSightAlwaysShow()) MiniSightReadStatus();
+            if (gMiniSightBurst || MiniSightAlwaysShow()) {
+                MiniSightArmIdleHide();
+                MiniSightReadStatus();
+            }
         });
         return;
     }
@@ -1146,6 +1162,7 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
     dispatch_async(dispatch_get_main_queue(), ^{
         if (shouldShow) {
             gMiniSightBurst = YES;
+            MiniSightArmIdleHide();
             MiniSightShow();
         } else {
             gMiniSightBurst = NO;
