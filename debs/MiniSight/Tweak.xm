@@ -178,6 +178,10 @@ static BOOL      gMiniSightUserHidden = NO;   // 双击隐藏，下一次 MCP �
 static MiniSightPetView *gMiniSightPet = nil;   // 可选桌宠（存在 pet.png 时启用）
 static dispatch_block_t gMiniSightMaxShow = nil; // 自保：App 没发 stopped 也要收
 BOOL gMiniSightBurst = NO;   // 只在 MCP 调用期间为 YES
+static BOOL gMiniSightConfirming = NO;
+static NSString *gMiniSightConfirmId = nil;
+static UIStackView *gMiniSightConfirmBar = nil;
+static dispatch_block_t gMiniSightConfirmTimeout = nil;
 static UIView *gMiniSightBubble = nil;
 static UILabel *gMiniSightBubbleLabel = nil;
 static CAShapeLayer *gMiniSightBubbleTail = nil;
@@ -769,11 +773,6 @@ static void MiniSightReloadSettings(void) {
 
 
 #pragma mark - 说话气泡（只在 MCP 调用时）
-
-static BOOL gMiniSightConfirming = NO;
-static NSString *gMiniSightConfirmId = nil;
-static UIStackView *gMiniSightConfirmBar = nil;
-static dispatch_block_t gMiniSightConfirmTimeout = nil;
 
 static void MiniSightHideBubble(void) {
     if (gMiniSightConfirming) return;
