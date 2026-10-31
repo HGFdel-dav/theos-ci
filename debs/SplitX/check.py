@@ -123,17 +123,19 @@ need('recoverFromTargetSwitchFailure' in vc and 'showTargetSwitchFailure' in vc,
 need('POCraneTimedOut' in vc, 'switch watchdog')
 need('setExpectedContainer' in vc, 'remember chosen container')
 
-# 8e 普通打开必须原生放行；不劫持桌面/分身的系统打开请求
+# 8e 普通桌面/分身打开必须原生放行；不得按上次选择强制预切换
 mm = (SRC / 'SplitX.mm').read_text()
-hook = mm[mm.index('POHookSBMainWorkspaceHandleOpenApplicationRequest'):]
-need('native open passthrough' in hook, 'ordinary open passes through native SpringBoard route')
-need('POOriginalSBMainWorkspaceHandleOpenApplicationRequest' in hook, 'ordinary open calls original exactly')
-need('prepareForContainerSwitchToBundleId' not in hook and 'expectedContainerForBundleIdentifier' not in hook,
+hook_start = mm.index('POHookSBMainWorkspaceHandleOpenApplicationRequest')
+hook_end = mm.index('static void POHookSBMainWorkspaceHandleTrustedOpenApplicationRequest', hook_start)
+hook = mm[hook_start:hook_end]
+need('native open passthrough' in hook, 'ordinary open native passthrough')
+need('POOriginalSBMainWorkspaceHandleOpenApplicationRequest' in hook, 'ordinary open calls original')
+need('expectedContainerForBundleIdentifier' not in hook and 'prepareForContainerSwitchToBundleId' not in hook,
      'ordinary open has no forced pre-switch')
+need('POSplitXNativeTakeoverAllowed' in mm and 'isPanelActive' in mm[mm.index('POSplitXNativeTakeoverAllowed'):],
+     'transition takeover requires active SplitX panel')
 er = (SRC / 'POExternalActivationCoordinator.m').read_text()
-need('targetBundleIdentifierForRequest' in er, 'request target resolver retained for hosted flows')
-er = (SRC / 'POExternalActivationCoordinator.m').read_text()
-need('targetBundleIdentifierForRequest' in er, 'request target resolver')
+need('targetBundleIdentifierForRequest' in er, 'request target resolver retained')
 
 # 8f 诊断日志
 logm = (SRC / 'POSplitXLog.m').read_text()

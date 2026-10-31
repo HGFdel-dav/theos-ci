@@ -463,7 +463,7 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>footerText</key>
-			<string>基于 ParallelX 与 PullOver X 实现。   SplitX 0.1.0~r29</string>
+			<string>基于 ParallelX 与 PullOver X 实现。   SplitX 0.1.0~r31</string>
 			<key>label</key>
 			<string>关于</string>
 		</dict>

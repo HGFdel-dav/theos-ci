@@ -951,13 +951,17 @@ static void POHookSBMainWorkspaceHandleOpenApplicationRequest(id self, SEL _cmd,
         POOriginalSBMainWorkspaceHandleOpenApplicationRequest(self, _cmd, systemService, request, completion);
         return;
     }
+    // 普通桌面图标、普通分身图标和系统唤起都必须保持原生语义。
+    // 不能根据 SplitX 的“上次选中容器”预先调用 Crane，再把同一个
+    // SBMainWorkspace request 延迟转发；该做法会把普通启动变成注销/认证链，
+    // 并在 Crane 回调与 SpringBoard 原始 request 交接时导致 SIGSEGV。
+    // 只有 coordinator 自己识别出带 URL 的宿主外部跳转时，才替换 completion。
     id routedCompletion = [[POExternalActivationCoordinator sharedInstance]
         prepareOpenApplicationRequestIfNeeded:request completion:completion];
-
-    // 普通桌面图标/分身图标打开必须完全交给系统和 Crane 原生路由。
-    // 旧版这里按 expectedContainer 预切换，会把普通打开变成“先注销再认证”，
-    // 导致用户从桌面打开分身失败；SplitX 只处理自己的宿主来源，不劫持普通打开。
-    PXLog(@"route", @"native open passthrough url=%@", [POExternalActivationCoordinator openURLStringForRequest:request] ?: @"-");
+    NSString *bundle = [POExternalActivationCoordinator targetBundleIdentifierForRequest:request];
+    PXLog(@"route", @"native open passthrough %@ url=%@ routed=%d",
+          bundle ?: @"?", [POExternalActivationCoordinator openURLStringForRequest:request] ?: @"-",
+          routedCompletion != completion);
     POOriginalSBMainWorkspaceHandleOpenApplicationRequest(self, _cmd, systemService, request,
                                                           routedCompletion ?: completion);
     return;
@@ -998,8 +1002,15 @@ static void POHookSBMainWorkspaceHandleTrustedOpenApplicationRequest(id self, SE
                                                                  routedResult ?: result);
 }
 
+static BOOL POSplitXNativeTakeoverAllowed(void) {
+    // 转场钩子只服务于当前已经显示的 SplitX 宿主窗口。
+    // 面板关闭/没有宿主时，普通桌面和分身启动必须完全由 SpringBoard 处理。
+    POXWindow *poWindow = (POXWindow *)[POXWindow sharedWindow];
+    return [POApplicationHelper isEnabled] && poWindow.controller.isPanelActive;
+}
+
 static id POHookSBToAppsWorkspaceTransactionInit(id self, SEL _cmd, id transitionRequest) {
-    if (![POApplicationHelper isEnabled]) {
+    if (!POSplitXNativeTakeoverAllowed()) {
         return POOriginalSBToAppsWorkspaceTransactionInit(self, _cmd, transitionRequest);
     }
     [[POExternalActivationCoordinator sharedInstance]
@@ -1008,7 +1019,7 @@ static id POHookSBToAppsWorkspaceTransactionInit(id self, SEL _cmd, id transitio
 }
 
 static id POHookSBAppToAppWorkspaceTransactionInit(id self, SEL _cmd, id transitionRequest) {
-    if (![POApplicationHelper isEnabled]) {
+    if (!POSplitXNativeTakeoverAllowed()) {
         return POOriginalSBAppToAppWorkspaceTransactionInit(self, _cmd, transitionRequest);
     }
     [[POExternalActivationCoordinator sharedInstance]
@@ -1314,7 +1325,7 @@ static NSString *PXJailbreakDescription(void) {
 }
 
 static __attribute__((constructor)) static void PXBootLog(void) {
-    PXLogBeginSession(@"0.1.0~r30");
+    PXLogBeginSession(@"0.1.0~r31");
     [POSplitXSettings.shared reload];
 
     static char machine[32] = {0};
