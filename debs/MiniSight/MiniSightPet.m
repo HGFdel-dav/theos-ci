@@ -11,6 +11,8 @@
 #import "MiniSightPet.h"
 #import <stdlib.h>
 
+extern BOOL gMiniSightBurst;
+
 typedef NS_ENUM(NSInteger, MiniSightPetState) {
     MiniSightPetStateIdle = 0,
     MiniSightPetStateRunRight = 1,
@@ -32,7 +34,9 @@ static const NSInteger kMiniSightPetMaxCols = 8;
 @property (nonatomic, assign) NSInteger col;
 @property (nonatomic, assign) NSTimeInterval frameElapsed;
 @property (nonatomic, assign) NSTimeInterval frameDuration;
-@property (nonatomic, strong) CADisplayLink *displayLink;
+@property (nonatomic, strong) NSTimer *frameTimer;
+@property (nonatomic, strong) NSMutableDictionary<NSNumber *, UIImage *> *frameCache;
+@property (nonatomic, assign) BOOL suspended;
 @property (nonatomic, strong) NSTimer *roamTimer;
 @property (nonatomic, assign) CGSize displaySize;
 @property (nonatomic, assign) BOOL roaming;
@@ -50,6 +54,7 @@ static const NSInteger kMiniSightPetMaxCols = 8;
         _row = MiniSightPetStateIdle;
         _col = 0;
         _frameDuration = 0.16;
+        _frameCache = [NSMutableDictionary dictionary];
         [self applyFrame];
 
         UILongPressGestureRecognizer *press =
@@ -63,24 +68,44 @@ static const NSInteger kMiniSightPetMaxCols = 8;
 #pragma mark - Playback
 
 - (void)startPlaying {
-    if (self.displayLink) return;
-    self.displayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(tick:)];
-    [self.displayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+    if (self.frameTimer) return;
+    self.suspended = NO;
+    // 10 Hz 定时器代替 60 Hz 的 CADisplayLink：动画只要 6~8 帧/秒，
+    // 多出来的 50 次回调纯耗电。
+    self.frameTimer = [NSTimer scheduledTimerWithTimeInterval:0.1
+                                                       target:self
+                                                     selector:@selector(tick:)
+                                                     userInfo:nil
+                                                      repeats:YES];
+    self.frameTimer.tolerance = 0.03;
     [self setState:MiniSightPetStateIdle];
     [self scheduleRoam];
 }
 
 - (void)stopPlaying {
-    [self.displayLink invalidate];
-    self.displayLink = nil;
+    [self.frameTimer invalidate];
+    self.frameTimer = nil;
     [self.roamTimer invalidate];
     self.roamTimer = nil;
+    self.suspended = YES;
 }
 
-- (void)tick:(CADisplayLink *)link {
-    if (!self.sheet) return;
-    NSTimeInterval dt = link.duration;
-    self.frameElapsed += dt;
+/// 屏幕熄灭/被盖住时暂停，回来再续。
+- (void)setSuspended:(BOOL)suspended {
+    _suspended = suspended;
+    if (suspended) {
+        [self.frameTimer invalidate];
+        self.frameTimer = nil;
+        [self.roamTimer invalidate];
+        self.roamTimer = nil;
+    } else if (!self.frameTimer && self.sheet) {
+        [self startPlaying];
+    }
+}
+
+- (void)tick:(NSTimer *)timer {
+    if (!self.sheet || self.suspended || !self.window) return;
+    self.frameElapsed += timer.timeInterval;
     if (self.frameElapsed < self.frameDuration) return;
     self.frameElapsed = 0;
 
@@ -105,6 +130,8 @@ static const NSInteger kMiniSightPetMaxCols = 8;
 }
 
 - (void)applyFrame {
+    UIImage *cached = self.frameCache[@(self.row * 16 + self.col)];
+    if (cached) { self.image = cached; return; }
     CGImageRef sheetRef = self.sheet.CGImage;
     if (!sheetRef) return;
 
@@ -119,6 +146,7 @@ static const NSInteger kMiniSightPetMaxCols = 8;
 
     UIImage *image = [UIImage imageWithCGImage:frame scale:self.sheet.scale orientation:UIImageOrientationUp];
     CGImageRelease(frame);
+    if (self.frameCache.count < 96) self.frameCache[@(self.row * 16 + self.col)] = image;
     self.image = image;
 }
 
@@ -127,14 +155,16 @@ static const NSInteger kMiniSightPetMaxCols = 8;
 - (void)scheduleRoam {
     [self.roamTimer invalidate];
     __weak typeof(self) weakSelf = self;
-    NSTimeInterval delay = 2.0 + (arc4random_uniform(300) / 100.0); // 2.0 ~ 5.0s
+    // 调用期间活泼一点；常驻且空闲时 9~15 秒动一次就够。
+    NSTimeInterval delay = gMiniSightBurst ? (2.0 + arc4random_uniform(300) / 100.0)
+                                           : (9.0 + arc4random_uniform(600) / 100.0);
     self.roamTimer = [NSTimer scheduledTimerWithTimeInterval:delay repeats:NO block:^(NSTimer *timer) {
         [weakSelf roamOnce];
     }];
 }
 
 - (void)roamOnce {
-    if (!self.window) return;
+    if (!self.window || self.suspended) return;
 
     uint32_t roll = arc4random_uniform(100);
     if (roll < 55) {

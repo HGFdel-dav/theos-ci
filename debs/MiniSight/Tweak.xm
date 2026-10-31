@@ -24,6 +24,8 @@
 
 static void MiniSightHide(void);
 static void MiniSightHideBubble(void);
+static void MiniSightShowConfirm(void);
+static void MiniSightAnswerConfirm(BOOL allow);
 
 /// 找到 com.openminis.app 的容器（SpringBoard 不受沙盒限制，可按元数据扫描）。
 static NSString *MiniSightAppContainer(void) {
@@ -157,6 +159,8 @@ static NSString *const kMiniSightStopped   = @"com.openminis.agent.stopped";
 static NSString *const kMiniSightSettingsChanged = @"com.openminis.minisight.settings";
 static NSString *const kMiniSightStatus = @"com.openminis.minisight.status";
 static NSString *const kMiniSightShow = @"com.openminis.minisight.show";
+static NSString *const kMiniSightConfirmNote = @"com.openminis.minisight.confirm";
+static NSString *const kMiniSightBlanked = @"com.apple.springboard.hasBlankedScreen";
 static NSString *const kMiniSightCenterX   = @"MiniSightCenterX";
 static NSString *const kMiniSightCenterY   = @"MiniSightCenterY";
 static NSString *const kMiniSightText      = @"Minis 操作中";
@@ -173,6 +177,7 @@ static BOOL      gMiniSightBuilt  = NO;
 static BOOL      gMiniSightUserHidden = NO;   // 双击隐藏，下一次 MCP 调用自动恢复
 static MiniSightPetView *gMiniSightPet = nil;   // 可选桌宠（存在 pet.png 时启用）
 static dispatch_block_t gMiniSightMaxShow = nil; // 自保：App 没发 stopped 也要收
+BOOL gMiniSightBurst = NO;   // 只在 MCP 调用期间为 YES
 static UIView *gMiniSightBubble = nil;
 static UILabel *gMiniSightBubbleLabel = nil;
 static CAShapeLayer *gMiniSightBubbleTail = nil;
@@ -754,23 +759,29 @@ static void MiniSightReloadSettings(void) {
     BOOL wasVisible = gMiniSightWindow && !gMiniSightWindow.hidden;
     MiniSightDestroyUI();
     if (!MiniSightShown()) return;
-    if (wasVisible || MiniSightAlwaysShow()) MiniSightShow();
+    if ((gMiniSightBurst && MiniSightShown()) || MiniSightAlwaysShow()) MiniSightShow();
 }
 
 
 #pragma mark - 说话气泡（只在 MCP 调用时）
 
+static BOOL gMiniSightConfirming = NO;
+static NSString *gMiniSightConfirmId = nil;
+static UIStackView *gMiniSightConfirmBar = nil;
+static dispatch_block_t gMiniSightConfirmTimeout = nil;
+
 static void MiniSightHideBubble(void) {
+    if (gMiniSightConfirming) return;
     gMiniSightBubble.hidden = YES;
 }
 
 /// 纯文字气泡：动态深浅色、小尾巴指向指示器，最多 20 字。
-static void MiniSightShowBubble(NSString *raw) {
+static void MiniSightShowBubbleWidth(NSString *raw, CGFloat maxW, NSUInteger cap) {
     UIView *host = gMiniSightPet ?: gMiniSightPill;
     UIView *root = gMiniSightWindow.rootViewController.view;
     if (!host || !root || raw.length == 0) return;
 
-    NSString *text = raw.length > 20 ? [[raw substringToIndex:20] stringByAppendingString:@"…"] : raw;
+    NSString *text = raw.length > cap ? [[raw substringToIndex:cap] stringByAppendingString:@"…"] : raw;
 
     if (!gMiniSightBubble) {
         UIView *b = [[UIView alloc] init];
@@ -804,7 +815,6 @@ static void MiniSightShowBubble(NSString *raw) {
     gMiniSightBubbleTail.fillColor = [UIColor systemBackgroundColor].CGColor;
     gMiniSightBubbleLabel.text = text;
 
-    CGFloat maxW = 220.0;
     CGSize fit = [gMiniSightBubbleLabel sizeThatFits:CGSizeMake(maxW, 60)];
     CGFloat w = MIN(maxW, fit.width) + 16;
     CGFloat h = fit.height + 12;
@@ -833,6 +843,103 @@ static void MiniSightShowBubble(NSString *raw) {
     gMiniSightBubbleTail.frame = gMiniSightBubble.bounds;
 }
 
+static void MiniSightShowBubble(NSString *raw) {
+    MiniSightShowBubbleWidth(raw, 220.0, 20);
+}
+
+/// 允许/拒绝两个按钮的宿主
+@interface MiniSightConfirmTarget : NSObject
+@end
+@implementation MiniSightConfirmTarget
+- (void)allow:(UIButton *)b { MiniSightAnswerConfirm(YES); }
+- (void)deny:(UIButton *)b { MiniSightAnswerConfirm(NO); }
+@end
+static MiniSightConfirmTarget *gMiniSightConfirmTarget = nil;
+
+static void MiniSightWriteConfirmResult(BOOL allow) {
+    NSString *container = MiniSightAppContainer();
+    if (!container || !gMiniSightConfirmId) return;
+    NSString *path = [container stringByAppendingPathComponent:@"Documents/MiniSight/confirm-result.txt"];
+    NSString *text = [NSString stringWithFormat:@"%@:%d", gMiniSightConfirmId, allow ? 1 : 0];
+    [text writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+        (__bridge CFStringRef)@"com.openminis.minisight.confirm.result", NULL, NULL, true);
+}
+
+/// 点按钮：写结果、收起气泡；超时自动拒绝，免得对面一直等。
+static void MiniSightAnswerConfirm(BOOL allow) {
+    if (!gMiniSightConfirming) return;
+    gMiniSightConfirming = NO;
+    if (gMiniSightConfirmTimeout) { dispatch_block_cancel(gMiniSightConfirmTimeout); gMiniSightConfirmTimeout = nil; }
+    MiniSightWriteConfirmResult(allow);
+    gMiniSightConfirmId = nil;
+    gMiniSightConfirmBar.hidden = YES;
+    gMiniSightBubble.userInteractionEnabled = NO;
+    gMiniSightBubble.hidden = YES;
+}
+
+/// 读 confirm.json，把问题+命令塞进气泡，底下挂两个按钮。
+static void MiniSightShowConfirm(void) {
+    NSString *container = MiniSightAppContainer();
+    if (!container) return;
+    NSString *path = [container stringByAppendingPathComponent:@"Documents/MiniSight/confirm.json"];
+    NSData *data = [NSData dataWithContentsOfFile:path];
+    if (!data) return;
+    NSDictionary *info = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    NSString *ident = info[@"id"], *action = info[@"action"], *command = info[@"command"];
+    if (!ident.length) return;
+    if (!gMiniSightWindow || gMiniSightWindow.hidden) MiniSightShow();
+
+    gMiniSightConfirmId = ident;
+    gMiniSightConfirming = YES;
+    NSString *shortCmd = command.length > 34 ? [[command substringToIndex:34] stringByAppendingString:@"…"] : command;
+    NSString *text = action.length ? [NSString stringWithFormat:@"%@\n%@", action, shortCmd] : shortCmd;
+    MiniSightShowBubbleWidth(text, 260.0, 80);
+
+    gMiniSightBubble.userInteractionEnabled = YES;
+    if (!gMiniSightConfirmBar) {
+        if (!gMiniSightConfirmTarget) gMiniSightConfirmTarget = [MiniSightConfirmTarget new];
+        UIStackView *bar = [[UIStackView alloc] init];
+        bar.axis = UILayoutConstraintAxisHorizontal;
+        bar.distribution = UIStackViewDistributionFillEqually;
+        bar.spacing = 8;
+        for (int i = 0; i < 2; i++) {
+            UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
+            b.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
+            b.layer.cornerRadius = 9;
+            b.clipsToBounds = YES;
+            if (i == 0) {
+                [b setTitle:@"拒绝" forState:UIControlStateNormal];
+                [b setTitleColor:[UIColor secondaryLabelColor] forState:UIControlStateNormal];
+                b.backgroundColor = [UIColor tertiarySystemFillColor];
+                [b addTarget:gMiniSightConfirmTarget action:@selector(deny:) forControlEvents:UIControlEventTouchUpInside];
+            } else {
+                [b setTitle:@"允许" forState:UIControlStateNormal];
+                [b setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+                b.backgroundColor = [UIColor systemBlueColor];
+                [b addTarget:gMiniSightConfirmTarget action:@selector(allow:) forControlEvents:UIControlEventTouchUpInside];
+            }
+            [bar addArrangedSubview:b];
+        }
+        [gMiniSightBubble addSubview:bar];
+        gMiniSightConfirmBar = bar;
+    }
+    gMiniSightConfirmBar.hidden = NO;
+
+    // 加高气泡，文字上、按钮下
+    CGRect f = gMiniSightBubble.frame;
+    f.origin.y -= 38; f.size.height += 38;
+    gMiniSightBubble.frame = f;
+    CGFloat w = f.size.width;
+    gMiniSightBubbleLabel.frame = CGRectMake(8, 6, w - 16, f.size.height - 50);
+    gMiniSightConfirmBar.frame = CGRectMake(8, f.size.height - 38, w - 16, 30);
+
+    if (gMiniSightConfirmTimeout) dispatch_block_cancel(gMiniSightConfirmTimeout);
+    gMiniSightConfirmTimeout = dispatch_block_create(DISPATCH_BLOCK_DETACHED, ^{ MiniSightAnswerConfirm(NO); });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(55 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), gMiniSightConfirmTimeout);
+}
+
 static void MiniSightReadStatus(void) {
     NSString *container = MiniSightAppContainer();
     if (!container) return;
@@ -844,6 +951,7 @@ static void MiniSightReadStatus(void) {
 
 /// 气泡显示一句话，3 秒后消失。
 static void MiniSightShowLine(NSString *line) {
+    if ((!gMiniSightWindow || gMiniSightWindow.hidden) && !gMiniSightBurst) return;
     MiniSightShowBubble(line);
     if (gMiniSightBubbleHideWork) dispatch_block_cancel(gMiniSightBubbleHideWork);
     gMiniSightBubbleHideWork = dispatch_block_create(DISPATCH_BLOCK_DETACHED, ^{
@@ -938,7 +1046,21 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
         return;
     }
     if ([note isEqualToString:kMiniSightStatus]) {
-        dispatch_async(dispatch_get_main_queue(), ^{ MiniSightReadStatus(); });
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (gMiniSightBurst || MiniSightAlwaysShow()) MiniSightReadStatus();
+        });
+        return;
+    }
+    if ([note isEqualToString:kMiniSightConfirmNote]) {
+        dispatch_async(dispatch_get_main_queue(), ^{ MiniSightShowConfirm(); });
+        return;
+    }
+    if ([note isEqualToString:kMiniSightBlanked]) {
+        // 熄灭/点亮各来一次，翻转即可：熄灭时暂停定时器，点亮再续。
+        static BOOL blanked = NO;
+        blanked = !blanked;
+        BOOL b = blanked;
+        dispatch_async(dispatch_get_main_queue(), ^{ [gMiniSightPet setSuspended:b]; });
         return;
     }
     if ([note isEqualToString:kMiniSightSettingsChanged]) {
@@ -952,8 +1074,10 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
 
     dispatch_async(dispatch_get_main_queue(), ^{
         if (shouldShow) {
+            gMiniSightBurst = YES;
             MiniSightShow();
         } else {
+            gMiniSightBurst = NO;
             MiniSightHide();
             MiniSightStopRecording();
             MiniSightBringMinisFront();
@@ -990,6 +1114,18 @@ static void MiniSightBringMinisFront(void) {
                                         (__bridge const void *)kMiniSightStarted,
                                         MiniSightDarwinCallback,
                                         (__bridge CFStringRef)kMiniSightStarted,
+                                        NULL,
+                                        CFNotificationSuspensionBehaviorDeliverImmediately);
+        CFNotificationCenterAddObserver(center,
+                                        (__bridge const void *)kMiniSightConfirmNote,
+                                        MiniSightDarwinCallback,
+                                        (__bridge CFStringRef)kMiniSightConfirmNote,
+                                        NULL,
+                                        CFNotificationSuspensionBehaviorDeliverImmediately);
+        CFNotificationCenterAddObserver(center,
+                                        (__bridge const void *)kMiniSightBlanked,
+                                        MiniSightDarwinCallback,
+                                        (__bridge CFStringRef)kMiniSightBlanked,
                                         NULL,
                                         CFNotificationSuspensionBehaviorDeliverImmediately);
         CFNotificationCenterAddObserver(center,

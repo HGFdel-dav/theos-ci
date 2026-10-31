@@ -18,6 +18,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)startPlaying;
 - (void)stopPlaying;
+- (void)setSuspended:(BOOL)suspended;
 
 /// Long-press callback (recording toggle).
 @property (nonatomic, copy, nullable) void (^onLongPress)(void);
