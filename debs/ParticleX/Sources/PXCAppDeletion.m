@@ -101,7 +101,7 @@ static BOOL PXCDelEnter(id icon,BOOL animated) {
 }
 static void (*PXCOrigEditing)(id,SEL,BOOL,id);
 static void PXCDelEditing(id self,SEL cmd,BOOL editing,id feedback) {
-    PXCOrigEditing(self,cmd,editing,feedback);
+    if (PXCOrigEditing) PXCOrigEditing(self,cmd,editing,feedback);
     PXCAppDeletionEditingChanged(editing);
 }
 static void (*PXCOrigUninstall3)(id,SEL,id,BOOL,id);

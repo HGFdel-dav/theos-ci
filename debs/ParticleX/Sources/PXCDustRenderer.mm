@@ -219,9 +219,6 @@ static NSString *PXCDustAdmissionReason(void) {
     if (CACurrentMediaTime()-gPXCDustLastStart<0.12) return @"cooldown";
     return nil;
 }
-static BOOL PXCDustMayStart(void) {
-    return PXCDustAdmissionReason()==nil;
-}
 static BOOL PXCDustReserveBudget(size_t bytes) {
     PXCPerformanceBudget b=PXCPerformanceGet();
     if (!b.allowed || gPXCDustOverlayCount>=b.overlays || bytes==0 || bytes>b.textureBytes ||
@@ -586,7 +583,7 @@ static BOOL PXCDustRenderImage(UIImage *image,UIWindow *window,CGRect sourceFram
     double coveredArea=0;
     const CGRect *rects=(const CGRect *)noticeRegions.bytes;
     for (NSUInteger i=0;i<noticeRegions.length/sizeof(CGRect);i++) coveredArea+=rects[i].size.width*rects[i].size.height;
-    NSUInteger maxDraws=budget.fps<=24 ? 36000 : 90000;
+    NSUInteger maxDraws=budget.maxDensity<=1 ? 36000 : 90000;
     NSUInteger remainingDraws=maxDraws-MIN(maxDraws,gPXCDustDrawCount);
     NSUInteger parentLimit=appSand ? MIN(limit,(NSUInteger)MAX(1.0,ceil(coveredArea/12.0))) : limit;
     PXCNotificationSandPlan sand=PXCNotificationSandMakePlan(coveredArea,(unsigned)density,(unsigned)parentLimit,(unsigned)remainingDraws,budget);

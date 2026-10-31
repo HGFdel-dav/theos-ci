@@ -7,6 +7,7 @@
 #import <mach-o/dyld.h>
 #import <stdatomic.h>
 #import <QuartzCore/QuartzCore.h>
+#import <math.h>
 #import <string.h>
 extern void PXCAppGroupingInstallHooks(void);
 
@@ -18,16 +19,36 @@ static const char *PXCType(const char *t) {
 }
 static BOOL PXCMethod(Class cls,SEL sel,const char *result,const char *args) {
     Method m=class_getInstanceMethod(cls,sel);
-    if (!m || method_getNumberOfArguments(m)!=strlen(args)+2) return NO;
+    if (!m) return NO;
+    unsigned expected=0;
+    for (const char *p=args; *p; p++) {
+        expected++;
+        if (*p=='{') {
+            unsigned depth=1; p++;
+            for (; *p && depth; p++) { if (*p=='{') depth++; else if (*p=='}') depth--; }
+            if (depth) return NO;
+            p--; /* the for loop will advance to the next format token */
+        }
+    }
+    if (method_getNumberOfArguments(m)!=expected+2) return NO;
     char t[128]={0};method_getReturnType(m,t,sizeof(t));
     if (!*PXCType(t) || !strchr(result,*PXCType(t))) return NO;
-    for (unsigned i=0;i<strlen(args);i++) {
+    const char *format=args;
+    for (unsigned i=0;i<expected;i++) {
         method_getArgumentType(m,i+2,t,sizeof(t));
         const char *a=PXCType(t);
-        if (args[i]=='b') { if (*a!='B' && *a!='c') return NO; }
-        else if (args[i]=='{') { if (*a!='{') return NO; }
-        else if (args[i]=='k') { if (a[0]!='@' || a[1]!='?') return NO; }
-        else if (*a!=args[i]) return NO;
+        if (*format=='{') {
+            const char *end=format;unsigned depth=0;
+            do { if (*end=='{') depth++; else if (*end=='}') depth--; end++; } while (*end && depth);
+            size_t n=(size_t)(end-format);
+            if (depth || strncmp(a,format,n)!=0) return NO;
+            format=end;
+        } else {
+            char wanted=*format++;
+            if (wanted=='b') { if (*a!='B' && *a!='c') return NO; }
+            else if (wanted=='k') { if (a[0]!='@' || a[1]!='?') return NO; }
+            else if (*a!=wanted) return NO;
+        }
     }
     return YES;
 }

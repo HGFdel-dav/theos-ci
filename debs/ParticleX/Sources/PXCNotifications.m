@@ -99,7 +99,7 @@ static id PXCNRequestForCell(UIView *cell) {
 static UIView *PXCNCellForRequest(id owner,id request) {
     if (!owner || !request) return nil;
     SEL selector=NSSelectorFromString(@"_currentCellForNotificationRequest:");
-    if (!PXCNMethod(owner,selector,@"@",@"@")) return nil;
+    if (!PXCNMethod(owner,selector,"@","@")) return nil;
     id cell=((id(*)(id,SEL,id))objc_msgSend)(owner,selector,request);
     return [cell isKindOfClass:UIView.class] && PXCNVisible(cell) ? cell : nil;
 }
@@ -107,8 +107,8 @@ static BOOL PXCNRequestMatch(id a,id b) {
     if (!a || !b) return NO;
     if (a==b || [a isEqual:b]) return YES;
     SEL matches=NSSelectorFromString(@"matchesRequest:");
-    if (PXCNMethod(a,matches,@"Bc",@"@") && ((BOOL(*)(id,SEL,id))objc_msgSend)(a,matches,b)) return YES;
-    if (PXCNMethod(b,matches,@"Bc",@"@") && ((BOOL(*)(id,SEL,id))objc_msgSend)(b,matches,a)) return YES;
+    if (PXCNMethod(a,matches,"Bc","@") && ((BOOL(*)(id,SEL,id))objc_msgSend)(a,matches,b)) return YES;
+    if (PXCNMethod(b,matches,"Bc","@") && ((BOOL(*)(id,SEL,id))objc_msgSend)(b,matches,a)) return YES;
     id ai=PXCNObject(a,@"notificationIdentifier"),bi=PXCNObject(b,@"notificationIdentifier");
     id as=PXCNObject(a,@"sectionIdentifier"),bs=PXCNObject(b,@"sectionIdentifier");
     BOOL ids=[ai isKindOfClass:NSString.class] && [bi isKindOfClass:NSString.class] && [ai isEqual:bi];
