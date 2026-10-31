@@ -1,113 +1,76 @@
-name: Build Theos Projects
+name: Build SafariModernizer iOS15 RootHide
 
 on:
   push:
+    branches: ['safarimodernizer-1.0.1-ios15.5-rh3']
     paths:
-      - 'debs/**'
+      - 'debs/SafariModernizer/**'
+      - '.github/workflows/build-theos.yml'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build:
-    runs-on: macos-14
-
+  roothide:
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-
-      - name: Setup Theos
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.4'
+          cache: npm
+          cache-dependency-path: debs/SafariModernizer/web/package-lock.json
+      - name: Install pinned native RootHide toolchain and SDK
+        shell: bash
         run: |
-          brew install ldid xz
-          git clone --recursive https://github.com/roothide/theos.git "$HOME/theos"
-          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
-          # iPhoneOS15.5.sdk（theos/sdks 无 15.5，改用 xybp888/iOS-SDKs 稀疏检出）
-          git clone --depth 1 --filter=blob:none --sparse https://github.com/xybp888/iOS-SDKs.git "$HOME/iossdks"
-          ( cd "$HOME/iossdks" && git sparse-checkout set iPhoneOS15.5.sdk )
+          set -euo pipefail
+          brew install ldid dpkg
+          THEOS_REV=$(python3 -c 'import json; print(json.load(open("debs/SafariModernizer/BUILD-INPUTS.json"))["theos_commit"])')
+          SDK_REV=$(python3 -c 'import json; print(json.load(open("debs/SafariModernizer/BUILD-INPUTS.json"))["sdk_commit"])')
+          git init "$HOME/theos"
+          git -C "$HOME/theos" remote add origin https://github.com/roothide/theos.git
+          git -C "$HOME/theos" fetch --depth=1 origin "$THEOS_REV"
+          git -C "$HOME/theos" checkout --detach FETCH_HEAD
+          git -C "$HOME/theos" submodule update --init --recursive --depth=1
+          git clone --depth=1 --filter=blob:none --sparse https://github.com/xybp888/iOS-SDKs.git "$HOME/iossdks"
+          git -C "$HOME/iossdks" fetch --depth=1 origin "$SDK_REV"
+          git -C "$HOME/iossdks" checkout --detach FETCH_HEAD
+          git -C "$HOME/iossdks" sparse-checkout set iPhoneOS15.5.sdk
           mkdir -p "$HOME/theos/sdks"
           cp -R "$HOME/iossdks/iPhoneOS15.5.sdk" "$HOME/theos/sdks/"
-
-      - name: Test HMS diagnostic log sink
+          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
+          xcodebuild -version
+          xcrun clang --version
+      - name: Source-preservation and PAC-verifier regression checks
         run: |
-          set -e
-          test_file=debs/HMSDiagnostic/tests/logsink.c
-          if [ -f "$test_file" ]; then
-            /usr/bin/clang -Wall -Wextra -Werror "$test_file" -o "$RUNNER_TEMP/hmsdiag-test"
-            "$RUNNER_TEMP/hmsdiag-test"
-          fi
-
-      - name: Build rootless arm64
+          python3 debs/SafariModernizer/tools/check.py
+          python3 -m unittest discover -s debs/SafariModernizer/tests/local -p 'test_*.py'
+      - name: Build only SafariModernizer and verify the resulting RootHide DEB
+        shell: bash
         run: |
-          set -e
-          FAILED=""
-          for dir in debs/*/; do
-            [ -f "$dir/Makefile" ] || continue
-            if grep -q "roothide only" "$dir/Makefile"; then
-              echo "==> rootless arm64: $dir（roothide only，跳过）"
-              continue
-            fi
-            echo "==> rootless arm64: $dir"
-            ( cd "$dir" && make clean || true )
-            if ! ( cd "$dir" && make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless ); then
-              echo "::warning::rootless 构建失败: $dir（不阻塞其他项目，继续）"
-              FAILED="$FAILED $dir"
-            fi
-          done
-          echo "FAILED_ROOTLESS=$FAILED" >> "$GITHUB_ENV"
-
-      - name: Build roothide arm64e
-        run: |
-          set -e
-          FAILED=""
-          for dir in debs/*/; do
-            [ -f "$dir/Makefile" ] || continue
-            echo "==> roothide arm64e: $dir"
-            ( cd "$dir" && make clean || true )
-            if ! ( cd "$dir" && make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide ); then
-              echo "::warning::roothide 构建失败: $dir（不阻塞其他项目，继续）"
-              FAILED="$FAILED $dir"
-            fi
-          done
-          echo "FAILED_ROOTHIDE=$FAILED" >> "$GITHUB_ENV"
-
-      - name: Collect debs and dylibs
-        run: |
-          mkdir -p packages
-          find debs -name '*.deb' -exec cp -v {} packages/ \; || true
-          # 同时收集 dylib + 同名 plist（供 TrollFools / Patcher 注入使用）
-          for dir in debs/*/; do
-            [ -f "$dir/Makefile" ] || continue
-            find "$dir/.theos" -name '*.dylib' -exec cp -v {} packages/ \; 2>/dev/null || true
-          done
-          # 把根目录的 plist 也复制过去
-          for p in debs/*/*.plist; do
-            [ -f "$p" ] || continue
-            cp -v "$p" packages/ || true
-          done
-
-      - name: Commit packages
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git add packages/
-          git commit -m "自动构建 deb 包" || true
-          # 2.0.5: 并行 run 的产物提交可能冲突——以本次构建产物为准（rebase 时 -X theirs 指本次提交）
-          git pull --rebase -X theirs origin main || { git rebase --abort 2>/dev/null || true; git pull --no-rebase -X theirs origin main --no-edit || true; git add -A; git commit -m "自动构建 deb 包(冲突取本次)" || true; }
-          git push origin main || { git pull --rebase -X theirs origin main || true; git push origin main; }
-
-      - name: Verify source remains available
-        run: |
-          set -e
-          test -f debs/TIMCleanKit/Makefile
-          test -f debs/TIMCleanKit/control
-          test -f debs/TIMCleanKit/TIMCleanKit/Tweak.xm
-
-      - name: Report build failures
-        run: |
-          if [ -n "$FAILED_ROOTLESS$FAILED_ROOTHIDE" ]; then
-            echo "::error::构建失败项目: rootless=$FAILED_ROOTLESS ; roothide=$FAILED_ROOTHIDE （其他项目产物已收集提交，失败详情见上方日志）"
-            exit 1
-          fi
+          set -euo pipefail
+          mkdir -p debs/SafariModernizer/notes
+          sh debs/SafariModernizer/build.sh 2>&1 | tee debs/SafariModernizer/notes/build.log
+          test -s debs/SafariModernizer/notes/package-verification.json
+      - name: Upload verified package and build evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafariModernizer-1.0.1-ios15.5-rh3-roothide
+          if-no-files-found: error
+          path: |
+            debs/SafariModernizer/tweak/packages/*.deb
+            debs/SafariModernizer/notes/build.log
+            debs/SafariModernizer/notes/package-verification.json
+      - name: Upload failure diagnostics only
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafariModernizer-failure-diagnostics
+          if-no-files-found: ignore
+          path: debs/SafariModernizer/notes/
