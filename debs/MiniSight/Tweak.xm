@@ -58,6 +58,17 @@ static NSString *MiniSightPetPath(void) {
     return [container stringByAppendingPathComponent:@"Documents/MiniSight/pet.png"];
 }
 
+/// 桌宠宽度（设置里的 36~140，默认 96）；高度按精灵 96:104 的比例
+static CGFloat MiniSightPetSize(void) {
+    NSString *container = MiniSightAppContainer();
+    if (!container) return 96.0;
+    NSString *plist = [container stringByAppendingPathComponent:@"Library/Preferences/com.openminis.app.plist"];
+    NSDictionary *prefs = [NSDictionary dictionaryWithContentsOfFile:plist];
+    id v = prefs[@"minisight.petSize"];
+    if (!v) return 96.0;
+    return MIN(140.0, MAX(36.0, [v doubleValue]));
+}
+
 /// 常驻开关：开着的时候不随 stopped 隐藏，桌面一直留着。
 static BOOL MiniSightAlwaysShow(void) {
     NSString *container = MiniSightAppContainer();
@@ -634,7 +645,7 @@ static void MiniSightBuildUI(void) {
         ? [UIImage imageWithContentsOfFile:petPath] : nil;
     if (petSprite) {
         gMiniSightPet = [[MiniSightPetView alloc] initWithSprite:petSprite
-                                                    displaySize:CGSizeMake(96.0, 104.0)];
+                                                    displaySize:CGSizeMake(MiniSightPetSize(), MiniSightPetSize() * 104.0 / 96.0)];
         gMiniSightPet.center = CGPointMake(CGRectGetMidX(root.bounds), CGRectGetMidY(root.bounds));
         gMiniSightPet.onLongPress = ^{
             MiniSightToggleRecording();
