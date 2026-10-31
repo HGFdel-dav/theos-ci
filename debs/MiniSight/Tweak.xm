@@ -744,7 +744,12 @@ static void MiniSightHide(void) {
 
 /// 彻底拆掉浮窗（设置变更时重建用）
 static void MiniSightDestroyUI(void) {
+    // 确认态要一起清，否则气泡永远"正在确认"、再也收不起来
+    if (gMiniSightConfirmTimeout) { dispatch_block_cancel(gMiniSightConfirmTimeout); gMiniSightConfirmTimeout = nil; }
+    gMiniSightConfirming = NO;
+    gMiniSightConfirmId = nil;
     if (gMiniSightBubble) { [gMiniSightBubble removeFromSuperview]; gMiniSightBubble = nil; gMiniSightBubbleLabel = nil; gMiniSightBubbleTail = nil; }
+    gMiniSightConfirmBar = nil;
     if (gMiniSightPet) { [gMiniSightPet stopPlaying]; gMiniSightPet = nil; }
     MiniSightStopRecording();
     gMiniSightWindow.hidden = YES;
@@ -1156,8 +1161,12 @@ static void MiniSightBringMinisFront(void) {
         // SpringBoard 刚启动时 UI 还没准备好，延迟 2 秒再建浮窗 + 注册旋转监听
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
-            if (MiniSightAlwaysShow() && MiniSightShown()) MiniSightShow();
-            else MiniSightBuildUI();
+            @try {
+                if (MiniSightAlwaysShow() && MiniSightShown()) MiniSightShow();
+                else MiniSightBuildUI();
+            } @catch (NSException *e) {
+                NSLog(@"MiniSight: 启动建窗失败 %@", e);
+            }
 
             [[UIDevice currentDevice] beginGeneratingDeviceOrientationNotifications];
             [[NSNotificationCenter defaultCenter] addObserver:gMiniSightGestureTarget
