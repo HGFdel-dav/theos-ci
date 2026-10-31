@@ -185,16 +185,8 @@ static CGPoint MSPetCGPoint(MSPoint p) { return CGPointMake((CGFloat)p.x, (CGFlo
         // Keep the UIView's layer untransformed. The child layer carries the
         // visual tilt, so UIView hit testing and coordinate conversion remain
         // based on the original bounds.
-        _gravityLayer = [CALayer layer];
-        _gravityLayer.contentsGravity = kCAGravityResizeAspect;
-        _gravityLayer.contentsScale = sprite.scale;
-        _gravityLayer.minificationFilter = kCAFilterLinear;
-        _gravityLayer.magnificationFilter = kCAFilterLinear;
-        // Host guarantees an upright, already decoded/downsampled atlas.
-        _gravityLayer.contents = (__bridge id)sprite.CGImage;
+        [self ensureGravityLayer];
         self.layer.contents = nil;
-        [self.layer addSublayer:_gravityLayer];
-        [self updateGravityLayerGeometry];
         _state = MiniSightPetStateIdle;
         _lastSpriteTime = CACurrentMediaTime();
         [self applySpriteFrame];
@@ -410,6 +402,20 @@ static CGPoint MSPetCGPoint(MSPoint p) { return CGPointMake((CGFloat)p.x, (CGFlo
     NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
     CGSize size = self.bounds.size;
     return _gravityEnabled ? MSPetGravityEnvelope(size) : size;
+}
+
+- (void)ensureGravityLayer {
+    if (_gravityLayer) return;
+    CALayer *layer = [CALayer layer];
+    layer.contentsGravity = kCAGravityResizeAspect;
+    layer.contentsScale = _sheet.scale;
+    layer.minificationFilter = kCAFilterLinear;
+    layer.magnificationFilter = kCAFilterLinear;
+    // Host guarantees an upright, already decoded/downsampled atlas.
+    layer.contents = (__bridge id)_sheet.CGImage;
+    [self.layer addSublayer:layer];
+    _gravityLayer = layer;
+    [self updateGravityLayerGeometry];
 }
 
 - (void)updateGravityLayerGeometry {
