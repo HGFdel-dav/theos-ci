@@ -1012,7 +1012,8 @@ static void MiniSightReadStatus(void) {
 
 
 /// 气泡显示一句话，3 秒后消失。
-/// 仅调用模式的安全阀：15 秒没有新的调用/状态就自己收，不靠对面发 stopped。
+/// 仅调用模式的安全阀：45 秒没有新的调用/状态就自己收，不靠对面发 stopped。
+/// 比单个长命令短不了太多，免得一条 30 秒的构建跑着宠物先没了。
 static void MiniSightArmIdleHide(void) {
     if (MiniSightAlwaysShow()) return;
     if (gMiniSightIdleHide) dispatch_block_cancel(gMiniSightIdleHide);
@@ -1020,14 +1021,15 @@ static void MiniSightArmIdleHide(void) {
         gMiniSightBurst = NO;
         MiniSightHide();
     });
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(15 * NSEC_PER_SEC)),
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(45 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), gMiniSightIdleHide);
 }
 
 static void MiniSightShowLine(NSString *line) {
     if ((!gMiniSightWindow || gMiniSightWindow.hidden) && !gMiniSightBurst) return;
     MiniSightShowBubble(line);
-    if (gMiniSightBubbleHideWork) dispatch_block_cancel(gMiniSightBubbleHideWork);
+    if (gMiniSightBubbleHideWork) { dispatch_block_cancel(gMiniSightBubbleHideWork); gMiniSightBubbleHideWork = nil; }
+    if (gMiniSightBurst) return;   // 调用期间常亮，只换字，不在动作之间收
     gMiniSightBubbleHideWork = dispatch_block_create(DISPATCH_BLOCK_DETACHED, ^{
         MiniSightHideBubble();
     });
