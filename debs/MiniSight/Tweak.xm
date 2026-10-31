@@ -724,6 +724,7 @@ static void MiniSightShow(void) {
 }
 
 static void MiniSightHide(void) {
+    if (gMiniSightConfirming) return;   // 等问题回答完再收，否则气泡跟着窗口一起没
     MiniSightHideBubble();
     if (MiniSightAlwaysShow() && !gMiniSightUserHidden) return;   // 常驻且未手动隐藏
     if (gMiniSightMaxShow) { dispatch_block_cancel(gMiniSightMaxShow); gMiniSightMaxShow = nil; }
@@ -880,10 +881,12 @@ static void MiniSightAnswerConfirm(BOOL allow) {
     gMiniSightConfirmBar.hidden = YES;
     gMiniSightBubble.userInteractionEnabled = NO;
     gMiniSightBubble.hidden = YES;
+    if (!gMiniSightBurst && !MiniSightAlwaysShow()) MiniSightHide();
 }
 
 /// 读 confirm.json，把问题+命令塞进气泡，底下挂两个按钮。
 static void MiniSightShowConfirm(void) {
+    @try {
     NSString *container = MiniSightAppContainer();
     if (!container) return;
     NSString *path = [container stringByAppendingPathComponent:@"Documents/MiniSight/confirm.json"];
@@ -942,6 +945,9 @@ static void MiniSightShowConfirm(void) {
     gMiniSightConfirmTimeout = dispatch_block_create(DISPATCH_BLOCK_DETACHED, ^{ MiniSightAnswerConfirm(NO); });
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(55 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), gMiniSightConfirmTimeout);
+    } @catch (NSException *e) {
+        NSLog(@"MiniSight: 确认气泡失败 %@", e);
+    }
 }
 
 static void MiniSightReadStatus(void) {

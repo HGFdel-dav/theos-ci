@@ -10,6 +10,7 @@
 
 #import "MiniSightPet.h"
 #import <stdlib.h>
+#import <math.h>
 
 extern BOOL gMiniSightBurst;
 
@@ -147,7 +148,7 @@ static const NSInteger kMiniSightPetMaxCols = 8;
 
     UIImage *image = [UIImage imageWithCGImage:frame scale:self.sheet.scale orientation:UIImageOrientationUp];
     CGImageRelease(frame);
-    if (self.frameCache.count < 96) self.frameCache[@(self.row * 16 + self.col)] = image;
+    if (self.frameCache.count < 32) self.frameCache[@(self.row * 16 + self.col)] = image;
     self.image = image;
 }
 
