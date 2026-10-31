@@ -1,0 +1,76 @@
+name: Build SafariModernizer iOS15 RootHide
+
+on:
+  push:
+    branches: ['safarimodernizer-1.0.1-ios15.5-rh1']
+    paths:
+      - 'debs/SafariModernizer/**'
+      - '.github/workflows/build-theos.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  roothide:
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.4'
+          cache: npm
+          cache-dependency-path: debs/SafariModernizer/web/package-lock.json
+      - name: Install pinned native RootHide toolchain and SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install ldid dpkg
+          THEOS_REV=$(python3 -c 'import json; print(json.load(open("debs/SafariModernizer/BUILD-INPUTS.json"))["theos_commit"])')
+          SDK_REV=$(python3 -c 'import json; print(json.load(open("debs/SafariModernizer/BUILD-INPUTS.json"))["sdk_commit"])')
+          git init "$HOME/theos"
+          git -C "$HOME/theos" remote add origin https://github.com/roothide/theos.git
+          git -C "$HOME/theos" fetch --depth=1 origin "$THEOS_REV"
+          git -C "$HOME/theos" checkout --detach FETCH_HEAD
+          git -C "$HOME/theos" submodule update --init --recursive --depth=1
+          git clone --depth=1 --filter=blob:none --sparse https://github.com/xybp888/iOS-SDKs.git "$HOME/iossdks"
+          git -C "$HOME/iossdks" fetch --depth=1 origin "$SDK_REV"
+          git -C "$HOME/iossdks" checkout --detach FETCH_HEAD
+          git -C "$HOME/iossdks" sparse-checkout set iPhoneOS15.5.sdk
+          mkdir -p "$HOME/theos/sdks"
+          cp -R "$HOME/iossdks/iPhoneOS15.5.sdk" "$HOME/theos/sdks/"
+          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
+          xcodebuild -version
+          xcrun clang --version
+      - name: Source-preservation and PAC-verifier regression checks
+        run: |
+          python3 debs/SafariModernizer/tools/check.py
+          python3 -m unittest discover -s debs/SafariModernizer/tests/local -p 'test_*.py'
+      - name: Build only SafariModernizer and verify the resulting RootHide DEB
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p debs/SafariModernizer/notes
+          sh debs/SafariModernizer/build.sh 2>&1 | tee debs/SafariModernizer/notes/build.log
+          test -s debs/SafariModernizer/notes/package-verification.json
+      - name: Upload verified package and build evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafariModernizer-1.0.1-ios15.5-rh1-roothide
+          if-no-files-found: error
+          path: |
+            debs/SafariModernizer/tweak/packages/*.deb
+            debs/SafariModernizer/notes/build.log
+            debs/SafariModernizer/notes/package-verification.json
+      - name: Upload failure diagnostics only
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafariModernizer-failure-diagnostics
+          if-no-files-found: ignore
+          path: debs/SafariModernizer/notes/

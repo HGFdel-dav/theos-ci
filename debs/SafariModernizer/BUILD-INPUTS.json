@@ -1,0 +1,17 @@
+{
+  "host": "macos-15-intel",
+  "developer_dir": "/Applications/Xcode_16.4.app/Contents/Developer",
+  "xcode": "16.4",
+  "compiler": "Apple clang",
+  "sdk": "iPhoneOS15.5.sdk",
+  "sdk_repository": "https://github.com/xybp888/iOS-SDKs.git",
+  "sdk_commit": "4a48e5409f8ea6ac422c44d91b86fa0f8ae010ff",
+  "theos_repository": "https://github.com/roothide/theos.git",
+  "theos_commit": "3ac89c984ec652fd16bcd91b33ae16de45ce76fa",
+  "scheme": "roothide",
+  "arch": "arm64e",
+  "deployment_target": "15.0",
+  "package": "com.t4mag0.safarimodernizer",
+  "version": "1.0.1+ios15.5.rh1",
+  "branch_when_authorized": "safarimodernizer-1.0.1-ios15.5-rh1"
+}

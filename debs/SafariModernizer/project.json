@@ -1,0 +1,15 @@
+{
+  "name": "SafariModernizer",
+  "version": "1.0.1+ios15.5.rh1",
+  "upstream_version": "1.0.1",
+  "scope": "Compatibility rebuild only; preserve every upstream runtime feature",
+  "device": "iPhone 12 / A14",
+  "runtime_target": "iOS 15.x; current device is iOS 15.5 / RootHide",
+  "sdk": "iPhoneOS15.5.sdk",
+  "deployment_target": "15.0",
+  "arch": "arm64e",
+  "scheme": "roothide",
+  "stage": "authorized_ci_ready",
+  "authorization": {"push": true, "ci": true, "install": false, "respring": false, "reboot": false},
+  "verification": {"source_static": "PASS_89", "macho_tool_tests": "PASS_21", "upstream_js_tests": "pending_CI", "ios_build": "not_run", "device_load": "not_run", "runtime_features": "not_run"}
+}
