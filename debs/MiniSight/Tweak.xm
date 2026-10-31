@@ -200,6 +200,7 @@ static BOOL      gMiniSightUserHidden = NO;   // 双击隐藏，下一次 MCP �
 static MiniSightPetView *gMiniSightPet = nil;   // 可选桌宠（存在 pet.png 时启用）
 static dispatch_block_t gMiniSightMaxShow = nil; // 自保：App 没发 stopped 也要收
 static dispatch_block_t gMiniSightIdleHide = nil; // 仅调用模式：长时间没动静就收
+static dispatch_block_t gMiniSightPendingHide = nil; // 两个调用之间的 2.5 秒缓冲
 BOOL gMiniSightBurst = NO;   // 只在 MCP 调用期间为 YES
 BOOL gMiniSightBubbleShown = NO;   // 气泡是否显示（供桌宠决定要不要算位置）
 static BOOL gMiniSightConfirming = NO;
@@ -1164,12 +1165,19 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
     dispatch_async(dispatch_get_main_queue(), ^{
         if (shouldShow) {
             gMiniSightBurst = YES;
+            if (gMiniSightPendingHide) { dispatch_block_cancel(gMiniSightPendingHide); gMiniSightPendingHide = nil; }
             MiniSightArmIdleHide();
             MiniSightShow();
         } else {
+            // 工具是一条接一条的，隔一两秒就 hide 会闪；等 2.5 秒没下一条再收。
             gMiniSightBurst = NO;
-            MiniSightHide();
-            MiniSightStopRecording();
+            if (gMiniSightPendingHide) dispatch_block_cancel(gMiniSightPendingHide);
+            gMiniSightPendingHide = dispatch_block_create(DISPATCH_BLOCK_DETACHED, ^{
+                MiniSightHide();
+                MiniSightStopRecording();
+            });
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.5 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), gMiniSightPendingHide);
             MiniSightBringMinisFront();
         }
     });
