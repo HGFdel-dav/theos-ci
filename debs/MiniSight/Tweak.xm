@@ -267,8 +267,8 @@ static CGFloat MiniSightTopInset(void) {
 /// 把浮窗中心点限制在屏幕内（四周留 kMiniSightEdge 的边距）
 static CGPoint MiniSightClampCenter(CGPoint center) {
     CGRect bounds = gMiniSightWindow ? gMiniSightWindow.bounds : MiniSightScreenRect();
-    CGFloat halfW = kMiniSightWidth / 2.0;
-    CGFloat halfH = kMiniSightHeight / 2.0;
+    CGFloat halfW = (gMiniSightPet ? gMiniSightPet.bounds.size.width : kMiniSightWidth) / 2.0;
+    CGFloat halfH = (gMiniSightPet ? gMiniSightPet.bounds.size.height : kMiniSightHeight) / 2.0;
 
     CGFloat minX = kMiniSightEdge + halfW;
     CGFloat maxX = bounds.size.width - kMiniSightEdge - halfW;
@@ -792,6 +792,38 @@ static void MiniSightHideBubble(void) {
 }
 
 /// 纯文字气泡：动态深浅色、小尾巴指向指示器，最多 20 字。
+/// 把气泡摆在宠物上方（上面放不下就放下面），尾巴指向宠物。
+static void MiniSightPlaceBubble(CGFloat w, CGFloat h) {
+    UIView *host = gMiniSightPet ?: gMiniSightPill;
+    UIView *root = gMiniSightWindow.rootViewController.view;
+    if (!host || !root) return;
+
+    CGFloat x = host.center.x - w / 2.0;
+    x = MAX(8, MIN(x, root.bounds.size.width - w - 8));
+    BOOL above = CGRectGetMinY(host.frame) > (h + 14);
+    CGFloat y = above ? CGRectGetMinY(host.frame) - h - 7
+                      : CGRectGetMaxY(host.frame) + 7;
+    gMiniSightBubble.frame = CGRectMake(x, y, w, h);
+    // 圆角永远取高度一半（短句是胶囊），再加一点内边距让文字不贴边
+    gMiniSightBubble.layer.cornerRadius = MIN(18.0, h / 2.0);
+    gMiniSightBubbleLabel.frame = CGRectMake(10, 6, w - 20, h - 12);
+
+    UIBezierPath *path = [UIBezierPath bezierPath];
+    CGFloat cx = MIN(MAX(host.center.x - x, 14), w - 14);
+    if (above) {
+        [path moveToPoint:CGPointMake(cx - 5, h)];
+        [path addLineToPoint:CGPointMake(cx, h + 6)];
+        [path addLineToPoint:CGPointMake(cx + 5, h)];
+    } else {
+        [path moveToPoint:CGPointMake(cx - 5, 0)];
+        [path addLineToPoint:CGPointMake(cx, -6)];
+        [path addLineToPoint:CGPointMake(cx + 5, 0)];
+    }
+    [path closePath];
+    gMiniSightBubbleTail.path = path.CGPath;
+    gMiniSightBubbleTail.frame = gMiniSightBubble.bounds;
+}
+
 static void MiniSightShowBubbleWidth(NSString *raw, CGFloat maxW, NSUInteger cap) {
     UIView *host = gMiniSightPet ?: gMiniSightPill;
     UIView *root = gMiniSightWindow.rootViewController.view;
@@ -802,7 +834,8 @@ static void MiniSightShowBubbleWidth(NSString *raw, CGFloat maxW, NSUInteger cap
     if (!gMiniSightBubble) {
         UIView *b = [[UIView alloc] init];
         b.backgroundColor = [UIColor systemBackgroundColor];
-        b.layer.cornerRadius = 16;
+        b.layer.cornerRadius = 18;
+        b.layer.cornerCurve = kCACornerCurveContinuous;
         b.layer.borderWidth = 0.5;
         b.layer.borderColor = [UIColor separatorColor].CGColor;
         b.userInteractionEnabled = NO;
@@ -832,31 +865,19 @@ static void MiniSightShowBubbleWidth(NSString *raw, CGFloat maxW, NSUInteger cap
     gMiniSightBubbleLabel.text = text;
 
     CGSize fit = [gMiniSightBubbleLabel sizeThatFits:CGSizeMake(maxW, 60)];
-    CGFloat w = MIN(maxW, fit.width) + 16;
+    CGFloat w = MIN(maxW, fit.width) + 20;
     CGFloat h = fit.height + 12;
 
-    CGFloat x = host.center.x - w / 2.0;
-    x = MAX(8, MIN(x, root.bounds.size.width - w - 8));
-    BOOL above = CGRectGetMinY(host.frame) > (h + 14);
-    CGFloat y = above ? CGRectGetMinY(host.frame) - h - 7
-                      : CGRectGetMaxY(host.frame) + 7;
-    gMiniSightBubble.frame = CGRectMake(x, y, w, h);
-    gMiniSightBubbleLabel.frame = CGRectMake(8, 6, w - 16, h - 12);
+    MiniSightPlaceBubble(w, h);
+}
 
-    UIBezierPath *path = [UIBezierPath bezierPath];
-    CGFloat cx = MIN(MAX(host.center.x - x, 14), w - 14);
-    if (above) {
-        [path moveToPoint:CGPointMake(cx - 5, h)];
-        [path addLineToPoint:CGPointMake(cx, h + 6)];
-        [path addLineToPoint:CGPointMake(cx + 5, h)];
-    } else {
-        [path moveToPoint:CGPointMake(cx - 5, 0)];
-        [path addLineToPoint:CGPointMake(cx, -6)];
-        [path addLineToPoint:CGPointMake(cx + 5, 0)];
-    }
-    [path closePath];
-    gMiniSightBubbleTail.path = path.CGPath;
-    gMiniSightBubbleTail.frame = gMiniSightBubble.bounds;
+/// 只重算位置：气泡在，宠物怎么动它就跟到哪。
+void MiniSightFollowBubble(void) {
+    UIView *host = gMiniSightPet ?: gMiniSightPill;
+    UIView *root = gMiniSightWindow.rootViewController.view;
+    if (!gMiniSightBubble || gMiniSightBubble.hidden || !gMiniSightBubble.superview) return;
+    if (!host || !root) return;
+    MiniSightPlaceBubble(gMiniSightBubble.bounds.size.width, gMiniSightBubble.bounds.size.height);
 }
 
 static void MiniSightShowBubble(NSString *raw) {

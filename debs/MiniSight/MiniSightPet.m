@@ -13,6 +13,7 @@
 #import <math.h>
 
 extern BOOL gMiniSightBurst;
+extern void MiniSightFollowBubble(void);
 
 typedef NS_ENUM(NSInteger, MiniSightPetState) {
     MiniSightPetStateIdle = 0,
@@ -39,6 +40,7 @@ static const NSInteger kMiniSightPetMaxCols = 8;
 @property (nonatomic, strong) NSMutableDictionary<NSNumber *, UIImage *> *frameCache;
 @property (nonatomic, assign) BOOL suspended;
 @property (nonatomic, assign) NSTimeInterval extraRest;
+@property (nonatomic, assign) NSTimeInterval tickInterval;
 @property (nonatomic, strong) NSTimer *roamTimer;
 @property (nonatomic, assign) CGSize displaySize;
 @property (nonatomic, assign) BOOL roaming;
@@ -57,6 +59,7 @@ static const NSInteger kMiniSightPetMaxCols = 8;
         _col = 0;
         _frameDuration = 0.16;
         _frameCache = [NSMutableDictionary dictionary];
+        _tickInterval = 0.1;
         [self applyFrame];
 
         UILongPressGestureRecognizer *press =
@@ -74,7 +77,7 @@ static const NSInteger kMiniSightPetMaxCols = 8;
     _suspended = NO;   // 直接写 ivar：走 setter 会再调回本方法，无限递归
     // 10 Hz 定时器代替 60 Hz 的 CADisplayLink：动画只要 6~8 帧/秒，
     // 多出来的 50 次回调纯耗电。
-    self.frameTimer = [NSTimer scheduledTimerWithTimeInterval:0.1
+    self.frameTimer = [NSTimer scheduledTimerWithTimeInterval:self.tickInterval
                                                        target:self
                                                      selector:@selector(tick:)
                                                      userInfo:nil
@@ -105,8 +108,27 @@ static const NSInteger kMiniSightPetMaxCols = 8;
     }
 }
 
+/// 只在真正走动时提到 20 帧，站着还是 10 帧。
+- (void)syncTimerRate {
+    NSTimeInterval want = (self.row == MiniSightPetStateRunRight ||
+                           self.row == MiniSightPetStateRunLeft ||
+                           self.row == MiniSightPetStateJumping) ? 0.05 : 0.1;
+    if (fabs(want - self.tickInterval) < 0.001) return;
+    self.tickInterval = want;
+    if (!self.frameTimer) return;
+    [self.frameTimer invalidate];
+    self.frameTimer = [NSTimer scheduledTimerWithTimeInterval:want
+                                                       target:self
+                                                     selector:@selector(tick:)
+                                                     userInfo:nil
+                                                      repeats:YES];
+    self.frameTimer.tolerance = 0.02;
+}
+
 - (void)tick:(NSTimer *)timer {
     if (!self.sheet || self.suspended || !self.window) return;
+    [self keepInside];
+    MiniSightFollowBubble();
     self.frameElapsed += timer.timeInterval;
     if (self.frameElapsed < self.frameDuration) return;
     self.frameElapsed = 0;
@@ -128,6 +150,7 @@ static const NSInteger kMiniSightPetMaxCols = 8;
     self.frameElapsed = 0;
     // Idle breathes slowly; a run/jump is quicker.
     self.frameDuration = (state == MiniSightPetStateIdle) ? 0.16 : 0.12;
+    [self syncTimerRate];
     [self applyFrame];
 }
 
@@ -168,6 +191,24 @@ static const NSInteger kMiniSightPetMaxCols = 8;
     }];
 }
 
+/// 目标点必须整个身子留在屏内
+- (CGPoint)clampPoint:(CGPoint)p {
+    UIView *parent = self.superview;
+    if (!parent) return p;
+    CGFloat halfW = self.bounds.size.width / 2, halfH = self.bounds.size.height / 2;
+    CGFloat minX = 8 + halfW, maxX = parent.bounds.size.width - 8 - halfW;
+    CGFloat minY = 30 + halfH, maxY = parent.bounds.size.height - 20 - halfH;
+    if (maxX < minX) return CGPointMake(parent.bounds.size.width / 2, p.y);
+    if (maxY < minY) return CGPointMake(p.x, parent.bounds.size.height / 2);
+    return CGPointMake(MIN(MAX(p.x, minX), maxX), MIN(MAX(p.y, minY), maxY));
+}
+
+/// 万一被动画/旋转带出界，直接夹回来
+- (void)keepInside {
+    CGPoint c = self.center, k = [self clampPoint:c];
+    if (fabs(c.x - k.x) > 0.5 || fabs(c.y - k.y) > 0.5) self.center = k;
+}
+
 - (CGRect)roamArea {
     UIView *parent = self.superview;
     if (!parent) return CGRectZero;
@@ -180,6 +221,7 @@ static const NSInteger kMiniSightPetMaxCols = 8;
 
 /// 走到任意一点（不只是左右），距离越远走得越久。
 - (void)walkTo:(CGPoint)target {
+    target = [self clampPoint:target];
     BOOL right = target.x > self.center.x;
     [self setState:right ? MiniSightPetStateRunRight : MiniSightPetStateRunLeft];
     CGFloat dist = hypot(target.x - self.center.x, target.y - self.center.y);
@@ -190,6 +232,7 @@ static const NSInteger kMiniSightPetMaxCols = 8;
                         options:UIViewAnimationOptionCurveEaseInOut | UIViewAnimationOptionBeginFromCurrentState
                      animations:^{ weakSelf.center = target; }
                      completion:^(BOOL finished) {
+        [weakSelf keepInside];
         [weakSelf setState:MiniSightPetStateIdle];
         [weakSelf scheduleRoam];
     }];
