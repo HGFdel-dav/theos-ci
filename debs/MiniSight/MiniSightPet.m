@@ -69,8 +69,8 @@ static const NSInteger kMiniSightPetMaxCols = 8;
 #pragma mark - Playback
 
 - (void)startPlaying {
-    if (self.frameTimer) return;
-    self.suspended = NO;
+    if (self.frameTimer) { _suspended = NO; return; }
+    _suspended = NO;   // 直接写 ivar：走 setter 会再调回本方法，无限递归
     // 10 Hz 定时器代替 60 Hz 的 CADisplayLink：动画只要 6~8 帧/秒，
     // 多出来的 50 次回调纯耗电。
     self.frameTimer = [NSTimer scheduledTimerWithTimeInterval:0.1
