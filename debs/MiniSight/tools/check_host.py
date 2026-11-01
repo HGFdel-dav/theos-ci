@@ -260,6 +260,7 @@ ok('status.txt' in log_m or 'Key' not in log_m, '16g 日志边界说明')
 
 # ---- 17. 聊天窗关闭不能同步卡死 SpringBoard ----
 panel = read('MiniSightChatPanel.m')
+panel_h = read('MiniSightChatPanel.h')
 close = panel[panel.index('- (void)close {'):]
 close = close[:close.index('\n}\n')]
 ok('dispatch_async(dispatch_get_main_queue(), ^{\n        [self performClose];' in close,
@@ -271,6 +272,8 @@ ok('[previous makeKeyWindow]' in panel and 'self.closing = NO;' in panel,
 ok('panelWindow.canBecomeKeyWindow' not in panel, '17e panelWindow 不应是 key 判定点')
 ok('- (void)hideWithoutKey' in panel and 'self.window.hidden = YES;' in panel,
    '17f 缺少不切 key 的快速隐藏')
+ok('- (void)hideWithoutKey;' in panel_h,
+   '17f2 hideWithoutKey 未声明在公开头文件中')
 ok('[MiniSightChatPanel.sharedPanel hideWithoutKey]' in destroy,
    '17g DestroyUI 仍在同步切 key')
 print('检查项：%d' % checks)

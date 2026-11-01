@@ -34,6 +34,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Cancels an in-flight request, resigns key, hides the window.
 - (void)close;
+/// Hides without key-window transitions for host teardown paths.
+- (void)hideWithoutKey;
 /// Cancels an in-flight request and forgets the whole conversation.
 - (void)clearConversation;
 @end
