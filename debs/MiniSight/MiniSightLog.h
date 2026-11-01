@@ -5,5 +5,5 @@
 /// Async, bounded local diagnostics. Disabled by default. No credential ever
 /// passes through here; callers log status/counters only.
 void MSDiagConfigure(BOOL enabled, NSString * _Nullable container);
-void MSDiag(NSString *format, ...) NS_FORMAT_FUNCTION(1, 2);
+void MSDiag(NSString * _Nonnull format, ...) NS_FORMAT_FUNCTION(1, 2);
 #endif
