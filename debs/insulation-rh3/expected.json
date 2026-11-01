@@ -79,10 +79,6 @@
     "arm64": "f72c3e77-c46c-554e-98d3-4f785d9896dc",
     "arm64e": "1995eefb-11e7-57a0-8e0d-70fc6ef6e253"
   },
-  "core_signed_sha256": {
-    "roothide": "1f7e8154c3bd415880d0f64ab67945e9b7d6e4ee1d3512aa327037191a749d0d",
-    "rootless": "1f7e8154c3bd415880d0f64ab67945e9b7d6e4ee1d3512aa327037191a749d0d"
-  },
   "patch_addr": {
     "arm64e": [
       36196,
