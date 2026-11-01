@@ -186,7 +186,7 @@ ok('showInWindowScene' in tap and 'MiniSightSpeakLine();' in tap,
 ok('[MiniSightChatPanel.sharedPanel close]' in tweak[tweak.index('static void MiniSightUserHide'):tweak.index('/// 录屏开关')],
    '13d 隐藏桌宠时聊天面板不收起')
 destroy = tweak[tweak.index('static void MiniSightDestroyUI(void) {'):tweak.index('static void MiniSightReloadSettings(void) {')]
-ok('[MiniSightChatPanel.sharedPanel close]' in destroy, '13e 重建浮窗后聊天窗口残留')
+ok('[MiniSightChatPanel.sharedPanel hideWithoutKey]' in destroy, '13e 重建浮窗后聊天窗口残留')
 makefile_files = makefile[makefile.index('MiniSight_FILES'):]
 makefile_files = makefile_files[:makefile_files.index('\n')]
 ok('MiniSightAI.m' in makefile_files and 'MiniSightChatPanel.m' in makefile_files and
@@ -268,6 +268,11 @@ ok('if (!self.visible || self.closing) return;' in close, '17b close 没有重�
 ok('performClose' in panel, '17c 没有独立异步收尾')
 ok('[previous makeKeyWindow]' in panel and 'self.closing = NO;' in panel,
    '17d 恢复上一窗口没有延后')
+ok('panelWindow.canBecomeKeyWindow' not in panel, '17e panelWindow 不应是 key 判定点')
+ok('- (void)hideWithoutKey' in panel and 'self.window.hidden = YES;' in panel,
+   '17f 缺少不切 key 的快速隐藏')
+ok('[MiniSightChatPanel.sharedPanel hideWithoutKey]' in destroy,
+   '17g DestroyUI 仍在同步切 key')
 print('检查项：%d' % checks)
 for f in fails:
     print('FAIL ' + f)

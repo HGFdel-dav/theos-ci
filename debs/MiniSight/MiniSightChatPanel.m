@@ -67,6 +67,7 @@ static CGRect MSChatScreenRect(UIWindowScene *scene) {
 @property (nonatomic, assign) BOOL sending;
 @property (nonatomic, assign) CGFloat keyboardOverlap;
 - (void)performClose;
+- (void)hideWithoutKey;
 @end
 
 @implementation MiniSightChatPanel
@@ -334,6 +335,18 @@ static CGRect MSChatScreenRect(UIWindowScene *scene) {
     [self.inputField becomeFirstResponder];
     if (self.visibilityHandler) self.visibilityHandler(YES);
     return YES;
+}
+
+- (void)hideWithoutKey {
+    NSCAssert([NSThread isMainThread], @"chat panel is main-thread only");
+    // DestroyUI path: make the window disappear without any key-window
+    // transition. host promotes another window itself.
+    if (!self.window) return;
+    self.visible = NO;
+    self.closing = NO;
+    [self.ai cancel];
+    [self endSendingUI];
+    self.window.hidden = YES;
 }
 
 - (void)close {

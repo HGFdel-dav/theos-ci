@@ -1349,7 +1349,7 @@ static void MiniSightHide(void) {
 /// 彻底拆掉浮窗（设置变更时重建用）
 static void MiniSightDestroyUI(void) {
     MiniSightStopGravity();
-    [MiniSightChatPanel.sharedPanel close];
+    [MiniSightChatPanel.sharedPanel hideWithoutKey];
     gMiniSightGravityConfigured = NO;
     // 确认态要一起清，否则气泡永远"正在确认"、再也收不起来
     if (gMiniSightConfirmTimeout) { dispatch_block_cancel(gMiniSightConfirmTimeout); gMiniSightConfirmTimeout = nil; }
