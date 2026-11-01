@@ -14,12 +14,12 @@ jobs:
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
-      - name: Toolchain (dpkg-deb + ldid from roothide Theos)
+      - name: Toolchain (dpkg-deb + ldid)
         run: |
-          git clone --depth=1 https://github.com/roothide/theos.git "$RUNNER_TEMP/theos"
-          echo "$RUNNER_TEMP/theos/bin" >> "$GITHUB_PATH"
-          "$RUNNER_TEMP/theos/bin/ldid" -h 2>&1 | head -1
-          "$RUNNER_TEMP/theos/bin/dpkg-deb" --version | head -1
+          brew install dpkg ldid
+          command -v dpkg-deb ldid
+          ldid -h 2>&1 | head -1
+          dpkg-deb --version | head -1
       - name: Build
         run: |
           cd debs/insulation-rh3
