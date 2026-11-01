@@ -253,6 +253,7 @@ ok('200 * 1024' in log_m and 'diagnostic.log.1' in log_m, '16c 日志没有容�
 ok('0600' in log_m, '16d 日志权限不严')
 ok('MSDiagConfigure' in log_m and 'atomic_bool' in log_m, '16e 日志未做异步开关')
 ok('MiniSightLog.m' in makefile, '16f 日志实现未纳入构建')
+ok('extern "C"' in log_h, '16g 日志头缺 C 链接，Tweak.xm 会链接失败')
 ok('recorder state=' in tweak and 'activity valid=' in tweak and 'ai issue=' in read('MiniSightAI.m'),
    '16f 关键链路没有诊断点')
 ok('status.txt' in log_m or 'Key' not in log_m, '16g 日志边界说明')
