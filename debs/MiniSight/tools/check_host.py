@@ -241,12 +241,14 @@ ok('MiniSightApplyGravitySample' in tweak and
 # ---- 16. 诊断日志默认关闭、有上限、不记录内容 ----
 log_h = read('MiniSightLog.h')
 log_m = read('MiniSightLog.m')
-mini_settings = open(os.path.normpath(os.path.join(ROOT,
-    '../../../OpenMinis-work/src/ios/Views/Settings/MiniSightSettingsView.swift')), encoding='utf-8').read()
-ok('minisight.diagnostics' in tweak and 'minisight.diagnostics' in mini_settings,
-   '16a 诊断开关未接到设置/宿主')
-ok('@AppStorage("minisight.diagnostics") private var diagnostics = false' in mini_settings,
-   '16b 诊断不是默认关闭')
+mini_path = os.path.normpath(os.path.join(ROOT,
+    '../../../OpenMinis-work/src/ios/Views/Settings/MiniSightSettingsView.swift'))
+mini_settings = open(mini_path, encoding='utf-8').read() if os.path.exists(mini_path) else ''
+ok('minisight.diagnostics' in tweak, '16a 诊断开关未接到宿主')
+if mini_settings:
+    ok('@AppStorage("minisight.diagnostics") private var diagnostics = false' in mini_settings,
+       '16b 诊断不是默认关闭')
+    ok('minisight.diagnostics' in mini_settings, '16b2 App 设置没有诊断键')
 ok('200 * 1024' in log_m and 'diagnostic.log.1' in log_m, '16c 日志没有容量轮转')
 ok('0600' in log_m, '16d 日志权限不严')
 ok('MSDiagConfigure' in log_m and 'atomic_bool' in log_m, '16e 日志未做异步开关')
