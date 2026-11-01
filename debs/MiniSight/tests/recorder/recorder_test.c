@@ -1,3 +1,6 @@
+#if defined(__APPLE__)
+#define _DARWIN_C_SOURCE 1
+#endif
 #define _POSIX_C_SOURCE 200809L
 #include "../../tools/recorder/MiniSightRecorderCore.h"
 #include "../../tools/recorder/MiniSightRecorderFile.h"
