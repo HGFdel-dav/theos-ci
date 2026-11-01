@@ -52,7 +52,7 @@ def main():
  tmp=pathlib.Path(tempfile.mkdtemp(prefix='ins-verify-'))
  run('dpkg-deb','-e',str(deb),str(tmp/'DEBIAN'));run('dpkg-deb','-x',str(deb),str(tmp))
  ctl=(tmp/'DEBIAN/control').read_text()
- assert 'Version: 0.1.38.1-rh3' in ctl
+ assert 'Version: 0.1.38.1-rh4' in ctl
  assert f"Architecture: {'iphoneos-arm64e' if scheme=='roothide' else 'iphoneos-arm64'}" in ctl
  root=tmp/'var/jb' if scheme=='rootless' else tmp
  assert not (tmp/'root').exists() and not (tmp/'tmp').exists(),'stray files'
@@ -74,6 +74,7 @@ def main():
   f=EXPECT_CORE['floor_addr'][arch]
   assert m.raw(f,4)==bytes.fromhex('004b8052'),arch+' floor 600'
   assert m.raw(f+4,4)==bytes.fromhex('1f2003d5'),arch+' floor high half NOP'
+  assert m.raw(EXPECT_CORE['tsf_addr'][arch],4)==bytes.fromhex('42f840f9' if arch=='arm64e' else '428840f9'),arch+' TSF true'
   n,h=pages(m.b,arch);print(arch,'signature pages',n,'hashType',h)
  for f in ('DEBIAN/postinst',):
   assert (tmp/f).stat().st_mode&0o777==0o755

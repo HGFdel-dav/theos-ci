@@ -76,8 +76,8 @@
   "core_sha256": "db3726d94978c35c46b5dfdd1719f6194768dfc282471bfcf24fe422bd7322f6",
   "core_path": "Library/MobileSubstrate/DynamicLibraries/insulation.dylib",
   "uuid": {
-    "arm64": "f72c3e77-c46c-554e-98d3-4f785d9896dc",
-    "arm64e": "1995eefb-11e7-57a0-8e0d-70fc6ef6e253"
+    "arm64": "624a0207-fea0-5e2a-9bff-2870c28c35a5",
+    "arm64e": "f9022c5f-17bb-5d64-8319-b1dad026a3a8"
   },
   "patch_addr": {
     "arm64e": [
@@ -98,5 +98,9 @@
   "floor_addr": {
     "arm64e": 18304,
     "arm64": 34456
+  },
+  "tsf_addr": {
+    "arm64e": 36744,
+    "arm64": 51396
   }
 }
