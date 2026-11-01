@@ -5,7 +5,7 @@ CI and local use the same script. No phone operations.
 """
 import sys,pathlib,subprocess,tempfile,shutil,os,hashlib,json
 BASE_SHA='75d9920232145bae39c8a3217091e8cb3dec60d0074df265fbfa86a7d44e19c9'
-VERSION='0.1.38.1-rh4'
+VERSION='0.1.38.1-rh5'
 HERE=pathlib.Path(__file__).resolve().parent
 
 def run(*a,**kw):

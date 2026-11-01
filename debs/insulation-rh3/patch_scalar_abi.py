@@ -6,7 +6,7 @@ The full 0.1.38.1 implementation, including every mode branch, is preserved.
 from __future__ import annotations
 import argparse,hashlib,json,pathlib,struct,uuid,sys
 BASE_SHA256='db3726d94978c35c46b5dfdd1719f6194768dfc282471bfcf24fe422bd7322f6'
-REVISION='0.1.38.1-rh4'
+REVISION='0.1.38.1-rh5'
 NOP=0xd503201f
 RET=0xd65f03c0
 # VM addresses equal thin-file offsets only for this verified original.
@@ -33,8 +33,15 @@ PATCHES=(
  # This branch overwrote it with kCFBooleanFalse; without TSF pushes the display
  # driver never gets the new state -> fully black screen that still accepts touch.
  # Point the same slot at kCFBooleanTrue instead (arm64e GOT 0x101F0, arm64 0x10110).
- ('arm64e',0x8f88,0xf940e842,0xf940f842,'keep needsPushingTSFDtoDisplayDriver true'),
- ('arm64',0xc8c4,0xf9404042,0xf9408842,'keep needsPushingTSFDtoDisplayDriver true'),
+ # kCFBooleanTrue's GOT slot is an authenticated pointer; a plain ldr leaves it
+ # unsigned and objc_msgSend traps (PAC). Skip the three setObject: calls and let
+ # the mutable copy keep the stock values (needsPushingTSFDtoDisplayDriver=true).
+ ('arm64e',0x8f98,0x940007e1,0xd503201f,'keep stock needsPushingTSFDtoDisplayDriver'),
+ ('arm64e',0x8fb0,0x940007db,0xd503201f,'keep stock displayBrightnessMitigation'),
+ ('arm64e',0x8fc8,0x940007d5,0xd503201f,'keep stock displayMitigation'),
+ ('arm64',0xc8d4,0x9400076a,0xd503201f,'keep stock needsPushingTSFDtoDisplayDriver'),
+ ('arm64',0xc8ec,0x94000764,0xd503201f,'keep stock displayBrightnessMitigation'),
+ ('arm64',0xc904,0x9400075e,0xd503201f,'keep stock displayMitigation'),
 )
 EXPECTED_UUIDS={'arm64':'adf544fb-16ad-3574-b6e0-0e6cace94169','arm64e':'e4b12879-1e1e-3156-b516-2059759bbf02'}
 
