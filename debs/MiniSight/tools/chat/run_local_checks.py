@@ -127,7 +127,7 @@ check("no_key_logging", "NSLog" not in AI_M and "NSLog" not in PANEL_M)
 
 check("separate_key_window", "MiniSightChatWindow : UIWindow" in PANEL_M)
 check("can_become_key", "- (BOOL)canBecomeKeyWindow { return YES; }" in PANEL_M)
-check("key_lifecycle", "makeKeyAndVisible" in PANEL_M and "resignKeyWindow" in PANEL_M)
+check("key_lifecycle", "makeKeyWindow" in PANEL_M and "resignKeyWindow" in PANEL_M)
 check("full_screen", "MSChatScreenRect(self.window.windowScene)" in PANEL_M and
       "root.leadingAnchor" in PANEL_M)
 check("background_dismiss", "backgroundTapped" in PANEL_M and "UITapGestureRecognizer" in PANEL_M)
@@ -144,7 +144,7 @@ check("max_30_messages", "kMSChatMaxMessages = 30.0" in PANEL_M and
       "self.rows.count > (NSUInteger)kMSChatMaxMessages" in PANEL_M)
 check("disable_while_sending", "self.sendButton.enabled = NO" in PANEL_M and
       "if (self.sending) return;" in PANEL_M)
-check("close_hides", "self.window.hidden = YES" in PANEL_M and "if (!self.visible) return;" in PANEL_M)
+check("close_hides", "self.window.hidden = YES" in PANEL_M and "if (!self.visible || self.closing) return;" in PANEL_M and "performClose" in PANEL_M)
 check("host_callbacks", all(x in PANEL_H for x in ("replyHandler", "errorHandler", "visibilityHandler")))
 check("main_thread_panel", "[NSThread isMainThread]" in PANEL_M)
 check("no_host_bubble_dependency", "Tweak.xm" not in PANEL_M)

@@ -63,8 +63,10 @@ static CGRect MSChatScreenRect(UIWindowScene *scene) {
 @property (nonatomic, weak, nullable) UIWindow *previousKeyWindow;
 @property (nonatomic, assign) BOOL built;
 @property (nonatomic, assign) BOOL visible;
+@property (nonatomic, assign) BOOL closing;
 @property (nonatomic, assign) BOOL sending;
 @property (nonatomic, assign) CGFloat keyboardOverlap;
+- (void)performClose;
 @end
 
 @implementation MiniSightChatPanel
@@ -325,8 +327,9 @@ static CGRect MSChatScreenRect(UIWindowScene *scene) {
     self.visible = YES;
     [self layoutForCurrentScreen];
     self.window.hidden = NO;
-    [self.window makeKeyAndVisible];
-    [self.window becomeKeyWindow];
+    // makeKeyAndVisible + becomeKeyWindow duplicated a host key-window
+    // transition; a hidden→visible window only needs makeKeyWindow.
+    [self.window makeKeyWindow];
     [self observeKeyboard:YES];
     [self.inputField becomeFirstResponder];
     if (self.visibilityHandler) self.visibilityHandler(YES);
@@ -335,8 +338,18 @@ static CGRect MSChatScreenRect(UIWindowScene *scene) {
 
 - (void)close {
     NSCAssert([NSThread isMainThread], @"chat panel is main-thread only");
-    if (!self.visible) return;
+    if (!self.visible || self.closing) return;
     self.visible = NO;
+    self.closing = YES;
+    // DestroyUI can run inside a host layout/watchdog-sensitive turn.
+    // Return to it immediately; key-window reshuffling happens next turn.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self performClose];
+    });
+}
+
+- (void)performClose {
+    NSCAssert([NSThread isMainThread], @"chat panel is main-thread only");
     [self endSendingUI];
     [self.ai cancel];                       // synchronous Cancelled reply is ignored (not visible)
     [self.inputField resignFirstResponder];
@@ -345,10 +358,18 @@ static CGRect MSChatScreenRect(UIWindowScene *scene) {
     self.window.hidden = YES;
     if (self.visibilityHandler) self.visibilityHandler(NO);
     UIWindow *previous = self.previousKeyWindow;
-    if (previous && previous.windowScene == self.window.windowScene && previous.canBecomeKeyWindow) {
-        [previous makeKeyWindow];
-    }
+    MiniSightChatWindow *window = self.window;
     self.previousKeyWindow = nil;
+    self.closing = NO;
+    if (previous && window && previous.windowScene == window.windowScene && previous.canBecomeKeyWindow) {
+        // A second turn avoids re-entering host while the chat window is
+        // still finishing resignation.
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (!self.visible && previous.windowScene && previous.canBecomeKeyWindow) {
+                [previous makeKeyWindow];
+            }
+        });
+    }
 }
 
 - (void)backgroundTapped {

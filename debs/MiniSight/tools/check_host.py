@@ -258,6 +258,16 @@ ok('recorder state=' in tweak and 'activity valid=' in tweak and 'ai issue=' in 
    '16f 关键链路没有诊断点')
 ok('status.txt' in log_m or 'Key' not in log_m, '16g 日志边界说明')
 
+# ---- 17. 聊天窗关闭不能同步卡死 SpringBoard ----
+panel = read('MiniSightChatPanel.m')
+close = panel[panel.index('- (void)close {'):]
+close = close[:close.index('\n}\n')]
+ok('dispatch_async(dispatch_get_main_queue(), ^{\n        [self performClose];' in close,
+   '17a close 仍同步跑完整收尾')
+ok('if (!self.visible || self.closing) return;' in close, '17b close 没有重入保护')
+ok('performClose' in panel, '17c 没有独立异步收尾')
+ok('[previous makeKeyWindow]' in panel and 'self.closing = NO;' in panel,
+   '17d 恢复上一窗口没有延后')
 print('检查项：%d' % checks)
 for f in fails:
     print('FAIL ' + f)
