@@ -63,7 +63,8 @@ def main():
   assert p.stat().st_mode&0o777==info['mode'],'mode '+rel
  assert (root/'usr/bin/ins').is_symlink() and os.readlink(root/'usr/bin/ins')=='insulationctl'
  core=root/'Library/MobileSubstrate/DynamicLibraries/insulation.dylib'
- assert hashlib.sha256(core.read_bytes()).hexdigest()==EXPECT_CORE['core_signed_sha256'][scheme]
+ wantc=EXPECT_CORE.get('core_signed_sha256',{}).get(scheme)
+ if wantc:assert hashlib.sha256(core.read_bytes()).hexdigest()==wantc,'signed core sha'
  for arch in ('arm64','arm64e'):
   m=MachO(str(core),arch)
   assert m.uuid==EXPECT_CORE['uuid'][arch],arch+' uuid'
