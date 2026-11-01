@@ -1,0 +1,110 @@
+{
+  "files": {
+    "Library/ControlCenter/Bundles/InsulationCC.bundle/Info.plist": {
+      "gid": 10,
+      "mode": 420,
+      "sha256": "39b8bc83d63bded5b3ec1ec4abcb05f70d30fce5b8ce9a41bd9d12ead2c02dc6",
+      "uid": 0
+    },
+    "Library/ControlCenter/Bundles/InsulationCC.bundle/InsulationCC": {
+      "gid": 10,
+      "mode": 493,
+      "sha256": "4040a17f92c8981793c6190d5ae541db8c508d110f2cc2a33210fd069fe437d4",
+      "uid": 0
+    },
+    "Library/ControlCenter/Bundles/InsulationCC.bundle/SettingsIcon.png": {
+      "gid": 10,
+      "mode": 420,
+      "sha256": "5f5e23bd20e5f25a5c763599e8b858faf25cc03f1dbaf902e11bae1432ad2c7d",
+      "uid": 0
+    },
+    "Library/MobileSubstrate/DynamicLibraries/insulation.plist": {
+      "gid": 10,
+      "mode": 420,
+      "sha256": "41346cc09b873dc6e7b7da24f63f6942a6f22d65c904b2bf9cdda521d4d06406",
+      "uid": 0
+    },
+    "Library/PreferenceBundles/InsulationPrefs.bundle/Info.plist": {
+      "gid": 10,
+      "mode": 420,
+      "sha256": "0ddc1a5e6697667194fa49f604fe75745ced6560858d080b9756ad47cf6b2a59",
+      "uid": 0
+    },
+    "Library/PreferenceBundles/InsulationPrefs.bundle/InsulationPrefs": {
+      "gid": 10,
+      "mode": 493,
+      "sha256": "b3557f24098e160a71ca9fe2a2f9e5e693edf7f9d11fefa48f474ce860d3fafb",
+      "uid": 0
+    },
+    "Library/PreferenceBundles/InsulationPrefs.bundle/Root.plist": {
+      "gid": 10,
+      "mode": 420,
+      "sha256": "064e56ed5f1edd80bbf8e7164bb689ae8c6d6fc3e5b46e244dfc08d8a53c26f2",
+      "uid": 0
+    },
+    "Library/PreferenceBundles/InsulationPrefs.bundle/icon.png": {
+      "gid": 10,
+      "mode": 420,
+      "sha256": "b82a6d0b94ddfd429fb61101f9a9482d29494914815d5125b9691fd73a9e8daa",
+      "uid": 0
+    },
+    "Library/PreferenceBundles/InsulationPrefs.bundle/icon@2x.png": {
+      "gid": 10,
+      "mode": 420,
+      "sha256": "90a505776e37cda417315398e5bd2d587015781134cf85d16cdd027e83e57097",
+      "uid": 0
+    },
+    "Library/PreferenceBundles/InsulationPrefs.bundle/icon@3x.png": {
+      "gid": 10,
+      "mode": 420,
+      "sha256": "f986bdfbcd84d4c8a320f59ca0feed3691b616b6c7f651b661518074ca25099f",
+      "uid": 0
+    },
+    "Library/PreferenceLoader/Preferences/InsulationPrefs.plist": {
+      "gid": 10,
+      "mode": 420,
+      "sha256": "ca69c1b1b0301e07eee1658841285cf86739a905d0116a713aa3bbc38f0023b7",
+      "uid": 0
+    },
+    "usr/bin/insulationctl": {
+      "gid": 10,
+      "mode": 493,
+      "sha256": "137641e3e58f861acf9bc27e9ef162de1c03c8e78fd5598ffad309e9557680dd",
+      "uid": 0
+    }
+  },
+  "core_sha256": "db3726d94978c35c46b5dfdd1719f6194768dfc282471bfcf24fe422bd7322f6",
+  "core_path": "Library/MobileSubstrate/DynamicLibraries/insulation.dylib",
+  "uuid": {
+    "arm64": "f72c3e77-c46c-554e-98d3-4f785d9896dc",
+    "arm64e": "1995eefb-11e7-57a0-8e0d-70fc6ef6e253"
+  },
+  "deb_sha256": {
+    "roothide": "9703f2f7fcb6ef06a4f8b16214cfe56ec2a45e20223c09c57956d1a306092453",
+    "rootless": "ad4b04ce65914eb8a69165bfa66e5369c98e93f5d8e65d4f530c74d2cb850118"
+  },
+  "core_signed_sha256": {
+    "roothide": "1f7e8154c3bd415880d0f64ab67945e9b7d6e4ee1d3512aa327037191a749d0d",
+    "rootless": "1f7e8154c3bd415880d0f64ab67945e9b7d6e4ee1d3512aa327037191a749d0d"
+  },
+  "patch_addr": {
+    "arm64e": [
+      36196,
+      36244,
+      36264
+    ],
+    "arm64": [
+      50888,
+      50936,
+      50956
+    ]
+  },
+  "ret_addr": {
+    "arm64e": 36308,
+    "arm64": 50984
+  },
+  "floor_addr": {
+    "arm64e": 18304,
+    "arm64": 34456
+  }
+}
