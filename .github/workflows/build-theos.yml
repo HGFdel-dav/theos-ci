@@ -1,9 +1,6 @@
 name: Build Theos Projects
 
 on:
-  push:
-    paths:
-      - 'debs/**'
   workflow_dispatch:
 
 permissions:

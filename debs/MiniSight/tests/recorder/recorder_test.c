@@ -1,3 +1,6 @@
+#if defined(__APPLE__)
+#define _DARWIN_C_SOURCE 1
+#endif
 #define _POSIX_C_SOURCE 200809L
 #include "../../tools/recorder/MiniSightRecorderCore.h"
 #include "../../tools/recorder/MiniSightRecorderFile.h"
@@ -75,23 +78,35 @@ static void scenarios(void) {
     CHECK(!MSRToggle(&m, 0.1, idle()) && !m.stopWanted);
     CHECK(!MSRToggle(&m, 0.4, idle()) && m.stopWanted);
     CHECK(MSRStartReply(&m, m.epoch, true, 1, live()) == MSRStop);
-    CHECK(MSRStopReply(&m, m.epoch, true, true, 2) == MSRReport);
-    CHECK(m.issue == MiniSightRecorderIssueCancelled && !m.saving);
+    CHECK(!m.cancelled);
+    CHECK(MSRStopReply(&m, m.epoch, true, true, 2) == MSRSave);
+    CHECK(MSRSaved(&m, m.epoch, true, 2.1) == MSRReport);
     m=enabled(); CHECK(MSRAutomaticActive(&m, true, 0, idle()) == MSRStart);
     CHECK(!MSRAutomaticActive(&m, true, 0.2, idle()));
     CHECK(!MSRBegin(&m, MiniSightRecorderSourceManual, 0.5, idle()));
-    CHECK(m.owner == MiniSightRecorderSourceManual);
-    CHECK(!MSRAutomaticActive(&m, false, 0.6, idle()) && !m.stopWanted);
+    CHECK(m.owner == MiniSightRecorderSourceAutomatic); /* Long press cannot adopt MCP capture. */
+    CHECK(!MSRToggle(&m, 0.5, live()) && m.owner == MiniSightRecorderSourceAutomatic);
+    CHECK(!MSRAutomaticActive(&m, false, 0.6, idle()) && m.stopWanted);
+    CHECK(MSRStartReply(&m, m.epoch, true, 1, live()) == MSRStop);
+    CHECK(m.owner == MiniSightRecorderSourceAutomatic && m.pendingStop);
+    CHECK(!MSRRequestStop(&m, MiniSightRecorderSourceManual, 1.1, live()));
+    CHECK(!m.cancelled);
+    CHECK(MSRStopReply(&m, m.epoch, true, true, 2) == MSRSave);
+    CHECK(MSRSaved(&m, m.epoch, true, 2.1) == MSRReport);
+    m=enabled(); CHECK(MSRAutomaticActive(&m, true, 0, idle()) == MSRStart);
     CHECK(!MSRStartReply(&m, m.epoch, true, 1, live()));
-    CHECK(!MSRConfigure(&m, false, true, 2, live()) && m.owned);
-    CHECK(!MSRRequestStop(&m, MiniSightRecorderSourceAutomatic, 2.1, live()));
-    CHECK(MSRConfigure(&m, false, false, 3, live()) == MSRStop);
-    CHECK(!MSRConfigure(&m, false, false, 3.1, live()));
+    CHECK(MSRConfigure(&m, false, true, 2, live()) == MSRStop);
+    CHECK(m.pendingStop && m.owner == MiniSightRecorderSourceAutomatic);
+    CHECK(!MSRRequestStop(&m, MiniSightRecorderSourceManual, 2.1, live()));
+    CHECK(!MSRConfigure(&m, false, true, 3, live()));
+    m=enabled(); CHECK(MSRToggle(&m, 0, idle()) == MSRStart); /* Manual still starts. */
+    CHECK(!MSRStartReply(&m, m.epoch, true, 1, live()));
+    CHECK(MSRToggle(&m, 1, live()) == MSRStop); /* Manual still stops its own session. */
     m=enabled(); CHECK(!MSRConfigure(&m, true, false, 0, idle()));
     CHECK(MSRAutomaticActive(&m, true, 0, idle()) == MSRStart);
     CHECK(!MSRBegin(&m, MiniSightRecorderSourceManual, 0.5, idle()));
     CHECK(m.owner == MiniSightRecorderSourceAutomatic); /* Disabled cannot promote. */
-    CHECK(!MSRConfigure(&m, false, false, 0.8, idle()) && m.cancelled);
+    CHECK(!MSRConfigure(&m, false, false, 0.8, idle()) && !m.cancelled && m.stopWanted);
     CHECK(MSRStartReply(&m, m.epoch, true, 1, live()) == MSRStop);
     m=recording();
     CHECK(!MSRRequestStop(&m, (MiniSightRecorderSource)999, 3, live()));
@@ -158,6 +173,45 @@ static void scenarios(void) {
     CHECK(!MSRConfigure(&m, true, true, 604, idle())); /* No automatic restart after limit. */
     CHECK(!MSRAutomaticActive(&m, false, 605, idle()));
     CHECK(MSRAutomaticActive(&m, true, 606, idle()) == MSRStart);
+}
+
+static void short_clips(void) {
+    const double lengths[] = {0.05, 0.5, 1.0, 2.0, 3.0};
+    for (unsigned owner=1; owner<=2; ++owner) {
+        for (unsigned pending=0; pending<2; ++pending) {
+            for (unsigned i=0; i<sizeof(lengths)/sizeof(lengths[0]); ++i) {
+                MSRMachine m=enabled();
+                MiniSightRecorderSource source=(MiniSightRecorderSource)owner;
+                CHECK(MSRBegin(&m, source, 0, idle())==MSRStart);
+                double now=lengths[i];
+                if (pending) {
+                    CHECK(!MSRRequestStop(&m, source, now, idle()));
+                    CHECK(m.stopWanted && !m.cancelled);
+                    CHECK(MSRStartReply(&m, m.epoch, true, now+0.01, live())==MSRStop);
+                } else {
+                    CHECK(!MSRStartReply(&m, m.epoch, true, 0.01, live()));
+                    CHECK(MSRRequestStop(&m, source, now, live())==MSRStop);
+                }
+                CHECK(MSRStopReply(&m, m.epoch, true, true, now+0.02)==MSRSave);
+                CHECK(MSRSaved(&m, m.epoch, true, now+0.03)==MSRReport);
+                CHECK(!MSRBusy(&m) && m.state==MiniSightRecorderIdle);
+            }
+        }
+    }
+    MSRMachine m; MSRInit(&m);
+    CHECK(!MSRConfigure(&m, false, true, 0, idle()));
+    CHECK(!MSRAutomaticActive(&m, true, 0, idle()) && !MSRBusy(&m));
+    CHECK(MSRToggle(&m, 1, idle())==MSRStart); // auto off still allows manual capture
+    CHECK(!MSRStartReply(&m, m.epoch, true, 1.1, live()));
+    CHECK(!MSRAutomaticActive(&m, false, 1.2, live()) && m.owned);
+    CHECK(MSRToggle(&m, 2, live())==MSRStop);
+    CHECK(MSRStopReply(&m, m.epoch, true, true, 2.1)==MSRSave);
+    CHECK(MSRSaved(&m, m.epoch, true, 2.2)==MSRReport);
+    m=enabled(); CHECK(MSRBegin(&m, MiniSightRecorderSourceAutomatic, 0, idle())==MSRStart);
+    CHECK(!MSRCancel(&m, 0.1, idle()) && m.cancelled);
+    CHECK(MSRStartReply(&m, m.epoch, true, 0.2, live())==MSRStop);
+    CHECK(MSRStopReply(&m, m.epoch, true, true, 0.3)==MSRReport);
+    CHECK(m.issue==MiniSightRecorderIssueCancelled && !m.saving);
 }
 
 static uint32_t rng=0x58031555;
@@ -261,7 +315,7 @@ static void files(void) {
     CHECK(!unlink(source)); CHECK(!rmdir(directory)); CHECK(!rmdir(root));
 }
 int main(void) {
-    scenarios(); fuzz(); files();
+    scenarios(); short_clips(); fuzz(); files();
     printf("PASS: %u checks; 100000 reducer events; real POSIX artifact cases\n",checks);
     return 0;
 }

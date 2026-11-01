@@ -5,12 +5,24 @@
 #import <Foundation/Foundation.h>
 NS_ASSUME_NONNULL_BEGIN
 
+/* Stage attached only to SaveFailed; identifies where artifact handling stopped. */
+typedef NS_ENUM(NSInteger, MiniSightRecorderSaveStage) {
+    MiniSightRecorderSaveStageNone = 0,
+    MiniSightRecorderSaveStageDestination,
+    MiniSightRecorderSaveStageSourceMissing,
+    MiniSightRecorderSaveStageCopy,
+    MiniSightRecorderSaveStageInspect,
+    MiniSightRecorderSaveStagePublish,
+    MiniSightRecorderSaveStageUnknown
+};
+
 /* Every observation/result and every property access belongs to the main thread.
    Commands called off-main are enqueued onto main. No implicit external adoption. */
 @interface MiniSightRecordingResult : NSObject
 @property(nonatomic, readonly) uint64_t epoch;
 @property(nonatomic, readonly) BOOL success;
 @property(nonatomic, readonly) MiniSightRecorderIssue issue;
+@property(nonatomic, readonly) MiniSightRecorderSaveStage saveStage;
 @property(nonatomic, readonly) NSInteger systemErrorCode; /* Numeric only; no private text. */
 @property(nonatomic, readonly, copy, nullable) NSURL *fileURL; /* Durable, verified App artifact. */
 @property(nonatomic, readonly) uint64_t byteCount;
@@ -38,6 +50,9 @@ typedef void (^MiniSightRecorderResultHandler)(MiniSightRecordingResult *result)
    URL of Documents/MiniSight/recordings. There is no guessed-container fallback.
    New directory is a main-thread snapshot; an active session keeps its start snapshot.
    Disabling a source drains only the session owned by that source. */
+/* Apply source switches immediately, before asynchronous directory preparation.
+   This never starts recording, and never alters another source's owner. */
+- (void)setAutomaticEnabled:(BOOL)automaticEnabled manualEnabled:(BOOL)manualEnabled;
 - (void)configureAutomaticEnabled:(BOOL)automaticEnabled
                    manualEnabled:(BOOL)manualEnabled
                  outputDirectory:(nullable NSURL *)directory;

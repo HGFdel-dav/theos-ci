@@ -2,6 +2,7 @@ name: MiniSight Build
 
 on:
   push:
+    branches: [minisight-0.4.0-chat-freeze]
     paths:
       - 'debs/MiniSight/**'
       - '.github/workflows/build-minisight.yml'
@@ -23,7 +24,23 @@ jobs:
           filter: blob:none
           sparse-checkout: |
             debs/MiniSight
+      - name: Portable regression checks
+        working-directory: debs/MiniSight
+        run: |
+          set -euo pipefail
+          python3 tools/check_host.py
+          clang -std=c11 -O2 -Wall -Wextra -Werror tests/recorder/recorder_test.c -o "$RUNNER_TEMP/ms-recorder"
+          "$RUNNER_TEMP/ms-recorder"
+          clang -std=c11 -O2 -Wall -Wextra -Werror tests/layout_test.c -lm -o "$RUNNER_TEMP/ms-layout"
+          "$RUNNER_TEMP/ms-layout"
+          clang -std=c11 -O2 -Wall -Wextra -Werror tests/gravity_test.c -lm -o "$RUNNER_TEMP/ms-gravity"
+          "$RUNNER_TEMP/ms-gravity"
+          clang -std=c11 -O2 -Wall -Wextra -Werror tests/chat/chat_test.c tools/chat/ChatCore.c -o "$RUNNER_TEMP/ms-chat"
+          "$RUNNER_TEMP/ms-chat"
+          python3 tools/chat/run_local_checks.py
       - name: Toolchain
+        env:
+          DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
         run: |
           set -euo pipefail
           brew install ldid xz dpkg
@@ -32,6 +49,8 @@ jobs:
           (cd "$HOME/sdks" && git sparse-checkout set iPhoneOS15.5.sdk)
       - name: Build
         working-directory: debs/MiniSight
+        env:
+          DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
         run: |
           set -euo pipefail
           export THEOS="$HOME/theos"

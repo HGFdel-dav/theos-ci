@@ -64,6 +64,7 @@ static BOOL MSRBackendABI(Class cls) {
 @property(nonatomic) uint64_t epoch;
 @property(nonatomic) BOOL success;
 @property(nonatomic) MiniSightRecorderIssue issue;
+@property(nonatomic) MiniSightRecorderSaveStage saveStage;
 @property(nonatomic) NSInteger systemErrorCode;
 @property(nonatomic, copy, nullable) NSURL *fileURL;
 @property(nonatomic) uint64_t byteCount;
@@ -72,7 +73,7 @@ static BOOL MSRBackendABI(Class cls) {
 @implementation MiniSightRecordingResult
 @end
 
-typedef void (^MSRFileCompletion)(BOOL, NSURL *, uint64_t, double);
+typedef void (^MSRFileCompletion)(BOOL, NSURL *, uint64_t, double, MiniSightRecorderSaveStage);
 @interface MSRFileJob : NSObject {
     atomic_bool _cancelled;
     dispatch_queue_t _queue;
@@ -99,12 +100,18 @@ typedef void (^MSRFileCompletion)(BOOL, NSURL *, uint64_t, double);
     }
     return self;
 }
-- (void)finish:(BOOL)verified duration:(double)duration {
+- (void)finish:(BOOL)verified duration:(double)duration stage:(MiniSightRecorderSaveStage)stage {
     if (_done) return;
     _done = YES;
     verified = verified && !atomic_load(&_cancelled) && isfinite(duration) && duration > 0.0;
-    if (verified) verified = MSRFilePublish(_dirFD, _temporaryName.UTF8String,
-        _finalName.UTF8String, _bytes, &_cancelled, &_published);
+    if (verified) {
+        stage = MiniSightRecorderSaveStagePublish;
+        verified = MSRFilePublish(_dirFD, _temporaryName.UTF8String,
+            _finalName.UTF8String, _bytes, &_cancelled, &_published);
+        if (!verified) stage = MiniSightRecorderSaveStagePublish;
+    } else if (atomic_load(&_cancelled)) {
+        stage = MiniSightRecorderSaveStageUnknown;
+    }
     MSRFileCleanup(_dirFD, _temporaryName.UTF8String, _finalName.UTF8String,
                    _published && !verified);
     _dirFD = -1;
@@ -112,19 +119,20 @@ typedef void (^MSRFileCompletion)(BOOL, NSURL *, uint64_t, double);
     MSRFileCompletion completion = _completion;
     _completion = nil;
     if (completion) completion(verified, verified ? _finalURL : nil,
-                               verified ? _bytes : 0, verified ? duration : 0.0);
+                               verified ? _bytes : 0, verified ? duration : 0.0,
+                               verified ? MiniSightRecorderSaveStageNone : stage);
 }
 - (void)start:(NSURL *)source directory:(NSURL *)directory completion:(MSRFileCompletion)completion {
     _completion = [completion copy];
     dispatch_async(_queue, ^{
         @autoreleasepool {
             if (atomic_load(&self->_cancelled) || !source.isFileURL || !directory.isFileURL) {
-                [self finish:NO duration:0]; return;
+                [self finish:NO duration:0 stage:MiniSightRecorderSaveStageSourceMissing]; return;
             }
             NSError *error = nil;
             if (![[NSFileManager defaultManager] createDirectoryAtURL:directory
                     withIntermediateDirectories:YES attributes:nil error:&error]) {
-                [self finish:NO duration:0]; return;
+                [self finish:NO duration:0 stage:MiniSightRecorderSaveStageDestination]; return;
             }
             NSString *name = [NSString stringWithFormat:@"rec-%@", NSUUID.UUID.UUIDString];
             self->_temporaryName = [name stringByAppendingString:@".partial.mp4"];
@@ -134,7 +142,7 @@ typedef void (^MSRFileCompletion)(BOOL, NSURL *, uint64_t, double);
             if (!MSRFileCopy(source.fileSystemRepresentation, directory.fileSystemRepresentation,
                     self->_temporaryName.UTF8String, &self->_cancelled,
                     &self->_bytes, &self->_dirFD)) {
-                [self finish:NO duration:0]; return;
+                [self finish:NO duration:0 stage:MiniSightRecorderSaveStageCopy]; return;
             }
             self->_asset = [AVURLAsset URLAssetWithURL:self->_temporaryURL options:nil];
             AVURLAsset *asset = self->_asset;
@@ -151,7 +159,7 @@ typedef void (^MSRFileCompletion)(BOOL, NSURL *, uint64_t, double);
                             [asset tracksWithMediaType:AVMediaTypeVideo].count > 0;
                         if (valid) seconds = CMTimeGetSeconds(time);
                     }
-                    [self finish:valid duration:seconds];
+                    [self finish:valid duration:seconds stage:MiniSightRecorderSaveStageInspect];
                 });
             }];
         }
@@ -162,7 +170,7 @@ typedef void (^MSRFileCompletion)(BOOL, NSURL *, uint64_t, double);
     dispatch_async(_queue, ^{
         if (self->_done) return;
         [self->_asset cancelLoading];
-        [self finish:NO duration:0];
+        [self finish:NO duration:0 stage:MiniSightRecorderSaveStageUnknown];
     });
 }
 @end
@@ -181,9 +189,11 @@ static char MSRRecordingObservation;
     uint64_t _dropBaseline;
     NSInteger _systemErrorCode;
     BOOL _observing, _prepared, _publishedState;
+    dispatch_block_t _saveTimeoutWork;
     MiniSightRecorderState _lastState;
     MiniSightRecorderSource _lastOwner;
     MiniSightRecorderIssue _lastIssue;
+    MiniSightRecorderSaveStage _saveStage;
     BOOL _lastQuarantine;
 }
 - (instancetype)initPrivate;
@@ -206,7 +216,9 @@ static char MSRRecordingObservation;
 - (instancetype)initPrivate {
     if ((self = [super init])) {
         MSRInit(&_machine); atomic_init(&_recordingDrops, 0);
-        _fileQueue = dispatch_queue_create("com.openminis.minisight.recorder.files", DISPATCH_QUEUE_SERIAL);
+        dispatch_queue_attr_t fileAttributes = dispatch_queue_attr_make_with_qos_class(
+            DISPATCH_QUEUE_SERIAL, QOS_CLASS_UTILITY, 0);
+        _fileQueue = dispatch_queue_create("com.openminis.minisight.recorder.files", fileAttributes);
         if ([NSThread isMainThread]) [self msrPrepare];
         else dispatch_async(dispatch_get_main_queue(), ^{ [self msrPrepare]; });
     }
@@ -315,6 +327,8 @@ static char MSRRecordingObservation;
     if (action & MSRReport) {
         MiniSightRecordingResult *result = [MiniSightRecordingResult new];
         result.epoch = _machine.epoch; result.issue = _machine.issue;
+        result.saveStage = _machine.issue == MiniSightRecorderIssueSaveFailed
+            ? _saveStage : MiniSightRecorderSaveStageNone;
         result.systemErrorCode = (_machine.issue == MiniSightRecorderIssueStartFailed ||
             _machine.issue == MiniSightRecorderIssueStopFailed) ? _systemErrorCode : 0;
         result.success = _machine.state == MiniSightRecorderIdle && file.isFileURL &&
@@ -324,7 +338,10 @@ static char MSRRecordingObservation;
         MiniSightRecorderResultHandler handler = [self.resultHandler copy];
         if (handler) dispatch_async(dispatch_get_main_queue(), ^{ handler(result); });
     }
-    if (action & MSRCancelSave) { [_fileJob cancel]; _fileJob = nil; }
+    if (action & MSRCancelSave) {
+        [_fileJob cancel]; _fileJob = nil;
+        if (_saveTimeoutWork) { dispatch_block_cancel(_saveTimeoutWork); _saveTimeoutWork = nil; }
+    }
     if (action & MSRStart) [self msrStartBackend];
     if (action & MSRStop) [self msrStopBackend];
     if (action & MSRSave) [self msrSaveURL:file];
@@ -390,17 +407,36 @@ static char MSRRecordingObservation;
     if (!url.isFileURL || !_sessionDirectory.isFileURL) {
         [self msrApply:MSRSaved(&_machine, epoch, false, MSRNow()) file:nil bytes:0 duration:0]; return;
     }
-    _fileJob = [[MSRFileJob alloc] initWithQueue:_fileQueue epoch:epoch];
+    if (_saveTimeoutWork) dispatch_block_cancel(_saveTimeoutWork);
     __weak MiniSightRecorder *weakSelf = self;
+    _saveTimeoutWork = dispatch_block_create(0, ^{
+        dispatch_async(dispatch_get_main_queue(), ^{
+            MiniSightRecorder *strongSelf = weakSelf;
+            if (!strongSelf || strongSelf->_machine.epoch != epoch || !strongSelf->_machine.saving) return;
+            [strongSelf msrApply:MSRTick(&strongSelf->_machine, MSRNow(), [strongSelf msrSnapshot])
+                             file:nil bytes:0 duration:0];
+        });
+    });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(60.0 * NSEC_PER_SEC)),
+                   dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), _saveTimeoutWork);
+    _fileJob = [[MSRFileJob alloc] initWithQueue:_fileQueue epoch:epoch];
+    _saveStage = MiniSightRecorderSaveStageNone;
     dispatch_queue_t queue = _fileQueue;
-    [_fileJob start:url directory:_sessionDirectory completion:^(BOOL verified, NSURL *file, uint64_t bytes, double duration) {
+    [_fileJob start:url directory:_sessionDirectory completion:^(BOOL verified, NSURL *file, uint64_t bytes, double duration, MiniSightRecorderSaveStage stage) {
         dispatch_async(dispatch_get_main_queue(), ^{
             MiniSightRecorder *strongSelf = weakSelf;
             if (!strongSelf) {
                 if (file) dispatch_async(queue, ^{ [NSFileManager.defaultManager removeItemAtURL:file error:nil]; });
                 return;
             }
-            if (strongSelf->_fileJob.epoch == epoch) strongSelf->_fileJob = nil;
+            if (strongSelf->_fileJob.epoch == epoch) {
+                strongSelf->_fileJob = nil;
+                if (strongSelf->_saveTimeoutWork) {
+                    dispatch_block_cancel(strongSelf->_saveTimeoutWork);
+                    strongSelf->_saveTimeoutWork = nil;
+                }
+            }
+            if (!verified) strongSelf->_saveStage = stage;
             MSRAction a = MSRSaved(&strongSelf->_machine, epoch, verified, MSRNow());
             BOOL accepted = (a & MSRReport) && strongSelf->_machine.state == MiniSightRecorderIdle;
             /* A stale, cancelled or expired job can never announce success. Its unique
@@ -413,7 +449,9 @@ static char MSRRecordingObservation;
     }];
 }
 - (void)msrUpdateTimer {
-    BOOL needsTimer = MSRBusy(&_machine) && _machine.state != MiniSightRecorderError;
+    /* Saving is pure background file work; do not poll ReplayKit on main every 250 ms. */
+    BOOL needsTimer = (_machine.pendingStart || _machine.pendingStop || _machine.owned) &&
+                      _machine.state != MiniSightRecorderError;
     if (!needsTimer) {
         if (_timer) { dispatch_source_cancel(_timer); _timer = nil; }
         return;
@@ -430,6 +468,14 @@ static char MSRRecordingObservation;
                          file:nil bytes:0 duration:0];
     });
     dispatch_resume(_timer);
+}
+- (void)setAutomaticEnabled:(BOOL)automatic manualEnabled:(BOOL)manual {
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{ [self setAutomaticEnabled:automatic manualEnabled:manual]; });
+        return;
+    }
+    [self msrApply:MSRConfigure(&_machine, automatic, manual, MSRNow(), [self msrSnapshot])
+               file:nil bytes:0 duration:0];
 }
 - (void)configureAutomaticEnabled:(BOOL)automatic manualEnabled:(BOOL)manual outputDirectory:(NSURL *)directory {
     if (![NSThread isMainThread]) {

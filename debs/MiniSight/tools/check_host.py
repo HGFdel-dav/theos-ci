@@ -48,21 +48,22 @@ recorder_core = read('tools/recorder/MiniSightRecorderCore.h')
 ok('MiniSightRecorder.m' in makefile and 'MiniSightRecorder.h' in tweak, '3a recorder implementation is not built/imported')
 ok('MiniSightRecorder.sharedRecorder toggle' in tweak and 'gMiniSightRecorderConfigured' in tweak,
    '3b manual long-press is not routed behind configuration readiness')
-ok('configureAutomaticEnabled:automatic' in tweak and 'setAutomaticActive:active' in tweak,
-   '3c automatic source is not configured/edge-triggered')
-config_body = tweak[tweak.index('static void MiniSightConfigureRecorder(void) {'):]
+ok('configureAutomaticEnabled:automatic' in tweak and 'setAutomaticActive:(active && gMiniSightRecorderAutomaticEnabled)' in tweak,
+   '3c automatic source is not independently gated')
+config_body = tweak[tweak.index('static void MiniSightConfigureRecorderWithCompletion(void (^completion)(void)) {'):]
 config_body = config_body[:config_body.index('\n}\n')]
-ok('if (gMiniSightRecorderConfigured)' in config_body and
-   config_body.index('configureAutomaticEnabled:automatic') < config_body.index('setAutomaticActive:gMiniSightActivityExecuting'),
-   '3c2 recorder auto-edge runs before destination configuration')
+ok('setAutomaticEnabled:automatic manualEnabled:manual' in config_body and
+   config_body.index('setAutomaticEnabled:automatic') < config_body.index('dispatch_async') and
+   'MiniSightReadActivitySnapshot();' in config_body and 'setAutomaticActive:gMiniSightActivityExecuting' not in tweak,
+   '3c2 recorder source flags must precede IO; capture must use a fresh activity snapshot')
 ok('executingCount' in tweak and 'MiniSightActivityNote' in tweak and 'pendingApprovalCount' not in tweak[tweak.index('static void MiniSightApplyActivitySnapshot'):tweak.index('static void MiniSightReadActivitySnapshot')],
    '3d automatic capture must depend only on valid device-execution phase')
 ok('gMiniSightActivityPID' in tweak and 'gMiniSightActivityInstanceID' in tweak and 'activeProcessAlive' in tweak,
    '3d2 transient snapshot read failure can stop a live owned recording')
 ok('setAutomaticActive:NO' not in tweak[tweak.index('static void MiniSightDestroyUI(void) {'):tweak.index('static void MiniSightReloadSettings(void) {')],
    '3d3 UI reconstruction must not end an active automatic recording')
-ok('MiniSightRecorderSourceAutomatic' in recorder_core and 'owner != MiniSightRecorderSourceAutomatic' in recorder_core,
-   '3e automatic stop is not owner-scoped')
+ok('MiniSightRecorderSourceAutomatic' in recorder_core and 'source != m->owner' in recorder_core,
+   '3e recorder stop is not owner-scoped')
 ok('MSRMethodMatches' in recorder and 'os.majorVersion != 15 || os.minorVersion != 5' in recorder,
    '3f backend ABI or exact OS gate is missing')
 ok('MiniSightRecorderStartReply' not in recorder and 'MSRStartReply' in recorder_core,
@@ -73,16 +74,23 @@ ok('startRecordingWithHandler' not in tweak and 'stopRecordingWithOutputURL' not
    '3i legacy ReplayKit path remains active')
 ok('MiniSightRecorderIssueText' in tweak and 'systemErrorCode' in tweak,
    '3j recorder error code is not surfaced')
+ok('recording-last.json' in tweak and 'result.fileURL.lastPathComponent' in tweak,
+   '3k successful recordings lack a discoverable result index')
 
 # ---- 4. 长按开关真正生效 ----
 ok('minisight.longPress' in tweak, '4a 未读取长按开关')
 ok('MiniSightLongPressEnabled()' in tweak, '4b 缺少长按开关读取函数')
 toggle = tweak[tweak.index('static void MiniSightToggleRecording'):]
 toggle = toggle[:toggle.index('\n}\n')]
-ok('if (!MiniSightLongPressEnabled()) return;' in toggle, '4c 关闭开关后仍会切换录屏')
+ok('MiniSightLongPressEnabled()) return;' in toggle and 'gMiniSightRecorderManualEnabled' in toggle,
+   '4c 关闭开关后仍会切换录屏')
 lp = tweak[tweak.index('- (void)handleLongPress:(UILongPressGestureRecognizer *)press {'):]
 lp = lp[:lp.index('\n}\n')]
-ok('MiniSightLongPressEnabled()' in lp, '4d 长按手势没看开关')
+ok('MiniSightToggleRecording();' in lp and 'refreshPreferences:' in toggle, '4d 长按未读取当前手动开关')
+ok('gMiniSightRecorderConfigured && sameContainer' in toggle and
+   'setAutomaticEnabled:automatic manualEnabled:manual' in toggle,
+   '4d2 已就绪时仍每次重建录屏目录')
+ok('MiniSightConfigureRecorderWithCompletion(^{' in toggle, '4d3 目录未就绪时没有完整初始化回退')
 ok('UIGestureRecognizerStateBegan' in lp, '4e 长按缺 Began 分支')
 ok('MiniSightInteractionBegin' in lp, '4f 长按未冻结漫游')
 # 长按手势必须挂在宿主这一侧（不是桌宠内部）
@@ -135,14 +143,54 @@ for name, text in (('Tweak.xm', tweak), ('MiniSightPet.m', pet_m), ('MiniSightLa
 ok('statusCode' in tweak, '10a 没看 HTTP 状态码')
 ok('status == 429' in tweak, '10b 没专门处理 429 限流')
 ok('MiniSightAIShortReason(status, detail)' in tweak, '10c 没把状态码翻成人话')
-ok('MiniSightShowStatusLine(why)' in tweak, '10d 出错时没显示原因')
-ok(tweak.count('else MiniSightSayPresetLine();') == 2, '10e 预设话调用点数量不对（只该剩「没配过」和「无话可说」两处）')
-ok('else if (why.length) MiniSightShowStatusLine(why);' in tweak, '10e2 有原因时仍可能走到预设话')
-ok('if (data.length) MiniSightShowStatusLine(@"AI 设置没填全（地址/Key/模型）");' in tweak, '10e3 填了但没填全时没提示')
+ok('MiniSightAIResponseText' in tweak and 'MiniSightAITextFromObject' in tweak, '10d AI 响应格式覆盖不够')
+ok('MiniSightSayPresetLine();' in tweak, '10e AI 失败没有预制回退')
+ok('AI 配置不完整；保留原配置并回退预制句子' in tweak, '10e2 不完整配置没有安全回退')
+ok('AI 返回了空内容（200），已回退预制句子' in tweak, '10e3 空响应没有安全回退')
 ok('MiniSightAIDetail' in tweak and 'ai-last.txt' in tweak, '10f 没留诊断文件/摘要')
 ok('withString:@"***"' in tweak, '10g 诊断文本没做 key 脱敏')
 ok('timeoutInterval = 6.0' in tweak, '10h 超时时间与提示不一致')
 ok('AI 被限流（429）' in tweak, '10i 429 文案缺失')
+
+# ---- 12. 原生回前台能力 + single-flight，避免和用户按 Home 抢 ----
+native_valid = tweak[tweak.index('if (valid) {'):]
+native_valid = native_valid[:native_valid.index('BOOL endedExecution')]
+ok('gMiniSightAppNativeReturn = [activity[@"nativeReturn"] boolValue]' in native_valid,
+   '12a 没有从有效活动快照读取原生返回能力')
+return_body = tweak[tweak.index('static void MiniSightBringMinisFront(void) {'):]
+return_body = return_body[:return_body.index('\n}\n')]
+ok('if (gMiniSightAppNativeReturn) return;' in return_body,
+   '12b 原生 App 已会返回时插件仍重复拉前台')
+ok('dispatch_block_cancel(gMiniSightPendingReturn)' in return_body and
+   'gMiniSightPendingReturn = dispatch_block_create' in return_body,
+   '12c 多次停止没有合并为一个回前台任务')
+ok('++gMiniSightReturnGeneration' in return_body and
+   'generation != gMiniSightReturnGeneration' in return_body,
+   '12c2 已排队的旧回前台任务仍会执行')
+ok('MiniSightMinisIsFrontmost()' in return_body,
+   '12d 回前台前不检查 Minis 是否已在前台')
+ok('0.35 * NSEC_PER_SEC' not in return_body and '1.0 * NSEC_PER_SEC' in return_body,
+   '12e 回前台仍抢在 App 原生返回之前')
+ok('SBWorkspace' in tweak and 'frontmostApplication' in tweak,
+   '12f 缺少前台查询且取不到时有兜底')
+
+# ---- 13. AI 多轮聊天面板接入 ----
+ok('#import "MiniSightChatPanel.h"' in tweak, '13a 聊天面板未纳入宿主')
+ok('MiniSightChatPanel.sharedPanel.containerPath = gMiniSightContainer' in tweak,
+   '13b 聊天面板没有 App 容器')
+
+tap = tweak[tweak.index('- (void)handleSingleTap:(UITapGestureRecognizer *)tap {'):]
+tap = tap[:tap.index('\n}\n')]
+ok('showInWindowScene' in tap and 'MiniSightSpeakLine();' in tap,
+   '13c 单击仍只生成一句话（无聊天/无回退）')
+ok('[MiniSightChatPanel.sharedPanel close]' in tweak[tweak.index('static void MiniSightUserHide'):tweak.index('/// 录屏开关')],
+   '13d 隐藏桌宠时聊天面板不收起')
+destroy = tweak[tweak.index('static void MiniSightDestroyUI(void) {'):tweak.index('static void MiniSightReloadSettings(void) {')]
+ok('[MiniSightChatPanel.sharedPanel close]' in destroy, '13e 重建浮窗后聊天窗口残留')
+makefile_files = makefile[makefile.index('MiniSight_FILES'):]
+makefile_files = makefile_files[:makefile_files.index('\n')]
+ok('MiniSightAI.m' in makefile_files and 'MiniSightChatPanel.m' in makefile_files and
+   'tools/chat/ChatCore.c' in makefile_files, '13f 聊天实现未纳入构建')
 
 # ---- 11. 两种显示模式严格隔离：常驻 vs MCP 活动 ----
 show_body = tweak[tweak.index('static void MiniSightShow(void) {'):]
@@ -165,6 +213,47 @@ ok('gMiniSightIdleHide' not in tweak and 'gMiniSightMaxShow' not in tweak,
    '11e 存在会截断有效 MCP 调用的自动隐藏计时器')
 ok('dispatch_after' not in tweak[tweak.index('static void MiniSightArmIdleHide(void)'):tweak.index('static void MiniSightShowLine(')],
    '11f 状态通知仍能启动空闲自动隐藏')
+
+# ---- 14. 录屏保存必须分阶段失败，不能只报一个总错误 ----
+record_h = read('MiniSightRecorder.h')
+record_m = read('MiniSightRecorder.m')
+for stage in ('Destination', 'SourceMissing', 'Copy', 'Inspect', 'Publish'):
+    ok('MiniSightRecorderSaveStage' + stage in record_h, '14 缺少保存阶段码 ' + stage)
+ok(record_m.count('stage:MiniSightRecorderSaveStage') >= 5,
+   '14a 文件任务失败点未逐段标注')
+ok('result.saveStage' in record_m and 'result.saveStage' in tweak,
+   '14b 保存阶段未传到界面')
+ok('MiniSightRecorderSaveStageText' in tweak and 'case MiniSightRecorderIssueSaveFailed: return MiniSightRecorderSaveStageText' in tweak,
+   '14c SaveFailed 仍只显示笼统错误')
+ok('1KB' in record_m or '1024' in record_m, '14d 成功最小字节校验被放宽')
+
+# ---- 15. 重力有真实传感器回退与最小诊断 ----
+ok('isDeviceMotionAvailable' in tweak and 'isAccelerometerAvailable' in tweak,
+   '15a 未检查两种传感器能力')
+ok('startAccelerometerUpdatesToQueue' in tweak and 'accelerometer fallback' in tweak,
+   '15b deviceMotion 不可用时没有加速度计回退')
+ok('gravity-last.json' in tweak and 'MiniSightGravityDiagnostic' in tweak,
+   '15c 重力启动/回退/错误没有本地诊断')
+ok('MiniSightApplyGravitySample' in tweak and
+   tweak.count('MiniSightApplyGravitySample(') >= 3,
+   '15d 两种传感器没有共用倾斜/抖动应用链')
+
+# ---- 16. 诊断日志默认关闭、有上限、不记录内容 ----
+log_h = read('MiniSightLog.h')
+log_m = read('MiniSightLog.m')
+mini_settings = open(os.path.normpath(os.path.join(ROOT,
+    '../../../OpenMinis-work/src/ios/Views/Settings/MiniSightSettingsView.swift')), encoding='utf-8').read()
+ok('minisight.diagnostics' in tweak and 'minisight.diagnostics' in mini_settings,
+   '16a 诊断开关未接到设置/宿主')
+ok('@AppStorage("minisight.diagnostics") private var diagnostics = false' in mini_settings,
+   '16b 诊断不是默认关闭')
+ok('200 * 1024' in log_m and 'diagnostic.log.1' in log_m, '16c 日志没有容量轮转')
+ok('0600' in log_m, '16d 日志权限不严')
+ok('MSDiagConfigure' in log_m and 'atomic_bool' in log_m, '16e 日志未做异步开关')
+ok('MiniSightLog.m' in makefile, '16f 日志实现未纳入构建')
+ok('recorder state=' in tweak and 'activity valid=' in tweak and 'ai issue=' in read('MiniSightAI.m'),
+   '16f 关键链路没有诊断点')
+ok('status.txt' in log_m or 'Key' not in log_m, '16g 日志边界说明')
 
 print('检查项：%d' % checks)
 for f in fails:

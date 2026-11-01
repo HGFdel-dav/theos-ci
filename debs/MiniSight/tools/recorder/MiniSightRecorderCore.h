@@ -72,12 +72,12 @@ static inline MSRAction MSRObserve(MSRMachine *m, MSRSnapshot s) {
 static inline MSRAction MSRRequestStop(MSRMachine *m,
         MiniSightRecorderSource source, double now, MSRSnapshot s) {
     if ((source != MiniSightRecorderSourceManual && source != MiniSightRecorderSourceAutomatic) ||
-        (source == MiniSightRecorderSourceAutomatic &&
-         m->owner != MiniSightRecorderSourceAutomatic)) return MSRNoAction;
+        source != m->owner) return MSRNoAction;
     if (m->pendingStart) {
         m->stopWanted = true;
-        m->cancelled = true;
-        return MSRNoAction; /* Unaccepted start has no ownership to stop. */
+        /* A normal stop during start is not cancellation: drain the accepted
+           session and save any valid short clip. Only MSRCancel/timeouts discard. */
+        return MSRNoAction;
     }
     if (!m->owned || m->pendingStop || m->saving) return MSRNoAction;
     MSRAction observed = MSRObserve(m, s);
@@ -92,9 +92,7 @@ static inline MSRAction MSRBegin(MSRMachine *m,
     if (source != MiniSightRecorderSourceManual &&
         source != MiniSightRecorderSourceAutomatic) return MSRNoAction;
     if (MSRBusy(m)) {
-        if (source == MiniSightRecorderSourceManual && m->manualEnabled && !m->stopWanted &&
-            (m->pendingStart || (m->owned && !m->pendingStop)))
-            m->owner = MiniSightRecorderSourceManual; /* Explicit manual promotion. */
+        /* Manual long-press never adopts or stops an automatic MCP session. */
         return MSRNoAction;
     }
     bool ae = m->automaticEnabled, me = m->manualEnabled, aa = m->automaticActive;
@@ -132,7 +130,7 @@ static inline MSRAction MSRStartReply(MSRMachine *m, uint64_t epoch,
     m->owned = true;
     m->state = MiniSightRecorderRecording;
     if (m->stopWanted || m->reported || now - m->requestedAt >= 600.0)
-        return a | MSRRequestStop(m, MiniSightRecorderSourceManual, now, s);
+        return a | MSRRequestStop(m, m->owner, now, s);
     return a;
 }
 static inline MSRAction MSRStopReply(MSRMachine *m, uint64_t epoch,
@@ -173,18 +171,16 @@ static inline MSRAction MSRTick(MSRMachine *m, double now, MSRSnapshot s) {
         return a | MSRCancelSave | MSRFail(m, MiniSightRecorderIssueSaveTimeout);
     }
     if (m->owned && !m->pendingStop && now - m->requestedAt >= 600.0)
-        return a | MSRRequestStop(m, MiniSightRecorderSourceManual, now, s);
+        return a | MSRRequestStop(m, m->owner, now, s);
     return a;
 }
 static inline MSRAction MSRConfigure(MSRMachine *m, bool automatic,
         bool manual, double now, MSRSnapshot s) {
-    bool autoRising = automatic && !m->automaticEnabled;
     m->automaticEnabled = automatic; m->manualEnabled = manual;
     if ((m->owner == MiniSightRecorderSourceAutomatic && !automatic) ||
         (m->owner == MiniSightRecorderSourceManual && !manual))
-        return MSRRequestStop(m, MiniSightRecorderSourceManual, now, s);
-    if (autoRising && m->automaticActive && !MSRBusy(m))
-        return MSRBegin(m, MiniSightRecorderSourceAutomatic, now, s);
+        return MSRRequestStop(m, m->owner, now, s);
+    /* Settings alone never start capture from an old activity snapshot. */
     return MSRNoAction;
 }
 static inline MSRAction MSRAutomaticActive(MSRMachine *m, bool active,
@@ -202,7 +198,7 @@ static inline MSRAction MSRCancel(MSRMachine *m, double now, MSRSnapshot s) {
         m->saving = false;
         return MSRCancelSave | MSRFail(m, MiniSightRecorderIssueCancelled);
     }
-    return MSRRequestStop(m, MiniSightRecorderSourceManual, now, s);
+    return MSRRequestStop(m, m->owner, now, s);
 }
 static inline MSRAction MSRToggle(MSRMachine *m, double now, MSRSnapshot s) {
     if (!m->manualEnabled || now - m->lastToggle < 0.35) return MSRNoAction;
