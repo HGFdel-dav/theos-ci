@@ -32,6 +32,7 @@ jobs:
           dpkg-deb -c "$RUNNER_TEMP/out.deb" | sed 's/  */ /g' | cut -d' ' -f1,6 > listing.txt
           cat listing.txt
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: insulation-rh3-${{ matrix.scheme }}
           path: |
