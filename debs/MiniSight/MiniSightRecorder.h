@@ -38,6 +38,9 @@ typedef void (^MiniSightRecorderResultHandler)(MiniSightRecordingResult *result)
    URL of Documents/MiniSight/recordings. There is no guessed-container fallback.
    New directory is a main-thread snapshot; an active session keeps its start snapshot.
    Disabling a source drains only the session owned by that source. */
+/* Apply source switches immediately, before asynchronous directory preparation.
+   This never starts recording, and never alters another source's owner. */
+- (void)setAutomaticEnabled:(BOOL)automaticEnabled manualEnabled:(BOOL)manualEnabled;
 - (void)configureAutomaticEnabled:(BOOL)automaticEnabled
                    manualEnabled:(BOOL)manualEnabled
                  outputDirectory:(nullable NSURL *)directory;

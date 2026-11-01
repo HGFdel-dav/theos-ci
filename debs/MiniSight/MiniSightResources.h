@@ -7,6 +7,7 @@ NS_ASSUME_NONNULL_BEGIN
 @interface MiniSightResources : NSObject
 + (void)refresh:(void (^)(NSString * _Nullable container, NSDictionary *preferences,
                          BOOL shown, UIImage * _Nullable atlas))completion;
++ (void)refreshPreferences:(void (^)(NSString * _Nullable container, NSDictionary *preferences))completion;
 + (void)writeShown:(BOOL)shown container:(NSString *)container;
 + (void)releaseCachedAtlas;
 @end

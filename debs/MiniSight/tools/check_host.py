@@ -48,21 +48,22 @@ recorder_core = read('tools/recorder/MiniSightRecorderCore.h')
 ok('MiniSightRecorder.m' in makefile and 'MiniSightRecorder.h' in tweak, '3a recorder implementation is not built/imported')
 ok('MiniSightRecorder.sharedRecorder toggle' in tweak and 'gMiniSightRecorderConfigured' in tweak,
    '3b manual long-press is not routed behind configuration readiness')
-ok('configureAutomaticEnabled:automatic' in tweak and 'setAutomaticActive:active' in tweak,
-   '3c automatic source is not configured/edge-triggered')
-config_body = tweak[tweak.index('static void MiniSightConfigureRecorder(void) {'):]
+ok('configureAutomaticEnabled:automatic' in tweak and 'setAutomaticActive:(active && gMiniSightRecorderAutomaticEnabled)' in tweak,
+   '3c automatic source is not independently gated')
+config_body = tweak[tweak.index('static void MiniSightConfigureRecorderWithCompletion(void (^completion)(void)) {'):]
 config_body = config_body[:config_body.index('\n}\n')]
-ok('if (gMiniSightRecorderConfigured)' in config_body and
-   config_body.index('configureAutomaticEnabled:automatic') < config_body.index('setAutomaticActive:gMiniSightActivityExecuting'),
-   '3c2 recorder auto-edge runs before destination configuration')
+ok('setAutomaticEnabled:automatic manualEnabled:manual' in config_body and
+   config_body.index('setAutomaticEnabled:automatic') < config_body.index('dispatch_async') and
+   'MiniSightReadActivitySnapshot();' in config_body and 'setAutomaticActive:gMiniSightActivityExecuting' not in tweak,
+   '3c2 recorder source flags must precede IO; capture must use a fresh activity snapshot')
 ok('executingCount' in tweak and 'MiniSightActivityNote' in tweak and 'pendingApprovalCount' not in tweak[tweak.index('static void MiniSightApplyActivitySnapshot'):tweak.index('static void MiniSightReadActivitySnapshot')],
    '3d automatic capture must depend only on valid device-execution phase')
 ok('gMiniSightActivityPID' in tweak and 'gMiniSightActivityInstanceID' in tweak and 'activeProcessAlive' in tweak,
    '3d2 transient snapshot read failure can stop a live owned recording')
 ok('setAutomaticActive:NO' not in tweak[tweak.index('static void MiniSightDestroyUI(void) {'):tweak.index('static void MiniSightReloadSettings(void) {')],
    '3d3 UI reconstruction must not end an active automatic recording')
-ok('MiniSightRecorderSourceAutomatic' in recorder_core and 'owner != MiniSightRecorderSourceAutomatic' in recorder_core,
-   '3e automatic stop is not owner-scoped')
+ok('MiniSightRecorderSourceAutomatic' in recorder_core and 'source != m->owner' in recorder_core,
+   '3e recorder stop is not owner-scoped')
 ok('MSRMethodMatches' in recorder and 'os.majorVersion != 15 || os.minorVersion != 5' in recorder,
    '3f backend ABI or exact OS gate is missing')
 ok('MiniSightRecorderStartReply' not in recorder and 'MSRStartReply' in recorder_core,
@@ -73,16 +74,19 @@ ok('startRecordingWithHandler' not in tweak and 'stopRecordingWithOutputURL' not
    '3i legacy ReplayKit path remains active')
 ok('MiniSightRecorderIssueText' in tweak and 'systemErrorCode' in tweak,
    '3j recorder error code is not surfaced')
+ok('recording-last.json' in tweak and 'result.fileURL.lastPathComponent' in tweak,
+   '3k successful recordings lack a discoverable result index')
 
 # ---- 4. 长按开关真正生效 ----
 ok('minisight.longPress' in tweak, '4a 未读取长按开关')
 ok('MiniSightLongPressEnabled()' in tweak, '4b 缺少长按开关读取函数')
 toggle = tweak[tweak.index('static void MiniSightToggleRecording'):]
 toggle = toggle[:toggle.index('\n}\n')]
-ok('if (!MiniSightLongPressEnabled()) return;' in toggle, '4c 关闭开关后仍会切换录屏')
+ok('MiniSightLongPressEnabled()) return;' in toggle and 'gMiniSightRecorderManualEnabled' in toggle,
+   '4c 关闭开关后仍会切换录屏')
 lp = tweak[tweak.index('- (void)handleLongPress:(UILongPressGestureRecognizer *)press {'):]
 lp = lp[:lp.index('\n}\n')]
-ok('MiniSightLongPressEnabled()' in lp, '4d 长按手势没看开关')
+ok('MiniSightToggleRecording();' in lp and 'refreshPreferences:' in toggle, '4d 长按未读取当前手动开关')
 ok('UIGestureRecognizerStateBegan' in lp, '4e 长按缺 Began 分支')
 ok('MiniSightInteractionBegin' in lp, '4f 长按未冻结漫游')
 # 长按手势必须挂在宿主这一侧（不是桌宠内部）
@@ -135,10 +139,10 @@ for name, text in (('Tweak.xm', tweak), ('MiniSightPet.m', pet_m), ('MiniSightLa
 ok('statusCode' in tweak, '10a 没看 HTTP 状态码')
 ok('status == 429' in tweak, '10b 没专门处理 429 限流')
 ok('MiniSightAIShortReason(status, detail)' in tweak, '10c 没把状态码翻成人话')
-ok('MiniSightShowStatusLine(why)' in tweak, '10d 出错时没显示原因')
-ok(tweak.count('else MiniSightSayPresetLine();') == 2, '10e 预设话调用点数量不对（只该剩「没配过」和「无话可说」两处）')
-ok('else if (why.length) MiniSightShowStatusLine(why);' in tweak, '10e2 有原因时仍可能走到预设话')
-ok('if (data.length) MiniSightShowStatusLine(@"AI 设置没填全（地址/Key/模型）");' in tweak, '10e3 填了但没填全时没提示')
+ok('MiniSightAIResponseText' in tweak and 'MiniSightAITextFromObject' in tweak, '10d AI 响应格式覆盖不够')
+ok('MiniSightSayPresetLine();' in tweak, '10e AI 失败没有预制回退')
+ok('AI 配置不完整；保留原配置并回退预制句子' in tweak, '10e2 不完整配置没有安全回退')
+ok('AI 返回了空内容（200），已回退预制句子' in tweak, '10e3 空响应没有安全回退')
 ok('MiniSightAIDetail' in tweak and 'ai-last.txt' in tweak, '10f 没留诊断文件/摘要')
 ok('withString:@"***"' in tweak, '10g 诊断文本没做 key 脱敏')
 ok('timeoutInterval = 6.0' in tweak, '10h 超时时间与提示不一致')

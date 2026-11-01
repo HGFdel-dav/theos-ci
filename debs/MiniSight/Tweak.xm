@@ -39,6 +39,7 @@ static void MiniSightShowConfirm(void);
 static void MiniSightAnswerConfirm(BOOL allow);
 static void MiniSightSay(NSString *line);
 static void MiniSightShowBubble(NSString *raw);
+static void MiniSightShowStatusLine(NSString *text);
 static void MiniSightSetAnchor(CGPoint want, BOOL save);
 static void MiniSightFollowBubble(void);
 static void MiniSightPlaceBubble(CGFloat w, CGFloat h);
@@ -57,6 +58,7 @@ static void MiniSightReloadSettings(void);
 static void MiniSightShow(void);
 static void MiniSightCancelConfirm(void);
 static void MiniSightConfigureRecorder(void);
+static void MiniSightConfigureRecorderWithCompletion(void (^completion)(void));
 static void MiniSightReadActivitySnapshot(void);
 static void MiniSightBuildUI(void);
 static void MiniSightRequestResources(BOOL force, void (^completion)(void));
@@ -65,10 +67,14 @@ static NSInteger gMiniSightActivityPID = 0;
 static NSString *gMiniSightActivityInstanceID;
 static BOOL gMiniSightRecorderCallbacksInstalled = NO;
 static BOOL gMiniSightRecorderConfigured = NO;
+static BOOL gMiniSightRecorderAutomaticEnabled = NO;
+static BOOL gMiniSightRecorderManualEnabled = YES;
 static NSUInteger gMiniSightRecorderConfigGeneration = 0;
 static NSUInteger gMiniSightActivityReadGeneration = 0;
 static NSString *MiniSightRecorderIssueText(MiniSightRecorderIssue issue, NSInteger code);
 static void MiniSightInstallRecorderCallbacks(void);
+static void MiniSightInteractionEnd(void);
+static void MiniSightRefreshRecorderSettingsThenReadActivity(void);
 
 static NSString *MiniSightAppContainer(void) { return gMiniSightContainer; }
 static NSString *MiniSightSupportDirectory(void) {
@@ -158,21 +164,37 @@ static void MiniSightInstallRecorderCallbacks(void) {
         }
     };
     recorder.resultHandler = ^(MiniSightRecordingResult *result) {
-        if (result.success)
-            MiniSightSay([NSString stringWithFormat:@"录屏已验证并保存 %.0f 秒", result.duration]);
-        else if (result.issue != MiniSightRecorderIssueNone)
+        if (result.success) {
+            NSString *name = result.fileURL.lastPathComponent ?: @"";
+            NSDictionary *entry = @{@"file": name, @"durationSeconds": @(result.duration),
+                                    @"bytes": @(result.byteCount), @"savedAt": @([[NSDate date] timeIntervalSince1970])};
+            NSString *container = [MiniSightAppContainer() copy];
+            dispatch_async(MiniSightRecorderSetupQueue(), ^{
+                if (container.length) MSBridgeWrite(container, @"recording-last.json", entry);
+            });
+            MiniSightShowStatusLine([NSString stringWithFormat:@"录屏已保存：%@（%.0f秒）", name, result.duration]);
+        } else if (result.issue != MiniSightRecorderIssueNone) {
             MiniSightSay(MiniSightRecorderIssueText(result.issue, result.systemErrorCode));
+        }
     };
     gMiniSightRecorderCallbacksInstalled = YES;
 }
 
 static void MiniSightConfigureRecorder(void) {
+    MiniSightConfigureRecorderWithCompletion(nil);
+}
+
+static void MiniSightConfigureRecorderWithCompletion(void (^completion)(void)) {
     NSCAssert([NSThread isMainThread], @"recorder configuration is main-thread owned");
     MiniSightInstallRecorderCallbacks();
     NSUInteger generation = ++gMiniSightRecorderConfigGeneration;
     NSString *container = [MiniSightAppContainer() copy];
     BOOL automatic = MiniSightRecordingEnabled();
     BOOL manual = MiniSightLongPressEnabled();
+    gMiniSightRecorderAutomaticEnabled = automatic;
+    gMiniSightRecorderManualEnabled = manual;
+    // Source switches take effect now, not after asynchronous directory work.
+    [MiniSightRecorder.sharedRecorder setAutomaticEnabled:automatic manualEnabled:manual];
     dispatch_async(MiniSightRecorderSetupQueue(), ^{
         NSURL *directory = nil;
         if (container.length) {
@@ -188,10 +210,10 @@ static void MiniSightConfigureRecorder(void) {
             if (generation != gMiniSightRecorderConfigGeneration || ![container isEqualToString:gMiniSightContainer]) return;
             [MiniSightRecorder.sharedRecorder configureAutomaticEnabled:automatic
                 manualEnabled:manual outputDirectory:directory];
-            if (directory) gMiniSightRecorderConfigured = YES;
+            gMiniSightRecorderConfigured = directory != nil;
             if (!directory && manual) MiniSightSay(@"录屏目录不可用，录屏功能未就绪");
-            if (gMiniSightRecorderConfigured)
-                [MiniSightRecorder.sharedRecorder setAutomaticActive:gMiniSightActivityExecuting];
+            if (completion) completion();
+            else if (gMiniSightRecorderConfigured) MiniSightReadActivitySnapshot();
         });
     });
 }
@@ -226,7 +248,10 @@ static void MiniSightApplyActivitySnapshot(NSDictionary *activity, NSUInteger ge
     BOOL endedExecution = gMiniSightActivityExecuting && !active && gMiniSightActivityEverExecuted;
     gMiniSightActivityExecuting = active;
     if (active) gMiniSightActivityEverExecuted = YES;
-    [MiniSightRecorder.sharedRecorder setAutomaticActive:active];
+    // Automatic MCP capture is independently gated by the App switch.
+    // Manual long-press remains available through the separate manual flag.
+    if (gMiniSightRecorderConfigured || !active || !gMiniSightRecorderAutomaticEnabled)
+        [MiniSightRecorder.sharedRecorder setAutomaticActive:(active && gMiniSightRecorderAutomaticEnabled)];
     if (endedExecution) {
         gMiniSightActivityEverExecuted = NO;
         MiniSightBringMinisFront();
@@ -247,11 +272,29 @@ static void MiniSightReadActivitySnapshot(void) {
     });
 }
 
+static void MiniSightRefreshRecorderSettingsThenReadActivity(void) {
+    NSCAssert([NSThread isMainThread], @"recorder refresh is main-thread owned");
+    NSUInteger generation = ++gMiniSightActivityReadGeneration; // invalidate old activity reads
+    [MiniSightResources refreshPreferences:^(NSString *container, NSDictionary *preferences) {
+        if (generation != gMiniSightActivityReadGeneration) return;
+        if (container.length) gMiniSightContainer = [container copy];
+        gMiniSightPreferences = [preferences copy] ?: @{};
+        MiniSightConfigureRecorderWithCompletion(^{ MiniSightReadActivitySnapshot(); });
+    }];
+}
+
 static void MiniSightToggleRecording(void) {
-    if (!MiniSightLongPressEnabled()) return;
-    if (!gMiniSightRecorderConfigured) { MiniSightSay(@"录屏控制器尚未就绪，请稍后再试"); return; }
-    MiniSightInstallRecorderCallbacks();
-    [MiniSightRecorder.sharedRecorder toggle];
+    // Read the actual manual switch for every long-press. The App need not post
+    // a new notification, and the automatic switch never gates manual capture.
+    [MiniSightResources refreshPreferences:^(NSString *container, NSDictionary *preferences) {
+        if (container.length) gMiniSightContainer = [container copy];
+        gMiniSightPreferences = [preferences copy] ?: @{};
+        MiniSightConfigureRecorderWithCompletion(^{
+            if (!gMiniSightRecorderManualEnabled || !MiniSightLongPressEnabled()) return;
+            if (!gMiniSightRecorderConfigured) { MiniSightSay(@"录屏控制器尚未就绪，请稍后再试"); return; }
+            [MiniSightRecorder.sharedRecorder toggle];
+        });
+    }];
 }
 
 #pragma mark - 常量
@@ -388,8 +431,21 @@ static void MiniSightStartGravity(void) {
     __weak MiniSightPetView *weakPet = gMiniSightPet;
     [gMiniSightMotionManager startDeviceMotionUpdatesToQueue:[NSOperationQueue mainQueue]
                                                  withHandler:^(CMDeviceMotion *motion, NSError *error) {
-        if (error || !motion || !gMiniSightMotionRunning ||
-            generation != gMiniSightMotionGeneration) return;
+        if (!gMiniSightMotionRunning || generation != gMiniSightMotionGeneration) return;
+        if (error || !motion) {
+            // CoreMotion can terminate a stream after a transient sensor error.
+            // Clear the gate and retry with a fresh generation on the main queue.
+            [gMiniSightMotionManager stopDeviceMotionUpdates];
+            gMiniSightMotionRunning = NO;
+            NSUInteger failedGeneration = generation;
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                if (failedGeneration == gMiniSightMotionGeneration && MiniSightGravityEnabled() &&
+                    gMiniSightWindow && !gMiniSightWindow.hidden && !gMiniSightScreenBlanked &&
+                    ![NSProcessInfo processInfo].lowPowerModeEnabled) MiniSightStartGravity();
+            });
+            return;
+        }
         MiniSightPetView *pet = weakPet;
         if (!pet || pet != gMiniSightPet || !MiniSightGravityEnabled() ||
             !gMiniSightWindow || gMiniSightWindow.hidden || gMiniSightScreenBlanked ||
@@ -419,16 +475,15 @@ static void MiniSightStartGravity(void) {
         CMAcceleration a = motion.userAcceleration;
         CGFloat magnitude = sqrt((CGFloat)(a.x * a.x + a.y * a.y + a.z * a.z));
         NSTimeInterval now = CACurrentMediaTime();
-        if (magnitude > 1.55) {
-            if (!gMiniSightGravityShakeLatched && now - gMiniSightGravityLastImpulseTime > 0.75) {
-                CGFloat direction = gMiniSightGravityRoll;
-                if (fabs(direction) < 0.08) direction = (a.x >= 0.0 ? 1.0 : -1.0);
-                CGFloat strength = MIN(1.0, MAX(0.25, (magnitude - 1.35) / 1.8));
-                [pet triggerGravityImpulseWithDirection:direction strength:strength];
-                gMiniSightGravityShakeLatched = YES;
-                gMiniSightGravityLastImpulseTime = now;
-            }
-        } else if (magnitude < 0.85) {
+        if (MSGravityShakeShouldTrigger(magnitude, gMiniSightGravityShakeLatched) &&
+            now - gMiniSightGravityLastImpulseTime > 0.75) {
+            CGFloat direction = gMiniSightGravityRoll;
+            if (fabs(direction) < 0.08) direction = (a.x >= 0.0 ? 1.0 : -1.0);
+            CGFloat strength = MSGravityShakeStrength(magnitude);
+            [pet triggerGravityImpulseWithDirection:direction strength:strength];
+            gMiniSightGravityShakeLatched = YES;
+            gMiniSightGravityLastImpulseTime = now;
+        } else if (MSGravityShakeShouldReset(magnitude, gMiniSightGravityShakeLatched)) {
             gMiniSightGravityShakeLatched = NO;
         }
     }];
@@ -737,8 +792,8 @@ static void MiniSightStopPulse(void);
 - (void)handleLongPress:(UILongPressGestureRecognizer *)press {
     switch (press.state) {
         case UIGestureRecognizerStateBegan:
+            // The current switch is checked asynchronously by the plugin entry.
             MiniSightInteractionBegin();
-            if (!MiniSightLongPressEnabled()) return;
             [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium] impactOccurred];
             MiniSightToggleRecording();
             break;
@@ -1287,11 +1342,11 @@ static void MiniSightPlaceBubble(CGFloat w, CGFloat h) {
 static void MiniSightShowBubbleWidth(NSString *raw, CGFloat maxW, NSUInteger cap) {
     UIView *host = gMiniSightPet ?: gMiniSightPill;
     UIView *root = gMiniSightWindow.rootViewController.view;
-    if (!host || !root || raw.length == 0) return;
-
-    NSString *text = raw;
-    if (cap > 0 && raw.length > cap)
-        text = [[raw substringToIndex:cap] stringByAppendingString:@"…"];
+    if (!host || !root || ![raw isKindOfClass:NSString.class]) return;
+    NSString *text = [raw stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (!text.length) { MiniSightHideBubble(); return; }
+    if (cap > 0 && text.length > cap)
+        text = [[text substringWithRange:[text rangeOfComposedCharacterSequencesForRange:NSMakeRange(0, cap)]] stringByAppendingString:@"…"];
 
     if (!gMiniSightBubble) {
         UIView *b = [[UIView alloc] init];
@@ -1478,6 +1533,11 @@ static void MiniSightReadStatus(void) {
     if (!container) return;
     NSString *path = [container stringByAppendingPathComponent:@"Documents/MiniSight/status.txt"];
     NSString *text = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
+    // The App owns the native approval UI; never stack a duplicate pet status bubble.
+    if ([text isEqualToString:@"等待你确认"]) {
+        MiniSightHideBubble(); // clear the old status too; do not dismiss an owned approval
+        return;
+    }
     if (text.length) MiniSightShowBubble(text);
 }
 
@@ -1585,6 +1645,44 @@ static void MiniSightAIWriteDiagnosis(NSInteger status, NSString *path, NSString
            atomically:YES encoding:NSUTF8StringEncoding error:nil];
 }
 
+static NSString *MiniSightAITextFromObject(id obj) {
+    if ([obj isKindOfClass:NSString.class]) return [obj stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if ([obj isKindOfClass:NSArray.class]) {
+        NSMutableString *joined = [NSMutableString string];
+        for (id part in obj) {
+            NSString *text = MiniSightAITextFromObject(part);
+            if (text.length) [joined appendString:text];
+        }
+        return joined.copy;
+    }
+    if (![obj isKindOfClass:NSDictionary.class]) return nil;
+    NSString *direct = MiniSightAITextFromObject(obj[@"text"] ?: obj[@"output_text"]);
+    if (direct.length) return direct;
+    NSString *content = MiniSightAITextFromObject(obj[@"content"]);
+    if (content.length) return content;
+    NSString *parts = MiniSightAITextFromObject(obj[@"parts"]);
+    return parts.length ? parts : nil;
+}
+
+static NSString *MiniSightAIResponseText(id obj) {
+    if (![obj isKindOfClass:NSDictionary.class]) return nil;
+    NSArray *choices = obj[@"choices"];
+    if ([choices isKindOfClass:NSArray.class] && choices.count) {
+        id first = choices.firstObject;
+        NSString *text = MiniSightAITextFromObject([first isKindOfClass:NSDictionary.class] ? first[@"message"] : first);
+        if (!text.length && [first isKindOfClass:NSDictionary.class]) text = MiniSightAITextFromObject(first[@"text"]);
+        if (text.length) return text;
+    }
+    NSString *output = MiniSightAITextFromObject(obj[@"output_text"] ?: obj[@"output"]);
+    if (output.length) return output;
+    NSArray *candidates = obj[@"candidates"];
+    if ([candidates isKindOfClass:NSArray.class] && candidates.count) {
+        NSString *text = MiniSightAITextFromObject(candidates.firstObject);
+        if (text.length) return text;
+    }
+    return nil;
+}
+
 /// 单击：有配置就请求 AI 说一句，失败/超时用预置。
 static void MiniSightSpeakLine(void) {
     NSString *container = MiniSightAppContainer();
@@ -1595,9 +1693,8 @@ static void MiniSightSpeakLine(void) {
     if (![base isKindOfClass:[NSString class]] || base.length == 0 ||
         ![key isKindOfClass:[NSString class]] || key.length == 0 ||
         ![model isKindOfClass:[NSString class]] || model.length == 0) {
-        // 填过但没填全 → 明说；从来没配过 → 照旧说预设话
-        if (data.length) MiniSightShowStatusLine(@"AI 设置没填全（地址/Key/模型）");
-        else MiniSightSayPresetLine();
+        if (data.length) MiniSightAIWriteDiagnosis(0, @"", @"AI 配置不完整；保留原配置并回退预制句子");
+        MiniSightSayPresetLine();
         return;
     }
     // Mirror the settings page endpoint builder and preserve gateway paths/queries.
@@ -1607,7 +1704,8 @@ static void MiniSightSpeakLine(void) {
     if (!parts || !scheme.length || ![@[@"http", @"https"] containsObject:scheme] ||
         parts.host.length == 0 || parts.user.length || parts.password.length ||
         parts.fragment.length) {
-        MiniSightShowStatusLine(@"AI 地址不合法，请检查 http(s) 地址");
+        MiniSightAIWriteDiagnosis(0, @"", @"AI 地址非法；回退预制句子");
+        MiniSightSayPresetLine();
         return;
     }
     parts.scheme = scheme;
@@ -1617,7 +1715,11 @@ static void MiniSightSpeakLine(void) {
     else if (![endpointPath hasSuffix:@"/chat/completions"]) endpointPath = [endpointPath stringByAppendingString:@"/chat/completions"];
     parts.percentEncodedPath = endpointPath;
     NSURL *url = parts.URL;
-    if (!url) { MiniSightShowStatusLine(@"AI 地址不对，填不出可用链接"); return; }
+    if (!url) {
+        MiniSightAIWriteDiagnosis(0, @"", @"AI URL 构建失败；回退预制句子");
+        MiniSightSayPresetLine();
+        return;
+    }
 
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
     req.HTTPMethod = @"POST";
@@ -1639,22 +1741,16 @@ static void MiniSightSpeakLine(void) {
         NSString *why = nil;
         if (!e && status >= 200 && status < 300) {
             id obj = [NSJSONSerialization JSONObjectWithData:d options:0 error:nil];
-            if ([obj isKindOfClass:[NSDictionary class]]) {
-                NSArray *choices = obj[@"choices"];
-                if ([choices isKindOfClass:[NSArray class]] && choices.count) {
-                    id msg = choices[0][@"message"];
-                    if ([msg isKindOfClass:[NSDictionary class]] && [msg[@"content"] isKindOfClass:[NSString class]]) {
-                        line = [msg[@"content"] stringByTrimmingCharactersInSet:
-                                [NSCharacterSet whitespaceAndNewlineCharacterSet]];
-                    }
-                }
+            line = MiniSightAIResponseText(obj);
+            if (!line.length) {
+                why = @"AI 返回了空内容（200），已回退预制句子";
+                MiniSightAIWriteDiagnosis(status, url.path, why);
             }
-            if (!line.length) why = @"AI 返回了空内容（200）";
         } else if (e) {
             why = (e.code == NSURLErrorTimedOut)
-                ? @"AI 超时了（6 秒没回）"
-                : [NSString stringWithFormat:@"AI 连不上（%ld）", (long)e.code];
-            NSLog(@"[MiniSight] ai network error %@ %ld", e.domain, (long)e.code);
+                ? @"AI 超时了（6 秒没回），已回退预制句子"
+                : [NSString stringWithFormat:@"AI 连不上（%ld），已回退预制句子", (long)e.code];
+            MiniSightAIWriteDiagnosis(status, @"", why);
         } else {
             NSString *detail = MiniSightAIDetail(d, key);
             why = MiniSightAIShortReason(status, detail);
@@ -1663,7 +1759,6 @@ static void MiniSightSpeakLine(void) {
         }
         dispatch_async(dispatch_get_main_queue(), ^{
             if (line.length) MiniSightShowLine(line);
-            else if (why.length) MiniSightShowStatusLine(why);   // 出错就说清楚，不悄悄换预设话
             else MiniSightSayPresetLine();
         });
     }] resume];
@@ -1708,7 +1803,7 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
         return;
     }
     if ([note isEqualToString:kMiniSightActivityNote]) {
-        MiniSightReadActivitySnapshot();
+        dispatch_async(dispatch_get_main_queue(), ^{ MiniSightRefreshRecorderSettingsThenReadActivity(); });
         return;
     }
     if ([note isEqualToString:kMiniSightBlanked]) {
@@ -1742,7 +1837,7 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
             if (gMiniSightPendingHide) { dispatch_block_cancel(gMiniSightPendingHide); gMiniSightPendingHide = nil; }
             MiniSightArmIdleHide();
             MiniSightShow();
-            MiniSightReadActivitySnapshot();
+            MiniSightRefreshRecorderSettingsThenReadActivity();
         } else {
             // 工具是一条接一条的，隔一两秒就 hide 会闪；等 2.5 秒没下一条再收。
             gMiniSightBurst = NO;

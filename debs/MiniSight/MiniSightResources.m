@@ -66,6 +66,22 @@ static UIImage *MSLoadAtlas(NSString *path) {
     MSAtlasIdentity = identity; MSAtlas = image;
     return image;
 }
++ (void)refreshPreferences:(void (^)(NSString *, NSDictionary *))completion {
+    dispatch_async(MSResourceQueue(), ^{
+        @autoreleasepool {
+            NSString *container = MSFindContainer();
+            NSString *path = container ? [container stringByAppendingPathComponent:@"Library/Preferences/com.openminis.app.plist"] : nil;
+            NSDictionary *prefs = path ? [NSDictionary dictionaryWithContentsOfFile:path] : nil;
+            if (![prefs isKindOfClass:NSDictionary.class]) prefs = @{};
+            NSMutableDictionary *filtered = [NSMutableDictionary dictionary];
+            for (NSString *key in prefs) {
+                if ([key isKindOfClass:NSString.class] && [key hasPrefix:@"minisight."]) filtered[key] = prefs[key];
+            }
+            NSDictionary *snapshot = [filtered copy];
+            dispatch_async(dispatch_get_main_queue(), ^{ if (completion) completion(container, snapshot); });
+        }
+    });
+}
 + (void)refresh:(void (^)(NSString *, NSDictionary *, BOOL, UIImage *))completion {
     dispatch_async(MSResourceQueue(), ^{
         @autoreleasepool {

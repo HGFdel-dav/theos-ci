@@ -39,4 +39,18 @@ static inline double MSGravityFilter(double previous, double sample, double dt) 
     double alpha = 1. - exp(-MSClamp(dt, .001, .2) / .12);
     return MSClamp(previous + (sample - previous) * alpha, -1., 1.);
 }
+// CoreMotion userAcceleration is expressed in g. Hysteresis makes shaking
+// responsive without retriggering on every sample.
+#define MS_GRAVITY_SHAKE_ON_G 0.75
+#define MS_GRAVITY_SHAKE_OFF_G 0.35
+static inline int MSGravityShakeShouldTrigger(double magnitude, int latched) {
+    return !latched && isfinite(magnitude) && magnitude >= MS_GRAVITY_SHAKE_ON_G;
+}
+static inline int MSGravityShakeShouldReset(double magnitude, int latched) {
+    return latched && isfinite(magnitude) && magnitude <= MS_GRAVITY_SHAKE_OFF_G;
+}
+static inline double MSGravityShakeStrength(double magnitude) {
+    double value = isfinite(magnitude) ? magnitude : 0.;
+    return MSClamp((value - MS_GRAVITY_SHAKE_OFF_G) / 1.5, .2, 1.);
+}
 #endif
