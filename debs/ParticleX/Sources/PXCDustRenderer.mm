@@ -210,6 +210,9 @@ static BOOL PXCDustReadPose(UIView *view,UIWindow **windowOut,PXCDustPose *pose,
     return YES;
 }
 
+unsigned PXCDustOverlayCount(void) { return (unsigned)gPXCDustOverlayCount; }
+unsigned PXCDustParticleCount(void) { return (unsigned)gPXCDustParticleCount; }
+
 static NSString *PXCDustAdmissionReason(void) {
     PXCPerformanceBudget b=PXCPerformanceGet();
     if (!b.allowed) return @"performance-not-allowed";
@@ -419,7 +422,7 @@ static id<MTLTexture> PXCDustTextureFromImage(id<MTLDevice> device, UIImage *ima
     if (self.pxcFinished) return;
     self.pxcFinished=YES;
     double elapsed=self.pxcStart ? CACurrentMediaTime()-self.pxcStart : 0;
-    PXCLog([NSString stringWithFormat:@"dust finish age=%.3f planned=%.3f frames=%lu reason=%@ mode=%u",elapsed,self.pxcUniforms.duration,(unsigned long)self.pxcFrameCount,self.pxcFinishReason ?: @"cancelled",self.pxcUniforms.effectStyle&12u]);
+    PXCLog([NSString stringWithFormat:@"dust finish age=%.3f planned=%.3f frames=%lu reason=%@ mode=%u attached=%d",elapsed,self.pxcUniforms.duration,(unsigned long)self.pxcFrameCount,self.pxcFinishReason ?: @"cancelled",self.pxcUniforms.effectStyle&12u,self.window!=nil]);
     self.pxcMetal.paused=YES;self.pxcMetal.delegate=nil;
     [self.pxcMetal releaseDrawables];[self.pxcMetal removeFromSuperview];
     self.pxcMetal.device=nil;self.pxcMetal=nil;
@@ -650,7 +653,7 @@ BOOL PXCDisintegrateNotificationViews(NSArray<UIView *> *views,BOOL urgent) { re
 static BOOL PXCDustCaptureViews(NSArray<UIView *> *views,BOOL urgent,BOOL notice,BOOL appSand) {
     if (!NSThread.isMainThread || UIAccessibilityIsReduceMotionEnabled() || !PXCSettingsGet().enabled || !views.count) return NO;
     NSString *admission=PXCDustAdmissionReason();
-    if (admission) { PXCLog([NSString stringWithFormat:@"dust capture skip reason=%@",admission]);return NO; }
+    if (admission) { PXCPerformanceBudget b=PXCPerformanceGet();PXCLog([NSString stringWithFormat:@"dust capture skip reason=%@ overlays=%u/%u particles=%u/%u",admission,PXCDustOverlayCount(),b.overlays,PXCDustParticleCount(),b.totalParticles]);return NO; }
     // Notification cells can exceed the screen's content height. Composite only
     // mounted visible platters into one screen-local transparent texture; gaps,
     // clock, wallpaper and our clear button must NOT become dust.

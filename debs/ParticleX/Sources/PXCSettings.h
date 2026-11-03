@@ -41,6 +41,13 @@ FOUNDATION_EXPORT BOOL PXCSliderIsTracking(UIView *slider);
 FOUNDATION_EXPORT void PXCSliderLayout(UIView *slider);
 FOUNDATION_EXPORT void PXCInstallHooks(void);
 FOUNDATION_EXPORT void PXCLog(NSString *message);
+/* Diagnostics only: PXCTrace records which user action reached the plugin and
+ * how long the main thread stayed responsive afterwards. It changes no effect
+ * behaviour, only log content. */
+FOUNDATION_EXPORT void PXCTrace(NSString *name);
+FOUNDATION_EXPORT void PXCTraceStop(void);
+FOUNDATION_EXPORT unsigned PXCDustOverlayCount(void);
+FOUNDATION_EXPORT unsigned PXCDustParticleCount(void);
 FOUNDATION_EXPORT void PXCDustRemoveAll(void);
 #ifdef __cplusplus
 }

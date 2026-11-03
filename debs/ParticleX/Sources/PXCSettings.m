@@ -51,7 +51,6 @@ void PXCLog(NSString *message) {
     if (!PXCLogQueue) return;
     NSString *line = [message copy];
     dispatch_async(PXCLogQueue, ^{
-        if (PXCLogLines >= 3000) return;
         NSString *path = PXCLogPath();
         NSString *dir = path.stringByDeletingLastPathComponent;
         NSError *e = nil;
@@ -61,13 +60,59 @@ void PXCLog(NSString *message) {
         if (fd < 0) return;
         struct stat st;
         if (fstat(fd,&st) != 0 || !S_ISREG(st.st_mode) || st.st_nlink != 1 || st.st_uid != getuid()) { close(fd); return; }
-        if (st.st_size > 256*1024 && ftruncate(fd,0) != 0) { close(fd); return; }
+        /* Rotation, not a permanent stop: once the cap is reached the file is
+         * truncated and writing continues, so a later reproduction is never
+         * silently missing from the tail of the log. */
+        if (PXCLogLines >= 3000 || st.st_size > 256*1024) {
+            if (ftruncate(fd,0) != 0) { close(fd); return; }
+            PXCLogLines = 0;
+        }
         NSString *text = [NSString stringWithFormat:@"%.3f %@\n", [NSDate date].timeIntervalSince1970, line];
         NSData *data = [text dataUsingEncoding:NSUTF8StringEncoding];
         if (data.length <= 4096) { ssize_t unused = write(fd,data.bytes,data.length); (void)unused; PXCLogLines++; }
         close(fd);
     });
 }
+/* ---- Diagnostics-only trace -------------------------------------------
+ * The plugin previously logged only when an effect started, ended or was
+ * skipped, so a quiet stretch (for example 7.7s between two app removals) left
+ * no evidence at all. PXCTrace adds two things and nothing else:
+ *   1. one line per user action that reaches the plugin, with the gap in
+ *      seconds since the previous action;
+ *   2. a 0.5s main-queue heartbeat for up to 20s afterwards.
+ * If the heartbeat keeps ticking through a slow moment, the main thread was
+ * alive and the delay was elsewhere; if the ticks stop, the main thread really
+ * was blocked. No effect behaviour depends on any of this.
+ * ---------------------------------------------------------------------- */
+static BOOL PXCTraceRunning;
+static CFTimeInterval PXCTraceLast;
+static NSString *PXCTraceName;
+static void PXCTraceTick(void);
+
+void PXCTraceStop(void) {
+    PXCTraceRunning=NO;
+    PXCTraceName=nil;
+}
+
+void PXCTrace(NSString *name) {
+    if (!NSThread.isMainThread || !name.length) return;
+    CFTimeInterval now=CACurrentMediaTime();
+    double gap=PXCTraceLast>0 ? now-PXCTraceLast : 0;
+    PXCTraceLast=now;
+    PXCTraceName=[name copy];
+    PXCLog([NSString stringWithFormat:@"trace %@ gap=%.3f",name,gap]);
+    if (!PXCTraceRunning) { PXCTraceRunning=YES;PXCTraceTick(); }
+}
+
+static void PXCTraceTick(void) {
+    if (!PXCTraceRunning) return;
+    CFTimeInterval now=CACurrentMediaTime();
+    double idle=PXCTraceLast>0 ? now-PXCTraceLast : 0;
+    if (idle>=20.0) { PXCTraceRunning=NO;PXCLog(@"trace burst stop idle");return; }
+    PXCLog([NSString stringWithFormat:@"trace tick last=%@ idle=%.3f overlays=%u particles=%u",PXCTraceName ?: @"-",idle,PXCDustOverlayCount(),PXCDustParticleCount()]);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.5*NSEC_PER_SEC)),dispatch_get_main_queue(), ^{ PXCTraceTick(); });
+}
+
 static void PXCChanged(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef info) {
     BOOL locked = name && CFEqual(name,CFSTR("com.apple.springboard.lockcomplete"));
     dispatch_async(dispatch_get_main_queue(), ^{

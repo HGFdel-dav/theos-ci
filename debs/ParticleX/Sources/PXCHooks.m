@@ -116,6 +116,9 @@ static void PXCWidgetRemove(id self,SEL cmd,id icon,unsigned long long options,i
     if (PXCReady(YES) && (PXCBool(icon,@"isWidgetIcon") || PXCBool(icon,@"isWidgetStackIcon"))) {
         // Search already-mounted icon views by identity, not iconViewForIcon:
         // which can allocate/relocate views. No arbitrary window snapshots.
+        PXCTrace(@"widget-remove");
+        CFTimeInterval searchStart=CACurrentMediaTime();
+        BOOL found=NO;
         Class iconView=NSClassFromString(@"SBIconView");
         NSMutableOrderedSet<UIWindow *> *windows=[NSMutableOrderedSet orderedSet];
         for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
@@ -129,10 +132,11 @@ static void PXCWidgetRemove(id self,SEL cmd,id icon,unsigned long long options,i
             NSMutableArray *queue=[NSMutableArray arrayWithObject:window];
             for (NSUInteger i=0;i<queue.count && i<2400;i++) {
                 UIView *v=queue[i];
-                if (iconView && [v isKindOfClass:iconView] && PXCObject(v,@"icon")==icon) { PXCSnapshot(v);break; }
+                if (iconView && [v isKindOfClass:iconView] && PXCObject(v,@"icon")==icon) { found=YES;PXCSnapshot(v);break; }
                 if (queue.count<2400) [queue addObjectsFromArray:v.subviews];
             }
         }
+        PXCLog([NSString stringWithFormat:@"widget-remove scan=%.3f found=%d",CACurrentMediaTime()-searchStart,found]);
     }
     // Exact block passed through untouched, no casting/invoking of its unknown ABI.
     PXCOrigWidgetRemove(self,cmd,icon,options,completion);
@@ -248,7 +252,7 @@ __attribute__((constructor)) static void PXCEntry(void) {
     if (![[NSBundle mainBundle].bundleIdentifier isEqualToString:@"com.apple.springboard"]) return;
     dispatch_async(dispatch_get_main_queue(), ^{
         PXCSettingsStart();
-        PXCLog(@"ParticleX 0.1.0dev12 loaded; no notification data persisted");
+        PXCLog(@"ParticleX 0.1.0dev13 loaded; no notification data persisted");
         PXCInstallHooks();
         _dyld_register_func_for_add_image(PXCImageAdded);
     });

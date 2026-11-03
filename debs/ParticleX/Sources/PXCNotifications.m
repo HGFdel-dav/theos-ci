@@ -138,16 +138,25 @@ static BOOL PXCNAnimateCells(NSArray<UIView *> *cells,NSString *route,BOOL urgen
         for (UIView *cell in chosen) objc_setAssociatedObject(cell,PXCCellStamp,@(now),OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         for (UIView *source in sources) objc_setAssociatedObject(source,PXCCellStamp,@(now),OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-    PXCLog([NSString stringWithFormat:@"notification route=%@ cells=%lu sources=%lu started=%d urgent=%d",route,(unsigned long)cells.count,(unsigned long)sources.count,started,urgent]);
+    PXCLog([NSString stringWithFormat:@"notification route=%@ cells=%lu sources=%lu started=%d urgent=%d",route ?: @"-",(unsigned long)cells.count,(unsigned long)sources.count,started,urgent]);
     return started;
 }
+static BOOL PXCNHasRecentCellAction(NSArray<UIView *> *cells,CFTimeInterval now) {
+    for (UIView *cell in cells) {
+        NSNumber *stamp=objc_getAssociatedObject(cell,PXCCellStamp);
+        if (stamp && now-stamp.doubleValue<0.35) return YES;
+    }
+    return NO;
+}
 void PXCNotificationCaptureCell(UIView *cell,NSString *route,BOOL urgent) {
-    if (!NSThread.isMainThread) { PXCLog([@"notification off-main skipped " stringByAppendingString:route]);return; }
+    PXCTrace([NSString stringWithFormat:@"notification-cell %@",route ?: @"-"]);
+    if (!NSThread.isMainThread) { PXCLog([@"notification off-main skipped " stringByAppendingString:route ?: @"-"]);return; }
     if ([cell isKindOfClass:UIView.class]) PXCNAnimateCells(@[cell],route,urgent);
 }
 void PXCNotificationCapture(id owner,id requests,id sections,BOOL all,NSString *route) {
-    if (!PXCNEnabled()) { PXCLog([@"notification disabled/off-main " stringByAppendingString:route]);return; }
-    if (CACurrentMediaTime()<PXCNotificationBatchUntil) return;
+    PXCTrace([NSString stringWithFormat:@"notification %@",route ?: @"-"]);
+    if (!PXCNEnabled()) { PXCLog([@"notification disabled/off-main " stringByAppendingString:route ?: @"-"]);return; }
+    if (CACurrentMediaTime()<PXCNotificationBatchUntil) { PXCLog([NSString stringWithFormat:@"notification event=%@ skipped=batch-window",route ?: @"-"]);return; }
     NSArray *req=PXCNArray(requests),*sec=PXCNArray(sections),*cells=PXCNFindCells(owner);
     NSMutableOrderedSet *matchedSet=[NSMutableOrderedSet orderedSet];
     NSUInteger direct=0;
@@ -169,8 +178,19 @@ void PXCNotificationCapture(id owner,id requests,id sections,BOOL all,NSString *
         if (match) [matchedSet addObject:cell];
     }
     NSArray *matched=matchedSet.array;
-    PXCLog([NSString stringWithFormat:@"notification event=%@ owner=%@ payload=%@/%@ scanned=%lu matched=%lu direct=%lu",route,NSStringFromClass([owner class]),requests?NSStringFromClass([requests class]):@"-",sections?NSStringFromClass([sections class]):@"-",(unsigned long)cells.count,(unsigned long)matched.count,(unsigned long)direct]);
-    PXCNAnimateCells(matched,route,all || [route isEqualToString:@"one-key-clear"]);
+    BOOL groupFallback=NO,groupDuplicate=NO;
+    if ([route isEqualToString:@"group-clear-request"] && matched.count==0) {
+        /* The single-card hook normally runs first. In that case a zero match
+         * here is expected and must not animate the whole notification page. */
+        if (PXCNHasRecentCellAction(cells,CACurrentMediaTime())) {
+            groupDuplicate=YES;
+        } else {
+            matched=cells;
+            groupFallback=matched.count>0;
+        }
+    }
+    PXCLog([NSString stringWithFormat:@"notification event=%@ owner=%@ payload=%@/%@ scanned=%lu matched=%lu direct=%lu groupFallback=%d groupDuplicate=%d",route,NSStringFromClass([owner class]),requests?NSStringFromClass([requests class]):@"-",sections?NSStringFromClass([sections class]):@"-",(unsigned long)cells.count,(unsigned long)matched.count,(unsigned long)direct,groupFallback,groupDuplicate]);
+    PXCNAnimateCells(matched,route,all || [route isEqualToString:@"one-key-clear"] || groupFallback);
 }
 
 @interface PXCClearButtonTarget : NSObject
@@ -181,6 +201,7 @@ void PXCNotificationCapture(id owner,id requests,id sections,BOOL all,NSString *
 - (void)pressed:(UIButton *)button {
     UIViewController *vc=self.controller;
     if (!vc || !vc.view.window || !PXCSettingsGet().enabled || !PXCSettingsGet().clearAllButton || !button.enabled) return;
+    PXCTrace(@"notification-clear-button");
     id master=PXCNObject(vc,@"masterList");
     SEL clear=NSSelectorFromString(@"clearAllNotificationRequests");
     NSMutableOrderedSet *lists=[NSMutableOrderedSet orderedSet];

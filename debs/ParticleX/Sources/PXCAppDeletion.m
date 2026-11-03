@@ -72,6 +72,7 @@ static void PXCDelAnimate(id icon) {
 void PXCAppDeletionEditingChanged(BOOL editing) {
     if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(), ^{ PXCAppDeletionEditingChanged(editing); });return; }
     PXCSettings s=PXCSettingsGet();
+    PXCTrace(editing ? @"edit-mode-enter" : @"edit-mode-leave");
     if (!editing && PXCDelEditingActive) {
         PXCDelEditingActive=NO;PXCDustEndSession();
     }
@@ -93,6 +94,7 @@ static BOOL PXCDelEnter(id icon,BOOL animated) {
     if (!NSThread.isMainThread) return NO;
     BOOL outer=PXCDelUninstallDepth==0;
     PXCDelUninstallDepth++;
+    if (outer) PXCTrace(animated ? @"icon-uninstall" : @"icon-uninstall-animated-off");
     if (outer && animated) {
         @try { PXCDelAnimate(icon); }
         @catch (NSException *e) { PXCLog([@"app deletion snapshot exception " stringByAppendingString:e.name]); }

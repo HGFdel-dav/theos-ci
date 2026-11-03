@@ -127,7 +127,7 @@ require('for (unsigned i=0;i<sizeof(defs)/sizeof(defs[0]);i++) if (!PXCGMethod' 
 require(next(s for s in root['items'] if s.get('key')=='groupByApp')['default'] is False,'grouping candidate opt-in')
 appSetting=next(s for s in root['items'] if s.get('key')=='appDeletion')
 require(appSetting['default'] is True,'app deletion setting')
-require(info['CFBundleVersion']=='0.1.0dev12','release preferences version')
+require(info['CFBundleVersion']=='0.1.0dev13','release preferences version')
 appearance=read('Sources/PXCClearAppearance.m')
 density=next(s for s in root['items'] if s.get('key')=='density')
 require(density['validValues']==[0,1,2,3] and density['validTitles']==['省电','标准','细腻','密集'],'four density levels in UI')
