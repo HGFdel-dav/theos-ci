@@ -82,10 +82,6 @@ static void MiniSightInteractionEnd(void);
 static void MiniSightRefreshRecorderSettingsThenReadActivity(void);
 
 static NSString *MiniSightAppContainer(void) { return gMiniSightContainer; }
-static NSString *MiniSightSupportDirectory(void) {
-    NSString *container = MiniSightAppContainer();
-    return container ? [container stringByAppendingPathComponent:@"Documents/MiniSight"] : nil;
-}
 static id MiniSightPref(NSString *key) { return gMiniSightPreferences[key]; }
 static NSInteger MiniSightStyle(void) { return [MiniSightPref(@"minisight.style") integerValue]; }
 static CGFloat MiniSightPetSize(void) {

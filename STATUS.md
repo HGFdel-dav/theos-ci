@@ -1,6 +1,6 @@
 # MiniSight repair status
 
-- **阶段**：本地修改与静态/便携测试完成；未编译 iOS 包，未提交、未推送、未触发 CI、未安装、未操作手机。
+- **阶段**：本地修改与静态/便携测试完成；第一轮 GitHub CI 已触发但双架构在 Theos 编译阶段因 `Tweak.xm` 未使用辅助函数（`-Werror`）失败；已在本地删除该函数，准备修复提交后重跑。未安装、未注销、未重启手机。
 - **基线**：`HGFdel-dav/theos-ci` / `minisight-0.4.0-chat-freeze` / `25be7d990cdf72b4c23811d1b0d5b30802e9ea57`。
 - **本地分支**：`local/chatpanel-lifecycle-20261103`。
 - **本轮修改**：
