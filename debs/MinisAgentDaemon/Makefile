@@ -29,6 +29,8 @@ ARCH_LINE := iphoneos-arm64e
 endif
 
 before-package::
+	@ldid -S"$(PWD)/templates/entitlements.plist" "$(THEOS_STAGING_DIR)/usr/libexec/minis-agentd"
+	@python3 tools/adhoc_sign.py "$(THEOS_STAGING_DIR)/usr/libexec/minis-agentd"
 	@mkdir -p "$(THEOS_STAGING_DIR)/DEBIAN" "$(THEOS_STAGING_DIR)/Library/LaunchDaemons"
 	@sed 's|@PREFIX@|$(PREFIX)|g' templates/launchd.plist.in \
 		> "$(THEOS_STAGING_DIR)/Library/LaunchDaemons/com.niubiprass.minisagentd.plist"
