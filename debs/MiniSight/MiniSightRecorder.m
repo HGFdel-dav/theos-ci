@@ -73,7 +73,7 @@ static BOOL MSRBackendABI(Class cls) {
 @implementation MiniSightRecordingResult
 @end
 
-typedef void (^MSRFileCompletion)(BOOL, NSURL *, uint64_t, double, MiniSightRecorderSaveStage);
+typedef void (^MSRFileCompletion)(BOOL, NSURL *, uint64_t, double, MiniSightRecorderSaveStage, NSInteger);
 @interface MSRFileJob : NSObject {
     atomic_bool _cancelled;
     dispatch_queue_t _queue;
@@ -85,6 +85,7 @@ typedef void (^MSRFileCompletion)(BOOL, NSURL *, uint64_t, double, MiniSightReco
     BOOL _done;
     bool _published;
     uint64_t _bytes;
+    int _publishError;
 }
 @property(nonatomic) uint64_t epoch;
 - (instancetype)initWithQueue:(dispatch_queue_t)queue epoch:(uint64_t)epoch;
@@ -106,8 +107,8 @@ typedef void (^MSRFileCompletion)(BOOL, NSURL *, uint64_t, double, MiniSightReco
     verified = verified && !atomic_load(&_cancelled) && isfinite(duration) && duration > 0.0;
     if (verified) {
         stage = MiniSightRecorderSaveStagePublish;
-        verified = MSRFilePublish(_dirFD, _temporaryName.UTF8String,
-            _finalName.UTF8String, _bytes, &_cancelled, &_published);
+        verified = MSRFilePublishWithError(_dirFD, _temporaryName.UTF8String,
+            _finalName.UTF8String, _bytes, &_cancelled, &_published, &_publishError);
         if (!verified) stage = MiniSightRecorderSaveStagePublish;
     } else if (atomic_load(&_cancelled)) {
         stage = MiniSightRecorderSaveStageUnknown;
@@ -120,7 +121,8 @@ typedef void (^MSRFileCompletion)(BOOL, NSURL *, uint64_t, double, MiniSightReco
     _completion = nil;
     if (completion) completion(verified, verified ? _finalURL : nil,
                                verified ? _bytes : 0, verified ? duration : 0.0,
-                               verified ? MiniSightRecorderSaveStageNone : stage);
+                               verified ? MiniSightRecorderSaveStageNone : stage,
+                               _publishError);
 }
 - (void)start:(NSURL *)source directory:(NSURL *)directory completion:(MSRFileCompletion)completion {
     _completion = [completion copy];
@@ -422,7 +424,7 @@ static char MSRRecordingObservation;
     _fileJob = [[MSRFileJob alloc] initWithQueue:_fileQueue epoch:epoch];
     _saveStage = MiniSightRecorderSaveStageNone;
     dispatch_queue_t queue = _fileQueue;
-    [_fileJob start:url directory:_sessionDirectory completion:^(BOOL verified, NSURL *file, uint64_t bytes, double duration, MiniSightRecorderSaveStage stage) {
+    [_fileJob start:url directory:_sessionDirectory completion:^(BOOL verified, NSURL *file, uint64_t bytes, double duration, MiniSightRecorderSaveStage stage, NSInteger publishError) {
         dispatch_async(dispatch_get_main_queue(), ^{
             MiniSightRecorder *strongSelf = weakSelf;
             if (!strongSelf) {
@@ -436,7 +438,10 @@ static char MSRRecordingObservation;
                     strongSelf->_saveTimeoutWork = nil;
                 }
             }
-            if (!verified) strongSelf->_saveStage = stage;
+            if (!verified) {
+                strongSelf->_saveStage = stage;
+                if (stage == MiniSightRecorderSaveStagePublish) strongSelf->_systemErrorCode = publishError;
+            }
             MSRAction a = MSRSaved(&strongSelf->_machine, epoch, verified, MSRNow());
             BOOL accepted = (a & MSRReport) && strongSelf->_machine.state == MiniSightRecorderIdle;
             /* A stale, cancelled or expired job can never announce success. Its unique

@@ -31,6 +31,7 @@
 #import "MiniSightLog.h"
 #import <notify.h>
 #import <signal.h>
+#include <unistd.h>
 
 
 #pragma mark - MiniSight 配置（读 Minis 容器的偏好）
@@ -47,6 +48,7 @@ static void MiniSightFollowBubble(void);
 static void MiniSightPlaceBubble(CGFloat w, CGFloat h);
 static void MiniSightDestroyUI(void);
 static void MiniSightBringMinisFront(void);
+static BOOL MiniSightMinisIsFrontmost(void);
 
 // Immutable main-thread snapshot. Resource refresh owns ALL directory/plist/image I/O.
 static NSString *gMiniSightContainer;
@@ -58,6 +60,8 @@ static BOOL gMiniSightResourceRefreshAgain = NO;
 static NSMutableArray *gMiniSightResourceCompletions;
 static void MiniSightReloadSettings(void);
 static void MiniSightShow(void);
+static void MiniSightShowAfterOwnershipCheck(void);
+static void MiniSightStopGravity(void);
 static void MiniSightCancelConfirm(void);
 static void MiniSightConfigureRecorder(void);
 static void MiniSightConfigureRecorderWithCompletion(void (^completion)(void));
@@ -76,10 +80,17 @@ static BOOL gMiniSightRecorderAutomaticEnabled = NO;
 static BOOL gMiniSightRecorderManualEnabled = YES;
 static NSUInteger gMiniSightRecorderConfigGeneration = 0;
 static NSUInteger gMiniSightActivityReadGeneration = 0;
+static dispatch_source_t gMiniSightPresentationTimer;
+static void MiniSightReconcileAppPresentation(void);
 static NSString *MiniSightRecorderIssueText(MiniSightRecorderIssue issue, NSInteger code, MiniSightRecorderSaveStage stage);
 static void MiniSightInstallRecorderCallbacks(void);
 static void MiniSightInteractionEnd(void);
 static void MiniSightRefreshRecorderSettingsThenReadActivity(void);
+
+static void MiniSightReplyToPluginProbe(void);
+static void MiniSightStopGravity(void);
+static UIWindow *gMiniSightWindow;
+extern BOOL gMiniSightBurst;
 
 static NSString *MiniSightAppContainer(void) { return gMiniSightContainer; }
 static id MiniSightPref(NSString *key) { return gMiniSightPreferences[key]; }
@@ -90,6 +101,45 @@ static CGFloat MiniSightPetSize(void) {
 }
 static BOOL MiniSightAlwaysShow(void) { return [MiniSightPref(@"minisight.mode") integerValue] == 1; }
 static BOOL MiniSightShown(void) { return gMiniSightShown; }
+static BOOL MiniSightAppOwnsPresentation(void) {
+    return MiniSightMinisIsFrontmost() && MiniSightStyle() == 1 && MiniSightShown() && gMiniSightAtlas != nil;
+}
+
+static void MiniSightReplyToPluginProbe(void) {
+    NSString *container = MiniSightAppContainer();
+    if (!container.length) return;
+    NSString *dir = [container stringByAppendingPathComponent:@"Documents/MiniSight"];
+    NSString *nonce = [NSString stringWithContentsOfFile:[dir stringByAppendingPathComponent:@"plugin-probe.txt"]
+                                                encoding:NSUTF8StringEncoding error:nil];
+    if (!nonce.length || nonce.length > 64) return;
+    [nonce writeToFile:[dir stringByAppendingPathComponent:@"plugin-probe-reply.txt"]
+            atomically:YES encoding:NSUTF8StringEncoding error:nil];
+}
+
+static void MiniSightReconcileAppPresentation(void) {
+    NSCAssert([NSThread isMainThread], @"MiniSight presentation is main-thread owned");
+    BOOL appOwns = MiniSightAppOwnsPresentation();
+    BOOL wantsOverlay = MiniSightShown() && (MiniSightAlwaysShow() || gMiniSightBurst);
+    if (appOwns) {
+        MiniSightStopGravity();
+        [[MiniSightChatPanel existingPanel] hideWithoutKey];
+        if (gMiniSightWindow && !gMiniSightWindow.hidden) gMiniSightWindow.hidden = YES;
+    } else if (wantsOverlay) {
+        if (!gMiniSightWindow || gMiniSightWindow.hidden) MiniSightShow();
+    } else if (gMiniSightWindow && !gMiniSightWindow.hidden) {
+        MiniSightHide();
+    }
+}
+
+static void MiniSightStartPresentationTimer(void) {
+    if (gMiniSightPresentationTimer) return;
+    gMiniSightPresentationTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+    dispatch_source_set_timer(gMiniSightPresentationTimer, dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC),
+                              3 * NSEC_PER_SEC, NSEC_PER_SEC);
+    dispatch_source_set_event_handler(gMiniSightPresentationTimer, ^{ MiniSightReconcileAppPresentation(); });
+    dispatch_resume(gMiniSightPresentationTimer);
+}
+
 static void MiniSightUserHide(void) {
     gMiniSightShown = NO;
     [MiniSightResources writeShown:NO container:gMiniSightContainer];
@@ -350,6 +400,8 @@ static NSString *const kMiniSightStatus = @"com.openminis.minisight.status";
 static NSString *const kMiniSightShow = @"com.openminis.minisight.show";
 static NSString *const kMiniSightConfirmNote = @"com.openminis.minisight.confirm";
 static NSString *const kMiniSightActivityNote = @"com.openminis.minisight.activity";
+static NSString *const kMiniSightAppActiveNote = @"com.openminis.minisight.app-active";
+static NSString *const kMiniSightPluginProbe = @"com.openminis.minisight.plugin-probe";
 static NSString *const kMiniSightConfirmCancel = @"com.openminis.minisight.confirm.cancel";
 static NSString *const kMiniSightBlanked = @"com.apple.springboard.hasBlankedScreen";
 static NSString *const kMiniSightCenterX   = @"MiniSightCenterX";
@@ -1077,7 +1129,9 @@ static void MiniSightRequestResources(BOOL force, void (^completion)(void)) {
         gMiniSightResourceLoading = NO;
         gMiniSightContainer = [container copy];
         gMiniSightPreferences = [preferences copy] ?: @{};
-        [[MiniSightChatPanel existingPanel] setContainerPath:gMiniSightContainer];
+        MiniSightChatPanel *existingPanel = [MiniSightChatPanel existingPanel];
+        [existingPanel setContainerPath:gMiniSightContainer];
+        existingPanel.appearancePreferences = gMiniSightPreferences ?: @{};
         gMiniSightShown = shown;
         gMiniSightAtlas = atlas;
         gMiniSightResourcesReady = YES;
@@ -1262,6 +1316,21 @@ static void MiniSightBuildUI(void) {
 #pragma mark - 显示 / 隐藏
 
 static void MiniSightShow(void) {
+    if (!gMiniSightResourcesReady) {
+        MiniSightRequestResources(NO, ^{ MiniSightShow(); });
+        return;
+    }
+    MiniSightRefreshAppOwnership(^{
+        if (MiniSightAppOwnsPresentation()) {
+            MiniSightStopGravity();
+            if (gMiniSightWindow) gMiniSightWindow.hidden = YES;
+            return;
+        }
+        MiniSightShowAfterOwnershipCheck();
+    });
+}
+
+static void MiniSightShowAfterOwnershipCheck(void) {
     if (!MiniSightShown()) return;
     // Call mode is driven only by an active MCP-owned burst. A stray show
     // notification or stale status must never wake the pet while idle.
@@ -1714,6 +1783,7 @@ static void MiniSightOpenChat(void) {
     }
     MiniSightChatPanel *panel = MiniSightChatPanel.sharedPanel;
     panel.containerPath = gMiniSightContainer;
+    panel.appearancePreferences = gMiniSightPreferences ?: @{};
     panel.hidePetHandler = ^{ MiniSightUserHide(); };
     if (![MiniSightChatPanel showInWindowScene:gMiniSightWindow.windowScene]) {
         MiniSightSayPresetLine();
@@ -1775,8 +1845,16 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
         });
         return;
     }
+    if ([note isEqualToString:kMiniSightPluginProbe]) {
+        dispatch_async(dispatch_get_main_queue(), ^{ MiniSightReplyToPluginProbe(); });
+        return;
+    }
+    if ([note isEqualToString:kMiniSightAppActiveNote]) {
+        dispatch_async(dispatch_get_main_queue(), ^{ MiniSightReconcileAppPresentation(); });
+        return;
+    }
     if ([note isEqualToString:kMiniSightSettingsChanged]) {
-        // 设置是异步落盘的，等一拍再读；否则第一次收到通知读到的还是旧值，
+        // 设置是异步落盘的，等一拍再读；否则第一次收到通知读到的还是旧值,
         // 表现为要拨两次开关才生效。
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{ MiniSightReloadSettings(); });
@@ -1879,6 +1957,18 @@ static void MiniSightBringMinisFront(void) {
                                         NULL,
                                         CFNotificationSuspensionBehaviorDeliverImmediately);
         CFNotificationCenterAddObserver(center,
+                                        (__bridge const void *)kMiniSightAppActiveNote,
+                                        MiniSightDarwinCallback,
+                                        (__bridge CFStringRef)kMiniSightAppActiveNote,
+                                        NULL,
+                                        CFNotificationSuspensionBehaviorDeliverImmediately);
+        CFNotificationCenterAddObserver(center,
+                                        (__bridge const void *)kMiniSightPluginProbe,
+                                        MiniSightDarwinCallback,
+                                        (__bridge CFStringRef)kMiniSightPluginProbe,
+                                        NULL,
+                                        CFNotificationSuspensionBehaviorDeliverImmediately);
+        CFNotificationCenterAddObserver(center,
                                         (__bridge const void *)kMiniSightConfirmCancel,
                                         MiniSightDarwinCallback,
                                         (__bridge CFStringRef)kMiniSightConfirmCancel,
@@ -1921,6 +2011,7 @@ static void MiniSightBringMinisFront(void) {
             @try {
                 MiniSightConfigureRecorder();
                 MiniSightReadActivitySnapshot();
+                MiniSightStartPresentationTimer();
                 if (MiniSightAlwaysShow() && MiniSightShown()) MiniSightShow();
                 else MiniSightBuildUI();
             } @catch (NSException *e) {
