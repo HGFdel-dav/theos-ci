@@ -12,7 +12,6 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <libproc.h>
 #include <limits.h>
 #include <signal.h>
 #include <spawn.h>
@@ -20,12 +19,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
 extern char **environ;
+
+// libproc.h is not in the iPhoneOS SDK; apelind declares this itself too.
+extern int proc_pidpath(int pid, void *buffer, unsigned int buffersize);
 
 #define LABEL "com.niubiprass.minisagentd"
 #define SUFFIX "/usr/libexec/minis-agentd"
