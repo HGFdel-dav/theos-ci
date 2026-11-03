@@ -41,7 +41,37 @@ static CGRect MSChatScreenRect(UIWindowScene *scene) {
 @end
 
 @implementation MiniSightChatWindow
+- (BOOL)canBecomeKeyWindow { return NO; }
+@end
+
+/// The overlay itself remains non-key. This tiny independent window owns the
+/// first responder only while the user is editing chat text.
+@interface MiniSightChatEditorWindow : UIWindow
+@property (nonatomic, weak) UITextField *editorField;
+@end
+
+@implementation MiniSightChatEditorWindow
 - (BOOL)canBecomeKeyWindow { return YES; }
+- (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
+    UITextField *field = self.editorField;
+    if (self.hidden || !field || field.hidden || field.alpha < 0.01) return NO;
+    CGRect frame = [field convertRect:field.bounds toView:self];
+    return CGRectContainsPoint(frame, point);
+}
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    if (![self pointInside:point withEvent:event]) return nil;
+    return [super hitTest:point withEvent:event];
+}
+@end
+
+/// The visible field is passive inside the non-key chat window. Tapping it
+/// activates the separate editor window instead of attempting to make the
+/// full chat overlay key.
+@interface MiniSightPassiveTextField : UITextField
+@end
+
+@implementation MiniSightPassiveTextField
+- (BOOL)canBecomeFirstResponder { return NO; }
 @end
 
 #pragma mark - Panel
@@ -60,34 +90,54 @@ static CGRect MSChatScreenRect(UIWindowScene *scene) {
 @property (nonatomic, strong, nullable) NSLayoutConstraint *cancelWidthConstraint;
 @property (nonatomic, strong, nullable) NSMutableArray<UIView *> *rows;
 @property (nonatomic, strong, nullable) MiniSightAI *ai;
-@property (nonatomic, weak, nullable) UIWindow *previousKeyWindow;
+@property (nonatomic, strong, nullable) MiniSightChatEditorWindow *editorWindow;
+@property (nonatomic, strong, nullable) UITextField *editorField;
 @property (nonatomic, assign) BOOL built;
 @property (nonatomic, assign) BOOL visible;
 @property (nonatomic, assign) BOOL closing;
 @property (nonatomic, assign) BOOL sending;
+@property (nonatomic, assign) BOOL editorActive;
+@property (nonatomic, assign) NSUInteger lifecycleGeneration;
+@property (nonatomic, assign) NSUInteger requestGeneration;
 @property (nonatomic, assign) CGFloat keyboardOverlap;
-- (void)performClose;
+- (void)performCloseForGeneration:(NSUInteger)generation;
 - (void)hideWithoutKey;
+- (void)activateEditor;
+- (void)deactivateEditor;
+- (void)deactivateEditorWithoutKey;
+- (void)layoutEditorWindow;
+- (void)editorInputChanged;
 @end
+
+static MiniSightChatPanel *gMiniSightExistingChatPanel;
 
 @implementation MiniSightChatPanel
 
 + (instancetype)sharedPanel {
-    static MiniSightChatPanel *panel;
     static dispatch_once_t once;
-    dispatch_once(&once, ^{ panel = [[MiniSightChatPanel alloc] init]; });
-    return panel;
+    dispatch_once(&once, ^{ gMiniSightExistingChatPanel = [[MiniSightChatPanel alloc] init]; });
+    return gMiniSightExistingChatPanel;
+}
+
++ (instancetype)existingPanel {
+    return gMiniSightExistingChatPanel;
 }
 
 - (instancetype)init {
     self = [super init];
     if (!self) return nil;
     _rows = [NSMutableArray array];
+    _ai = [[MiniSightAI alloc] initWithContainer:nil];
     return self;
 }
 
-- (BOOL)isVisible { return self.visible; }
-- (BOOL)isSending { return self.sending; }
+- (BOOL)isVisible { return _visible; }
+- (BOOL)isSending { return _sending; }
+
+- (void)setContainerPath:(NSString *)containerPath {
+    _containerPath = [containerPath copy];
+    self.ai.containerPath = _containerPath;
+}
 
 #pragma mark Build
 
@@ -169,6 +219,24 @@ static CGRect MSChatScreenRect(UIWindowScene *scene) {
     [clear addTarget:self action:@selector(clearConversation) forControlEvents:UIControlEventTouchUpInside];
     [card addSubview:clear];
 
+    UIButton *more = [UIButton buttonWithType:UIButtonTypeSystem];
+    more.translatesAutoresizingMaskIntoConstraints = NO;
+    [more setTitle:@"⋯" forState:UIControlStateNormal];
+    more.titleLabel.font = [UIFont systemFontOfSize:20 weight:UIFontWeightSemibold];
+    if (@available(iOS 13.0, *)) {
+        __weak typeof(self) weakSelf = self;
+        UIAction *hidePet = [UIAction actionWithTitle:@"隐藏桌宠" image:nil identifier:nil handler:^(UIAction *action) {
+            (void)action;
+            MiniSightChatPanel *strongSelf = weakSelf;
+            if (strongSelf.hidePetHandler) strongSelf.hidePetHandler();
+        }];
+        more.menu = [UIMenu menuWithTitle:@"" children:@[hidePet]];
+        more.showsMenuAsPrimaryAction = YES;
+    } else {
+        [more addTarget:self action:@selector(hidePetFromMenu) forControlEvents:UIControlEventTouchUpInside];
+    }
+    [card addSubview:more];
+
     UIButton *close = [UIButton buttonWithType:UIButtonTypeSystem];
     close.translatesAutoresizingMaskIntoConstraints = NO;
     [close setTitle:@"✕" forState:UIControlStateNormal];
@@ -178,10 +246,14 @@ static CGRect MSChatScreenRect(UIWindowScene *scene) {
 
     [title.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:16].active = YES;
     [title.centerYAnchor constraintEqualToAnchor:close.centerYAnchor].active = YES;
-    [title.trailingAnchor constraintLessThanOrEqualToAnchor:clear.leadingAnchor constant:-8].active = YES;
+    [title.trailingAnchor constraintLessThanOrEqualToAnchor:clear.leadingAnchor constant:-6].active = YES;
     [clear.centerYAnchor constraintEqualToAnchor:close.centerYAnchor].active = YES;
-    [clear.trailingAnchor constraintEqualToAnchor:close.leadingAnchor constant:-6].active = YES;
-    [clear.widthAnchor constraintGreaterThanOrEqualToConstant:44].active = YES;
+    [clear.trailingAnchor constraintEqualToAnchor:more.leadingAnchor constant:-2].active = YES;
+    [clear.widthAnchor constraintGreaterThanOrEqualToConstant:42].active = YES;
+    [more.centerYAnchor constraintEqualToAnchor:close.centerYAnchor].active = YES;
+    [more.trailingAnchor constraintEqualToAnchor:close.leadingAnchor constant:-2].active = YES;
+    [more.widthAnchor constraintEqualToConstant:38].active = YES;
+    [more.heightAnchor constraintEqualToConstant:36].active = YES;
     [close.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-12].active = YES;
     [close.topAnchor constraintEqualToAnchor:card.topAnchor constant:8].active = YES;
     [close.widthAnchor constraintEqualToConstant:34].active = YES;
@@ -235,7 +307,7 @@ static CGRect MSChatScreenRect(UIWindowScene *scene) {
     [composer.bottomAnchor constraintEqualToAnchor:card.bottomAnchor].active = YES;
     [composer.heightAnchor constraintEqualToConstant:56].active = YES;
 
-    UITextField *field = [[UITextField alloc] init];
+    UITextField *field = [[MiniSightPassiveTextField alloc] init];
     field.translatesAutoresizingMaskIntoConstraints = NO;
     field.delegate = self;
     field.returnKeyType = UIReturnKeySend;
@@ -295,6 +367,38 @@ static CGRect MSChatScreenRect(UIWindowScene *scene) {
     [field.trailingAnchor constraintEqualToAnchor:cancel.leadingAnchor constant:-8].active = YES;
 
     self.window = window;
+
+    MiniSightChatEditorWindow *editorWindow = [[MiniSightChatEditorWindow alloc] initWithFrame:screen];
+    editorWindow.windowLevel = UIWindowLevelAlert + 3.0;
+    editorWindow.backgroundColor = UIColor.clearColor;
+    editorWindow.opaque = NO;
+    editorWindow.hidden = YES;
+    UIViewController *editorController = [[UIViewController alloc] init];
+    editorController.view = [[UIView alloc] initWithFrame:screen];
+    editorController.view.backgroundColor = UIColor.clearColor;
+    editorWindow.rootViewController = editorController;
+    if (@available(iOS 13.0, *)) {
+        UIWindowScene *scene = window.windowScene ?: [self findScene];
+        if (scene) editorWindow.windowScene = scene;
+    }
+    UITextField *editor = [[UITextField alloc] initWithFrame:CGRectZero];
+    editor.borderStyle = UITextBorderStyleNone;
+    editor.font = field.font;
+    editor.textColor = field.textColor;
+    editor.backgroundColor = field.backgroundColor;
+    editor.layer.cornerRadius = field.layer.cornerRadius;
+    editor.leftView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 10, 10)];
+    editor.leftViewMode = UITextFieldViewModeAlways;
+    editor.placeholder = field.placeholder;
+    editor.returnKeyType = UIReturnKeySend;
+    editor.delegate = self;
+    [editor addTarget:self action:@selector(editorInputChanged) forControlEvents:UIControlEventEditingChanged];
+    [editorController.view addSubview:editor];
+    self.editorWindow = editorWindow;
+    self.editorField = editor;
+    editorWindow.editorField = editor;
+    UITapGestureRecognizer *activate = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(activateEditor)];
+    [field addGestureRecognizer:activate];
     [self appendNotice:@"你好，我是 MiniSight 👋 有什么想聊的？"];
 }
 
@@ -307,46 +411,91 @@ static CGRect MSChatScreenRect(UIWindowScene *scene) {
 - (BOOL)showInWindowScene:(UIWindowScene *)scene {
     NSCAssert([NSThread isMainThread], @"chat panel is main-thread only");
     if (!self.built) [self buildUI];
-    if (!self.window) return NO;
-    if (self.visible) {
-        [self.window makeKeyWindow];
-        [self.inputField becomeFirstResponder];
-        return YES;
-    }
+    if (!self.window || !self.editorWindow) return NO;
     UIWindowScene *target = scene ?: [self findScene];
     if (!target) return NO;
     if (self.window.windowScene != target) self.window.windowScene = target;
-
-    for (UIWindow *candidate in UIApplication.sharedApplication.windows) {
-        if (candidate != self.window && candidate.isKeyWindow) {
-            self.previousKeyWindow = candidate;
-            break;
-        }
+    if (self.editorWindow.windowScene != target) self.editorWindow.windowScene = target;
+    if (self.closing) {
+        ++self.requestGeneration;
+        [self endSendingUI];
+        [self.ai cancel];
     }
-    self.ai.containerPath = self.containerPath;
-    self.keyboardOverlap = 0;
+    ++self.lifecycleGeneration;
+    self.closing = NO;
     self.visible = YES;
+    self.keyboardOverlap = 0;
     [self layoutForCurrentScreen];
     self.window.hidden = NO;
-    // makeKeyAndVisible + becomeKeyWindow duplicated a host key-window
-    // transition; a hidden→visible window only needs makeKeyWindow.
-    [self.window makeKeyWindow];
+    self.editorWindow.hidden = !self.editorActive;
     [self observeKeyboard:YES];
-    [self.inputField becomeFirstResponder];
+    if (self.editorActive) {
+        [self.editorWindow makeKeyWindow];
+        [self.editorField becomeFirstResponder];
+    }
     if (self.visibilityHandler) self.visibilityHandler(YES);
     return YES;
 }
 
+- (void)layoutEditorWindow {
+    if (!self.window || !self.editorWindow || !self.inputField || !self.editorField) return;
+    CGRect rect = [self.inputField convertRect:self.inputField.bounds toView:self.editorWindow];
+    self.editorField.frame = rect;
+}
+
+- (void)activateEditor {
+    NSCAssert([NSThread isMainThread], @"chat editor is main-thread only");
+    if (!self.visible || !self.editorWindow || !self.editorField || self.editorActive) return;
+    self.editorField.text = self.inputField.text;
+    [self layoutEditorWindow];
+    self.editorActive = YES;
+    self.inputField.alpha = 0.01;
+    self.editorWindow.hidden = NO;
+    [self.editorWindow makeKeyWindow];
+    [self.editorField becomeFirstResponder];
+}
+
+- (void)deactivateEditorWithoutKey {
+    if (!self.editorActive) return;
+    self.inputField.text = self.editorField.text;
+    self.inputField.alpha = 1.0;
+    // Drop first responder so a hidden editor cannot keep the keyboard alive;
+    // deliberately do not call resignKeyWindow on the teardown path.
+    [self.editorField resignFirstResponder];
+    self.editorActive = NO;
+    self.editorWindow.hidden = YES;
+}
+
+- (void)deactivateEditor {
+    if (!self.editorActive) return;
+    self.inputField.text = self.editorField.text;
+    self.inputField.alpha = 1.0;
+    [self.editorField resignFirstResponder];
+    [self.editorWindow resignKeyWindow];
+    self.editorActive = NO;
+    self.editorWindow.hidden = YES;
+}
+
+- (void)editorInputChanged {
+    if (!self.visible || !self.editorActive) return;
+    self.inputField.text = self.editorField.text;
+    [self inputChanged];
+}
+
 - (void)hideWithoutKey {
     NSCAssert([NSThread isMainThread], @"chat panel is main-thread only");
-    // DestroyUI path: make the window disappear without any key-window
-    // transition. host promotes another window itself.
-    if (!self.window) return;
+    if (!self.built) return;
+    ++self.lifecycleGeneration;
+    ++self.requestGeneration;
     self.visible = NO;
     self.closing = NO;
+    [self observeKeyboard:NO];
+    [self deactivateEditorWithoutKey];
     [self.ai cancel];
     [self endSendingUI];
     self.window.hidden = YES;
+    self.editorWindow.hidden = YES;
+    self.keyboardOverlap = 0;
 }
 
 - (void)close {
@@ -354,35 +503,29 @@ static CGRect MSChatScreenRect(UIWindowScene *scene) {
     if (!self.visible || self.closing) return;
     self.visible = NO;
     self.closing = YES;
-    // DestroyUI can run inside a host layout/watchdog-sensitive turn.
-    // Return to it immediately; key-window reshuffling happens next turn.
+    ++self.requestGeneration;
+    [self endSendingUI];
+    NSUInteger generation = ++self.lifecycleGeneration;
     dispatch_async(dispatch_get_main_queue(), ^{
-        [self performClose];
+        [self performCloseForGeneration:generation];
     });
 }
 
-- (void)performClose {
+- (void)performCloseForGeneration:(NSUInteger)generation {
     NSCAssert([NSThread isMainThread], @"chat panel is main-thread only");
-    [self endSendingUI];
-    [self.ai cancel];                       // synchronous Cancelled reply is ignored (not visible)
-    [self.inputField resignFirstResponder];
+    if (generation != self.lifecycleGeneration || self.visible || !self.closing) return;
+    [self.ai cancel];
     [self observeKeyboard:NO];
-    [self.window resignKeyWindow];
+    [self deactivateEditor];
     self.window.hidden = YES;
-    if (self.visibilityHandler) self.visibilityHandler(NO);
-    UIWindow *previous = self.previousKeyWindow;
-    MiniSightChatWindow *window = self.window;
-    self.previousKeyWindow = nil;
+    self.editorWindow.hidden = YES;
+    self.keyboardOverlap = 0;
     self.closing = NO;
-    if (previous && window && previous.windowScene == window.windowScene && previous.canBecomeKeyWindow) {
-        // A second turn avoids re-entering host while the chat window is
-        // still finishing resignation.
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (!self.visible && previous.windowScene && previous.canBecomeKeyWindow) {
-                [previous makeKeyWindow];
-            }
-        });
-    }
+    if (self.visibilityHandler) self.visibilityHandler(NO);
+}
+
+- (void)hidePetFromMenu {
+    if (self.hidePetHandler) self.hidePetHandler();
 }
 
 - (void)backgroundTapped {
@@ -418,6 +561,7 @@ static CGRect MSChatScreenRect(UIWindowScene *scene) {
     self.window.frame = screen;
     self.cardHeightConstraint.constant = [self preferredCardHeightForSize:screen.size];
     [self updateCardBottomAnimated:NO];
+    [self layoutEditorWindow];
 }
 
 - (void)updateCardBottomAnimated:(BOOL)animated {
@@ -430,7 +574,7 @@ static CGRect MSChatScreenRect(UIWindowScene *scene) {
         return;
     }
     [UIView animateWithDuration:0.24 delay:0 options:UIViewAnimationOptionBeginFromCurrentState
-                     animations:^{ [self.window layoutIfNeeded]; } completion:nil];
+                     animations:^{ [self.window layoutIfNeeded]; [self layoutEditorWindow]; } completion:nil];
 }
 
 #pragma mark Keyboard
@@ -453,6 +597,7 @@ static CGRect MSChatScreenRect(UIWindowScene *scene) {
 }
 
 - (void)keyboardWillChangeFrame:(NSNotification *)note {
+    if (!self.visible || !self.editorActive || !self.window) return;
     CGRect end = [note.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
     CGRect local = [self.window convertRect:end fromWindow:nil];
     CGFloat overlap = MAX(0.0, CGRectGetMaxY(self.window.bounds) - CGRectGetMinY(local));
@@ -462,13 +607,15 @@ static CGRect MSChatScreenRect(UIWindowScene *scene) {
 }
 
 - (void)keyboardWillHide:(NSNotification *)note {
+    if (!self.visible || !self.editorActive) return;
     self.keyboardOverlap = 0;
     [self updateCardBottomAnimated:YES];
 }
 
 - (void)orientationChanged {
+    NSUInteger generation = self.lifecycleGeneration;
     dispatch_async(dispatch_get_main_queue(), ^{
-        [self layoutForCurrentScreen];
+        if (generation == self.lifecycleGeneration && self.visible) [self layoutForCurrentScreen];
     });
 }
 
@@ -571,24 +718,30 @@ static CGRect MSChatScreenRect(UIWindowScene *scene) {
 }
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
+    if (textField == self.editorField) self.inputField.text = self.editorField.text;
     [self sendTapped];
     return NO;
 }
 
 - (void)sendTapped {
     NSCAssert([NSThread isMainThread], @"chat panel is main-thread only");
-    if (self.sending) return;
-    NSString *text = [self.inputField.text stringByTrimmingCharactersInSet:
+    if (self.sending || !self.visible) return;
+    UITextField *sourceField = self.editorActive ? self.editorField : self.inputField;
+    NSString *text = [sourceField.text stringByTrimmingCharactersInSet:
         [NSCharacterSet whitespaceAndNewlineCharacterSet]];
     if (!text.length) return;
 
     [self appendMessage:text role:MiniSightChatRoleUser];
     self.inputField.text = @"";
+    self.editorField.text = @"";
     [self beginSendingUI];
+    NSUInteger generation = ++self.requestGeneration;
     self.ai.containerPath = self.containerPath;
     __weak typeof(self) weakSelf = self;
     [self.ai sendUserText:text completion:^(MiniSightAIReply *reply) {
-        [weakSelf handleReply:reply];
+        MiniSightChatPanel *strongSelf = weakSelf;
+        if (!strongSelf || generation != strongSelf.requestGeneration) return;
+        [strongSelf handleReply:reply];
     }];
 }
 
@@ -610,6 +763,7 @@ static CGRect MSChatScreenRect(UIWindowScene *scene) {
 - (void)cancelSend {
     if (!self.sending) return;
     [self endSendingUI];
+    ++self.requestGeneration;
     [self.ai cancel];
     [self appendNotice:@"已取消"];
 }
@@ -631,6 +785,7 @@ static CGRect MSChatScreenRect(UIWindowScene *scene) {
 
 - (void)clearConversation {
     if (self.sending) {
+        ++self.requestGeneration;
         [self endSendingUI];
         [self.ai cancel];
     }

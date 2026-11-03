@@ -16,6 +16,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (instancetype)init NS_UNAVAILABLE;
 
 + (instancetype)sharedPanel;
+/// Returns nil unless sharedPanel was already created by an explicit chat open.
++ (nullable instancetype)existingPanel;
 
 /// Minis App container; required before the built-in client can read ai.json.
 @property (nonatomic, copy, nullable) NSString *containerPath;
@@ -27,6 +29,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, nullable) void (^replyHandler)(NSString *text);
 @property (nonatomic, copy, nullable) void (^errorHandler)(NSString *displayText, MiniSightAIIssue issue);
 @property (nonatomic, copy, nullable) void (^visibilityHandler)(BOOL visible);
+/// Invoked by the chat menu to hide the pet/indicator through the host lifecycle.
+@property (nonatomic, copy, nullable) void (^hidePetHandler)(void);
 
 /// Shows (or re-keys) the panel. Returns NO only when no window scene exists.
 + (BOOL)showInWindowScene:(nullable UIWindowScene *)scene;

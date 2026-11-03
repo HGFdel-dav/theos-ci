@@ -97,7 +97,7 @@ static BOOL MiniSightShown(void) { return gMiniSightShown; }
 static void MiniSightUserHide(void) {
     gMiniSightShown = NO;
     [MiniSightResources writeShown:NO container:gMiniSightContainer];
-    [MiniSightChatPanel.sharedPanel close];
+    [[MiniSightChatPanel existingPanel] close];
     MiniSightCancelConfirm();
     MiniSightHide();
 }
@@ -787,7 +787,8 @@ static void MiniSightToggleRecording(void);
 static void MiniSightShowBubble(NSString *raw);
 static void MiniSightReloadSettings(void);
 static void MiniSightBringMinisFront(void);
-static void MiniSightSpeakLine(void);
+static void MiniSightOpenChat(void);
+static void MiniSightSayPresetLine(void);
 static void MiniSightStopPulse(void);
 
 #pragma mark - 窗口类
@@ -894,21 +895,16 @@ static void MiniSightStopPulse(void);
 
 /// 旋转：界面方向变化是异步的，稍等一下再重算并 clamp
 - (void)handleSingleTap:(UITapGestureRecognizer *)tap {
-    if (!gMiniSightContainer.length || !gMiniSightWindow) {
-        MiniSightSpeakLine();
-        return;
-    }
-    MiniSightChatPanel.sharedPanel.containerPath = gMiniSightContainer;
-    if (![MiniSightChatPanel showInWindowScene:gMiniSightWindow.windowScene]) {
-        MiniSightSpeakLine();
-    }
+    (void)tap;
+    MiniSightSayPresetLine();
 }
 
 - (void)handleDoubleTap:(UITapGestureRecognizer *)tap {
+    (void)tap;
     UIImpactFeedbackGenerator *feedback =
         [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
     [feedback impactOccurred];
-    MiniSightUserHide();
+    MiniSightOpenChat();
 }
 
 /// 长按：手势由宿主拥有（不是桌宠内部），所以漫游动画期间也按得住。
@@ -1085,7 +1081,7 @@ static void MiniSightRequestResources(BOOL force, void (^completion)(void)) {
         gMiniSightResourceLoading = NO;
         gMiniSightContainer = [container copy];
         gMiniSightPreferences = [preferences copy] ?: @{};
-        MiniSightChatPanel.sharedPanel.containerPath = gMiniSightContainer;
+        [[MiniSightChatPanel existingPanel] setContainerPath:gMiniSightContainer];
         gMiniSightShown = shown;
         gMiniSightAtlas = atlas;
         gMiniSightResourcesReady = YES;
@@ -1349,7 +1345,7 @@ static void MiniSightHide(void) {
 /// 彻底拆掉浮窗（设置变更时重建用）
 static void MiniSightDestroyUI(void) {
     MiniSightStopGravity();
-    [MiniSightChatPanel.sharedPanel hideWithoutKey];
+    [[MiniSightChatPanel existingPanel] hideWithoutKey];
     gMiniSightGravityConfigured = NO;
     // 确认态要一起清，否则气泡永远"正在确认"、再也收不起来
     if (gMiniSightConfirmTimeout) { dispatch_block_cancel(gMiniSightConfirmTimeout); gMiniSightConfirmTimeout = nil; }
@@ -1715,179 +1711,17 @@ static void MiniSightSayPresetLine(void) {
     MiniSightShowLine(line);
 }
 
-/// 取出报错体里的一句话（OpenAI 风格 error.message / 纯文本都吃），顺手删掉 key
-static NSString *MiniSightAIDetail(NSData *data, NSString *key) {
-    if (!data.length) return @"";
-    NSString *text = nil;
-    id obj = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-    if ([obj isKindOfClass:[NSDictionary class]]) {
-        id err = obj[@"error"];
-        if ([err isKindOfClass:[NSDictionary class]]) text = err[@"message"];
-        else if ([err isKindOfClass:[NSString class]]) text = err;
-        if (![text isKindOfClass:[NSString class]]) text = obj[@"message"];
-    }
-    if (![text isKindOfClass:[NSString class]]) {
-        text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-    }
-    if (![text isKindOfClass:[NSString class]]) return @"";
-    text = [[text stringByReplacingOccurrencesOfString:@"\n" withString:@" "]
-            stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    // 报错体可能回显请求头/地址，绝不把 key 带进气泡、日志或诊断文件
-    if (key.length >= 8) text = [text stringByReplacingOccurrencesOfString:key withString:@"***"];
-    if (text.length > 120) text = [[text substringToIndex:120] stringByAppendingString:@"…"];
-    return text;
-}
-
-/// 一句话说清是哪种毛病（气泡一行，最多 60 字，够诊断又不糊一屏）
-static NSString *MiniSightAIShortReason(NSInteger status, NSString *detail) {
-    if (status == 401 || status == 403) return @"AI 鉴权失败，检查 Key";
-    if (status == 404) return @"AI 地址不对（404），看设置里的地址";
-    if (status == 429) {
-        return detail.length ? [NSString stringWithFormat:@"AI 被限流（429）：%@", detail]
-                             : @"AI 被限流（429），等一会儿再点";
-    }
-    if (status == 400 || status == 422) {
-        return detail.length ? [NSString stringWithFormat:@"AI 说请求不对（%ld）：%@", (long)status, detail]
-                             : [NSString stringWithFormat:@"AI 说请求不对（%ld）", (long)status];
-    }
-    if (status >= 500) return [NSString stringWithFormat:@"AI 服务出错（%ld），过会儿再试", (long)status];
-    if (status > 0) {
-        return detail.length ? [NSString stringWithFormat:@"AI 报错（%ld）：%@", (long)status, detail]
-                             : [NSString stringWithFormat:@"AI 报错（%ld）", (long)status];
-    }
-    return @"AI 这次没回话";
-}
-
-/// 把完整诊断写进 App 容器的 Documents/MiniSight/ai-last.txt（Files 里能直接翻）
-static void MiniSightAIWriteDiagnosis(NSInteger status, NSString *path, NSString *detail) {
-    NSString *dir = MiniSightSupportDirectory();
-    if (!dir) return;
-    NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
-    fmt.dateFormat = @"yyyy-MM-dd HH:mm:ss";
-    NSString *text = [NSString stringWithFormat:@"%@\nstatus=%ld\npath=%@\ndetail=%@\n",
-                      [fmt stringFromDate:[NSDate date]], (long)status,
-                      path.length ? path : @"(none)", detail.length ? detail : @"(empty)"];
-    [text writeToFile:[dir stringByAppendingPathComponent:@"ai-last.txt"]
-           atomically:YES encoding:NSUTF8StringEncoding error:nil];
-}
-
-static NSString *MiniSightAITextFromObject(id obj) {
-    if ([obj isKindOfClass:NSString.class]) return [obj stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    if ([obj isKindOfClass:NSArray.class]) {
-        NSMutableString *joined = [NSMutableString string];
-        for (id part in obj) {
-            NSString *text = MiniSightAITextFromObject(part);
-            if (text.length) [joined appendString:text];
-        }
-        return joined.copy;
-    }
-    if (![obj isKindOfClass:NSDictionary.class]) return nil;
-    NSString *direct = MiniSightAITextFromObject(obj[@"text"] ?: obj[@"output_text"]);
-    if (direct.length) return direct;
-    NSString *content = MiniSightAITextFromObject(obj[@"content"]);
-    if (content.length) return content;
-    NSString *parts = MiniSightAITextFromObject(obj[@"parts"]);
-    return parts.length ? parts : nil;
-}
-
-static NSString *MiniSightAIResponseText(id obj) {
-    if (![obj isKindOfClass:NSDictionary.class]) return nil;
-    NSArray *choices = obj[@"choices"];
-    if ([choices isKindOfClass:NSArray.class] && choices.count) {
-        id first = choices.firstObject;
-        NSString *text = MiniSightAITextFromObject([first isKindOfClass:NSDictionary.class] ? first[@"message"] : first);
-        if (!text.length && [first isKindOfClass:NSDictionary.class]) text = MiniSightAITextFromObject(first[@"text"]);
-        if (text.length) return text;
-    }
-    NSString *output = MiniSightAITextFromObject(obj[@"output_text"] ?: obj[@"output"]);
-    if (output.length) return output;
-    NSArray *candidates = obj[@"candidates"];
-    if ([candidates isKindOfClass:NSArray.class] && candidates.count) {
-        NSString *text = MiniSightAITextFromObject(candidates.firstObject);
-        if (text.length) return text;
-    }
-    return nil;
-}
-
-/// 单击：有配置就请求 AI 说一句，失败/超时用预置。
-static void MiniSightSpeakLine(void) {
-    NSString *container = MiniSightAppContainer();
-    NSString *path = [container stringByAppendingPathComponent:@"Documents/MiniSight/ai.json"];
-    NSData *data = [NSData dataWithContentsOfFile:path];
-    NSDictionary *cfg = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
-    NSString *base = cfg[@"url"], *key = cfg[@"key"], *model = cfg[@"model"];
-    if (![base isKindOfClass:[NSString class]] || base.length == 0 ||
-        ![key isKindOfClass:[NSString class]] || key.length == 0 ||
-        ![model isKindOfClass:[NSString class]] || model.length == 0) {
-        if (data.length) MiniSightAIWriteDiagnosis(0, @"", @"AI 配置不完整；保留原配置并回退预制句子");
+static void MiniSightOpenChat(void) {
+    if (!gMiniSightContainer.length || !gMiniSightWindow) {
         MiniSightSayPresetLine();
         return;
     }
-    // Mirror the settings page endpoint builder and preserve gateway paths/queries.
-    NSURLComponents *parts = [NSURLComponents componentsWithString:
-        [base stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]]];
-    NSString *scheme = parts.scheme.lowercaseString;
-    if (!parts || !scheme.length || ![@[@"http", @"https"] containsObject:scheme] ||
-        parts.host.length == 0 || parts.user.length || parts.password.length ||
-        parts.fragment.length) {
-        MiniSightAIWriteDiagnosis(0, @"", @"AI 地址非法；回退预制句子");
+    MiniSightChatPanel *panel = MiniSightChatPanel.sharedPanel;
+    panel.containerPath = gMiniSightContainer;
+    panel.hidePetHandler = ^{ MiniSightUserHide(); };
+    if (![MiniSightChatPanel showInWindowScene:gMiniSightWindow.windowScene]) {
         MiniSightSayPresetLine();
-        return;
     }
-    parts.scheme = scheme;
-    NSString *endpointPath = parts.percentEncodedPath ?: @"";
-    while ([endpointPath hasSuffix:@"/"]) endpointPath = [endpointPath substringToIndex:endpointPath.length - 1];
-    if (endpointPath.length == 0) endpointPath = @"/v1/chat/completions";
-    else if (![endpointPath hasSuffix:@"/chat/completions"]) endpointPath = [endpointPath stringByAppendingString:@"/chat/completions"];
-    parts.percentEncodedPath = endpointPath;
-    NSURL *url = parts.URL;
-    if (!url) {
-        MiniSightAIWriteDiagnosis(0, @"", @"AI URL 构建失败；回退预制句子");
-        MiniSightSayPresetLine();
-        return;
-    }
-
-    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
-    req.HTTPMethod = @"POST";
-    req.timeoutInterval = 6.0;
-    [req setValue:[@"Bearer " stringByAppendingString:key] forHTTPHeaderField:@"Authorization"];
-    [req setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
-    NSDictionary *body = @{ @"model": model, @"max_tokens": @40,
-        @"messages": @[ @{@"role": @"system", @"content": @"你是可爱的桌宠，说一句不超过20字的中文撒娇话，不要引号。"},
-                        @{@"role": @"user", @"content": @"说一句"} ] };
-    req.HTTPBody = [NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
-
-    [[[NSURLSession sharedSession] dataTaskWithRequest:req
-        completionHandler:^(NSData *d, NSURLResponse *r, NSError *e) {
-        // 先看 HTTP 状态码：以前不看，429/401 的报错体解析不出 choices，
-        // 就静默换成预设话，用户只看到「AI 没反应」。
-        NSInteger status = [r isKindOfClass:[NSHTTPURLResponse class]]
-            ? ((NSHTTPURLResponse *)r).statusCode : 0;
-        NSString *line = nil;
-        NSString *why = nil;
-        if (!e && status >= 200 && status < 300) {
-            id obj = [NSJSONSerialization JSONObjectWithData:d options:0 error:nil];
-            line = MiniSightAIResponseText(obj);
-            if (!line.length) {
-                why = @"AI 返回了空内容（200），已回退预制句子";
-                MiniSightAIWriteDiagnosis(status, url.path, why);
-            }
-        } else if (e) {
-            why = (e.code == NSURLErrorTimedOut)
-                ? @"AI 超时了（6 秒没回），已回退预制句子"
-                : [NSString stringWithFormat:@"AI 连不上（%ld），已回退预制句子", (long)e.code];
-            MiniSightAIWriteDiagnosis(status, @"", why);
-        } else {
-            NSString *detail = MiniSightAIDetail(d, key);
-            why = MiniSightAIShortReason(status, detail);
-            NSLog(@"[MiniSight] ai status=%ld path=%@ detail=%@", (long)status, url.path, detail);
-            MiniSightAIWriteDiagnosis(status, url.path, detail);
-        }
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (line.length) MiniSightShowLine(line);
-            else MiniSightSayPresetLine();
-        });
-    }] resume];
 }
 
 #pragma mark - Darwin 通知

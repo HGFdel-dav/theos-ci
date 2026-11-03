@@ -126,8 +126,24 @@ check("no_key_logging", "NSLog" not in AI_M and "NSLog" not in PANEL_M)
 # ---- Panel behaviour -------------------------------------------------------
 
 check("separate_key_window", "MiniSightChatWindow : UIWindow" in PANEL_M)
-check("can_become_key", "- (BOOL)canBecomeKeyWindow { return YES; }" in PANEL_M)
+chat_window_impl = PANEL_M[PANEL_M.index("@implementation MiniSightChatWindow"):]
+chat_window_impl = chat_window_impl[:chat_window_impl.index("@end")]
+check("overlay_stays_nonkey", "- (BOOL)canBecomeKeyWindow { return NO; }" in chat_window_impl)
+check("editor_can_be_key", "MiniSightChatEditorWindow : UIWindow" in PANEL_M and
+      "- (BOOL)canBecomeKeyWindow { return YES; }" in PANEL_M)
 check("key_lifecycle", "makeKeyWindow" in PANEL_M and "resignKeyWindow" in PANEL_M)
+check("getter_direct_ivar", "- (BOOL)isVisible { return _visible; }" in PANEL_M and
+      "- (BOOL)isSending { return _sending; }" in PANEL_M and
+      "- (BOOL)isVisible { return self.visible; }" not in PANEL_M)
+check("ai_initialized", "_ai = [[MiniSightAI alloc] initWithContainer:nil];" in PANEL_M)
+check("close_generation_guard", "generation != self.lifecycleGeneration || self.visible || !self.closing" in PANEL_M)
+check("request_generation_guard", "generation != strongSelf.requestGeneration" in PANEL_M)
+check("teardown_no_lazy_build", "- (void)hideWithoutKey" in PANEL_M and "if (!self.built) return;" in PANEL_M)
+check("no_previous_key_window", "previousKeyWindow" not in PANEL_M and "[previous makeKeyWindow]" not in PANEL_M)
+check("existing_panel_query", "+ (nullable instancetype)existingPanel;" in PANEL_H and
+      "+ (instancetype)existingPanel" in PANEL_M)
+check("separate_editor_input", "self.inputField.alpha = 0.01;" in PANEL_M and
+      "[self.editorWindow makeKeyWindow];" in PANEL_M and "editorWindow.editorField = editor;" in PANEL_M)
 check("full_screen", "MSChatScreenRect(self.window.windowScene)" in PANEL_M and
       "root.leadingAnchor" in PANEL_M)
 check("background_dismiss", "backgroundTapped" in PANEL_M and "UITapGestureRecognizer" in PANEL_M)
@@ -143,7 +159,7 @@ check("controls", all(x in PANEL_M for x in ('@"发送"', '@"取消"', '@"清空
 check("max_30_messages", "kMSChatMaxMessages = 30.0" in PANEL_M and
       "self.rows.count > (NSUInteger)kMSChatMaxMessages" in PANEL_M)
 check("disable_while_sending", "self.sendButton.enabled = NO" in PANEL_M and
-      "if (self.sending) return;" in PANEL_M)
+      "if (self.sending || !self.visible) return;" in PANEL_M)
 check("close_hides", "self.window.hidden = YES" in PANEL_M and "if (!self.visible || self.closing) return;" in PANEL_M and "performClose" in PANEL_M)
 check("host_callbacks", all(x in PANEL_H for x in ("replyHandler", "errorHandler", "visibilityHandler")))
 check("main_thread_panel", "[NSThread isMainThread]" in PANEL_M)

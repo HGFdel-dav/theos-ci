@@ -139,18 +139,20 @@ ok('MiniSightLayout.h' in tweak, '8b 未包含布局头文件')
 for name, text in (('Tweak.xm', tweak), ('MiniSightPet.m', pet_m), ('MiniSightLayout.h', layout)):
     ok(text.count('{') == text.count('}'), '9 %s 花括号不配平 %d/%d' % (name, text.count('{'), text.count('}')))
 
-# ---- 10. AI 出错的诊断（429/401/404 不能静默换成预设话） ----
-ok('statusCode' in tweak, '10a 没看 HTTP 状态码')
-ok('status == 429' in tweak, '10b 没专门处理 429 限流')
-ok('MiniSightAIShortReason(status, detail)' in tweak, '10c 没把状态码翻成人话')
-ok('MiniSightAIResponseText' in tweak and 'MiniSightAITextFromObject' in tweak, '10d AI 响应格式覆盖不够')
-ok('MiniSightSayPresetLine();' in tweak, '10e AI 失败没有预制回退')
-ok('AI 配置不完整；保留原配置并回退预制句子' in tweak, '10e2 不完整配置没有安全回退')
-ok('AI 返回了空内容（200），已回退预制句子' in tweak, '10e3 空响应没有安全回退')
-ok('MiniSightAIDetail' in tweak and 'ai-last.txt' in tweak, '10f 没留诊断文件/摘要')
-ok('withString:@"***"' in tweak, '10g 诊断文本没做 key 脱敏')
-ok('timeoutInterval = 6.0' in tweak, '10h 超时时间与提示不一致')
-ok('AI 被限流（429）' in tweak, '10i 429 文案缺失')
+# ---- 10. Multi-turn chat AI is handled by the standalone client ----
+ai_client = read('MiniSightAI.m')
+chat_core = read('tools/chat/ChatCore.c')
+ok('status < 200 || status >= 300' in ai_client, '10a AI 客户端未检查 HTTP 状态')
+ok('MiniSightAIIssueHTTP' in ai_client and 'MSChatIssueHTTP' in chat_core,
+   '10b HTTP 错误未映射到可读诊断')
+ok('MiniSightAIIssueEmpty' in ai_client and 'MSChatIssueEmpty' in chat_core,
+   '10c 2xx 空响应必须按失败处理')
+ok('MiniSightSayPresetLine();' in tweak and 'MiniSightSpeakLine' not in tweak,
+   '10d 本地短句必须与联网聊天隔离')
+ok('MSDiag' in ai_client or 'MSDiag' in read('MiniSightLog.m'),
+   '10e AI 问题缺少脱敏诊断链')
+ok('timeoutInterval = kMiniSightAITimeout' in ai_client,
+   '10f 聊天客户端超时配置不一致')
 
 # ---- 12. 原生回前台能力 + single-flight，避免和用户按 Home 抢 ----
 native_valid = tweak[tweak.index('if (valid) {'):]
@@ -176,17 +178,28 @@ ok('SBWorkspace' in tweak and 'frontmostApplication' in tweak,
 
 # ---- 13. AI 多轮聊天面板接入 ----
 ok('#import "MiniSightChatPanel.h"' in tweak, '13a 聊天面板未纳入宿主')
-ok('MiniSightChatPanel.sharedPanel.containerPath = gMiniSightContainer' in tweak,
+ok('panel.containerPath = gMiniSightContainer' in tweak and
+   'MiniSightChatPanel.sharedPanel' in tweak,
    '13b 聊天面板没有 App 容器')
 
 tap = tweak[tweak.index('- (void)handleSingleTap:(UITapGestureRecognizer *)tap {'):]
 tap = tap[:tap.index('\n}\n')]
-ok('showInWindowScene' in tap and 'MiniSightSpeakLine();' in tap,
-   '13c 单击仍只生成一句话（无聊天/无回退）')
-ok('[MiniSightChatPanel.sharedPanel close]' in tweak[tweak.index('static void MiniSightUserHide'):tweak.index('/// 录屏开关')],
-   '13d 隐藏桌宠时聊天面板不收起')
+double_tap = tweak[tweak.index('- (void)handleDoubleTap:(UITapGestureRecognizer *)tap {'):]
+double_tap = double_tap[:double_tap.index('\n}\n')]
+open_chat = tweak[tweak.index('static void MiniSightOpenChat(void) {'):]
+open_chat = open_chat[:open_chat.index('\n}\n')]
+ok('MiniSightSayPresetLine();' in tap and 'MiniSightSpeakLine' not in tweak,
+   '13c 单击必须是本地短句，不应触发联网请求')
+ok('MiniSightOpenChat();' in double_tap and 'MiniSightUserHide();' not in double_tap,
+   '13d 双击应打开聊天，不能直接隐藏')
+ok('panel.hidePetHandler = ^{ MiniSightUserHide(); };' in open_chat and
+   'showInWindowScene' in open_chat,
+   '13e 聊天面板未提供菜单隐藏桌宠入口')
+ok('[[MiniSightChatPanel existingPanel] close]' in tweak,
+   '13f 隐藏桌宠路径会创建聊天面板')
 destroy = tweak[tweak.index('static void MiniSightDestroyUI(void) {'):tweak.index('static void MiniSightReloadSettings(void) {')]
-ok('[MiniSightChatPanel.sharedPanel hideWithoutKey]' in destroy, '13e 重建浮窗后聊天窗口残留')
+ok('[[MiniSightChatPanel existingPanel] hideWithoutKey]' in destroy,
+   '13g 重建浮窗会创建聊天面板或残留窗口')
 makefile_files = makefile[makefile.index('MiniSight_FILES'):]
 makefile_files = makefile_files[:makefile_files.index('\n')]
 ok('MiniSightAI.m' in makefile_files and 'MiniSightChatPanel.m' in makefile_files and
@@ -263,19 +276,38 @@ panel = read('MiniSightChatPanel.m')
 panel_h = read('MiniSightChatPanel.h')
 close = panel[panel.index('- (void)close {'):]
 close = close[:close.index('\n}\n')]
-ok('dispatch_async(dispatch_get_main_queue(), ^{\n        [self performClose];' in close,
-   '17a close 仍同步跑完整收尾')
-ok('if (!self.visible || self.closing) return;' in close, '17b close 没有重入保护')
-ok('performClose' in panel, '17c 没有独立异步收尾')
-ok('[previous makeKeyWindow]' in panel and 'self.closing = NO;' in panel,
-   '17d 恢复上一窗口没有延后')
-ok('panelWindow.canBecomeKeyWindow' not in panel, '17e panelWindow 不应是 key 判定点')
-ok('- (void)hideWithoutKey' in panel and 'self.window.hidden = YES;' in panel,
-   '17f 缺少不切 key 的快速隐藏')
-ok('- (void)hideWithoutKey;' in panel_h,
-   '17f2 hideWithoutKey 未声明在公开头文件中')
-ok('[MiniSightChatPanel.sharedPanel hideWithoutKey]' in destroy,
-   '17g DestroyUI 仍在同步切 key')
+ok('dispatch_async(dispatch_get_main_queue(), ^{\n        [self performCloseForGeneration:generation];' in close,
+   '17a close 必须把窗口收尾延后到主队列')
+ok('if (!self.visible || self.closing) return;' in close, '17b close 缺少重入保护')
+ok('generation != self.lifecycleGeneration || self.visible || !self.closing' in panel,
+   '17c 延迟收尾未验证生命周期代数')
+ok('self.lifecycleGeneration' in panel and '++self.lifecycleGeneration' in panel,
+   '17d show/close/teardown 缺少代数保护')
+ok('previousKeyWindow' not in panel and '[previous makeKeyWindow]' not in panel,
+   '17e 不应手动抢回先前 key window')
+ok('@property (nonatomic, assign) BOOL visible;' in panel and
+   '- (BOOL)isVisible { return _visible; }' in panel and
+   '- (BOOL)isSending { return _sending; }' in panel,
+   '17f visible/sending getter 应直接读取 ivar，不能尾递归')
+ok('_ai = [[MiniSightAI alloc] initWithContainer:nil];' in panel,
+   '17g AI 客户端未在面板初始化时创建')
+ok('MiniSightChatWindow : UIWindow' in panel and
+   '- (BOOL)canBecomeKeyWindow { return NO; }' in panel and
+   'MiniSightChatEditorWindow : UIWindow' in panel,
+   '17h 聊天 overlay 与输入键盘窗口没有隔离')
+ok('self.inputField.alpha = 0.01;' in panel and
+   '[self.editorWindow makeKeyWindow];' in panel and
+   'UIKeyboardWillChangeFrameNotification' in panel,
+   '17i 键盘仅应在编辑时由独立输入窗接管')
+ok('self.requestGeneration' in panel and 'generation != strongSelf.requestGeneration' in panel,
+   '17j 已取消或过期请求仍可能改写新会话')
+ok('- (void)hideWithoutKey' in panel and 'if (!self.built) return;' in panel,
+   '17k teardown 会懒初始化 UI')
+ok('+ (nullable instancetype)existingPanel;' in panel_h and
+   '+ (instancetype)existingPanel' in panel,
+   '17l 缺少不创建实例的面板查询')
+ok('[[MiniSightChatPanel existingPanel] hideWithoutKey]' in destroy,
+   '17m DestroyUI 会创建聊天实例或留下输入窗')
 print('检查项：%d' % checks)
 for f in fails:
     print('FAIL ' + f)
