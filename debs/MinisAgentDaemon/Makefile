@@ -40,4 +40,5 @@ before-package::
 	@chmod 0644 "$(THEOS_STAGING_DIR)/Library/LaunchDaemons/com.niubiprass.minisagentd.plist"
 
 after-minis-agentd-stage::
+	@ldid -S"$(PWD)/templates/entitlements.plist" "$(THEOS_STAGING_DIR)/usr/libexec/minis-agentd"
 	@python3 tools/adhoc_sign.py "$(THEOS_STAGING_DIR)/usr/libexec/minis-agentd"
