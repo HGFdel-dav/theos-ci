@@ -91,8 +91,9 @@ static int roothide_root_of(const char *path, char *out, size_t cap) {
     snprintf(copy, sizeof copy, "%s", path);
     size_t len = strlen(copy);
     for (size_t i = len; i > 0; i--) {
-        if (copy[i] != '/' && copy[i] != 0) continue;
-        char *seg = copy + i + 1;
+        int at_end = (i == len);
+        if (!at_end && copy[i] != '/') continue;
+        char *seg = at_end ? copy + i : copy + i + 1;
         char *slash = strchr(seg, '/');
         if (slash) *slash = 0;
         if (is_jbroot_name(seg)) {
@@ -280,7 +281,7 @@ static void scan_jobs(void) {
     while ((e = readdir(d))) {
         size_t len = strlen(e->d_name);
         if (len < 5 || strcmp(e->d_name + len - 4, ".job") != 0) continue;
-        char id[128], from[PATH_MAX], to[PATH_MAX];
+        char id[128], from[PATH_MAX];
         snprintf(id, sizeof id, "%.*s", (int)(len - 4), e->d_name);
         snprintf(from, sizeof from, "%s/%s", g_inbox, e->d_name);
         char dir[PATH_MAX], job[PATH_MAX];
