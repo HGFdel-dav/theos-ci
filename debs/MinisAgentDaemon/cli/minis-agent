@@ -1,0 +1,56 @@
+#!/bin/sh
+# Client for minis-agentd. Run as mobile: it only writes a job file into the
+# inbox the daemon watches.
+#
+# The state root is the bootstrap the package is installed into, found the way
+# the daemon finds it: the root containing our launch daemon. RootHide keeps it
+# under /var/containers/Bundle/Application/.jbroot-<16 hex>; a rootless
+# bootstrap is /var/jb. "/" means neither is installed.
+set -eu
+
+PLIST_REL="Library/LaunchDaemons/com.niubiprass.minisagentd.plist"
+
+resolve_root() {
+    for root in /var/containers/Bundle/Application/.jbroot-*; do
+        [ -f "$root/$PLIST_REL" ] || continue
+        printf '%s\n' "$root"
+        return 0
+    done
+    if [ -f "/var/jb/$PLIST_REL" ]; then
+        printf '%s\n' /var/jb
+        return 0
+    fi
+    printf '%s\n' ""
+}
+
+root="$(resolve_root)"
+[ -n "$root" ] || { echo "minis-agentd is not installed" >&2; exit 1; }
+base="$root/var/mobile/Library/MinisAgent"
+[ -d "$base/inbox" ] || { echo "inbox missing: $base/inbox" >&2; exit 1; }
+
+respring=0
+deb=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --respring) respring=1 ;;
+        --deb) shift; deb="${1:-}" ;;
+        *) echo "usage: minis-agent [--respring] --deb PACKAGE.deb" >&2; exit 64 ;;
+    esac
+    shift
+done
+[ -n "$deb" ] && [ -f "$deb" ] || { echo "usage: minis-agent [--respring] --deb PACKAGE.deb" >&2; exit 64; }
+command -v sha256sum >/dev/null 2>&1 || { echo "sha256sum missing" >&2; exit 69; }
+
+digest="$(sha256sum "$deb" | awk '{print $1}')"
+package="$(dpkg-deb -f "$deb" Package)"
+id="$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)"
+
+tmp="$base/inbox/.$id.tmp"
+{
+    printf 'deb=%s\n' "$deb"
+    printf 'sha256=%s\n' "$digest"
+    printf 'package=%s\n' "$package"
+    printf 'respring=%s\n' "$respring"
+} > "$tmp"
+mv "$tmp" "$base/inbox/$id.job"
+printf '%s\n' "$id"

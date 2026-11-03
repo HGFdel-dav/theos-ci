@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+	Keys copied from Apelin's wiki.qaq.apelind plist. No StandardOutPath or
+	StandardErrorPath: with them launchd refused this job with EX_CONFIG
+	(78). The daemon writes its own log under the root it derives.
+	@PREFIX@ is substituted at package time: empty for roothide, /var/jb for
+	rootless.
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.niubiprass.minisagentd</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>@PREFIX@/usr/libexec/minis-agentd</string>
+	</array>
+	<key>UserName</key>
+	<string>root</string>
+	<key>ProcessType</key>
+	<string>Interactive</string>
+	<key>Umask</key>
+	<integer>18</integer>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>SoftResourceLimits</key>
+	<dict>
+		<key>NumberOfFiles</key>
+		<integer>10240</integer>
+	</dict>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>DISABLE_TWEAKS</key>
+		<string>1</string>
+	</dict>
+</dict>
+</plist>

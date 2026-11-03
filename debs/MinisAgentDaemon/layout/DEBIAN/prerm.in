@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+PREFIX="@PREFIX@"
+if command -v launchctl >/dev/null 2>&1; then
+    launchctl unload "$PREFIX/Library/LaunchDaemons/com.niubiprass.minisagentd.plist" 2>/dev/null || true
+fi
+# A stopped daemon cleans itself up; leave an in-flight job's copied debs alone.
+pkill -f '/usr/libexec/minis-agentd' 2>/dev/null || true
+exit 0
