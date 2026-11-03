@@ -12,7 +12,7 @@ TOOL_NAME := minis-agentd
 minis-agentd_FILES := src/agentd.c
 minis-agentd_FRAMEWORKS := CoreFoundation
 minis-agentd_CFLAGS := -Wall -Wextra -Werror
-minis-agentd_CODESIGN_FLAGS := -Slayout/entitlements.plist
+minis-agentd_CODESIGN_FLAGS := -Stemplates/entitlements.plist
 minis-agentd_INSTALL_PATH := /usr/libexec
 
 include $(THEOS_MAKE_PATH)/tool.mk
@@ -30,10 +30,10 @@ endif
 
 before-package::
 	@mkdir -p "$(THEOS_STAGING_DIR)/DEBIAN" "$(THEOS_STAGING_DIR)/Library/LaunchDaemons"
-	@sed 's|@PREFIX@|$(PREFIX)|g' layout/Library/LaunchDaemons/com.niubiprass.minisagentd.plist.in \
+	@sed 's|@PREFIX@|$(PREFIX)|g' templates/launchd.plist.in \
 		> "$(THEOS_STAGING_DIR)/Library/LaunchDaemons/com.niubiprass.minisagentd.plist"
 	@for s in postinst prerm postrm; do \
-		sed 's|@PREFIX@|$(PREFIX)|g' layout/DEBIAN/$$s.in > "$(THEOS_STAGING_DIR)/DEBIAN/$$s"; \
+		sed 's|@PREFIX@|$(PREFIX)|g' templates/$$s.in > "$(THEOS_STAGING_DIR)/DEBIAN/$$s"; \
 		chmod 0755 "$(THEOS_STAGING_DIR)/DEBIAN/$$s"; \
 	done
 	@sed 's|^Architecture:.*|Architecture: $(ARCH_LINE)|' layout/DEBIAN/control > "$(THEOS_STAGING_DIR)/DEBIAN/control"
