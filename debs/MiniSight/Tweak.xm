@@ -83,6 +83,7 @@ static BOOL gMiniSightRecorderManualEnabled = YES;
 static NSUInteger gMiniSightRecorderConfigGeneration = 0;
 static NSUInteger gMiniSightActivityReadGeneration = 0;
 static dispatch_source_t gMiniSightPresentationTimer;
+static BOOL gMiniSightUserHidden = NO;
 static void MiniSightReconcileAppPresentation(void);
 static NSString *MiniSightRecorderIssueText(MiniSightRecorderIssue issue, NSInteger code, MiniSightRecorderSaveStage stage);
 static void MiniSightInstallRecorderCallbacks(void);
@@ -445,7 +446,6 @@ static UIView   *gMiniSightPulse  = nil;   // 圆点背后的脉动圈
 static UILabel  *gMiniSightLabel  = nil;   // 文字
 static id        gMiniSightGestureTarget = nil; // 手势/通知的 target（需强引用）
 static BOOL      gMiniSightBuilt  = NO;
-static BOOL      gMiniSightUserHidden = NO;   // 双击隐藏，下一次 MCP 调用自动恢复
 static MiniSightPetView *gMiniSightPet = nil;   // 可选桌宠（存在 pet.png 时启用）
 static dispatch_block_t gMiniSightPendingHide = nil; // 两个调用之间的 2.5 秒缓冲
 BOOL gMiniSightBurst = NO;   // 只在 MCP 调用期间为 YES
