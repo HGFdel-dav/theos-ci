@@ -61,6 +61,7 @@ static NSMutableArray *gMiniSightResourceCompletions;
 static void MiniSightReloadSettings(void);
 static void MiniSightShow(void);
 static void MiniSightShowAfterOwnershipCheck(void);
+static void MiniSightRefreshAppOwnership(void (^completion)(void));
 static void MiniSightStopGravity(void);
 static void MiniSightCancelConfirm(void);
 static void MiniSightConfigureRecorder(void);
@@ -103,6 +104,18 @@ static BOOL MiniSightAlwaysShow(void) { return [MiniSightPref(@"minisight.mode")
 static BOOL MiniSightShown(void) { return gMiniSightShown; }
 static BOOL MiniSightAppOwnsPresentation(void) {
     return MiniSightMinisIsFrontmost() && MiniSightStyle() == 1 && MiniSightShown() && gMiniSightAtlas != nil;
+}
+
+/// Presentation is main-thread owned. App ownership is read live from SBWorkspace
+/// inside MiniSightAppOwnsPresentation, so "refreshing" only means making sure the
+/// caller inspects it on the main queue before it decides anything.
+static void MiniSightRefreshAppOwnership(void (^completion)(void)) {
+    if (!completion) return;
+    if ([NSThread isMainThread]) {
+        completion();
+        return;
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{ completion(); });
 }
 
 static void MiniSightReplyToPluginProbe(void) {
@@ -1129,9 +1142,7 @@ static void MiniSightRequestResources(BOOL force, void (^completion)(void)) {
         gMiniSightResourceLoading = NO;
         gMiniSightContainer = [container copy];
         gMiniSightPreferences = [preferences copy] ?: @{};
-        MiniSightChatPanel *existingPanel = [MiniSightChatPanel existingPanel];
-        [existingPanel setContainerPath:gMiniSightContainer];
-        existingPanel.appearancePreferences = gMiniSightPreferences ?: @{};
+        [[MiniSightChatPanel existingPanel] setContainerPath:gMiniSightContainer];
         gMiniSightShown = shown;
         gMiniSightAtlas = atlas;
         gMiniSightResourcesReady = YES;
@@ -1316,6 +1327,9 @@ static void MiniSightBuildUI(void) {
 #pragma mark - 显示 / 隐藏
 
 static void MiniSightShow(void) {
+    // Call mode is driven only by an active MCP-owned burst. A stray show
+    // notification or stale status must never wake the pet while idle.
+    if (!MiniSightAlwaysShow() && !gMiniSightBurst) return;
     if (!gMiniSightResourcesReady) {
         MiniSightRequestResources(NO, ^{ MiniSightShow(); });
         return;
@@ -1783,7 +1797,6 @@ static void MiniSightOpenChat(void) {
     }
     MiniSightChatPanel *panel = MiniSightChatPanel.sharedPanel;
     panel.containerPath = gMiniSightContainer;
-    panel.appearancePreferences = gMiniSightPreferences ?: @{};
     panel.hidePetHandler = ^{ MiniSightUserHide(); };
     if (![MiniSightChatPanel showInWindowScene:gMiniSightWindow.windowScene]) {
         MiniSightSayPresetLine();
