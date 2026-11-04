@@ -21,6 +21,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Minis App container; required before the built-in client can read ai.json.
 @property (nonatomic, copy, nullable) NSString *containerPath;
+/// Shared MiniSight AppStorage appearance snapshot (height/theme/tint).
+@property (nonatomic, copy) NSDictionary<NSString *, id> *appearancePreferences;
 
 @property (nonatomic, readonly, getter=isVisible) BOOL visible;
 @property (nonatomic, readonly, getter=isSending) BOOL sending;

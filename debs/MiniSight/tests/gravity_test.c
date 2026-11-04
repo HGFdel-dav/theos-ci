@@ -11,6 +11,15 @@ int main(void) {
     CHECK(!MSGravityShakeShouldReset(0.36,1));
     CHECK(!MSGravityShakeShouldTrigger(NAN,0));
     CHECK(!MSGravityShakeShouldTrigger(INFINITY,0));
+    MSPoint p;
+    p = MSGravityProject(0.55, 0.0, 1); CHECK(fabs(p.x - 0.55) < 1e-9);
+    p = MSGravityProject(0.55, 0.0, 2); CHECK(fabs(p.x + 0.55) < 1e-9);
+    p = MSGravityProject(0.0, 0.55, 3); CHECK(fabs(p.x - 0.55) < 1e-9);
+    p = MSGravityProject(0.0, 0.55, 4); CHECK(fabs(p.x + 0.55) < 1e-9);
+    CHECK(fabs(MSGravityRollFromProjected(0.55) - 1.0) < 1e-9);
+    CHECK(fabs(MSGravityAngle(MSGravityRollFromProjected(0.55), 0.0, 1.0) - MS_GRAVITY_TILT_ANGLE) < 1e-9);
+    CHECK(MSGravityRollFromProjected(NAN) == 0.0);
+    CHECK(MSGravityRollFromProjected(INFINITY) == 0.0);
     for (unsigned i=0;i<10000;++i) {
         double m=(double)i/1000.0;
         double strength=MSGravityShakeStrength(m);

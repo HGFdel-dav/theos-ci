@@ -303,6 +303,23 @@ ok('self.requestGeneration' in panel and 'generation != strongSelf.requestGenera
    '17j 已取消或过期请求仍可能改写新会话')
 ok('- (void)hideWithoutKey' in panel and 'if (!self.built) return;' in panel,
    '17k teardown 会懒初始化 UI')
+
+# ---- 18. RootHide plugin-owned preference migration ------------------------
+prefs_h = read('MiniSightPreferences.h')
+prefs_m = read('MiniSightPreferences.m')
+ok('MiniSightPreferences.m' in makefile, '18a RootHide 偏好源文件未纳入构建')
+ok('MSMiniSightPreference' in prefs_h and 'MSMiniSightSetPreference' in prefs_h,
+   '18b 偏好接口缺少读写入口')
+ok('.jbroot-' in prefs_m and 'com.niubiprass.minisight.plist' in prefs_m,
+   '18c 未动态定位 jbroot 或专属 plist')
+ok('MiniSight.dylib' in prefs_m and 'var/mobile/Library/Preferences' in prefs_m,
+   '18d 未按当前插件 dylib/Preferences 路径选择根')
+ok('com.apple.springboard.plist' in prefs_m and 'MSOwnedKeys' in prefs_m,
+   '18e 未限定迁移范围到 MiniSight 自有键')
+ok('MSWritePlist(merged, targetPath)' in prefs_m and 'verified' in prefs_m,
+   '18f 清理前没有验证专属 plist 落盘')
+ok('NSUserDefaults.standardUserDefaults' in prefs_m and 'Rootless keeps legacy behavior' in prefs_m,
+   '18g 缺少 rootless 回退')
 ok('+ (nullable instancetype)existingPanel;' in panel_h and
    '+ (instancetype)existingPanel' in panel,
    '17l 缺少不创建实例的面板查询')

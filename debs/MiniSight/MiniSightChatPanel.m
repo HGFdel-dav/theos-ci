@@ -80,6 +80,8 @@ static CGRect MSChatScreenRect(UIWindowScene *scene) {
 @property (nonatomic, strong, nullable) MiniSightChatWindow *window;
 @property (nonatomic, strong, nullable) UIView *dimView;
 @property (nonatomic, strong, nullable) UIView *cardView;
+@property (nonatomic, strong, nullable) UIVisualEffectView *cardBlurView;
+@property (nonatomic, strong, nullable) UIView *cardTintView;
 @property (nonatomic, strong, nullable) UIScrollView *scrollView;
 @property (nonatomic, strong, nullable) UIStackView *messageStack;
 @property (nonatomic, strong, nullable) UITextField *inputField;
@@ -127,8 +129,45 @@ static MiniSightChatPanel *gMiniSightExistingChatPanel;
     self = [super init];
     if (!self) return nil;
     _rows = [NSMutableArray array];
+    _appearancePreferences = @{};
     _ai = [[MiniSightAI alloc] initWithContainer:nil];
     return self;
+}
+
+- (CGFloat)configuredHeight {
+    id value = self.appearancePreferences[@"minisight.chat.height"];
+    CGFloat height = [value respondsToSelector:@selector(doubleValue)] ? [value doubleValue] : 360.0;
+    return MIN(MAX(180.0, height), 440.0);
+}
+
+- (UIColor *)configuredTint {
+    NSString *hex = self.appearancePreferences[@"minisight.chat.tintHex"];
+    if (![hex isKindOfClass:NSString.class] || hex.length != 6) hex = @"8B5CF6";
+    unsigned int rgb = 0;
+    NSScanner *scanner = [NSScanner scannerWithString:hex];
+    if (![scanner scanHexInt:&rgb]) rgb = 0x8B5CF6;
+    id alphaValue = self.appearancePreferences[@"minisight.chat.tintAlpha"];
+    CGFloat alpha = [alphaValue respondsToSelector:@selector(doubleValue)] ? [alphaValue doubleValue] : 0.22;
+    alpha = MIN(0.55, MAX(0.05, alpha));
+    return [UIColor colorWithRed:((rgb >> 16) & 0xff) / 255.0
+                           green:((rgb >> 8) & 0xff) / 255.0
+                            blue:(rgb & 0xff) / 255.0 alpha:alpha];
+}
+
+- (void)updateAppearance {
+    if (!self.cardBlurView || !self.cardTintView) return;
+    NSInteger theme = [self.appearancePreferences[@"minisight.chat.theme"] respondsToSelector:@selector(integerValue)]
+        ? [self.appearancePreferences[@"minisight.chat.theme"] integerValue] : 0;
+    UIBlurEffectStyle style = theme == 1 ? UIBlurEffectStyleRegular :
+        (theme == 2 ? UIBlurEffectStyleProminent : UIBlurEffectStyleSystemMaterial);
+    self.cardBlurView.effect = [UIBlurEffect effectWithStyle:style];
+    self.cardTintView.backgroundColor = self.configuredTint;
+}
+
+- (void)setAppearancePreferences:(NSDictionary<NSString *,id> *)appearancePreferences {
+    _appearancePreferences = [appearancePreferences copy] ?: @{};
+    [self updateAppearance];
+    if (self.built) [self layoutForCurrentScreen];
 }
 
 - (BOOL)isVisible { return _visible; }
@@ -179,13 +218,34 @@ static MiniSightChatPanel *gMiniSightExistingChatPanel;
 
     UIView *card = [[UIView alloc] initWithFrame:CGRectZero];
     card.translatesAutoresizingMaskIntoConstraints = NO;
-    card.backgroundColor = MSChatColor([UIColor colorWithWhite:0.98 alpha:1.0],
-                                       [UIColor colorWithWhite:0.10 alpha:1.0]);
+    card.backgroundColor = UIColor.clearColor;
     card.layer.cornerRadius = kMSChatCorner;
     card.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner;
     card.clipsToBounds = YES;
     [root addSubview:card];
     self.cardView = card;
+
+    UIVisualEffectView *blur = [[UIVisualEffectView alloc] initWithEffect:nil];
+    blur.translatesAutoresizingMaskIntoConstraints = NO;
+    [card addSubview:blur];
+    [NSLayoutConstraint activateConstraints:@[
+        [blur.leadingAnchor constraintEqualToAnchor:card.leadingAnchor],
+        [blur.trailingAnchor constraintEqualToAnchor:card.trailingAnchor],
+        [blur.topAnchor constraintEqualToAnchor:card.topAnchor],
+        [blur.bottomAnchor constraintEqualToAnchor:card.bottomAnchor]
+    ]];
+    UIView *tint = [[UIView alloc] initWithFrame:CGRectZero];
+    tint.translatesAutoresizingMaskIntoConstraints = NO;
+    [blur.contentView addSubview:tint];
+    [NSLayoutConstraint activateConstraints:@[
+        [tint.leadingAnchor constraintEqualToAnchor:blur.contentView.leadingAnchor],
+        [tint.trailingAnchor constraintEqualToAnchor:blur.contentView.trailingAnchor],
+        [tint.topAnchor constraintEqualToAnchor:blur.contentView.topAnchor],
+        [tint.bottomAnchor constraintEqualToAnchor:blur.contentView.bottomAnchor]
+    ]];
+    self.cardBlurView = blur;
+    self.cardTintView = tint;
+    [self updateAppearance];
 
     [card.leadingAnchor constraintEqualToAnchor:root.leadingAnchor constant:kMSChatCardInset].active = YES;
     [card.trailingAnchor constraintEqualToAnchor:root.trailingAnchor constant:-kMSChatCardInset].active = YES;
@@ -550,9 +610,8 @@ static MiniSightChatPanel *gMiniSightExistingChatPanel;
 }
 
 - (CGFloat)preferredCardHeightForSize:(CGSize)size {
-    BOOL landscape = size.width > size.height;
-    CGFloat height = landscape ? size.height * 0.76 : size.height * 0.58;
-    return MIN(MAX(260.0, height), 470.0);
+    CGFloat available = MAX(220.0, size.height - self.window.safeAreaInsets.top - self.window.safeAreaInsets.bottom - 32.0);
+    return MIN(available, [self configuredHeight]);
 }
 
 - (void)layoutForCurrentScreen {

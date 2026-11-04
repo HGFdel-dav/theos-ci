@@ -182,8 +182,12 @@ static MSChatValue *MiniSightAIValueFromJSONData(NSData *data) {
     request.timeoutInterval = kMiniSightAITimeout;
     [request setValue:[@"Bearer " stringByAppendingString:key] forHTTPHeaderField:@"Authorization"];
     [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+    NSString *systemPrompt = [config[@"system_prompt"] isKindOfClass:NSString.class]
+        ? [config[@"system_prompt"] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]
+        : @"";
+    if (systemPrompt.length > 2000) systemPrompt = [systemPrompt substringToIndex:2000];
     request.HTTPBody = [NSJSONSerialization dataWithJSONObject:
-        [self requestBodyWithModel:model] options:0 error:nil];
+        [self requestBodyWithModel:model systemPrompt:systemPrompt] options:0 error:nil];
 
     NSString *container = [self.containerPath copy];
     __weak typeof(self) weakSelf = self;
@@ -198,16 +202,29 @@ static MSChatValue *MiniSightAIValueFromJSONData(NSData *data) {
     [self.task resume];
 }
 
-- (NSDictionary *)requestBodyWithModel:(NSString *)model {
+- (NSDictionary *)requestBodyWithModel:(NSString *)model systemPrompt:(NSString *)systemPrompt {
     NSMutableArray *messages = [NSMutableArray arrayWithCapacity:self.history.count];
+    BOOL insertedSystem = NO;
     for (size_t i = 0; i < self.history.count; ++i) {
         const MSChatMessage *item = &self.history.items[i];
+        if (item->role == MSChatRoleSystem) {
+            if (!insertedSystem) {
+                NSString *prompt = systemPrompt.length ? systemPrompt : kMiniSightAISystemPrompt;
+                [messages addObject:@{@"role": @"system", @"content": prompt}];
+                insertedSystem = YES;
+            }
+            continue;
+        }
         [messages addObject:@{
             @"role": [NSString stringWithUTF8String:MSChatRoleName(item->role)],
             @"content": [NSString stringWithUTF8String:item->content]
         }];
     }
-    return @{ @"model": model, @"max_tokens": @(kMiniSightAIMaxTokens), @"messages": messages };
+    if (!insertedSystem) {
+        NSString *prompt = systemPrompt.length ? systemPrompt : kMiniSightAISystemPrompt;
+        [messages insertObject:@{@"role": @"system", @"content": prompt} atIndex:0];
+    }
+    return @{@"model": model, @"max_tokens": @(kMiniSightAIMaxTokens), @"messages": messages};
 }
 
 #pragma mark Completion

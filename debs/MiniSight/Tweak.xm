@@ -24,6 +24,7 @@
 #import "MiniSightLayout.h"
 #import "MiniSightBubbleView.h"
 #import "MiniSightResources.h"
+#import "MiniSightPreferences.h"
 #import "MiniSightGravity.h"
 #import "MiniSightBridgeIO.h"
 #import "MiniSightRecorder.h"
@@ -97,6 +98,10 @@ extern BOOL gMiniSightBurst;
 static NSString *MiniSightAppContainer(void) { return gMiniSightContainer; }
 static id MiniSightPref(NSString *key) { return gMiniSightPreferences[key]; }
 static NSInteger MiniSightStyle(void) { return [MiniSightPref(@"minisight.style") integerValue]; }
+static NSInteger MiniSightRenderer(void) {
+    id value = MiniSightPref(@"minisight.renderer");
+    return value ? [value integerValue] : 0; // Existing installs keep plugin rendering.
+}
 static CGFloat MiniSightPetSize(void) {
     id v = MiniSightPref(@"minisight.petSize");
     return v ? MSClamp([v doubleValue], 36., 140.) : 96.;
@@ -104,7 +109,9 @@ static CGFloat MiniSightPetSize(void) {
 static BOOL MiniSightAlwaysShow(void) { return [MiniSightPref(@"minisight.mode") integerValue] == 1; }
 static BOOL MiniSightShown(void) { return gMiniSightShown; }
 static BOOL MiniSightAppOwnsPresentation(void) {
-    return MiniSightMinisIsFrontmost() && MiniSightStyle() == 1 && MiniSightShown() && gMiniSightAtlas != nil;
+    // Renderer is an explicit global choice, not a foreground-window heuristic.
+    // If App mode is selected, SpringBoard never paints a duplicate pet.
+    return MiniSightRenderer() == 1 && MiniSightStyle() == 1 && MiniSightShown();
 }
 
 /// Presentation is main-thread owned. App ownership is read live from SBWorkspace
@@ -123,8 +130,8 @@ static void MiniSightReplyToPluginProbe(void) {
     NSString *container = MiniSightAppContainer();
     if (!container.length) return;
     NSString *dir = [container stringByAppendingPathComponent:@"Documents/MiniSight"];
-    NSString *nonce = [NSString stringWithContentsOfFile:[dir stringByAppendingPathComponent:@"plugin-probe.txt"]
-                                                encoding:NSUTF8StringEncoding error:nil];
+    NSString *path = [dir stringByAppendingPathComponent:@"plugin-probe.txt"];
+    NSString *nonce = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
     if (!nonce.length || nonce.length > 64) return;
     [nonce writeToFile:[dir stringByAppendingPathComponent:@"plugin-probe-reply.txt"]
             atomically:YES encoding:NSUTF8StringEncoding error:nil];
@@ -156,6 +163,8 @@ static void MiniSightStartPresentationTimer(void) {
 
 static void MiniSightUserHide(void) {
     gMiniSightShown = NO;
+    gMiniSightUserHidden = YES;
+    MSMiniSightSetPreference(@"MiniSightUserHidden", @YES);
     [MiniSightResources writeShown:NO container:gMiniSightContainer];
     [[MiniSightChatPanel existingPanel] close];
     MiniSightCancelConfirm();
@@ -361,6 +370,9 @@ static void MiniSightRefreshRecorderSettingsThenReadActivity(void) {
         if (generation != gMiniSightActivityReadGeneration) return;
         if (container.length) gMiniSightContainer = [container copy];
         gMiniSightPreferences = [preferences copy] ?: @{};
+        MiniSightChatPanel *panel = MiniSightChatPanel.existingPanel;
+        panel.containerPath = gMiniSightContainer;
+        panel.appearancePreferences = gMiniSightPreferences;
         MiniSightConfigureRecorderWithCompletion(^{ MiniSightReadActivitySnapshot(); });
     }];
 }
@@ -423,7 +435,7 @@ static NSString *const kMiniSightCenterY   = @"MiniSightCenterY";
 static NSString *const kMiniSightText      = @"Minis 操作中";
 // 版本号：与 DEBIAN/control 的 Version 同步。诊断日志会打印它，
 // 便于装机后确认跑的是哪一版（strings MiniSight.dylib | grep 也能看到）。
-static NSString *const kMiniSightVersion   = @"0.5.0";
+static NSString *const kMiniSightVersion   = @"0.6.0";
 
 #pragma mark - 全局状态
 
@@ -471,6 +483,8 @@ static CGFloat gMiniSightGravityRoll = 0.0;
 static BOOL gMiniSightGravityRollValid = NO;
 static BOOL gMiniSightGravityShakeLatched = NO;
 static NSTimeInterval gMiniSightGravityLastImpulseTime = 0.0;
+static CFTimeInterval gMiniSightGravityLastSampleTime = 0.0;
+static NSUInteger gMiniSightGravitySampleCount = 0;
 static BOOL gMiniSightGravityConfigured = NO;
 static BOOL gMiniSightDiagnosticsEnabled = NO;
 
@@ -482,7 +496,9 @@ static BOOL MiniSightGravityEnabled(void) {
 }
 
 static void MiniSightRefreshGravityConfiguration(void) {
-    gMiniSightGravityConfigured = gMiniSightPet != nil && MiniSightStyle() == 1 &&
+    // Configuration must not depend on whether the pet view has already been built.
+    // Settings notifications can arrive before the next UI rebuild.
+    gMiniSightGravityConfigured = MiniSightStyle() == 1 &&
         [MiniSightPref(@"minisight.gravity") boolValue];
     gMiniSightDiagnosticsEnabled = [MiniSightPref(@"minisight.diagnostics") boolValue];
     MSDiagConfigure(gMiniSightDiagnosticsEnabled, gMiniSightContainer);
@@ -508,25 +524,22 @@ static void MiniSightApplyGravitySample(double gx, double gy,
                                         double ux, double uy, double uz,
                                         MiniSightPetView *pet) {
     UIInterfaceOrientation orientation = MiniSightOrientation();
-    CGFloat lateral = 0.0;
-    switch (orientation) {
-        case UIInterfaceOrientationLandscapeLeft:  lateral = (CGFloat)gy; break;
-        case UIInterfaceOrientationLandscapeRight: lateral = (CGFloat)-gy; break;
-        case UIInterfaceOrientationPortraitUpsideDown: lateral = (CGFloat)-gx; break;
-        default: lateral = (CGFloat)gx; break;
-    }
-    CGFloat sample = MIN(1.0, MAX(-1.0, lateral / 0.72));
-    if (fabs(sample) < 0.045) sample = 0.0;
-    if (!gMiniSightGravityRollValid) {
-        gMiniSightGravityRoll = sample;
-        gMiniSightGravityRollValid = YES;
-    } else {
-        gMiniSightGravityRoll = gMiniSightGravityRoll * 0.82 + sample * 0.18;
-    }
+    MSPoint projected = MSGravityProject(gx, gy, (int)orientation);
+    double sample = MSGravityRollFromProjected(projected.x);
+    CFTimeInterval now = CACurrentMediaTime();
+    double dt = gMiniSightGravityLastSampleTime > 0.0
+        ? now - gMiniSightGravityLastSampleTime : 1.0 / 30.0;
+    gMiniSightGravityLastSampleTime = now;
+    gMiniSightGravityRoll = MSGravityFilter(gMiniSightGravityRoll, sample, dt);
+    gMiniSightGravityRollValid = YES;
     pet.gravityRoll = gMiniSightGravityRoll;
 
     CGFloat magnitude = sqrt((CGFloat)(ux * ux + uy * uy + uz * uz));
-    NSTimeInterval now = CACurrentMediaTime();
+    if (++gMiniSightGravitySampleCount % 30 == 0) {
+        MiniSightGravityDiagnostic(@"sample", [NSString stringWithFormat:
+            @"orientation=%ld projected=%.3f roll=%.3f shakeG=%.3f",
+            (long)orientation, projected.x, gMiniSightGravityRoll, magnitude]);
+    }
     if (MSGravityShakeShouldTrigger(magnitude, gMiniSightGravityShakeLatched) &&
         now - gMiniSightGravityLastImpulseTime > 0.75) {
         CGFloat direction = gMiniSightGravityRoll;
@@ -557,6 +570,8 @@ static void MiniSightStopGravity(void) {
     gMiniSightGravityRollValid = NO;
     gMiniSightGravityShakeLatched = NO;
     gMiniSightGravityLastImpulseTime = 0.0;
+    gMiniSightGravityLastSampleTime = 0.0;
+    gMiniSightGravitySampleCount = 0;
     if (gMiniSightPet) {
         BOOL wasOn = gMiniSightPet.gravityEnabled;
         gMiniSightPet.gravityEnabled = NO;
@@ -568,9 +583,17 @@ static void MiniSightStopGravity(void) {
 
 static void MiniSightStartGravity(void) {
     NSCAssert([NSThread isMainThread], @"Motion UI must start on main thread");
-    if (!MiniSightGravityEnabled() || !gMiniSightWindow ||
-        gMiniSightWindow.hidden || gMiniSightScreenBlanked ||
-        [NSProcessInfo processInfo].lowPowerModeEnabled) {
+    if (!MiniSightGravityEnabled()) {
+        MiniSightGravityDiagnostic(@"disabled", [NSString stringWithFormat:
+            @"style=%ld enabled=%d pet=%d", (long)MiniSightStyle(),
+            [MiniSightPref(@"minisight.gravity") boolValue], gMiniSightPet != nil]);
+        MiniSightStopGravity();
+        return;
+    }
+    if (!gMiniSightWindow || gMiniSightWindow.hidden || gMiniSightScreenBlanked) {
+        MiniSightGravityDiagnostic(@"deferred", [NSString stringWithFormat:
+            @"window=%d hidden=%d blanked=%d", gMiniSightWindow != nil,
+            gMiniSightWindow ? gMiniSightWindow.hidden : YES, gMiniSightScreenBlanked]);
         MiniSightStopGravity();
         return;
     }
@@ -601,8 +624,7 @@ static void MiniSightStartGravity(void) {
         MiniSightPetView *pet = weakPet;
         *outPet = pet;
         if (!pet || pet != gMiniSightPet || !MiniSightGravityEnabled() ||
-            !gMiniSightWindow || gMiniSightWindow.hidden || gMiniSightScreenBlanked ||
-            [NSProcessInfo processInfo].lowPowerModeEnabled) {
+            !gMiniSightWindow || gMiniSightWindow.hidden || gMiniSightScreenBlanked) {
             MiniSightStopGravity();
             *outPet = nil;
         }
@@ -614,8 +636,7 @@ static void MiniSightStartGravity(void) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
             if (failedGeneration == gMiniSightMotionGeneration && MiniSightGravityEnabled() &&
-                gMiniSightWindow && !gMiniSightWindow.hidden && !gMiniSightScreenBlanked &&
-                ![NSProcessInfo processInfo].lowPowerModeEnabled) MiniSightStartGravity();
+                gMiniSightWindow && !gMiniSightWindow.hidden && !gMiniSightScreenBlanked) MiniSightStartGravity();
         });
     };
 
@@ -814,9 +835,8 @@ static void MiniSightSetAnchor(CGPoint want, BOOL save) {
     MiniSightFollowBubble();
 
     if (save) {
-        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-        [defaults setDouble:center.x forKey:kMiniSightCenterX];
-        [defaults setDouble:center.y forKey:kMiniSightCenterY];
+        MSMiniSightSetPreference(kMiniSightCenterX, @(center.x));
+        MSMiniSightSetPreference(kMiniSightCenterY, @(center.y));
     }
 }
 
@@ -995,9 +1015,8 @@ static void MiniSightStopPulse(void);
 - (void)handlePowerStateChange:(NSNotification *)notification {
     dispatch_async(dispatch_get_main_queue(), ^{
         BOOL low = [NSProcessInfo processInfo].lowPowerModeEnabled;
-        gMiniSightPet.reducedWork = low;
-        if (low) MiniSightStopGravity();
-        else if (gMiniSightWindow && !gMiniSightWindow.hidden) MiniSightStartGravity();
+        gMiniSightPet.reducedWork = low; // Extend idle roaming delay; keep enabled sensor input.
+        if (!low && gMiniSightWindow && !gMiniSightWindow.hidden) MiniSightStartGravity();
     });
 }
 
@@ -1074,12 +1093,11 @@ static void MiniSightApplySavedCenter(BOOL useSaved) {
     CGPoint center = MiniSightDefaultAnchor();
 
     if (useSaved) {
-        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-        BOOL hasX = ([defaults objectForKey:kMiniSightCenterX] != nil);
-        BOOL hasY = ([defaults objectForKey:kMiniSightCenterY] != nil);
-        if (hasX && hasY) {
-            center = CGPointMake([defaults doubleForKey:kMiniSightCenterX],
-                                 [defaults doubleForKey:kMiniSightCenterY]);
+        NSNumber *savedX = MSMiniSightPreference(kMiniSightCenterX);
+        NSNumber *savedY = MSMiniSightPreference(kMiniSightCenterY);
+        if ([savedX respondsToSelector:@selector(doubleValue)] &&
+            [savedY respondsToSelector:@selector(doubleValue)]) {
+            center = CGPointMake(savedX.doubleValue, savedY.doubleValue);
         }
     }
 
@@ -1145,7 +1163,9 @@ static void MiniSightRequestResources(BOOL force, void (^completion)(void)) {
         gMiniSightResourceLoading = NO;
         gMiniSightContainer = [container copy];
         gMiniSightPreferences = [preferences copy] ?: @{};
-        [[MiniSightChatPanel existingPanel] setContainerPath:gMiniSightContainer];
+        MiniSightChatPanel *panel = MiniSightChatPanel.existingPanel;
+        panel.containerPath = gMiniSightContainer;
+        panel.appearancePreferences = gMiniSightPreferences;
         gMiniSightShown = shown;
         gMiniSightAtlas = atlas;
         gMiniSightResourcesReady = YES;
@@ -1358,7 +1378,7 @@ static void MiniSightShowAfterOwnershipCheck(void) {
     }
     if (gMiniSightUserHidden) {
         gMiniSightUserHidden = NO;
-        [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"MiniSightUserHidden"];
+        MSMiniSightSetPreference(@"MiniSightUserHidden", @NO);
     }
     MiniSightBuildUI();
     if (!gMiniSightWindow) return;
@@ -1800,6 +1820,7 @@ static void MiniSightOpenChat(void) {
     }
     MiniSightChatPanel *panel = MiniSightChatPanel.sharedPanel;
     panel.containerPath = gMiniSightContainer;
+    panel.appearancePreferences = gMiniSightPreferences ?: @{};
     panel.hidePetHandler = ^{ MiniSightUserHide(); };
     if (![MiniSightChatPanel showInWindowScene:gMiniSightWindow.windowScene]) {
         MiniSightSayPresetLine();
@@ -1950,7 +1971,7 @@ static void MiniSightBringMinisFront(void) {
     @autoreleasepool {
         // 手势 / 旋转通知的 target（NSNotificationCenter 不持有 observer，必须自己保活）
         gMiniSightGestureTarget = [[MiniSightGestureHandler alloc] init];
-        gMiniSightUserHidden = [[NSUserDefaults standardUserDefaults] boolForKey:@"MiniSightUserHidden"];
+        gMiniSightUserHidden = [MSMiniSightPreference(@"MiniSightUserHidden") boolValue];
 
         // 立刻注册 Darwin 通知：回调里会懒加载 UI，不会漏掉启动早期的事件
         CFNotificationCenterRef center = CFNotificationCenterGetDarwinNotifyCenter();
