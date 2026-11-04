@@ -79,6 +79,14 @@ Darwin 通知（`CFNotificationCenterGetDarwinNotifyCenter()`）：
 
 设置 → MCP 集成 → Minis 内置工具 → 操作指示器里有「记录诊断日志」，默认关闭。开启后只写本机 `Documents/MiniSight/diagnostic.log`，记录状态、错误码和计数；超过 200KB 轮转一份 `diagnostic.log.1`，不记录 Key、提示词、命令正文和响应正文，不自动上传。
 
+## 0.5.0 本地变更（未发布）
+
+- 双模式：App 在前台且 `minisight.style = 1` 时由 App 承载呈现，插件隐藏叠加桌宠；由 `com.openminis.minisight.app-active` 通知和 3 秒轮询对账收敛。
+- 新增 `com.openminis.minisight.plugin-probe` 握手：App 写入 `Documents/MiniSight/plugin-probe.txt`，插件回写 `plugin-probe-reply.txt`。
+- 修复：补上 `MiniSightRefreshAppOwnership` 实现；`MiniSightShow` 顶层加回活动门禁（空闲 show 通知不再唤醒桌宠）；删除重复的 `gMiniSightWindow` 定义和面板上不存在的 `appearancePreferences` 赋值。
+- 构建产物只含 arm64e 切片（`ARCHS = arm64e`），纯 arm64 设备不适用。
+- 未安装、未注销、未重启，未真机验收；App 宿主侧由另一路实现，缺宿主时插件按原行为工作。
+
 ## 0.4.0 本地变更（未发布）
 
 - App 侧目录快照改后台完成；插件不再重复拉前台，见上文。

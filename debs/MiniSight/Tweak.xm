@@ -421,6 +421,9 @@ static NSString *const kMiniSightBlanked = @"com.apple.springboard.hasBlankedScr
 static NSString *const kMiniSightCenterX   = @"MiniSightCenterX";
 static NSString *const kMiniSightCenterY   = @"MiniSightCenterY";
 static NSString *const kMiniSightText      = @"Minis 操作中";
+// 版本号：与 DEBIAN/control 的 Version 同步。诊断日志会打印它，
+// 便于装机后确认跑的是哪一版（strings MiniSight.dylib | grep 也能看到）。
+static NSString *const kMiniSightVersion   = @"0.5.0";
 
 #pragma mark - 全局状态
 
@@ -483,7 +486,7 @@ static void MiniSightRefreshGravityConfiguration(void) {
         [MiniSightPref(@"minisight.gravity") boolValue];
     gMiniSightDiagnosticsEnabled = [MiniSightPref(@"minisight.diagnostics") boolValue];
     MSDiagConfigure(gMiniSightDiagnosticsEnabled, gMiniSightContainer);
-    if (gMiniSightDiagnosticsEnabled) MSDiag(@"diagnostics on style=%ld", (long)MiniSightStyle());
+    if (gMiniSightDiagnosticsEnabled) MSDiag(@"plugin %@ diagnostics on style=%ld", kMiniSightVersion, (long)MiniSightStyle());
 }
 
 static void MiniSightGravityDiagnostic(NSString *state, NSString *detail) {
