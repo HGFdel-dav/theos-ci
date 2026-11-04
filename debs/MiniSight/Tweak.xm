@@ -90,7 +90,8 @@ static void MiniSightRefreshRecorderSettingsThenReadActivity(void);
 
 static void MiniSightReplyToPluginProbe(void);
 static void MiniSightStopGravity(void);
-static UIWindow *gMiniSightWindow;
+// 浮窗载体：定义在文件前部，呈现协调（MiniSightReconcileAppPresentation）要先用到它。
+static UIWindow *gMiniSightWindow = nil;
 extern BOOL gMiniSightBurst;
 
 static NSString *MiniSightAppContainer(void) { return gMiniSightContainer; }
@@ -423,7 +424,6 @@ static NSString *const kMiniSightText      = @"Minis 操作中";
 
 #pragma mark - 全局状态
 
-static UIWindow *gMiniSightWindow = nil;   // 浮窗载体
 static UIView   *gMiniSightPill   = nil;   // 胶囊本体
 static UIView   *gMiniSightDot    = nil;   // 实心圆点（自身发光）
 static UIView   *gMiniSightPulse  = nil;   // 圆点背后的脉动圈
