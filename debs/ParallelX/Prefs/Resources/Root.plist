@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>items</key>
+	<array>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>label</key>
+			<string>分身账号</string>
+			<key>footerText</key>
+			<string>只控制 ParallelX 菜单里显示哪些账号；不会创建或删除分身。</string>
+		</dict>
+		<dict>
+			<key>bundle</key>
+			<string>ParallelXClonePrefs</string>
+			<key>cell</key>
+			<string>PSLinkCell</string>
+			<key>detail</key>
+			<string>PXCloneAccountsController</string>
+			<key>label</key>
+			<string>按应用选择显示账号</string>
+		</dict>
+	</array>
+	<key>title</key>
+	<string>ParallelX 分身</string>
+</dict>
+</plist>

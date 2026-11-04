@@ -3,17 +3,17 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
-	<string>zh_CN</string>
+	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>分身</string>
+	<string>ParallelX 分身</string>
 	<key>CFBundleExecutable</key>
-	<string>CloneXPrefs</string>
+	<string>ParallelXClonePrefs</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.niubiprass.clonex.prefs</string>
+	<string>com.niubiprass.parallelxclone.prefs</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>CloneXPrefs</string>
+	<string>ParallelXClonePrefs</string>
 	<key>CFBundlePackageType</key>
 	<string>BNDL</string>
 	<key>CFBundleShortVersionString</key>
@@ -21,6 +21,6 @@
 	<key>CFBundleVersion</key>
 	<string>0.1.0</string>
 	<key>NSPrincipalClass</key>
-	<string>CXRootListController</string>
+	<string>PXCloneAccountsController</string>
 </dict>
 </plist>

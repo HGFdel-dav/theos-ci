@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+PREFIX="__PREFIX__"
+BUNDLE="$PREFIX/Library/PreferenceBundles/ParallelXClonePrefs.bundle"
+if [ -d "$BUNDLE" ]; then
+    chmod 755 "$BUNDLE" "$BUNDLE/ParallelXClonePrefs" 2>/dev/null || true
+    chmod 644 "$BUNDLE"/*.plist "$BUNDLE"/Info.plist 2>/dev/null || true
+    chown -R mobile:mobile "$BUNDLE" 2>/dev/null || true
+fi
+killall -9 SpringBoard 2>/dev/null || true
+exit 0
