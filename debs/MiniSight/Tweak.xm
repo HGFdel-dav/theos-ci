@@ -685,7 +685,7 @@ static void MiniSightFailMotionSource(unsigned long generation, NSString *reason
 
 static void MiniSightArmFirstSampleWatchdog(unsigned long generation) {
     if (gMiniSightFirstSampleWatchdog) dispatch_block_cancel(gMiniSightFirstSampleWatchdog);
-    gMiniSightFirstSampleWatchdog = dispatch_block_create(0, ^{
+    gMiniSightFirstSampleWatchdog = dispatch_block_create((dispatch_block_flags_t)0, ^{
         if (MSMotionFirstSampleDeadline(&gMiniSightMotionAttempt, generation) && MiniSightMotionGateOpen()) {
             MiniSightFailMotionSource(generation, @"first-sample-timeout", 0);
         }
