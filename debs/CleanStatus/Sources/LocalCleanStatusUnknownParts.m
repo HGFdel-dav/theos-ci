@@ -3,8 +3,10 @@
 
 // Reimplementation of the three NoPreferencesTips behaviors: hide the
 // non-genuine battery health warning, remove unknown-part rows from About,
-// and clear the Settings app badge. All hooks fail closed when a class or
-// selector is absent and call the original when the toggle is off.
+// and clear the Settings app badge. Hooks are installed loosely (instance or
+// class method, no strict encoding gate) because system encodings vary; every
+// attempt is logged so the result can be confirmed on device. When the toggle
+// is off every hook forwards to the original implementation.
 
 static BOOL local_cleanstatus_unknownParts(void) {
     return local_cleanstatus_hasFeature(local_cleanstatus_currentFlags(), LocalCleanStatusUnknownParts);
@@ -65,50 +67,105 @@ static void local_cleanstatus_updateBadge(id self, SEL command, id value, id bun
     lcsOriginalUpdateBadge(self,command,value,bundleID);
 }
 
-static void local_cleanstatus_hook(Class cls, const char *name, const char *type, int count,
-                                   const char *args[], IMP replacement, IMP *original) {
+#pragma mark - diagnostics
+
+// /var/mobile/Library/Caches is readable from the device and never part of the
+// tweak's preference storage. One line per hook attempt keeps the diagnosis
+// possible without a debugger.
+static void local_cleanstatus_logLine(NSString *line) {
+    static NSString * const path = @"/var/mobile/Library/Caches/local-cleanstatus-hooks.log";
+    static NSDateFormatter *formatter;
+    static dispatch_once_t once;
+    dispatch_once(&once,^{ formatter=[[NSDateFormatter alloc] init];
+        formatter.dateFormat=@"HH:mm:ss"; });
+    NSString *row = [NSString stringWithFormat:@"%@ %@\n",[formatter stringFromDate:NSDate.date],line];
+    NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath:path];
+    if (!handle) {
+        [[NSFileManager defaultManager] createFileAtPath:path contents:nil attributes:nil];
+        handle = [NSFileHandle fileHandleForWritingAtPath:path];
+    }
+    [handle seekToEndOfFile];
+    [handle writeData:[row dataUsingEncoding:NSUTF8StringEncoding]];
+    [handle closeFile];
+}
+
+static void local_cleanstatus_logHook(NSString *cls, NSString *selector, Method method,
+                                      BOOL hooked, NSString *note) {
+    NSString *type = @"-";
+    if (method) {
+        char *value = method_copyReturnType(method);
+        type = value ? [NSString stringWithUTF8String:value] : @"?";
+        if (value) free(value);
+    }
+    local_cleanstatus_logLine([NSString stringWithFormat:@"%@ %@ ret=%@ %@ %@",
+        cls, selector, type, hooked ? @"HOOKED" : @"skipped", note ?: @""]);
+}
+
+#pragma mark - loose hooking
+
+static BOOL local_cleanstatus_hookLoose(Class cls, const char *name, IMP replacement,
+                                        IMP *original, NSString *note) {
+    NSString *className = cls ? NSStringFromClass(cls) : [NSString stringWithUTF8String:name];
+    if (!cls) {
+        local_cleanstatus_logHook(className, [NSString stringWithUTF8String:name], NULL, NO, @"class missing");
+        return NO;
+    }
     SEL selector = sel_registerName(name);
-    if (local_cleanstatus_methodMatches(cls,selector,type,count,args))
-        MSHookMessageEx(cls,selector,replacement,original);
+    Method method = class_getInstanceMethod(cls,selector);
+    if (method) {
+        MSHookMessageEx(cls, selector, replacement, original);
+        local_cleanstatus_logHook(className, [NSString stringWithUTF8String:name], method, YES, note);
+        return YES;
+    }
+    Class meta = object_getClass(cls);
+    method = class_getClassMethod(cls,selector);
+    if (method) {
+        MSHookMessageEx(meta, selector, replacement, original);
+        local_cleanstatus_logHook([@"+" stringByAppendingString:className],
+            [NSString stringWithUTF8String:name], method, YES, note);
+        return YES;
+    }
+    local_cleanstatus_logHook(className, [NSString stringWithUTF8String:name], NULL, NO, @"selector missing");
+    return NO;
 }
 
 void local_cleanstatus_installUnknownPartsHooks(void) {
-    const char *none[] = {};
-    const char *oneObject[] = { @encode(id) };
-    Class cls = NSClassFromString(@"PLBatteryUIBackendModel");
-    local_cleanstatus_hook(cls,"supportsChargingFixedLimit",@encode(BOOL),0,none,
-        (IMP)local_cleanstatus_supportsFixedLimit,(IMP *)&lcsOriginalSupportsFixedLimit);
-    local_cleanstatus_hook(cls,"shouldShowChargingController",@encode(BOOL),0,none,
-        (IMP)local_cleanstatus_shouldShowCharging,(IMP *)&lcsOriginalShouldShowCharging);
+    local_cleanstatus_logLine([NSString stringWithFormat:@"install begin enabled=%d bundle=%@",
+        local_cleanstatus_unknownParts(), NSBundle.mainBundle.bundleIdentifier ?: @"?"]);
 
-    cls = NSClassFromString(@"PLModelingUtilities");
-    local_cleanstatus_hook(cls,"isPhone",@encode(BOOL),0,none,
-        (IMP)local_cleanstatus_isPhone,(IMP *)&lcsOriginalIsPhone);
+    local_cleanstatus_hookLoose(NSClassFromString(@"PLBatteryUIBackendModel"),
+        "supportsChargingFixedLimit",(IMP)local_cleanstatus_supportsFixedLimit,
+        (IMP *)&lcsOriginalSupportsFixedLimit,@"battery backend");
+    local_cleanstatus_hookLoose(NSClassFromString(@"PLBatteryUIBackendModel"),
+        "shouldShowChargingController",(IMP)local_cleanstatus_shouldShowCharging,
+        (IMP *)&lcsOriginalShouldShowCharging,@"battery backend");
 
-    cls = NSClassFromString(@"BatteryUIResourceClass");
-    local_cleanstatus_hook(cls,"getManagementState",@encode(NSInteger),0,none,
-        (IMP)local_cleanstatus_managementState,(IMP *)&lcsOriginalManagementState);
-    local_cleanstatus_hook(cls,"genuineBatteryStatus",@encode(BOOL),0,none,
-        (IMP)local_cleanstatus_genuineBattery,(IMP *)&lcsOriginalGenuineBattery);
-    local_cleanstatus_hook(cls,"getBatteryHealthServiceState",@encode(NSInteger),0,none,
-        (IMP)local_cleanstatus_healthServiceState,(IMP *)&lcsOriginalHealthServiceState);
+    local_cleanstatus_hookLoose(NSClassFromString(@"PLModelingUtilities"),
+        "isPhone",(IMP)local_cleanstatus_isPhone,(IMP *)&lcsOriginalIsPhone,@"modeling");
 
-    cls = NSClassFromString(@"SystemHealthUI");
-    local_cleanstatus_hook(cls,"getCurrentSystemHealthInfoSpecifiers",@encode(id),0,none,
-        (IMP)local_cleanstatus_systemHealthSpecifiers,(IMP *)&lcsOriginalSystemHealthSpecifiers);
-    local_cleanstatus_hook(cls,"isVaildCAA:",@encode(BOOL),1,oneObject,
-        (IMP)local_cleanstatus_validCAA,(IMP *)&lcsOriginalValidCAA);
+    Class resource = NSClassFromString(@"BatteryUIResourceClass");
+    local_cleanstatus_hookLoose(resource,"getManagementState",(IMP)local_cleanstatus_managementState,
+        (IMP *)&lcsOriginalManagementState,@"battery resource");
+    local_cleanstatus_hookLoose(resource,"genuineBatteryStatus",(IMP)local_cleanstatus_genuineBattery,
+        (IMP *)&lcsOriginalGenuineBattery,@"battery resource");
+    local_cleanstatus_hookLoose(resource,"getBatteryHealthServiceState",
+        (IMP)local_cleanstatus_healthServiceState,(IMP *)&lcsOriginalHealthServiceState,@"battery resource");
 
-    cls = NSClassFromString(@"PSGAboutDataSource");
-    local_cleanstatus_hook(cls,"nonGenuineComponentSpecifierForComponent:",@encode(id),1,oneObject,
-        (IMP)local_cleanstatus_nonGenuineSpecifier,(IMP *)&lcsOriginalNonGenuineSpecifier);
+    Class health = NSClassFromString(@"SystemHealthUI");
+    local_cleanstatus_hookLoose(health,"getCurrentSystemHealthInfoSpecifiers",
+        (IMP)local_cleanstatus_systemHealthSpecifiers,(IMP *)&lcsOriginalSystemHealthSpecifiers,@"system health");
+    local_cleanstatus_hookLoose(health,"isVaildCAA:",(IMP)local_cleanstatus_validCAA,
+        (IMP *)&lcsOriginalValidCAA,@"system health");
 
-    cls = NSClassFromString(@"SBApplication");
-    local_cleanstatus_hook(cls,"badgeValue",@encode(id),0,none,
-        (IMP)local_cleanstatus_badgeValue,(IMP *)&lcsOriginalBadgeValue);
+    local_cleanstatus_hookLoose(NSClassFromString(@"PSGAboutDataSource"),
+        "nonGenuineComponentSpecifierForComponent:",(IMP)local_cleanstatus_nonGenuineSpecifier,
+        (IMP *)&lcsOriginalNonGenuineSpecifier,@"about page");
 
-    cls = NSClassFromString(@"BSUIBadgeController");
-    const char *twoObjects[] = { @encode(id), @encode(id) };
-    local_cleanstatus_hook(cls,"updateBadgeValue:forBundleID:",@encode(void),2,twoObjects,
-        (IMP)local_cleanstatus_updateBadge,(IMP *)&lcsOriginalUpdateBadge);
+    local_cleanstatus_hookLoose(NSClassFromString(@"SBApplication"),"badgeValue",
+        (IMP)local_cleanstatus_badgeValue,(IMP *)&lcsOriginalBadgeValue,@"badge");
+    local_cleanstatus_hookLoose(NSClassFromString(@"BSUIBadgeController"),
+        "updateBadgeValue:forBundleID:",(IMP)local_cleanstatus_updateBadge,
+        (IMP *)&lcsOriginalUpdateBadge,@"badge");
+
+    local_cleanstatus_logLine(@"install end");
 }

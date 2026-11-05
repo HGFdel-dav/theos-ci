@@ -9,6 +9,15 @@
 @property(nonatomic, strong) UIColor *foreground;
 @end
 
+static UIColor *local_cleanstatus_contrastingText(UIColor *color, UITraitCollection *traits) {
+    CGFloat r=0,g=0,b=0,a=0,w=0;
+    UIColor *resolved = [color resolvedColorWithTraitCollection:traits];
+    if (![resolved getRed:&r green:&g blue:&b alpha:&a]) {
+        if ([resolved getWhite:&w alpha:&a]) r=g=b=w;
+    }
+    return (0.2126*r+0.7152*g+0.0722*b) > 0.5 ? UIColor.blackColor : UIColor.whiteColor;
+}
+
 @implementation LocalCleanStatusBatteryCanvas
 - (void)drawRect:(CGRect)rect {
     (void)rect;
@@ -20,10 +29,9 @@
     CGFloat radius = MIN(3.5,body.size.height*0.24);
     UIColor *foreground = self.foreground ?: UIColor.labelColor;
     UIColor *fill = self.lowPower ? UIColor.systemYellowColor :
-        (self.charging ? UIColor.systemGreenColor :
-         (value <= 20 ? UIColor.systemRedColor : [foreground colorWithAlphaComponent:0.4]));
+        (self.charging ? UIColor.systemGreenColor : (value <= 20 ? UIColor.systemRedColor : foreground));
     UIBezierPath *shape = [UIBezierPath bezierPathWithRoundedRect:body cornerRadius:radius];
-    shape.lineWidth=1.2; [foreground setStroke]; [shape stroke]; // outline only
+    [[foreground colorWithAlphaComponent:0.24] setFill]; [shape fill];
     CGRect filled = body; filled.size.width *= MAX(0.0,MIN(1.0,self.fraction));
     CGContextRef context = UIGraphicsGetCurrentContext();
     CGContextSaveGState(context);
@@ -43,6 +51,11 @@
     CGRect textRect = CGRectMake(CGRectGetMidX(body)-wholeWidth*0.5,
         CGRectGetMidY(body)-textSize.height*0.5,textSize.width,textSize.height);
     [text drawInRect:textRect withAttributes:@{NSFontAttributeName:font,NSForegroundColorAttributeName:foreground}];
+    CGContextSaveGState(context);
+    [shape addClip]; CGContextClipToRect(context,filled);
+    [text drawInRect:textRect withAttributes:@{NSFontAttributeName:font,
+        NSForegroundColorAttributeName:local_cleanstatus_contrastingText(fill,self.traitCollection)}];
+    CGContextRestoreGState(context);
     if (bolt) {
         CGFloat x=CGRectGetMaxX(textRect)+0.7,y=CGRectGetMidY(body),h=body.size.height*0.68;
         UIBezierPath *path = [UIBezierPath bezierPath];
@@ -54,6 +67,10 @@
         [path addLineToPoint:CGPointMake(x+boltWidth*0.55,y-h*0.1)];
         [path closePath];
         [foreground setFill]; [path fill];
+        CGContextSaveGState(context);
+        [shape addClip]; CGContextClipToRect(context,filled);
+        [local_cleanstatus_contrastingText(fill,self.traitCollection) setFill]; [path fill];
+        CGContextRestoreGState(context);
     }
 }
 @end
@@ -131,7 +148,8 @@ static void local_cleanstatus_applyBattery(UIView *view) {
         state.canvas.charging=local_cleanstatus_integer(view,"chargingState",0)==1;
         state.canvas.lowPower=local_cleanstatus_boolValue(view,"saverModeActive",NSProcessInfo.processInfo.isLowPowerModeEnabled);
         state.canvas.hideBolt=hideBolt;
-        state.canvas.foreground=UIColor.labelColor; // bodyColor is gray; Genesis uses labelColor.
+        id color=local_cleanstatus_object(view,"bodyColor");
+        state.canvas.foreground=[color isKindOfClass:UIColor.class] ? color : UIColor.labelColor;
         local_cleanstatus_hideLayer(state,body); local_cleanstatus_hideLayer(state,fill);
         local_cleanstatus_hideLayer(state,local_cleanstatus_object(view,"pinLayer"));
         local_cleanstatus_hideLayer(state,local_cleanstatus_object(view,"boltLayer"));

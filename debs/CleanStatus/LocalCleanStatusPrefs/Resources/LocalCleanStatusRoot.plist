@@ -10,9 +10,9 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>label</key>
-			<string>CleanStatus 0.1.12</string>
+			<string>CleanStatus 0.1.13</string>
 			<key>footerText</key>
-			<string>所有开关默认关闭。修改后点右上角“应用”。关闭总开关并应用可恢复系统显示。</string>
+			<string>除“隐藏未知部件提示”默认开启外，其余默认关闭。修改后点右上角“应用”。关闭总开关并应用可恢复系统显示。</string>
 		</dict>
 		<dict>
 			<key>cell</key>
