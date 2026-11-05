@@ -175,6 +175,7 @@ void local_cleanstatus_installUnknownPartsHooks(void) {
         lcsActiveObserver = [NSNotificationCenter.defaultCenter
             addObserverForName:UIApplicationDidBecomeActiveNotification object:nil
             queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *notification) {
+                (void)notification;
                 local_cleanstatus_installUnknownPartsNow();
             }];
         for (NSNumber *delay in @[@0.5,@2,@5,@10,@20,@40]) {
