@@ -170,6 +170,7 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
 }
 
 @implementation MiniSightPetView
+@dynamic image; // implemented by UIImageView; redeclared only for the host API guard
 @synthesize centerBounds = _centerBounds, onGeometryChanged = _onGeometryChanged;
 @synthesize activityActive = _activityActive, longPressEnabled = _longPressEnabled;
 @synthesize roamingPaused = _roamingPaused, interactionActive = _interactionActive;
