@@ -9,7 +9,7 @@ INSTALL_TARGET_PROCESSES = SpringBoard
 include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = MiniSight
-MiniSight_FILES = Tweak.xm MiniSightPet.m MiniSightResources.m MiniSightPreferences.m MiniSightRecorder.m MiniSightAI.m MiniSightChatPanel.m MiniSightLog.m tools/chat/ChatCore.c
+MiniSight_FILES = Tweak.xm MiniSightPet.m MiniSightResources.m MiniSightPreferences.m MiniSightRecorder.m MiniSightAI.m MiniSightChatPanel.m MiniSightLog.m MiniSightBlip.m MiniSightRuntimeConfig.m tools/chat/ChatCore.c
 MiniSight_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -fvisibility=hidden -DMINISIGHT_STRIP_LOGS=1
 MiniSight_LDFLAGS = -Wl,-x -Wl,-dead_strip
 # UIKit/QuartzCore 需要显式链接（浮窗绘制 + CABasicAnimation）

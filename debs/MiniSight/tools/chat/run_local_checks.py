@@ -159,16 +159,18 @@ check("existing_panel_query", "+ (nullable instancetype)existingPanel;" in PANEL
 check("separate_editor_input", "self.inputField.alpha = 0.01;" in PANEL_M and
       "[self.editorWindow makeKeyWindow];" in PANEL_M and "editorWindow.editorField = editor;" in PANEL_M)
 check("full_screen", "MSChatScreenRect(self.window.windowScene)" in PANEL_M and
-      "self.window.frame = screen;" in PANEL_M and "anchor.window" in PANEL_M)
+      "self.window.frame = screen;" in PANEL_M and "anchor.window" in PANEL_M
+      and "quickScroll" in PANEL_M)
 check("background_dismiss", "backgroundTapped" in PANEL_M and "UITapGestureRecognizer" in PANEL_M)
-check("floating_bubble_panel", "MiniSightChatBubble" in PANEL_M and "MSChatFloatingLayout(" in PANEL_M and "dimView" not in PANEL_M)
+check("floating_bubble_panel", "MiniSightChatBubble" in PANEL_M and "MSChatFloatingFrames" in PANEL_M
+      and "bubbleScale" in PANEL_M and "dimView" not in PANEL_M)
 check("keyboard_avoidance", "UIKeyboardWillChangeFrameNotification" in PANEL_M and
       "updateCardBottomAnimated" in PANEL_M)
 check("rotation_and_safe_area", "UIDeviceOrientationDidChangeNotification" in PANEL_M and
       "safeAreaInsets" in PANEL_M and "UIInterfaceOrientationIsLandscape" in PANEL_M)
 check("dynamic_colors", "colorWithDynamicProvider" in PANEL_M and
       "UIUserInterfaceStyleUnspecified" in PANEL_M)
-check("controls", all(x in PANEL_M for x in ('@"发送"', '@"取消回复"', '@"清空对话"', '@"收起对话"')))
+check("controls", all(x in PANEL_M for x in ('@"发送"', '@"取消回复"', '@"清空"', '@"收起"', '@"语音输入"')))
 check("max_30_messages", "kMSChatMaxMessages = 30.0" in PANEL_M and
       "MSCHAT_MAX_MESSAGES" in CORE_H and "(NSUInteger)4" in PANEL_M)
 check("disable_while_sending", "self.sendButton.enabled = NO" in PANEL_M and

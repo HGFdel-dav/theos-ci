@@ -31,6 +31,8 @@
 #import "MiniSightRecorder.h"
 #import "MiniSightChatPanel.h"
 #import "MiniSightLog.h"
+#import "MiniSightRuntimeConfig.h"
+#import "MiniSightBlip.h"
 #import <notify.h>
 #import <signal.h>
 #include <unistd.h>
@@ -75,6 +77,31 @@ static void MiniSightCancelConfirm(void);
 static void MiniSightConfigureRecorder(void);
 static void MiniSightConfigureRecorderWithCompletion(void (^completion)(void));
 static void MiniSightReadActivitySnapshot(void);
+static void MiniSightApplyTint(NSString *name) {
+    UIImage *base = gMiniSightTintBase ?: gMiniSightAtlas;
+    if (!gMiniSightPet || !base) return;
+    if (!name.length || [name isEqualToString:@"natural"]) { gMiniSightPet.image = base; return; }
+    UIColor *tint = @{@"warm": [UIColor colorWithRed:1 green:0.62 blue:0.38 alpha:1],
+                      @"cool": [UIColor colorWithRed:0.45 green:0.66 blue:1 alpha:1],
+                      @"mint": [UIColor colorWithRed:0.45 green:0.92 blue:0.72 alpha:1],
+                      @"rose": [UIColor colorWithRed:1 green:0.6 blue:0.75 alpha:1]}[name];
+    if (!tint) { gMiniSightPet.image = base; return; }
+    UIGraphicsImageRenderer *r = [[UIGraphicsImageRenderer alloc] initWithSize:base.size];
+    gMiniSightPet.image = [r imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
+        (void)ctx;
+        [base drawAtPoint:CGPointZero];
+        UIRectFillUsingBlendMode(CGRectMake(0, 0, base.size.width, base.size.height), kCGBlendModeColor);
+    }];
+}
+
+static void MiniSightLoadCostume(NSString *file) {
+    if (!gMiniSightContainer.length || !file.length) return;
+    NSString *path = [gMiniSightContainer stringByAppendingPathComponent:
+        [@"Documents/MiniSight/costumes" stringByAppendingPathComponent:file]];
+    UIImage *img = [UIImage imageWithContentsOfFile:path];
+    if (img) { gMiniSightTintBase = img; MiniSightApplyTint(MiniSightRuntimeConfig.shared.tint); }
+}
+
 static void MiniSightBuildUI(void);
 static void MiniSightRequestResources(BOOL force, void (^completion)(void));
 static BOOL gMiniSightActivityExecuting = NO;
@@ -455,7 +482,7 @@ static NSString *const kMiniSightCenterY   = @"MiniSightCenterY";
 static NSString *const kMiniSightText      = @"Minis 操作中";
 // 版本号：与 DEBIAN/control 的 Version 同步。诊断日志会打印它，
 // 便于装机后确认跑的是哪一版（strings MiniSight.dylib | grep 也能看到）。
-static NSString *const kMiniSightVersion   = @"0.7.0";
+static NSString *const kMiniSightVersion   = @"0.8.0";
 
 #pragma mark - 全局状态
 
@@ -509,6 +536,8 @@ static NSTimeInterval gMiniSightGravityLastImpulseTime = 0.0;
 static CFTimeInterval gMiniSightGravityLastSampleTime = 0.0;
 static NSUInteger gMiniSightGravitySampleCount = 0;
 static BOOL gMiniSightGravityConfigured = NO;
+static double gMiniSightBottomGap = 12;
+static UIImage *gMiniSightTintBase;
 static BOOL gMiniSightDiagnosticsEnabled = NO;
 
 static UIInterfaceOrientation MiniSightOrientation(void);
@@ -857,10 +886,10 @@ static CGFloat MiniSightTopInset(void) {
 /// 底部安全区（Home 指示条），取不到时保守留 8
 static CGFloat MiniSightBottomInset(void) {
     if (@available(iOS 11.0, *)) {
-        CGFloat inset = gMiniSightWindow.safeAreaInsets.bottom;
+        CGFloat inset = gMiniSightWindow.safeAreaInsets.bottom + gMiniSightBottomGap;
         if (inset > 0.5) return inset;
     }
-    return 8.0;
+    return 8.0 + gMiniSightBottomGap;
 }
 
 /// 身体尺寸：有桌宠就是桌宠尺寸，否则是胶囊
@@ -913,6 +942,19 @@ static CGPoint MiniSightDefaultAnchor(void) {
 /// 落地锚点：更新桌宠可行范围 → 移动子视图（窗口不动）→ 气泡跟上。
 /// save = YES 时写入 NSUserDefaults（只有用户拖动结束才写，随机走动不写）。
 /// 这是全插件唯一能改「位置」的入口：拖动、旋转、默认落点、桌宠自己走动都走它。
+static void MiniSightApplyRuntimeConfig(void) {
+    MiniSightRuntimeConfig *c = MiniSightRuntimeConfig.shared;
+    if (gMiniSightPet) {
+        gMiniSightPet.roamPace = c.activity == 0 ? 0.6 : (c.activity == 1 ? 3.0 : 0.0);
+        gMiniSightPet.preferredFPS = c.frameLimit == 1 ? 30 : (c.frameLimit == 2 ? 60 : (c.frameLimit == 3 ? 120 : 0));
+        gMiniSightPet.activityActive = YES;
+    }
+    gMiniSightBottomGap = MSClamp(c.bottomGap, 0, 40);
+    if (c.costume.length) MiniSightLoadCostume(c.costume);
+    MiniSightApplyTint(c.tint);
+    MiniSightUpdateGeometry();
+}
+
 static void MiniSightRefreshChatAnchor(void) {
     MiniSightChatPanel *panel = MiniSightChatPanel.existingPanel;
     if (!panel || !panel.isVisible) return;
@@ -1020,6 +1062,25 @@ static void MiniSightStopPulse(void);
 
 #pragma mark - 手势 / 旋转
 
+static BOOL MiniSightGestureEnabled(NSString *key) {
+    if (!MiniSightRuntimeConfig.shared.interaction) return NO;
+    NSString *action = [key isEqualToString:@"singleTap"] ? MiniSightRuntimeConfig.shared.singleTap
+        : ([key isEqualToString:@"doubleTap"] ? MiniSightRuntimeConfig.shared.doubleTap
+                                              : MiniSightRuntimeConfig.shared.longPress);
+    return action.length && ![action isEqualToString:@"none"];
+}
+
+static void MiniSightRunGesture(NSString *action, BOOL allowSecondTap) {
+    MiniSightChatPanel *panel = MiniSightChatPanel.existingPanel;
+    if ([action isEqualToString:@"input"]) { MiniSightOpenChat(); return; }
+    if ([action isEqualToString:@"conversation"]) { MiniSightOpenChat(); return; }
+    if ([action isEqualToString:@"voice"]) { MiniSightOpenChat(); [panel revealComposerIfNeeded]; return; }
+    if ([action isEqualToString:@"menu"]) { MiniSightOpenChat(); [panel revealComposerIfNeeded]; return; }
+    if ([action isEqualToString:@"record"]) { MiniSightToggleRecording(); return; }
+    if (allowSecondTap && panel.isVisible && !panel.sending) { [panel revealComposerIfNeeded]; return; }
+    MiniSightSayPresetLine();
+}
+
 @interface MiniSightGestureHandler : NSObject
 - (void)handlePan:(UIPanGestureRecognizer *)pan;
 - (void)handleLongPress:(UILongPressGestureRecognizer *)press;
@@ -1058,8 +1119,9 @@ static void MiniSightStopPulse(void);
         }
         case UIGestureRecognizerStateChanged: {
             if (!gMiniSightDragOriginValid) break; // 防御异常的无 Began 回调
-            CGPoint want = CGPointMake(gMiniSightDragOrigin.x + translation.x,
-                                       gMiniSightDragOrigin.y + translation.y);
+            CGFloat gain = MiniSightRuntimeConfig.shared.dragResponse ? 1.0 : 0.55;
+            CGPoint want = CGPointMake(gMiniSightDragOrigin.x + translation.x * gain,
+                                       gMiniSightDragOrigin.y + translation.y * gain);
             MiniSightSetAnchor(want, NO);
             break;
         }
@@ -1088,15 +1150,18 @@ static void MiniSightStopPulse(void);
 /// 旋转：界面方向变化是异步的，稍等一下再重算并 clamp
 - (void)handleSingleTap:(UITapGestureRecognizer *)tap {
     (void)tap;
-    MiniSightSayPresetLine();
+    [MiniSightBlip playIfEnabled:MiniSightRuntimeConfig.shared.sound];
+    if (!MiniSightGestureEnabled(@"singleTap")) return;
+    MiniSightRunGesture(MiniSightRuntimeConfig.shared.singleTap, YES);
 }
 
 - (void)handleDoubleTap:(UITapGestureRecognizer *)tap {
     (void)tap;
+    if (!MiniSightGestureEnabled(@"doubleTap")) return;
     UIImpactFeedbackGenerator *feedback =
         [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
     [feedback impactOccurred];
-    MiniSightOpenChat();
+    MiniSightRunGesture(MiniSightRuntimeConfig.shared.doubleTap, NO);
 }
 
 /// 长按：手势由宿主拥有（不是桌宠内部），所以漫游动画期间也按得住。
@@ -1107,7 +1172,10 @@ static void MiniSightStopPulse(void);
             // The current switch is checked asynchronously by the plugin entry.
             MiniSightInteractionBegin();
             [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium] impactOccurred];
-            MiniSightToggleRecording();
+            [MiniSightBlip playIfEnabled:MiniSightRuntimeConfig.shared.sound];
+            if (!MiniSightGestureEnabled(@"longPress")) break;
+            if ([MiniSightRuntimeConfig.shared.longPress isEqualToString:@"record"]) MiniSightToggleRecording();
+            else MiniSightRunGesture(MiniSightRuntimeConfig.shared.longPress, NO);
             break;
         case UIGestureRecognizerStateEnded:
         case UIGestureRecognizerStateCancelled:
@@ -1276,6 +1344,8 @@ static void MiniSightRequestResources(BOOL force, void (^completion)(void)) {
         panel.appearancePreferences = gMiniSightPreferences;
         gMiniSightShown = shown;
         gMiniSightAtlas = atlas;
+        gMiniSightTintBase = atlas;
+        [MiniSightRuntimeConfig.shared reloadWithContainer:container];
         MSDiagConfigure([preferences[@"minisight.diagnostics"] boolValue], container);
         MSDiagSettingsSnapshot(@"receive", @"plugin", gMiniSightPreferences);
         MSDiagEvent(@"assets", @"load", atlas ? @"ok" : @"skipped", @{ @"source": @"plugin", @"setting": @"pet", @"reason": atlas ? @"atlas_decoded" : @"missing_or_invalid_atlas" });
@@ -1519,6 +1589,7 @@ static void MiniSightShowAfterOwnershipCheck(void) {
     gMiniSightPet.gravityEnabled = MiniSightGravityEnabled();
     MiniSightUpdateGeometry();
     MiniSightApplySavedCenter(YES);
+    MiniSightApplyRuntimeConfig();
     MiniSightStartPulse();
     // 每次显示都按当前设置刷新：长按开关、低电量省电、调用期间才有走动
     gMiniSightPet.longPressEnabled = MiniSightLongPressEnabled();
@@ -1606,6 +1677,7 @@ static void MiniSightDestroyUI(void) {
 
 /// 设置变了：按新设置重建（样式/常驻立即生效，不用注销）
 static void MiniSightReloadSettings(void) {
+    [MiniSightRuntimeConfig.shared reloadWithContainer:gMiniSightContainer];
     MSDiagEvent(@"settings", @"reload", @"pending", @{ @"source": @"plugin", @"reason": @"darwin_notification" });
     BOOL wasVisible = gMiniSightWindow && !gMiniSightWindow.hidden;
     MiniSightStopGravity();
@@ -1935,6 +2007,7 @@ static void MiniSightShowStatusLine(NSString *text) {
 
 /// 预置句子（AI 失败时兜底）。
 static void MiniSightSayPresetLine(void) {
+    [MiniSightBlip playIfEnabled:MiniSightRuntimeConfig.shared.sound];
     static NSArray<NSString *> *lines = nil;
     static dispatch_once_t once;
     dispatch_once(&once, ^{

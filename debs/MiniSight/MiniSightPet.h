@@ -15,6 +15,8 @@ FOUNDATION_EXPORT double MiniSightGravityRollForDevice(double x, double y, int o
 FOUNDATION_EXPORT double MiniSightGravityFilterRoll(double previous, double sample, double deltaTime);
 
 @interface MiniSightPetView : UIImageView
+/// Current atlas or costume bitmap (tint is baked in).
+@property (nonatomic, strong, null_resettable) UIImage *image;
 
 /// Main-thread API, like UIView. sprite is an already decoded/downsampled,
 /// upright 9-row / 8-column atlas; preparation belongs to the host, off-main.
@@ -54,6 +56,10 @@ FOUNDATION_EXPORT double MiniSightGravityFilterRoll(double previous, double samp
 
 /// Only changes the delay between roaming actions, not sprite/display-link FPS.
 @property (nonatomic) BOOL activityActive;
+/// 0.6 lively, 1.0 natural, 4.0 quiet, 0 = no roaming (breathing/idle stays).
+@property (nonatomic) double roamPace;
+/// 0 = auto, else 30/60/120. Applies to motion display links only.
+@property (nonatomic) NSInteger preferredFPS;
 /// Host-owned gesture configuration; this view creates NO gesture recognizers.
 @property (nonatomic) BOOL longPressEnabled;
 /// Both flags freeze/cancel roaming at its actual position, not playback intent.

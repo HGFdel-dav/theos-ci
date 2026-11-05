@@ -105,6 +105,8 @@ static CGPoint MSPetCGPoint(MSPoint p) { return CGPointMake((CGFloat)p.x, (CGFlo
     NSUInteger _motionGeneration, _activeMotionGeneration, _roamGeneration;
     CGRect _centerBounds;
     BOOL _activityActive, _longPressEnabled, _roamingPaused, _interactionActive, _reducedWork;
+    double _roamPace;
+    NSInteger _preferredFPS;
     void (^_onGeometryChanged)(void);
     void (^_onLongPress)(void);
 }
@@ -172,6 +174,7 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
 @synthesize activityActive = _activityActive, longPressEnabled = _longPressEnabled;
 @synthesize roamingPaused = _roamingPaused, interactionActive = _interactionActive;
 @synthesize reducedWork = _reducedWork, onLongPress = _onLongPress;
+@synthesize roamPace = _roamPace, preferredFPS = _preferredFPS;
 
 - (instancetype)initWithSprite:(UIImage *)sprite displaySize:(CGSize)displaySize {
     NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
@@ -241,6 +244,13 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     _suspended = suspended;
     if (suspended) [self cancelGravityImpulse];
     [self reconcilePlayback]; // Never invents playback intent; startPlaying is not called.
+}
+
+- (void)setRoamPace:(double)pace {
+    if (_roamPace == pace) return;
+    _roamPace = pace;
+    [self invalidateRoamTimer];
+    [self scheduleRoam];
 }
 
 - (void)setActivityActive:(BOOL)active {
@@ -657,7 +667,9 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     NSTimeInterval delay = _activityActive
         ? MSPetRandomRange(kMiniSightRoamActiveLo, kMiniSightRoamActiveHi)
         : MSPetRandomRange(kMiniSightRoamIdleLo, kMiniSightRoamIdleHi);
+    if (_roamPace > 0) delay *= _roamPace;
     if (_reducedWork && !_activityActive) delay *= 1.5;
+    if (_roamPace == 0) { [self invalidateRoamTimer]; return; }
     delay += _restAfterMotion;
     _restAfterMotion = 0.;
     [self armRoamTimerWithDelay:delay];
@@ -760,6 +772,23 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     self.center = start; // No UIView animation: the model geometry is the truth.
     [self ensureMotionLink];
     if (!_motionActive) [self reconcilePlayback]; // Link creation failed: restart the clock.
+}
+
+- (void)applyPreferredFPS {
+    NSInteger fps = _preferredFPS;
+    if (fps <= 0) return;
+    if (@available(iOS 15.0, *)) {
+        _motionLink.preferredFrameRateRange = CAFrameRateRangeMake(fps, fps, fps);
+        _gravityLink.preferredFrameRateRange = CAFrameRateRangeMake(fps, fps, fps);
+    } else {
+        _motionLink.preferredFramesPerSecond = fps;
+        _gravityLink.preferredFramesPerSecond = fps;
+    }
+}
+
+- (void)setPreferredFPS:(NSInteger)fps {
+    _preferredFPS = fps;
+    [self applyPreferredFPS];
 }
 
 - (void)ensureMotionLink {
