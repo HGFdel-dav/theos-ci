@@ -2,6 +2,7 @@
 #import "MiniSightLog.h"
 #import "MiniSightChatLayout.h"
 #import "MiniSightBridgeIO.h"
+#import "MiniSightBlip.h"
 #import <QuartzCore/QuartzCore.h>
 #import <AVFoundation/AVFoundation.h>
 
@@ -457,7 +458,6 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
     [more setImage:[UIImage systemImageNamed:@"ellipsis"] forState:UIControlStateNormal];
     more.tintColor = UIColor.secondaryLabelColor;
     more.accessibilityLabel = @"对话菜单";
-    __weak typeof(self) weakSelf = self;
     [more addTarget:self action:@selector(toggleMenu) forControlEvents:UIControlEventTouchUpInside];
 
     [composer addSubview:more];
@@ -838,7 +838,7 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
     self.layingOut = NO;
     [self layoutForCurrentScreen];
     if (pan.state == UIGestureRecognizerStateEnded) {
-        UserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
         [defaults setDouble:self.chatOffset.x forKey:@"minisight.chat.dx"];
         [defaults setDouble:self.chatOffset.y forKey:@"minisight.chat.dy"];
         MSDiagEvent(@"chat", @"layout", @"ok", @{ @"source": @"user_drag", @"x": @(self.chatOffset.x), @"y": @(self.chatOffset.y) });
@@ -976,13 +976,13 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
     self.moreButton.hidden = width < 150;
     CGFloat quickH = (self.quickScroll && !self.quickScroll.hidden) ? 28 : 0;
     if (quickH > 0) {
-        self.quickScroll.frame = CGRectMake(CGRectGetMinX(self.cardView), CGRectGetMinY(self.cardView) - 34,
+        self.quickScroll.frame = CGRectMake(CGRectGetMinX(self.cardView.frame), CGRectGetMinY(self.cardView.frame) - 34,
                                             MIN(width, self.quickRow.intrinsicContentSize.width), 28);
         self.quickRow.frame = CGRectMake(0, 0, self.quickRow.intrinsicContentSize.width, 28);
     }
     if (self.menuOpen) {
-        self.actionBar.frame = CGRectMake(CGRectGetMinX(self.cardView),
-                                          MAX(CGRectGetMinY(safe), CGRectGetMinY(self.cardView) - 36),
+        self.actionBar.frame = CGRectMake(CGRectGetMinX(self.cardView.frame),
+                                          MAX(CGRectGetMinY(safe), CGRectGetMinY(self.cardView.frame) - 36),
                                           width, 30);
     }
     [self.scrollView layoutIfNeeded];
