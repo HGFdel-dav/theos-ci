@@ -95,7 +95,7 @@ def inspect(deb,out):
         require(not any('/var/' in '/'+x or any(t in Path(x).parts for t in ('.git','.theos','packages','Sources','Headers','tools','tests')) for x in files),'unwanted payload')
         require(not any(p.is_symlink() for p in payload.rglob('*')),'unexpected payload symlinks')
         dyn=payload/'Library/MobileSubstrate/DynamicLibraries'
-        require(plistlib.loads((dyn/'LocalCleanStatus.plist').read_bytes())=={'Filter':{'Bundles':['com.apple.UIKit']}},'injection filter')
+        require(plistlib.loads((dyn/'LocalCleanStatus.plist').read_bytes())=={'Filter':{'Bundles':['com.apple.UIKit','com.apple.springboard']}},'injection filter')
         pref=payload/'Library/PreferenceBundles/LocalCleanStatusPrefs.bundle'
         info=plistlib.loads((pref/'Info.plist').read_bytes())
         require(info['CFBundleExecutable']=='LocalCleanStatusPrefs' and info['NSPrincipalClass']=='LocalCleanStatusRootListController','panel linkage')
