@@ -60,8 +60,12 @@
     if ((self = [super init])) {
         _activityInterval = 7; _dragResponse = YES; _interaction = YES;
         _tint = @"natural"; _costume = @""; _quick = YES;
-        _bubbleScale = 1; _textScale = 1; _dwell = 1; _gravityShake = json[@"gravityShake"] ? [json[@"gravityShake"] boolValue] : YES;
-    _gravityStrength = 1; _gravityShake = YES;
+        _bubbleScale = 1; _textScale = 1; _dwell = 1;
+        _gravityStrength = 1; _gravityShake = YES;
+        _supplier = @"deepseek"; _persona = @""; _nickname = @""; _revision = @"";
+        _singleTap = @"interact"; _doubleTap = @"voice"; _longPress = @"menu";
+        _returnKey = @"send"; _snore = @"off"; _quickPosition = @"above";
+        _aiPermissions = @""; _adjustments = @[]; _quickOrder = @[]; _quickLines = @{};
     }
     return self;
 }
