@@ -1,0 +1,73 @@
+name: CleanStatus 0.1.5
+
+on:
+  push:
+    branches: [cleanstatus-0.1.5]
+    paths:
+      - 'CleanStatus/**'
+      - '.github/workflows/build-cleanstatus.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cleanstatus-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  roothide:
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      PROJECT_DIR: CleanStatus
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            CleanStatus
+            .github/workflows/build-cleanstatus.yml
+      - name: Host checks
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -euo pipefail
+          mkdir -p out/checks
+          python3 tools/check.py | tee out/checks/host.txt
+          python3 tools/test_verify.py | tee out/checks/verifier.txt
+          python3 tools/test_paths.py | tee out/checks/paths.txt
+      - name: Fixed toolchain and iPhoneOS15.5.sdk
+        run: |
+          set -euo pipefail
+          brew install ldid xz dpkg
+          git clone --no-checkout https://github.com/roothide/theos.git "$HOME/theos"
+          git -C "$HOME/theos" checkout 3ac89c984ec652fd16bcd91b33ae16de45ce76fa
+          git -C "$HOME/theos" submodule update --init --recursive --depth 1
+          git clone --filter=blob:none --no-checkout https://github.com/xybp888/iOS-SDKs.git "$HOME/sdks"
+          git -C "$HOME/sdks" sparse-checkout set iPhoneOS15.5.sdk
+          git -C "$HOME/sdks" checkout 4a48e5409f8ea6ac422c44d91b86fa0f8ae010ff
+          test -d "$HOME/sdks/iPhoneOS15.5.sdk"
+          mkdir -p "$HOME/theos/sdks"
+          cp -R "$HOME/sdks/iPhoneOS15.5.sdk" "$HOME/theos/sdks/"
+          python3 -c 'import json,os; from pathlib import Path; p=Path(os.environ["HOME"])/"theos/sdks/iPhoneOS15.5.sdk/SDKSettings.json"; assert json.loads(p.read_text())["Version"]=="15.5"'
+      - name: Compile release and retain debug symbols
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -euo pipefail
+          export THEOS="$HOME/theos"
+          sh build.sh 2>&1 | tee out/checks/build.txt
+          mkdir -p out/symbols
+          cp packages/*.deb out/
+          python3 tools/verify_deb.py out/*.deb out/checks | tee out/checks/package.txt
+          find .theos -name '*.dSYM' -type d -prune -exec cp -R '{}' out/symbols/ \;
+          find .theos/obj -type f \( -name 'LocalCleanStatus.dylib' -o -name 'LocalCleanStatusPrefs' \) -exec cp '{}' out/symbols/ \;
+          python3 tools/package_source.py out/CleanStatus-0.1.5-Source.zip
+          python3 -c 'import hashlib,json,os; from pathlib import Path; root=Path("out"); meta={"commit":os.environ["GITHUB_SHA"],"run_id":os.environ["GITHUB_RUN_ID"],"sdk":"15.5","scheme":"roothide","runtime_verified":False}; (root/"BUILD-PROVENANCE.json").write_text(json.dumps(meta,indent=2)+"\n"); files=sorted(p for p in root.rglob("*") if p.is_file() and p.name!="SHA256SUMS"); (root/"SHA256SUMS").write_text("".join(hashlib.sha256(p.read_bytes()).hexdigest()+"  "+p.relative_to(root).as_posix()+"\n" for p in files))'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: CleanStatus-0.1.5-roothide-${{ github.sha }}
+          path: ${{ env.PROJECT_DIR }}/out/
+          if-no-files-found: error
+          retention-days: 30
