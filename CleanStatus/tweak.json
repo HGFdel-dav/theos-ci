@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "name": "CleanStatus",
+  "id": "cleanstatus",
+  "display_name": "CleanStatus",
+  "class_prefix": "LocalCleanStatus",
+  "symbol_prefix": "local_cleanstatus",
+  "package": "com.local.cleanstatus",
+  "bundle": "com.apple.UIKit",
+  "sdk_version": "15.5",
+  "minimum_ios": "15.5",
+  "preferences": true,
+  "slider": false,
+  "github_actions": true,
+  "workflow_filename": "build-cleanstatus.yml",
+  "scheme": "roothide",
+  "architecture": "arm64e",
+  "version": "0.1.3",
+  "author": "Niubiprass"
+}
