@@ -77,31 +77,6 @@ static void MiniSightCancelConfirm(void);
 static void MiniSightConfigureRecorder(void);
 static void MiniSightConfigureRecorderWithCompletion(void (^completion)(void));
 static void MiniSightReadActivitySnapshot(void);
-static void MiniSightApplyTint(NSString *name) {
-    UIImage *base = gMiniSightTintBase ?: gMiniSightAtlas;
-    if (!gMiniSightPet || !base) return;
-    if (!name.length || [name isEqualToString:@"natural"]) { gMiniSightPet.image = base; return; }
-    UIColor *tint = @{@"warm": [UIColor colorWithRed:1 green:0.62 blue:0.38 alpha:1],
-                      @"cool": [UIColor colorWithRed:0.45 green:0.66 blue:1 alpha:1],
-                      @"mint": [UIColor colorWithRed:0.45 green:0.92 blue:0.72 alpha:1],
-                      @"rose": [UIColor colorWithRed:1 green:0.6 blue:0.75 alpha:1]}[name];
-    if (!tint) { gMiniSightPet.image = base; return; }
-    UIGraphicsImageRenderer *r = [[UIGraphicsImageRenderer alloc] initWithSize:base.size];
-    gMiniSightPet.image = [r imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
-        (void)ctx;
-        [base drawAtPoint:CGPointZero];
-        UIRectFillUsingBlendMode(CGRectMake(0, 0, base.size.width, base.size.height), kCGBlendModeColor);
-    }];
-}
-
-static void MiniSightLoadCostume(NSString *file) {
-    if (!gMiniSightContainer.length || !file.length) return;
-    NSString *path = [gMiniSightContainer stringByAppendingPathComponent:
-        [@"Documents/MiniSight/costumes" stringByAppendingPathComponent:file]];
-    UIImage *img = [UIImage imageWithContentsOfFile:path];
-    if (img) { gMiniSightTintBase = img; MiniSightApplyTint(MiniSightRuntimeConfig.shared.tint); }
-}
-
 static void MiniSightBuildUI(void);
 static void MiniSightRequestResources(BOOL force, void (^completion)(void));
 static BOOL gMiniSightActivityExecuting = NO;
@@ -539,6 +514,31 @@ static BOOL gMiniSightGravityConfigured = NO;
 static double gMiniSightBottomGap = 12;
 static UIImage *gMiniSightTintBase;
 static BOOL gMiniSightDiagnosticsEnabled = NO;
+
+static void MiniSightApplyTint(NSString *name) {
+    UIImage *base = gMiniSightTintBase ?: gMiniSightAtlas;
+    if (!gMiniSightPet || !base) return;
+    if (!name.length || [name isEqualToString:@"natural"]) { gMiniSightPet.image = base; return; }
+    UIColor *tint = @{@"warm": [UIColor colorWithRed:1 green:0.62 blue:0.38 alpha:1],
+                      @"cool": [UIColor colorWithRed:0.45 green:0.66 blue:1 alpha:1],
+                      @"mint": [UIColor colorWithRed:0.45 green:0.92 blue:0.72 alpha:1],
+                      @"rose": [UIColor colorWithRed:1 green:0.6 blue:0.75 alpha:1]}[name];
+    if (!tint) { gMiniSightPet.image = base; return; }
+    UIGraphicsImageRenderer *r = [[UIGraphicsImageRenderer alloc] initWithSize:base.size];
+    gMiniSightPet.image = [r imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
+        [base drawAtPoint:CGPointZero];
+        UIRectFillUsingBlendMode(CGRectMake(0, 0, base.size.width, base.size.height), kCGBlendModeColor);
+    }];
+}
+
+static void MiniSightLoadCostume(NSString *file) {
+    if (!gMiniSightContainer.length || !file.length) return;
+    NSString *path = [gMiniSightContainer stringByAppendingPathComponent:
+        [@"Documents/MiniSight/costumes" stringByAppendingPathComponent:file]];
+    UIImage *img = [UIImage imageWithContentsOfFile:path];
+    if (img) { gMiniSightTintBase = img; MiniSightApplyTint(MiniSightRuntimeConfig.shared.tint); }
+}
+
 
 static UIInterfaceOrientation MiniSightOrientation(void);
 static void MiniSightUpdateGeometry(void);
