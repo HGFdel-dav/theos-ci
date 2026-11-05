@@ -148,7 +148,6 @@ static void local_cleanstatus_applyBattery(UIView *view) {
         state.canvas.charging=local_cleanstatus_integer(view,"chargingState",0)==1;
         state.canvas.lowPower=local_cleanstatus_boolValue(view,"saverModeActive",NSProcessInfo.processInfo.isLowPowerModeEnabled);
         state.canvas.hideBolt=hideBolt;
-        id color=local_cleanstatus_object(view,"bodyColor");
         state.canvas.foreground=UIColor.labelColor; // bodyColor is the dimmed icon ink; labelColor matches the status bar style
         local_cleanstatus_hideLayer(state,body); local_cleanstatus_hideLayer(state,fill);
         local_cleanstatus_hideLayer(state,local_cleanstatus_object(view,"pinLayer"));
