@@ -9,15 +9,6 @@
 @property(nonatomic, strong) UIColor *foreground;
 @end
 
-static UIColor *local_cleanstatus_contrastingText(UIColor *color, UITraitCollection *traits) {
-    CGFloat r=0,g=0,b=0,a=0,w=0;
-    UIColor *resolved = [color resolvedColorWithTraitCollection:traits];
-    if (![resolved getRed:&r green:&g blue:&b alpha:&a]) {
-        if ([resolved getWhite:&w alpha:&a]) r=g=b=w;
-    }
-    return (0.2126*r+0.7152*g+0.0722*b) > 0.5 ? UIColor.blackColor : UIColor.whiteColor;
-}
-
 @implementation LocalCleanStatusBatteryCanvas
 - (void)drawRect:(CGRect)rect {
     (void)rect;
