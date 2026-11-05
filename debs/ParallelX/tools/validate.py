@@ -8,7 +8,7 @@ import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEB = "/tmp/pxi/debs/com.moxuan.parallelx_0.1.0~alpha391_iphoneos-arm64e.deb"
+DEB = os.environ.get("BASELINE_DEB", "/tmp/parallelx-alpha391-bcca9307.deb")
 EXPECTED_DEB = "76052a287abb9b925c52701bde835152aeab20331e4e90fc39a8f92102d40c50"
 VENDOR = os.path.join(ROOT, "vendor/alpha391")
 
@@ -34,7 +34,7 @@ def main():
         else:
             print("ok baseline deb", EXPECTED_DEB)
     else:
-        print("skip baseline deb hash: temporary source package unavailable")
+        errors += fail("exact baseline DEB missing; set BASELINE_DEB before validation")
 
     vendor_files = []
     for base, _, names in os.walk(VENDOR):
@@ -54,11 +54,11 @@ def main():
                     errors += fail(f"vendor changed {rel}")
         print("ok vendor payload", len(vendor_files), "files byte-identical")
     else:
-        print("skip vendor DEB comparison: temporary source package unavailable")
+        errors += fail("cannot compare vendor without the exact baseline DEB")
 
-    for rel in ["layout/DEBIAN/postinst.in", "Prefs/Resources/Info.plist", "Prefs/Resources/Root.plist",
+    for rel in ["layout/DEBIAN/postinst.in",
                 "layout/Library/PreferenceBundles/ParallelXPrefs.bundle/Root.plist",
-                "ParallelXClone.plist"]:
+                "ParallelXPrefsUI.plist", "ParallelXClone.plist"]:
         data_bytes = open(os.path.join(ROOT, rel), "rb").read()
         if rel.endswith(".plist"):
             try:

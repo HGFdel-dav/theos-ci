@@ -8,15 +8,15 @@
 #import "Common/PXClonePrefs.h"
 #import "Common/PXCloneRuntime.h"
 
+#ifdef PXCLONE_STRIP_LOGS
+#define NSLog(...) ((void)0)
+#endif
+
 static BOOL (*PXOrigPerformAction)(id, SEL, id, BOOL);
 static NSMutableSet<NSString *> *PXRecent;
 static NSMutableSet<PXCloneTransition *> *PXLiveTransitions;
 static PXCloneTransition *PXCurrentTransition;
-static int PXNotifyToken;
-
-static BOOL PXIsSpringBoard(void) {
-    return [NSBundle.mainBundle.bundleIdentifier isEqualToString:@"com.apple.springboard"];
-}
+static int PXNotifyToken = -1;
 
 static BOOL PXAppRunning(NSString *bundleID) {
     // PXPanelEntry owns +sharedBridge; the returned PXSceneBridge owns
@@ -152,36 +152,33 @@ static void PXRefreshAndSync(void) {
     });
 }
 
-%ctor {
-    if (!PXIsSpringBoard()) return;
+// Run only after dyld returned to the main run loop. In particular, do not
+// dlopen Crane or create its shared manager from the dylib initializer.
+// A named bounded retry avoids scheduling a nil, weak self-referencing block.
+static void PXBootstrap(NSUInteger attempt) {
+    if (!PXInstallActionHook()) {
+        if (attempt >= 25) return;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{ PXBootstrap(attempt + 1); });
+        return;
+    }
 
-    [PXCloneCrane prepareManager];
     (void)PXClonePrefs.shared;
-    notify_register_dispatch(PXClonePrefsNotification.UTF8String, &PXNotifyToken,
-                             dispatch_get_main_queue(), ^(int token) {
+    int status = notify_register_dispatch(PXClonePrefsNotification.UTF8String, &PXNotifyToken,
+                                          dispatch_get_main_queue(), ^(int token) {
         (void)token;
         PXRefreshAndSync();
     });
+    if (status != NOTIFY_STATUS_OK) PXNotifyToken = -1;
+    PXRefreshAndSync();
+}
 
-    // ParallelX may load after this dylib; retry briefly instead of assuming
-    // class availability at constructor time.
-    __block NSInteger tries = 0;
-    __block void (^install)(void) = nil;
-    __weak __block void (^weakInstall)(void) = nil;
-    install = ^{
-        if (PXInstallActionHook()) {
-            PXRefreshAndSync();
-            return;
-        }
-        if (++tries >= 25) return;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), weakInstall);
-    };
-    weakInstall = install;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), install);
+%ctor {
+    // ParallelXClone.plist limits this image to SpringBoard; avoid querying
+    // Foundation from dyld's initializer while its Objective-C state is busy.
+    dispatch_async(dispatch_get_main_queue(), ^{ PXBootstrap(0); });
 }
 
 %dtor {
-    if (PXNotifyToken) notify_cancel(PXNotifyToken);
+    if (PXNotifyToken >= 0) notify_cancel(PXNotifyToken);
 }

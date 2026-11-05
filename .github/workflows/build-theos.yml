@@ -2,6 +2,8 @@ name: Build Theos Projects
 
 on:
   push:
+    branches-ignore:
+      - 'parallelx-safe-mode-*'
     paths:
       - 'debs/**'
   workflow_dispatch:

@@ -1,0 +1,80 @@
+name: Build ParallelX safe-mode repair
+
+on:
+  push:
+    branches: ['parallelx-safe-mode-*']
+    paths:
+      - 'debs/ParallelX/**'
+      - '.github/workflows/build-parallelx.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: parallelx-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-15-intel
+    strategy:
+      fail-fast: false
+      matrix:
+        scheme: [roothide, rootless]
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - name: Host regressions (including safe-mode PAC fixtures)
+        working-directory: debs/ParallelX
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Setup Apple toolchain and RootHide Theos
+        run: |
+          set -euo pipefail
+          brew install ldid xz dpkg
+          git clone --recursive https://github.com/roothide/theos.git "$HOME/theos"
+          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/xybp888/iOS-SDKs.git "$HOME/iossdks"
+          test "$(git -C "$HOME/iossdks" rev-parse HEAD)" = 4a48e5409f8ea6ac422c44d91b86fa0f8ae010ff
+          git -C "$HOME/iossdks" sparse-checkout set iPhoneOS15.5.sdk
+          mkdir -p "$HOME/theos/sdks"
+          cp -R "$HOME/iossdks/iPhoneOS15.5.sdk" "$HOME/theos/sdks/"
+          test -d "$HOME/theos/sdks/iPhoneOS15.5.sdk"
+      - name: Verify exact alpha391 baseline
+        working-directory: debs/ParallelX
+        run: |
+          set -euo pipefail
+          curl -fLsS 'https://raw.githubusercontent.com/Niubiprass/Niubiprass.github.io/bcca930768ae9ca53aec0a40383f9a09275ebeaa/debs/com.moxuan.parallelx_0.1.0~alpha391_iphoneos-arm64e.deb' -o "$RUNNER_TEMP/parallelx-alpha391.deb"
+          BASELINE_DEB="$RUNNER_TEMP/parallelx-alpha391.deb" python3 tools/validate.py
+      - name: Compile with Apple arm64e ABI and run machine-code gate
+        working-directory: debs/ParallelX
+        run: |
+          set -euo pipefail
+          ./tools/generate_maintainer_scripts.sh '${{ matrix.scheme }}'
+          make clean THEOS_PACKAGE_SCHEME='${{ matrix.scheme }}'
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME='${{ matrix.scheme }}' 2>&1 | tee build-${{ matrix.scheme }}.log
+      - name: Verify actual DEB, preserve symbols and provenance
+        working-directory: debs/ParallelX
+        run: |
+          set -euo pipefail
+          mkdir -p ci-out
+          python3 tools/verify_repair_package.py --scheme '${{ matrix.scheme }}' --out ci-out
+          find .theos -type d -name '*.dSYM' -prune -exec cp -R '{}' ci-out/ \;
+          git rev-parse HEAD > ci-out/SOURCE-COMMIT
+          git -C "$HOME/theos" rev-parse HEAD > ci-out/THEOS-COMMIT
+          xcrun clang --version > ci-out/COMPILER.txt
+          cp build-${{ matrix.scheme }}.log ci-out/
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: ParallelX-clone0.5-${{ matrix.scheme }}-${{ github.sha }}
+          path: debs/ParallelX/ci-out/
+          if-no-files-found: error
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ParallelX-failure-${{ matrix.scheme }}-${{ github.run_id }}
+          path: debs/ParallelX/build-*.log
+          if-no-files-found: ignore

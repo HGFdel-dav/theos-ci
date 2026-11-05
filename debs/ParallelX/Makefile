@@ -1,14 +1,16 @@
-ARCHS = arm64 arm64e
+# Apple clang already implements the arm64e ABI, including return-address PAC.
+# Generic pac-ret plus the arm64e ABI produced two PAC instructions in clone0.4.
+# Do not restore Linux linker/header workarounds here.
+ifneq ($(shell uname -s),Darwin)
+$(error Build on a GitHub macOS runner; iSH/Linux builds are not supported)
+endif
 
 ifeq ($(THEOS_PACKAGE_SCHEME),rootless)
 ARCHS = arm64
-PACKAGE_FORMAT = deb
-PX_PAC_FLAGS =
 else
 ARCHS = arm64e
-PACKAGE_FORMAT = deb
-PX_PAC_FLAGS = -mbranch-protection=pac-ret+b-key -fptrauth-calls -fno-modules
 endif
+PACKAGE_FORMAT = deb
 
 TARGET = iphone:15.5:15.0
 SDKVERSION = 15.5
@@ -29,12 +31,8 @@ ParallelXClone_FILES = Tweak.xm \
 	Common/PXClonePolicy.m \
 	Common/PXClonePrefs.m \
 	Common/PXCloneRuntime.m
-ParallelXClone_CFLAGS = -fobjc-arc -I$(THEOS_PROJECT_DIR) -Wno-unused-parameter $(PX_PAC_FLAGS)
-ParallelXClone_OBJCCFLAGS = $(PX_PAC_FLAGS)
-ParallelXClone_OBJCFLAGS = $(PX_PAC_FLAGS)
-ifeq ($(shell uname),Linux)
-ParallelXClone_LDFLAGS = -fuse-ld=$(THEOS)/toolchain/linux/iphone/bin/ld
-endif
+ParallelXClone_CFLAGS = -fobjc-arc -I$(THEOS_PROJECT_DIR) -Wno-unused-parameter -fvisibility=hidden -DPXCLONE_STRIP_LOGS=1
+ParallelXClone_LDFLAGS = -Wl,-x -Wl,-dead_strip
 ParallelXClone_FRAMEWORKS = Foundation UIKit
 
 include $(THEOS_MAKE_PATH)/tweak.mk
@@ -45,16 +43,21 @@ ParallelXPrefsUI_FILES = Prefs/PXCloneAccountsController.m \
 	Common/PXClonePaths.m \
 	Common/PXClonePrefs.m \
 	Common/PXCloneRuntime.m
-ParallelXPrefsUI_CFLAGS = -fobjc-arc -I$(THEOS_PROJECT_DIR) -Wno-unused-parameter $(PX_PAC_FLAGS)
-ParallelXPrefsUI_OBJCFLAGS = $(PX_PAC_FLAGS)
-ifeq ($(shell uname),Linux)
-ParallelXPrefsUI_LDFLAGS = -fuse-ld=$(THEOS)/toolchain/linux/iphone/bin/ld
-endif
+ParallelXPrefsUI_CFLAGS = -fobjc-arc -I$(THEOS_PROJECT_DIR) -Wno-unused-parameter -fvisibility=hidden
+ParallelXPrefsUI_LDFLAGS = -Wl,-x -Wl,-dead_strip
 ParallelXPrefsUI_FRAMEWORKS = Foundation UIKit
 ParallelXPrefsUI_PRIVATE_FRAMEWORKS = Preferences
 ParallelXPrefsUI_INSTALL_PATH = /Library/MobileSubstrate/DynamicLibraries
 
 include $(THEOS_MAKE_PATH)/library.mk
+
+# Reject corrupted arm64e return-address signing in the actual staged images.
+# This runs on the CI runner after both injected dylibs are staged.
+PX_EXPECTED_ARCH = $(if $(filter rootless,$(THEOS_PACKAGE_SCHEME)),arm64,arm64e)
+after-stage::
+	@python3 tools/check_pac.py --expect-arch $(PX_EXPECTED_ARCH) \
+		"$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/ParallelXClone.dylib" \
+		"$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/ParallelXPrefsUI.dylib"
 
 # One merged ParallelX package: preserve the alpha391 vendor payload, then
 # overlay only the original Root.plist with the new in-page account row.
@@ -81,6 +84,3 @@ before-package::
 before-all::
 	@./tools/generate_maintainer_scripts.sh "$(THEOS_PACKAGE_SCHEME)"
 	@python3 ./tools/make_parallelx_root_overlay.py
-
-after-install::
-	install.exec "killall -9 SpringBoard || true"
