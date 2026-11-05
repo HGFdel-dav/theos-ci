@@ -1226,11 +1226,11 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
         if (!defaultKey) continue;
         BOOL permitted = allAllowed || [granted containsObject:needs[key] ?: key];
         if (!permitted) { [applied addObject:[NSString stringWithFormat:@"%@ 待允许", key]]; continue; }
-        [[NSUserDefaults standardUserDefaults] set:object[key] forKey:defaultKey];
+        [[NSUserDefaults standardUserDefaults] setObject:object[key] forKey:defaultKey];
         [applied addObject:key];
     }
     CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
-        CFNotificationName("com.openminis.minisight.settings" as CFString), nil, nil, true);
+        (__bridge CFStringRef)@"com.openminis.minisight.settings", nil, nil, true);
     MSDiagEvent(@"settings", @"apply", @"ok", @{ @"setting": @"ai_adjust", @"count": @(applied.count), @"reason": @"model_request" });
     NSString *clean = [[raw substringToIndex:open.location] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     return clean.length ? clean : raw;
