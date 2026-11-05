@@ -99,19 +99,33 @@ check("readme_section", "AI 多轮聊天面板" in README and "MiniSightChatPane
 check("reads_same_config", 'MSBridgeRead(container, @"ai.json"' in AI_M)
 check("config_fields", all(f'config[@"{field}"]' in AI_M for field in ("url", "key", "model")))
 check("bearer_auth", '"Bearer "' in AI_M and 'forHTTPHeaderField:@"Authorization"' in AI_M)
-check("timeout_30", "kMiniSightAITimeout = 30.0" in AI_M and
-      "request.timeoutInterval = kMiniSightAITimeout" in AI_M)
-check("max_tokens_512", "kMiniSightAIMaxTokens = 512" in AI_M and
+check("timeouts_configured_before_session", "kMiniSightAIRequestTimeout = 45.0" in AI_M and
+      "kMiniSightAIResourceTimeout = 60.0" in AI_M and
+      "request.timeoutInterval = kMiniSightAIRequestTimeout" in AI_M and
+      AI_M.index("configuration.timeoutIntervalForRequest =") < AI_M.index("self.session = [NSURLSession"))
+check("hard_deadline_generation_guard", "kMiniSightAIHardDeadline = 65.0" in AI_M and
+      "MSChatAcceptsReply(&strongSelf->_requestState, generation)" in AI_M and
+      "dispatch_block_cancel(self.timeoutBlock)" in AI_M)
+check("max_tokens_2048", "kMiniSightAIMaxTokens = 2048" in AI_M and
       '@"max_tokens": @(kMiniSightAIMaxTokens)' in AI_M)
 check("core_endpoint_builder", "MSChatBuildEndpoint(" in AI_M)
 check("core_extractor", "MSChatExtractReplyText(" in AI_M)
 check("core_context", "MSChatContextAdd(&_history" in AI_M and
       "MSCHAT_MAX_MESSAGES" in CORE_H and "MSCHAT_MAX_CHARS" in CORE_H)
-check("no_streaming", "stream" not in AI_M.lower().replace("nsurlsession", ""))
-check("duplicate_guard", "if (!MSChatBeginRequest(&_requestState)) return;" in AI_M)
+check("no_streaming", '@"stream"' not in AI_M and "uploadTaskWithStreamedRequest" not in AI_M)
+check("bounded_receiving", "didReceiveData:(NSData *)data" in AI_M and
+      "data.length > kMiniSightAIMaxResponseBytes - self.buffer.length" in AI_M and
+      "self.completed = YES" in AI_M)
+check("reject_redirects", "willPerformHTTPRedirection" in AI_M and "completionHandler(nil)" in AI_M)
+duplicate_branch = AI_M.split('if (!MSChatBeginRequest(&_requestState)) {', 1)[-1].split('const unsigned long generation', 1)[0]
+check("duplicate_guard", 'if (!MSChatBeginRequest(&_requestState)) {' in AI_M and 'return;' in duplicate_branch and 'sendUserText:' not in duplicate_branch)
 check("cancel", "MSChatCancelRequest(" in AI_M)
 check("empty_success_is_error", "MiniSightAIIssueEmpty" in AI_M and
-      "extract != MSChatExtractOK || !text[0]" in AI_M)
+      "extract != MSChatExtractOK || !reply.length" in AI_M and
+      "回复额度用完但未生成正文" in AI_M)
+check("request_diagnostics", all(stage in AI_M for stage in
+      ("ai begin", "ai network", "ai callback", "ai parse", "ai finish")) and
+      "reply.requestID" in AI_M and "chat display request=%@" in PANEL_M)
 check("response_size_bound", "kMiniSightAIMaxResponseBytes" in AI_M and
       "data.length > kMiniSightAIMaxResponseBytes" in AI_M)
 check("every_issue_has_text", all(
@@ -145,21 +159,20 @@ check("existing_panel_query", "+ (nullable instancetype)existingPanel;" in PANEL
 check("separate_editor_input", "self.inputField.alpha = 0.01;" in PANEL_M and
       "[self.editorWindow makeKeyWindow];" in PANEL_M and "editorWindow.editorField = editor;" in PANEL_M)
 check("full_screen", "MSChatScreenRect(self.window.windowScene)" in PANEL_M and
-      "root.leadingAnchor" in PANEL_M)
+      "self.window.frame = screen;" in PANEL_M and "anchor.window" in PANEL_M)
 check("background_dismiss", "backgroundTapped" in PANEL_M and "UITapGestureRecognizer" in PANEL_M)
-check("rounded_bottom_panel", "layer.cornerRadius = kMSChatCorner" in PANEL_M and
-      "kCALayerMinXMinYCorner" in PANEL_M)
+check("floating_bubble_panel", "MiniSightChatBubble" in PANEL_M and "MSChatFloatingLayout(" in PANEL_M and "dimView" not in PANEL_M)
 check("keyboard_avoidance", "UIKeyboardWillChangeFrameNotification" in PANEL_M and
       "updateCardBottomAnimated" in PANEL_M)
 check("rotation_and_safe_area", "UIDeviceOrientationDidChangeNotification" in PANEL_M and
       "safeAreaInsets" in PANEL_M and "UIInterfaceOrientationIsLandscape" in PANEL_M)
 check("dynamic_colors", "colorWithDynamicProvider" in PANEL_M and
       "UIUserInterfaceStyleUnspecified" in PANEL_M)
-check("controls", all(x in PANEL_M for x in ('@"发送"', '@"取消"', '@"清空"', '@"✕"')))
+check("controls", all(x in PANEL_M for x in ('@"发送"', '@"取消回复"', '@"清空对话"', '@"收起对话"')))
 check("max_30_messages", "kMSChatMaxMessages = 30.0" in PANEL_M and
-      "self.rows.count > (NSUInteger)kMSChatMaxMessages" in PANEL_M)
+      "MSCHAT_MAX_MESSAGES" in CORE_H and "(NSUInteger)4" in PANEL_M)
 check("disable_while_sending", "self.sendButton.enabled = NO" in PANEL_M and
-      "if (self.sending || !self.visible) return;" in PANEL_M)
+      'if (self.sending || !self.visible) {' in PANEL_M and '@"busy" : @"not_visible"' in PANEL_M)
 check("close_hides", "self.window.hidden = YES" in PANEL_M and "if (!self.visible || self.closing) return;" in PANEL_M and "performClose" in PANEL_M)
 check("host_callbacks", all(x in PANEL_H for x in ("replyHandler", "errorHandler", "visibilityHandler")))
 check("main_thread_panel", "[NSThread isMainThread]" in PANEL_M)

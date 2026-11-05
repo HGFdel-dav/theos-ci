@@ -216,11 +216,47 @@ static void test_extract(void) {
         MSChatValueFree(root);
     }
 
-    // Empty message content falls through to the provider output field.
+    // Empty message.content must not be disguised as success by another field.
     root = choicesWithMessage(string(""));
     set(root, "output_text", string("fallback"));
-    CHECK(MSChatExtractReplyText(root, out, sizeof out) == MSChatExtractOK);
-    CHECK(strcmp(out, "fallback") == 0);
+    CHECK(MSChatExtractReplyText(root, out, sizeof out) == MSChatExtractEmpty);
+    CHECK(out[0] == '\0');
+    MSChatValueFree(root);
+
+    // An API may return only internal reasoning: that is not a visible answer.
+    root = choicesWithMessage(MSChatValueNewNull());
+    set(root, "reasoning_content", string("internal-only"));
+    CHECK(MSChatExtractReplyText(root, out, sizeof out) == MSChatExtractEmpty);
+    CHECK(out[0] == '\0');
+    MSChatValueFree(root);
+
+    {
+        MSChatValue *parts = array();
+        MSChatValue *thinking = dict();
+        MSChatValue *answer = dict();
+        set(thinking, "type", string("reasoning"));
+        set(thinking, "text", string("do-not-display"));
+        set(answer, "type", string("output_text"));
+        set(answer, "text", string("visible"));
+        push(parts, thinking); push(parts, answer);
+        root = choicesWithMessage(parts);
+        CHECK(MSChatExtractReplyText(root, out, sizeof out) == MSChatExtractOK);
+        CHECK(strcmp(out, "visible") == 0);
+        MSChatValueFree(root);
+    }
+
+    root = choicesWithMessage(string(" \n\t "));
+    CHECK(MSChatExtractReplyText(root, out, sizeof out) == MSChatExtractEmpty);
+    MSChatValueFree(root);
+
+    // Explicit message shape must be a dictionary, not an untyped string.
+    root = dict();
+    {
+        MSChatValue *choices = array(); MSChatValue *first = dict();
+        set(first, "message", string("wrong-shape")); push(choices, first);
+        set(root, "choices", choices);
+    }
+    CHECK(MSChatExtractReplyText(root, out, sizeof out) == MSChatExtractShape);
     MSChatValueFree(root);
 
     // 0.3.5 shape: choices[0].text and candidates[0].
@@ -282,7 +318,7 @@ static void test_status(void) {
 
     CHECK(strstr(MSChatMessageForIssue(MSChatIssueConfig, 0), "配置") != NULL);
     CHECK(strstr(MSChatMessageForIssue(MSChatIssueURL, 0), "地址") != NULL);
-    CHECK(strstr(MSChatMessageForIssue(MSChatIssueTimeout, 0), "30") != NULL);
+    CHECK(strstr(MSChatMessageForIssue(MSChatIssueTimeout, 0), "超时") != NULL);
     CHECK(strstr(MSChatMessageForIssue(MSChatIssueNetwork, 0), "网络") != NULL);
     CHECK(strstr(MSChatMessageForIssue(MSChatIssueEmpty, 0), "空") != NULL);
     CHECK(strstr(MSChatMessageForIssue(MSChatIssueHTTP, 401), "401") != NULL);

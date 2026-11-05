@@ -151,7 +151,9 @@ ok('MiniSightSayPresetLine();' in tweak and 'MiniSightSpeakLine' not in tweak,
    '10d 本地短句必须与联网聊天隔离')
 ok('MSDiag' in ai_client or 'MSDiag' in read('MiniSightLog.m'),
    '10e AI 问题缺少脱敏诊断链')
-ok('timeoutInterval = kMiniSightAITimeout' in ai_client,
+ok('timeoutInterval = kMiniSightAIRequestTimeout' in ai_client and
+   'configuration.timeoutIntervalForResource = kMiniSightAIResourceTimeout' in ai_client and
+   'kMiniSightAIHardDeadline' in ai_client,
    '10f 聊天客户端超时配置不一致')
 
 # ---- 12. 原生回前台能力 + single-flight，避免和用户按 Home 抢 ----
@@ -214,7 +216,7 @@ callback = tweak[tweak.index('static void MiniSightDarwinCallback('):]
 callback = callback[:callback.index('\n}\n')]
 confirm = tweak[tweak.index('static void MiniSightShowConfirm(void) {'):]
 confirm = confirm[:confirm.index('\n}\n')]
-ok('if (!MiniSightAlwaysShow() && !gMiniSightBurst) return;' in show_body,
+ok(bool(re.search(r'if \(!MiniSightAlwaysShow\(\) && !gMiniSightBurst\) \{[^}]*return;', show_body)),
    '11a 调用模式 show 缺少活动门禁')
 ok('MiniSightAlwaysShow() || (gMiniSightBurst && wasVisible)' in reload_body and 'MiniSightShow();' in reload_body,
    '11b 切换常驻后未主动显示')
@@ -243,8 +245,9 @@ ok('1KB' in record_m or '1024' in record_m, '14d 成功最小字节校验被放�
 # ---- 15. 重力有真实传感器回退与最小诊断 ----
 ok('isDeviceMotionAvailable' in tweak and 'isAccelerometerAvailable' in tweak,
    '15a 未检查两种传感器能力')
-ok('startAccelerometerUpdatesToQueue' in tweak and 'accelerometer fallback' in tweak,
-   '15b deviceMotion 不可用时没有加速度计回退')
+ok('startAccelerometerUpdatesToQueue' in tweak and 'MSMotionFail(&gMiniSightMotionAttempt' in tweak and
+   'MSMotionSourceAccelerometer' in tweak and 'MiniSightStartAccelerometerSource();' in tweak,
+   '15b deviceMotion 不可用时没有有限的加速度计回退')
 ok('gravity-last.json' in tweak and 'MiniSightGravityDiagnostic' in tweak,
    '15c 重力启动/回退/错误没有本地诊断')
 ok('MiniSightApplyGravitySample' in tweak and
@@ -267,9 +270,10 @@ ok('0600' in log_m, '16d 日志权限不严')
 ok('MSDiagConfigure' in log_m and 'atomic_bool' in log_m, '16e 日志未做异步开关')
 ok('MiniSightLog.m' in makefile, '16f 日志实现未纳入构建')
 ok('extern "C"' in log_h, '16g 日志头缺 C 链接，Tweak.xm 会链接失败')
-ok('recorder state=' in tweak and 'activity valid=' in tweak and 'ai issue=' in read('MiniSightAI.m'),
+ok('recorder state=' in tweak and 'activity valid=' in tweak and
+   all(stage in ai_client for stage in ['ai begin', 'ai callback', 'ai parse', 'ai finish']),
    '16f 关键链路没有诊断点')
-ok('status.txt' in log_m or 'Key' not in log_m, '16g 日志边界说明')
+ok('MSDiagValue' in log_m and 'MSDiagKeys' in log_m and 'raw' not in log_m[log_m.index('void MSDiagEvent('):log_m.index('void MSDiagMessage(')], '16g 事件必须经白名单重建，不能保存原始内容')
 
 # ---- 17. 聊天窗关闭不能同步卡死 SpringBoard ----
 panel = read('MiniSightChatPanel.m')

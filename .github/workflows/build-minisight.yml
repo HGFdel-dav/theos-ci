@@ -2,7 +2,7 @@ name: MiniSight Build
 
 on:
   push:
-    branches: [minisight-0.4.0-chat-freeze]
+    branches: [minisight-0.4.0-chat-freeze, minisight-0.7.0-unified-20261105]
     paths:
       - 'debs/MiniSight/**'
       - '.github/workflows/build-minisight.yml'
@@ -38,6 +38,8 @@ jobs:
           clang -std=c11 -O2 -Wall -Wextra -Werror tests/chat/chat_test.c tools/chat/ChatCore.c -o "$RUNNER_TEMP/ms-chat"
           "$RUNNER_TEMP/ms-chat"
           python3 tools/chat/run_local_checks.py
+          python3 tools/chat/check_chat_layout.py --cc clang
+          python3 -B -m unittest discover -s tests/diagnostics -p 'test_*.py' -v
       - name: Toolchain
         env:
           DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer

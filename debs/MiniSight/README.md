@@ -1,5 +1,10 @@
 # MiniSight
 
+## 0.7.0 本地候选（未编译、未安装）
+
+当前配套 App 功能包独立编号 0.7.0-local.1。显示端按显式 renderer 选择；小输入条与跟随气泡、共用 AI 核心、人设读回、真实亮屏状态、基础事件日志和查看入口已本地接线。未完成 iOS 编译与真机功能验收。旧版章节仅保留历史记录，以本节和功能包 README 为准。
+
+
 在 SpringBoard 顶部显示一枚小胶囊，用来提示「Minis 正在操作这台手机」。
 
 ## 触发
@@ -39,8 +44,8 @@ Darwin 通知（`CFNotificationCenterGetDarwinNotifyCenter()`）：
 
 ## AI 多轮聊天面板
 
-双击桌宠打开 `MiniSightChatPanel`：可见浮层保持非 key，只有点击输入框时由独立输入窗口临时接管键盘；支持输入、多轮、发送、取消、清空、键盘避让；点背景关闭，隐藏/重建桌宠时一并收起。
-聊天接口仍读 App 已写好的 `Documents/MiniSight/ai.json`（URL/Key/模型），不在插件里再存一份 Key，也不打印 Key。面板不可用时只回退到本地预置短句，不发旧的单句联网请求。2xx 但正文为空或无法解析按失败处理；响应上限 2 MB，请求超时 30 秒。
+双击桌宠打开 `MiniSightChatPanel`：可见浮层保持非 key，只有点击输入框时由独立输入窗口临时接管键盘；支持输入、多轮、发送、取消、清空、键盘避让；菜单收起，浮层外触摸透传；隐藏/重建桌宠时一并收起。
+聊天接口仍读 App 已写好的 `Documents/MiniSight/ai.json`（URL/Key/模型），不在插件里再存一份 Key，也不打印 Key。面板不可用时只回退到本地预置短句，不发旧的单句联网请求。2xx 但正文为空或无法解析按失败处理；响应上限 2 MiB，请求/资源/硬终止超时分别 45/60/65 秒。
 
 ## 回前台
 
@@ -77,7 +82,7 @@ Darwin 通知（`CFNotificationCenterGetDarwinNotifyCenter()`）：
 
 ## 诊断日志
 
-设置 → MCP 集成 → Minis 内置工具 → 操作指示器里有「记录诊断日志」，默认关闭。开启后只写本机 `Documents/MiniSight/diagnostic.log`，记录状态、错误码和计数；超过 200KB 轮转一份 `diagnostic.log.1`，不记录 Key、提示词、命令正文和响应正文，不自动上传。
+基础结构化事件本地常开，「记录详细诊断」仅控制旧详细入口。App 写 diagnostic-app.log，SpringBoard 写 diagnostic-plugin.log，各 200KiB 加 .1 轮转。App 可查看并复制有界脱敏尾部；精确格式见 tools/diagnostics/README.md。Key、URL、人设、命令和聊天正文不落事件日志。
 
 ## 0.6.0 本地变更（未发布）
 
