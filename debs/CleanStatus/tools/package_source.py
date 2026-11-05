@@ -20,7 +20,7 @@ def package(destination):
     files=list(source_files())
     with zipfile.ZipFile(destination,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=9) as z:
         for p,r,data in files:
-            info=zipfile.ZipInfo('CleanStatus-0.1.13/'+r.as_posix(),date_time=(2026,11,4,0,0,0))
+            info=zipfile.ZipInfo('CleanStatus-0.1.14/'+r.as_posix(),date_time=(2026,11,4,0,0,0))
             info.compress_type=zipfile.ZIP_DEFLATED
             info.external_attr=(0o100755 if p.suffix=='.sh' else 0o100644)<<16
             z.writestr(info,data)
