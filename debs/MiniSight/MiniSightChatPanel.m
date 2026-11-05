@@ -1,6 +1,7 @@
 #import "MiniSightChatPanel.h"
 #import "MiniSightLog.h"
 #import "MiniSightChatLayout.h"
+#import "MiniSightBridgeIO.h"
 #import <QuartzCore/QuartzCore.h>
 #import <AVFoundation/AVFoundation.h>
 
@@ -53,7 +54,7 @@ static CGRect MSChatScreenRect(UIWindowScene *scene) {
         CGPoint local = [view convertPoint:point fromView:self];
         // The docked bar gets 8pt horizontal slack so a near miss still hits.
         CGRect generous = CGRectInset(view.bounds, -8, -4);
-        if (CGRectContainsPoint(generous, local) && (view.pointInside(local, event) || !view.clipsToBounds)) return YES;
+        if (CGRectContainsPoint(generous, local) && ([view pointInside:local withEvent:event] || !view.clipsToBounds)) return YES;
     }
     return NO;
 }
@@ -171,7 +172,7 @@ static CGRect MSChatScreenRect(UIWindowScene *scene) {
 
 #pragma mark - Panel
 
-@interface MiniSightChatPanel () <UITextFieldDelegate>
+@interface MiniSightChatPanel () <UITextFieldDelegate, UIGestureRecognizerDelegate>
 @property (nonatomic, strong, nullable) MiniSightChatWindow *window;
 @property (nonatomic, strong, nullable) UIView *cardView;
 @property (nonatomic, strong, nullable) UIVisualEffectView *cardBlurView;
@@ -223,6 +224,7 @@ static CGRect MSChatScreenRect(UIWindowScene *scene) {
 - (void)deactivateEditor;
 - (void)deactivateEditorWithoutKey;
 - (void)layoutEditorWindow;
+- (void)voiceResultArrived;
 - (void)editorInputChanged;
 @end
 
