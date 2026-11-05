@@ -1,13 +1,13 @@
-# CleanStatus 0.1.12 (unknown-parts notices + native battery fill)
+# CleanStatus 0.1.13 (unknown-parts notices + native battery fill)
 
 As of 2026-11-05 (Asia/Shanghai).
 
 ## Phase and authorization
-- User authorized pushing and compiling version 0.1.12 using `GITHUB_TOKEN_QQ` in this conversation. Installation, preference changes, respring, and reboot are not included.
+- User authorized pushing and compiling version 0.1.13 using `GITHUB_TOKEN_QQ` in this conversation. Installation, preference changes, respring, and reboot are not included.
 - Local project: /var/minis/shared/CleanStatus; pushed project path: `HGFdel-dav/theos-ci/CleanStatus`.
 - Target: iPhone 12 / A14 / iOS 15.5 / RootHide / arm64e; iPhoneOS15.5.sdk only.
-- Package: com.local.cleanstatus, repair version 0.1.12; author/maintainer Niubiprass; class prefix LocalCleanStatus.
-- Final commit: `746644cc15a70e45dff150ad0576063c5f23c4ca` on branch `cleanstatus-0.1.12`; GitHub Actions run #10 `42017151244` succeeded. Run #9 failed on unused `ink`.
+- Package: com.local.cleanstatus, repair version 0.1.13; author/maintainer Niubiprass; class prefix LocalCleanStatus.
+- Final commit: `746644cc15a70e45dff150ad0576063c5f23c4ca` on branch `cleanstatus-0.1.13`; GitHub Actions run #10 `42017151244` succeeded. Run #9 failed on unused `ink`.
 - Device package installation/uninstallation, preference changes on device, respring, and reboot remain unauthorized.
 
 ## Scope
@@ -16,7 +16,7 @@ As of 2026-11-05 (Asia/Shanghai).
 Chinese PreferenceLoader panel, master switch, Apply button. All switches default OFF. Only Apply publishes changes.
 Only presentation is changed except the explicitly enabled battery-tap Low Power action. No CPU/temperature/network meter.
 
-## Version 0.1.12 artifact verification
+## Version 0.1.13 artifact verification
 - DEB SHA256: `b177ded0e28ab6bfafb6d998fca82708a89f4e561ef443538810e11d097c01a5`.
 - DEB SHA256: `66de5fff34aaab4b43b9feed054157431b62f7eda9f947681dc81e0edd53a5d2`.
 - DEB compressed 31,692 bytes; installed size stays 196 KB (dylib 90,688 + panel 71,088; no DWARF after Theos stripping).
@@ -30,7 +30,7 @@ Only presentation is changed except the explicitly enabled battery-tap Low Power
 - DEB SHA256: `d8ef5462cd7bccc9e82751eddade8f4379f58c10e927612dce9be8e6312a8840`.
 - Source zip SHA256: `37ca21f134f6f3cecf884812b2b09db72262575d6b176671a0e480bcf3c33f6a`.
 - 9 payload files, three icons 29/58/87 RGBA, author Niubiprass, signatures verified.
-- Delivery directory: `/var/minis/attachments/CleanStatus-0.1.12-ci-41989768520/`.
+- Delivery directory: `/var/minis/attachments/CleanStatus-0.1.13-ci-41989768520/`.
 
 ## Previous release (0.1.1)
 - Workflow: dedicated `.github/workflows/build-cleanstatus.yml`, project at root `CleanStatus/`; it does not trigger the shared `debs/**` build.
@@ -38,16 +38,16 @@ Only presentation is changed except the explicitly enabled battery-tap Low Power
 - DEB SHA256: `21df7630e1d673b6863dc83040bbade4890e46f23424db97858844775b7703ec`.
 - Source zip SHA256: `3694a9e591a617b3a2848015825d46817420335a1c128541fd7e31c224497c6e`.
 - Independent local verification repeated: 9 payload files, all under RootHide `Library/`, no maintainer scripts; both binaries arm64e with 15.5 SDK/minOS and SHA-1/SHA-256 code pages; empty entitlements.
-- 0.1.1 used the single `CleanStatusIcon@2x.png`; 0.1.12 replaces it with the 29/58/87 set.
+- 0.1.1 used the single `CleanStatusIcon@2x.png`; 0.1.13 replaces it with the 29/58/87 set.
 - Delivery directory: `/var/minis/attachments/CleanStatus-0.1.1-ci-41983645879/`.
 
-## Version 0.1.12 build and source repair
+## Version 0.1.13 build and source repair
 - Panel and tweak use one fixed logical preference path, `/var/mobile/Library/Preferences/com.local.cleanstatus.plist`; RootHide may redirect `/var/mobile` at the filesystem layer. No root probing and no `jbroot()` identity assumption.
 - Migration candidates are deduplicated by canonical parent and inode; cleanup never deletes a path that is the same file as the target. This addresses the observed cycle where a successful write was then removed as a supposed old copy.
 - Battery track is 28% `labelColor`, fill is solid `labelColor` and shrinks with the charge fraction; green charging, yellow low-power, red <=20%; digits use contrast only inside the filled part.
 - Quiet-mode icon is hidden by hooking `_UIStatusBarIndicatorQuietModeItem` `iconDisplayIdentifier` and `staticIconDisplayIdentifier`, matching Genesis.
 - PreferenceLoader icon uses the 29/58/87 standard set (`icon.png`, `icon@2x.png`, `icon@3x.png`), RGBA with transparent ~22% corners, rendered from one master in `tools/draw_icon.py`. The template icon and the old single 120px asset are removed.
-- Package, panel, metadata, and verifier version: 0.1.12; author/maintainer Niubiprass.
+- Package, panel, metadata, and verifier version: 0.1.13; author/maintainer Niubiprass.
 - New default-ON toggle `hideUnknownParts`: hides battery-health unknown-part warning, About unknown-part rows and Settings badge; hooks derived from static analysis of NoPreferencesTips 1.0.4 (not open source). Release builds use `-Os` and `-Wl,-S` to trim binary size.
 - `tools/check.py`: PASS, 272145 core cases and 148 source invariants.
 - `tools/test_paths.py`: PASS, 33 cases including `/` containment.
@@ -62,4 +62,10 @@ Only presentation is changed except the explicitly enabled battery-tap Low Power
 
 ## Validation boundaries and next gate
 Compilation, CI DEB verification, independent DEB verification, payload review, and icon replacement passed.
-Device installation/loading, `jbroot()` behavior in the real device environment, successful preference save, icon rendering in Settings, SpringBoard behavior, and the 14 features remain unverified. The next gate is installing 0.1.12 and tapping Apply; respring/reboot or device preference changes need separate authorization.
+Device installation/loading, `jbroot()` behavior in the real device environment, successful preference save, icon rendering in Settings, SpringBoard behavior, and the 14 features remain unverified. The next gate is installing 0.1.13 and tapping Apply; respring/reboot or device preference changes need separate authorization.
+
+## Delivery 0.1.13 (CI run 99)
+- Branch `cleanstatus-0.1.13` @ 3378139 in `HGFdel-dav/theos-ci`; run 42033763385 success.
+- Artifact `com.local.cleanstatus_0.1.13_iphoneos-arm64e.deb` SHA256 c25e3e479139fa425694efbc09fcbd2356a3663cd990392aafce1af197c00e22, verify_deb.py ok.
+- Local copies: `attachments/CleanStatus-0.1.13/` and `shared/CleanStatus-releases/CleanStatus-0.1.13/`.
+- Not installed, no respring, no on-device confirmation.

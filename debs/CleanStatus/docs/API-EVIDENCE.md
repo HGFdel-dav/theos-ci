@@ -1,6 +1,6 @@
 # API evidence and runtime boundaries
 
-CleanStatus 0.1.12 is original implementation, not a fork of the reference tweaks. All sources below are consulted for API declarations only. Runtime ABI checks are mandatory and skip unsupported methods. No claim of iOS15.5 device verification is made.
+CleanStatus 0.1.13 is original implementation, not a fork of the reference tweaks. All sources below are consulted for API declarations only. Runtime ABI checks are mandatory and skip unsupported methods. No claim of iOS15.5 device verification is made.
 
 ## Status data
 - RuntimeBrowser UIKitCore headers: https://github.com/nst/iOS-Runtime-Headers/blob/master/PrivateFrameworks/UIKitCore.framework/UIStatusBar_Modern.h
