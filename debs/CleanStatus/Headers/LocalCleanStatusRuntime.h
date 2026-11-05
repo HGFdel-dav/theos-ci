@@ -65,6 +65,7 @@ static inline BOOL local_cleanstatus_inStatusBar(UIView *view) {
     return NO;
 }
 FOUNDATION_EXPORT void local_cleanstatus_installStatusHooks(void);
+FOUNDATION_EXPORT void local_cleanstatus_installUnknownPartsHooks(void);
 FOUNDATION_EXPORT void local_cleanstatus_refreshStatusBars(void);
 FOUNDATION_EXPORT void local_cleanstatus_installBatteryHooks(void);
 FOUNDATION_EXPORT void local_cleanstatus_refreshBatteries(void);

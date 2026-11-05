@@ -14,7 +14,8 @@ static inline NSDictionary *local_cleanstatus_sanitizedPreferences(NSDictionary 
     result[@"enabled"] = @(local_cleanstatus_bool(input[@"enabled"]));
     for (NSUInteger i = 0; i < LocalCleanStatusFeatureCount; i++) {
         NSString *key = [NSString stringWithUTF8String:local_cleanstatus_featureNames[i]];
-        result[key] = @(local_cleanstatus_bool(input[key]));
+        BOOL fallback = [key isEqualToString:@"hideUnknownParts"];
+        result[key] = input[key] ? @(local_cleanstatus_bool(input[key])) : @(fallback);
     }
     return [result copy];
 }
@@ -52,15 +53,33 @@ static inline BOOL local_cleanstatus_writePreferences(NSDictionary *values, NSEr
     return data && [data writeToFile:path options:NSDataWritingAtomic error:error];
 }
 
+static inline NSString *local_cleanstatus_canonicalPreferencePath(NSString *path) {
+    if (!path.length) return nil;
+    NSString *parent = path.stringByDeletingLastPathComponent.stringByResolvingSymlinksInPath.stringByStandardizingPath;
+    return [[parent stringByAppendingPathComponent:path.lastPathComponent] stringByStandardizingPath];
+}
+static inline BOOL local_cleanstatus_sameFile(NSString *a, NSString *b) {
+    struct stat sa, sb;
+    return lstat(a.fileSystemRepresentation, &sa) == 0 && lstat(b.fileSystemRepresentation, &sb) == 0 &&
+        sa.st_dev == sb.st_dev && sa.st_ino == sb.st_ino;
+}
 static inline BOOL local_cleanstatus_migratePreferences(NSError **error) {
     NSString *target = local_cleanstatus_preferencesPath();
-    if (!target) { if (error) *error = local_cleanstatus_error(1, @"未找到可用隐根。"); return NO; }
+    if (!target) { if (error) *error = local_cleanstatus_error(1, @"未找到偏好路径。"); return NO; }
     NSFileManager *fm = NSFileManager.defaultManager;
     NSMutableArray *roots = [local_cleanstatus_migrationRoots() mutableCopy];
-    if (roots.count == 0) [roots addObject:@"/var/jb"]; // Legacy real-var is READ/DELETE only, never writable.
-    [roots addObject:@"/"]; // Legacy real-var is READ/DELETE only, never writable.
-    NSMutableSet *paths = [NSMutableSet setWithObject:target];
-    for (NSString *root in roots) [paths addObject:[root stringByAppendingPathComponent:local_cleanstatus_preferenceRelative]];
+    if (roots.count == 0) [roots addObject:@"/var/jb"]; // Legacy source only when no hidden roots exist.
+    [roots addObject:@"/"]; // Real-var is a migration source, never a separate target.
+    NSString *targetKey = local_cleanstatus_canonicalPreferencePath(target);
+    NSMutableDictionary<NSString *, NSString *> *uniquePaths = [NSMutableDictionary dictionary];
+    if (targetKey) uniquePaths[targetKey] = target;
+    for (NSString *root in roots) {
+        NSString *candidate = [root stringByAppendingPathComponent:local_cleanstatus_preferenceRelative];
+        NSString *key = local_cleanstatus_canonicalPreferencePath(candidate);
+        if (key.length && ![key isEqualToString:targetKey] &&
+            !local_cleanstatus_sameFile(candidate, target) && !uniquePaths[key]) uniquePaths[key] = candidate;
+    }
+    NSSet *paths = [NSSet setWithArray:uniquePaths.allValues];
     NSMutableDictionary *snapshots = [NSMutableDictionary dictionary];
     NSString *winner = nil; NSDate *newest = NSDate.distantPast;
     for (NSString *path in paths) {
@@ -82,7 +101,8 @@ static inline BOOL local_cleanstatus_migratePreferences(NSError **error) {
     }
     BOOL success = YES;
     for (NSString *path in snapshots) {
-        if ([path isEqualToString:target]) continue;
+        if ([path isEqualToString:target] || local_cleanstatus_sameFile(path, target) ||
+            [local_cleanstatus_canonicalPreferencePath(path) isEqualToString:local_cleanstatus_canonicalPreferencePath(target)]) continue;
         NSDictionary *current = local_cleanstatus_readDictionary(path);
         NSDate *date = [fm attributesOfItemAtPath:path error:nil][NSFileModificationDate];
         if (![current isEqual:snapshots[path][@"values"]] || ![date isEqual:snapshots[path][@"date"]]) {

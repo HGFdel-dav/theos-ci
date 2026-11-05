@@ -7,8 +7,8 @@ static inline BOOL local_cleanstatus_pathInsideRoot(NSString *path, NSString *ro
     if (!path.length || !root.length) return NO;
     NSString *canonicalRoot = root.stringByResolvingSymlinksInPath.stringByStandardizingPath;
     NSString *canonicalPath = path.stringByResolvingSymlinksInPath.stringByStandardizingPath;
-    return [canonicalPath isEqualToString:canonicalRoot] ||
-        [canonicalPath hasPrefix:[canonicalRoot stringByAppendingString:@"/"]];
+    NSString *prefix = [canonicalRoot isEqualToString:@"/"] ? @"/" : [canonicalRoot stringByAppendingString:@"/"];
+    return [canonicalPath isEqualToString:canonicalRoot] || [canonicalPath hasPrefix:prefix];
 }
 
 static NSString * const local_cleanstatus_preferenceDomain = @"com.local.cleanstatus";
@@ -17,6 +17,7 @@ static NSString * const local_cleanstatus_appGroupDirectory = @"/var/mobile/Cont
 
 // Current root is resolved once in LocalCleanStatusPaths.m through RootHide's jbroot API.
 // Directory enumeration is reserved for the explicit legacy migration below.
+FOUNDATION_EXPORT NSString *local_cleanstatus_preferencesPath(void);
 FOUNDATION_EXPORT NSString *local_cleanstatus_selectedRoot(void);
 static inline NSArray<NSString *> *local_cleanstatus_migrationRoots(void) {
     NSMutableArray *roots = [NSMutableArray array];
@@ -27,12 +28,6 @@ static inline NSArray<NSString *> *local_cleanstatus_migrationRoots(void) {
         if (lstat(root.fileSystemRepresentation,&st)==0 && S_ISDIR(st.st_mode)) [roots addObject:root];
     }
     return roots;
-}
-
-static inline NSString *local_cleanstatus_preferencesPath(void) {
-    NSString *root=local_cleanstatus_selectedRoot();
-    NSString *path=root?[root stringByAppendingPathComponent:local_cleanstatus_preferenceRelative]:nil;
-    return local_cleanstatus_pathInsideRoot(path,root)?path:nil;
 }
 
 static inline NSDictionary *local_cleanstatus_readDictionary(NSString *path) {

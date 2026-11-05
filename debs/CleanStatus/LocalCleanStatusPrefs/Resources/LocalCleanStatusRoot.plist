@@ -10,7 +10,7 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>label</key>
-			<string>CleanStatus 0.1.0</string>
+			<string>CleanStatus 0.1.12</string>
 			<key>footerText</key>
 			<string>所有开关默认关闭。修改后点右上角“应用”。关闭总开关并应用可恢复系统显示。</string>
 		</dict>
@@ -209,6 +209,30 @@
 			<string>com.local.cleanstatus</string>
 			<key>default</key>
 			<false/>
+			<key>get</key>
+			<string>readPreferenceValue:</string>
+			<key>set</key>
+			<string>setPreferenceValue:specifier:</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>label</key>
+			<string>未知部件提示</string>
+			<key>footerText</key>
+			<string>隐藏电池健康警告、关于本机的未知部件行和设置角标；只改显示，不改健康数据。</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>label</key>
+			<string>隐藏未知部件提示</string>
+			<key>key</key>
+			<string>hideUnknownParts</string>
+			<key>defaults</key>
+			<string>com.local.cleanstatus</string>
+			<key>default</key>
+			<true/>
 			<key>get</key>
 			<string>readPreferenceValue:</string>
 			<key>set</key>

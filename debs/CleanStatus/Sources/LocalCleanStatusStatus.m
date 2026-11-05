@@ -72,7 +72,28 @@ static void local_cleanstatus_statusLayout(UIView *self,SEL command) {
     });
 }
 
+static id (*lcsOriginalQuietIcon)(id,SEL);
+static id (*lcsOriginalQuietStaticIcon)(id,SEL);
+static id local_cleanstatus_quietIcon(id self, SEL command) {
+    if (local_cleanstatus_hasFeature(local_cleanstatus_currentFlags(), LocalCleanStatusFocus)) return nil;
+    return lcsOriginalQuietIcon(self,command);
+}
+static id local_cleanstatus_quietStaticIcon(id self, SEL command) {
+    if (local_cleanstatus_hasFeature(local_cleanstatus_currentFlags(), LocalCleanStatusFocus)) return nil;
+    return lcsOriginalQuietStaticIcon(self,command);
+}
+static void local_cleanstatus_installQuietHooks(void) {
+    Class cls=NSClassFromString(@"_UIStatusBarIndicatorQuietModeItem");
+    SEL icon=sel_registerName("iconDisplayIdentifier");
+    SEL staticIcon=sel_registerName("staticIconDisplayIdentifier");
+    if (local_cleanstatus_methodMatches(cls,icon,@encode(id),0,NULL))
+        MSHookMessageEx(cls,icon,(IMP)local_cleanstatus_quietIcon,(IMP *)&lcsOriginalQuietIcon);
+    if (local_cleanstatus_methodMatches(cls,staticIcon,@encode(id),0,NULL))
+        MSHookMessageEx(cls,staticIcon,(IMP)local_cleanstatus_quietStaticIcon,(IMP *)&lcsOriginalQuietStaticIcon);
+}
+
 void local_cleanstatus_installStatusHooks(void) {
+    local_cleanstatus_installQuietHooks();
     Class cls = NSClassFromString(@"UIStatusBar_Modern");
     SEL selector = sel_registerName("_updateWithData:force:");
     const char *args[] = { @encode(id), @encode(BOOL) };

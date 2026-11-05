@@ -15,5 +15,6 @@
   "workflow_filename": "build-cleanstatus.yml",
   "scheme": "roothide",
   "architecture": "arm64e",
-  "version": "0.1.0"
+  "version": "0.1.12",
+  "author": "Niubiprass"
 }
