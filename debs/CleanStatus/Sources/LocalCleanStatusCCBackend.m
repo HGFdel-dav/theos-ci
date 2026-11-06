@@ -373,6 +373,7 @@ static void lcscc_scanCallback(void *a1,void *a2,void *a3,void *a4) {
     });
 }
 static void lcscc_associateCallback(void *a1,void *a2,void *a3,void *a4,void *a5) {
+    (void)a1;(void)a2; // the device slot is not needed, only the error and token
     uintptr_t first=(uintptr_t)a5,second=(uintptr_t)a4;
     dispatch_async(dispatch_get_main_queue(),^{
         LCSCCBackend *backend=LCSCCBackend.shared;
