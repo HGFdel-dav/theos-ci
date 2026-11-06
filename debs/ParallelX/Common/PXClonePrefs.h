@@ -10,6 +10,10 @@ NS_ASSUME_NONNULL_BEGIN
 FOUNDATION_EXPORT NSString *const PXClonePrefsNotification;
 FOUNDATION_EXPORT NSString *const PXClonePrefsErrorDomain;
 
+// The store lives in this preferences domain (cfprefsd puts the file in the
+// active root's Library/Preferences). Shared with the tests and the dock menu.
+FOUNDATION_EXPORT NSString *const PXClonePrefsStoreDomain;
+
 typedef NS_ENUM(NSInteger, PXClonePrefsError) {
     PXClonePrefsErrorMainThreadLoad = 1,
     PXClonePrefsErrorCorruptStore,

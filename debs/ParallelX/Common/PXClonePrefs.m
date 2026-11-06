@@ -1,5 +1,6 @@
 #import "PXClonePrefs.h"
 #import "PXClonePaths.h"
+#import <CoreFoundation/CoreFoundation.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <notify.h>
@@ -12,7 +13,6 @@ NSString *const PXClonePrefsNotification = @"com.niubiprass.parallelxclone/chang
 NSString *const PXClonePrefsErrorDomain = @"com.niubiprass.parallelxclone.prefs";
 
 static NSString *const PXHiddenKey = @"CXHiddenItems";
-static NSString *const PXLegacyDomainFile = @"com.niubiprass.clonex.plist";
 
 static BOOL PXOnWorker(dispatch_queue_t queue) {
     return dispatch_get_specific("com.niubiprass.parallelxclone.worker") ==
@@ -73,25 +73,83 @@ static NSDictionary * _Nullable PXReadDictionary(NSString *path, NSError **error
     return (NSDictionary *)plist;
 }
 
-static BOOL PXWriteDictionary(NSDictionary *dictionary, NSString *path, NSError **error) {
-    NSError *plistError = nil;
-    NSData *data = [NSPropertyListSerialization dataWithPropertyList:dictionary
-                                                              format:NSPropertyListBinaryFormat_v1_0
-                                                             options:0 error:&plistError];
-    if (!data) {
-        if (error) *error = plistError ?: PXPrefsError(PXClonePrefsErrorWriteFailed, @"encode failed");
-        return NO;
-    }
-    if (![data writeToFile:path options:NSDataWritingAtomic error:&plistError]) {
-        if (error) *error = plistError ?: PXPrefsError(PXClonePrefsErrorWriteFailed, @"atomic write failed");
-        return NO;
-    }
-    return YES;
-}
-
 static BOOL PXSameDictionary(NSDictionary *a, NSDictionary *b) {
     return a == b || [a isEqualToDictionary:b];
 }
+
+// The store lives in a preferences domain, so cfprefsd writes the file into the
+// active root's Library/Preferences - the same directory the tweak reads. No path
+// is assembled or canonicalised here, which is what the old file store got wrong.
+NSString *const PXClonePrefsStoreDomain = @"com.niubiprass.clonex";
+
+static NSString *const PXStoreKey = @"CXStore";
+
+static NSDictionary * _Nullable PXReadDomainStore(NSError **error) {
+    CFPropertyListRef raw = CFPreferencesCopyAppValue((__bridge CFStringRef)PXStoreKey,
+                                                      (__bridge CFStringRef)PXClonePrefsStoreDomain);
+    if (!raw) return nil;
+    id value = CFBridgingRelease(raw);
+    if (![value isKindOfClass:NSDictionary.class]) {
+        if (error) *error = PXPrefsError(PXClonePrefsErrorCorruptStore,
+                                         @"preferences domain holds a non-dictionary store");
+        return nil;
+    }
+    return (NSDictionary *)value;
+}
+
+static BOOL PXWriteDomainStore(NSDictionary *store, NSError **error) {
+    CFPreferencesSetAppValue((__bridge CFStringRef)PXStoreKey,
+                             (__bridge CFPropertyListRef)store,
+                             (__bridge CFStringRef)PXClonePrefsStoreDomain);
+    for (int attempt = 0; attempt < 2; attempt++) {
+        if (CFPreferencesAppSynchronize((__bridge CFStringRef)PXClonePrefsStoreDomain) &&
+            PXSameDictionary(PXReadDomainStore(NULL), store)) {
+            return YES;
+        }
+        usleep(20000);
+    }
+    if (error) *error = PXPrefsError(PXClonePrefsErrorWriteFailed,
+                                     @"preferences domain write did not read back");
+    return NO;
+}
+
+// Unknown keys are kept (forward compatibility); the hidden list is normalised.
+static NSDictionary * _Nullable PXCloneNormalizedStore(NSDictionary *store, NSError **error) {
+    id hidden = store[PXHiddenKey];
+    if (hidden && ![hidden isKindOfClass:NSArray.class]) {
+        if (error) *error = PXPrefsError(PXClonePrefsErrorCorruptStore,
+                                         @"hidden list is not an array");
+        return nil;
+    }
+    for (id item in (NSArray *)hidden) {
+        if (![item isKindOfClass:NSString.class]) {
+            if (error) *error = PXPrefsError(PXClonePrefsErrorCorruptStore,
+                                             @"hidden list holds a non-string entry");
+            return nil;
+        }
+    }
+    NSMutableDictionary *out = [store mutableCopy];
+    out[PXHiddenKey] = PXHiddenList(store);
+    return [out copy];
+}
+
+static NSDictionary * _Nullable PXCloneFileFingerprint(NSString *path) {
+    if (![path isKindOfClass:NSString.class] || !path.length) return nil;
+    NSDictionary *attributes = [NSFileManager.defaultManager attributesOfItemAtPath:path error:NULL];
+    if (!attributes) return nil;
+    return @{ @"mtime": attributes[NSFileModificationDate] ?: NSDate.distantPast,
+              @"size": attributes[NSFileSize] ?: @0 };
+}
+
+static BOOL PXCloneFingerprintIsNewer(NSDictionary *a, NSDictionary *b) {
+    if (!a) return NO;
+    if (!b) return YES;
+    NSDate *left = a[@"mtime"];
+    NSDate *right = b[@"mtime"];
+    if (![left isEqualToDate:right]) return [left laterDate:right] == left;
+    return [a[@"size"] longLongValue] > [b[@"size"] longLongValue];
+}
+
 
 @interface PXClonePrefs () {
     dispatch_queue_t _worker;
@@ -258,215 +316,111 @@ static BOOL PXSameDictionary(NSDictionary *a, NSDictionary *b) {
 
 // Must run on the worker. Returns NO with an error; never publishes defaults.
 - (BOOL)_loadLockedWithError:(NSError **)error {
-    NSError *pathError = nil;
-    NSString *currentRoot = PXCloneActiveRoot(&pathError);
-    if (!currentRoot) {
-        if (error) *error = pathError;
+    NSError *readError = nil;
+    NSDictionary *stored = PXReadDomainStore(&readError);
+    if (readError) {
+        if (error) *error = readError;
         return NO;
     }
-
-    // jbrand/root changes invalidate the cache immediately.
-    BOOL rootChanged = NO;
-    [_lock lock];
-    rootChanged = _loaded && ![currentRoot isEqualToString:_loadedRoot];
-    [_lock unlock];
-    if (rootChanged) {
-        [_lock lock];
-        _loaded = NO;
-        _snapshot = @{};
-        [_lock unlock];
+    if (stored) {
+        NSDictionary *normalized = PXCloneNormalizedStore(stored, error);
+        if (!normalized) return NO;
+        [self _publish:normalized root:PXClonePrefsStoreDomain];
+        return YES;
     }
+    return [self _importLegacyStoreWithError:error];
+}
 
-    NSString *prefs = [currentRoot stringByAppendingString:
-                       @"/var/mobile/Library/Preferences/com.niubiprass.clonex.plist"];
-    NSString *lockPath = [currentRoot stringByAppendingString:
-                          @"/var/mobile/Library/Preferences/com.niubiprass.clonex.lock"];
-
-    NSError *ensureError = nil;
-    if (!PXCloneEnsureStorage(&ensureError)) {
-        if (error) *error = ensureError;
-        return NO;
-    }
-
-    int fd = open(lockPath.fileSystemRepresentation, O_RDWR | O_CLOEXEC | O_NOFOLLOW);
-    if (fd < 0) {
-        if (error) *error = PXPrefsError(PXClonePrefsErrorReadFailed,
-                                         [NSString stringWithFormat:@"lock open: %s", strerror(errno)]);
-        return NO;
-    }
-    if (flock(fd, LOCK_EX) != 0) {
-        if (error) *error = PXPrefsError(PXClonePrefsErrorReadFailed,
-                                         [NSString stringWithFormat:@"flock: %s", strerror(errno)]);
-        close(fd);
-        return NO;
-    }
-
-    BOOL ok = NO;
-    NSDictionary *chosen = nil;
-    NSString *chosenPath = nil;
-    NSMutableDictionary<NSString *, NSNumber *> *mtimes = [NSMutableDictionary dictionary];
+// The domain is empty, so this is a fresh install or an upgrade from the old
+// file-based store. Import the newest readable copy once, then keep using the
+// domain. A copy that changed while we were writing is left alone; verified
+// copies are removed so a later re-jailbreak cannot resurrect stale data, and any
+// failure leaves every source file untouched.
+- (BOOL)_importLegacyStoreWithError:(NSError **)error {
+    NSString *ownPath = PXCloneCurrentPrefsPath(NULL);
     NSMutableArray<NSString *> *sources = [NSMutableArray array];
+    if (ownPath.length) [sources addObject:ownPath];
+    [sources addObjectsFromArray:PXCloneLegacyPrefsSources(NULL)];
 
-    NSFileManager *fm = NSFileManager.defaultManager;
-    if ([fm fileExistsAtPath:prefs]) [sources addObject:prefs];
-    [sources addObjectsFromArray:PXCloneLegacyPrefsSources(nil)];
-
+    NSMutableDictionary<NSString *, NSDictionary *> *fingerprints = [NSMutableDictionary dictionary];
     for (NSString *path in sources) {
-        struct stat st;
-        if (stat(path.fileSystemRepresentation, &st) != 0) continue;
-        NSError *readError = nil;
-        NSDictionary *dictionary = PXReadDictionary(path, &readError);
-        if (!dictionary) continue; // a corrupt candidate must not hide a good one
-        mtimes[path] = @((double)st.st_mtimespec.tv_sec + (double)st.st_mtimespec.tv_nsec / 1e9);
-        if (!chosen || [mtimes[path] doubleValue] > [mtimes[chosenPath] doubleValue]) {
-            chosen = dictionary;
+        NSDictionary *fingerprint = PXCloneFileFingerprint(path);
+        if (fingerprint) fingerprints[path] = fingerprint;
+    }
+
+    NSString *chosenPath = nil;
+    NSDictionary *chosen = nil;
+    for (NSString *path in sources) {
+        NSDictionary *raw = PXReadDictionary(path, NULL);
+        if (!raw) continue;
+        NSDictionary *candidate = PXCloneNormalizedStore(raw, NULL);
+        if (!candidate) continue;
+        if (!chosen || PXCloneFingerprintIsNewer(fingerprints[path], fingerprints[chosenPath])) {
+            chosen = candidate;
             chosenPath = path;
         }
     }
 
     if (!chosen) {
-        if ([fm fileExistsAtPath:prefs]) {
-            NSError *readError = nil;
-            NSDictionary *dictionary = PXReadDictionary(prefs, &readError);
-            if (!dictionary) {
-                if (error) *error = readError ?: PXPrefsError(PXClonePrefsErrorCorruptStore, @"corrupt store");
-            }
-            if (dictionary) {
-                [self _publish:dictionary root:currentRoot];
-                ok = YES;
-            }
-        } else {
-            // Fresh install: an empty store is a valid loaded state.
-            [self _publish:@{} root:currentRoot];
-            ok = YES;
-        }
-    } else {
-        if (!PXSameDictionary(chosen, PXReadDictionary(prefs, nil) ?: @{})) {
-            NSError *writeError = nil;
-            if (!PXWriteDictionary(chosen, prefs, &writeError)) {
-                if (error) *error = writeError;
-            } else {
-                NSError *readError = nil;
-                NSDictionary *readback = PXReadDictionary(prefs, &readError);
-                if (!readback || !PXSameDictionary(readback, chosen)) {
-                    if (error) *error = PXPrefsError(PXClonePrefsErrorReadbackMismatch,
-                                                     @"migration readback mismatch");
-                } else {
-                    [self _publish:readback root:currentRoot];
-                    ok = YES;
-                }
-            }
-        } else {
-            [self _publish:chosen root:currentRoot];
-            ok = YES;
-        }
+        [self _publish:@{} root:PXClonePrefsStoreDomain];
+        return YES;
     }
 
-    if (ok) {
-        // Only after a fully verified target may old copies be removed.
-        for (NSString *path in sources) {
-            if ([path isEqualToString:prefs]) continue;
-            struct stat before;
-            if (stat(path.fileSystemRepresentation, &before) != 0) continue;
-            NSString *ownerRoot = [path stringByDeletingLastPathComponent];
-            NSString *currentPath = [currentRoot stringByAppendingString:
-                                     @"/var/mobile/Library/Preferences/com.niubiprass.clonex.plist"];
-            if (![path hasPrefix:[currentRoot stringByAppendingString:@"/"]] &&
-                ![path hasSuffix:PXLegacyDomainFile]) continue;
-            if ([path isEqualToString:currentPath]) continue;
-            // A source that changed while we were copying is left in place.
-            struct stat after;
-            if (stat(path.fileSystemRepresentation, &after) != 0) continue;
-            if (before.st_mtimespec.tv_sec != after.st_mtimespec.tv_sec ||
-                before.st_mtimespec.tv_nsec != after.st_mtimespec.tv_nsec ||
-                before.st_size != after.st_size) continue;
-            unlink(path.fileSystemRepresentation);
-            (void)ownerRoot;
-        }
-    }
-
-    flock(fd, LOCK_UN);
-    close(fd);
-    return ok;
-}
-
-// Must run on the worker; it takes its own flock (necessarily a separate
-// critical section from the migration load above).
-- (BOOL)_mutateVisibility:(BOOL)visible key:(NSString *)key error:(NSError **)error {
-    // Migration must happen before a write, otherwise a fresh write could be
-    // replaced by a newer legacy copy on the next load.
-    NSError *loadError = nil;
-    if (![self _loadLockedWithError:&loadError]) {
-        if (error) *error = loadError;
-        return NO;
-    }
-
-    NSError *pathError = nil;
-    NSString *root = PXCloneActiveRoot(&pathError);
-    if (!root) {
-        if (error) *error = pathError;
-        return NO;
-    }
-    NSError *ensureError = nil;
-    if (!PXCloneEnsureStorage(&ensureError)) {
-        if (error) *error = ensureError;
-        return NO;
-    }
-
-    NSString *prefs = [root stringByAppendingString:
-                       @"/var/mobile/Library/Preferences/com.niubiprass.clonex.plist"];
-    NSString *lockPath = [root stringByAppendingString:
-                          @"/var/mobile/Library/Preferences/com.niubiprass.clonex.lock"];
-
-    int fd = open(lockPath.fileSystemRepresentation, O_RDWR | O_CLOEXEC | O_NOFOLLOW);
-    if (fd < 0) {
-        if (error) *error = PXPrefsError(PXClonePrefsErrorWriteFailed, @"lock open failed");
-        return NO;
-    }
-    if (flock(fd, LOCK_EX) != 0) {
-        if (error) *error = PXPrefsError(PXClonePrefsErrorWriteFailed, @"flock failed");
-        close(fd);
-        return NO;
-    }
-
-    NSMutableDictionary *dictionary = nil;
-    NSError *readError = nil;
-    NSDictionary *onDisk = PXReadDictionary(prefs, &readError);
-    if (onDisk) {
-        dictionary = [onDisk mutableCopy];
-    } else if (readError && [NSFileManager.defaultManager fileExistsAtPath:prefs]) {
-        if (error) *error = readError;
-        flock(fd, LOCK_UN);
-        close(fd);
-        return NO;
-    } else {
-        dictionary = [NSMutableDictionary dictionary];
-    }
-
-    NSMutableArray<NSString *> *hidden = [PXHiddenList(dictionary) mutableCopy];
-    [hidden removeObject:key];
-    if (!visible) [hidden addObject:key];
-    dictionary[PXHiddenKey] = hidden;
-
-    BOOL ok = NO;
     NSError *writeError = nil;
-    if (!PXWriteDictionary(dictionary, prefs, &writeError)) {
+    if (!PXWriteDomainStore(chosen, &writeError)) {
         if (error) *error = writeError;
-    } else {
-        NSError *verifyError = nil;
-        NSDictionary *readback = PXReadDictionary(prefs, &verifyError);
-        if (!readback || !PXSameDictionary(readback, dictionary)) {
-            if (error) *error = PXPrefsError(PXClonePrefsErrorReadbackMismatch,
-                                             @"write readback mismatch");
-        } else {
-            [self _publish:readback root:root];
-            ok = YES;
-        }
+        return NO;
     }
 
-    flock(fd, LOCK_UN);
-    close(fd);
-    return ok;
+    NSDictionary *readback = PXReadDomainStore(NULL);
+    if (!readback || !PXSameDictionary(readback, chosen)) {
+        if (error) *error = PXPrefsError(PXClonePrefsErrorReadbackMismatch,
+                                         @"migration readback mismatch");
+        return NO;
+    }
+
+    for (NSString *path in sources) {
+        if ([path isEqualToString:ownPath]) continue;
+        NSDictionary *before = fingerprints[path];
+        NSDictionary *now = PXCloneFileFingerprint(path);
+        if (!now) continue;
+        if (before && ![before isEqual:now]) continue;  // changed mid-copy: keep it
+        [[NSFileManager defaultManager] removeItemAtPath:path error:NULL];
+    }
+
+    [self _publish:readback root:PXClonePrefsStoreDomain];
+    return YES;
 }
 
+// Must run on the worker. Read-modify-write against the domain; the published
+// snapshot only moves once the domain read back what was written.
+- (BOOL)_mutateVisibility:(BOOL)visible key:(NSString *)key error:(NSError **)error {
+    NSDictionary *current = PXReadDomainStore(NULL);
+    NSMutableArray<NSString *> *hidden = [PXHiddenList(current) mutableCopy];
+    if (visible) {
+        [hidden removeObject:key];
+    } else if (![hidden containsObject:key]) {
+        [hidden addObject:key];
+    }
+
+    NSMutableDictionary *dictionary = [(current ?: @{}) mutableCopy];
+    dictionary[PXHiddenKey] = [hidden sortedArrayUsingSelector:@selector(compare:)];
+
+    NSError *writeError = nil;
+    if (!PXWriteDomainStore(dictionary, &writeError)) {
+        if (error) *error = writeError;
+        return NO;
+    }
+
+    NSDictionary *readback = PXReadDomainStore(NULL);
+    if (!readback || !PXSameDictionary(readback, dictionary)) {
+        if (error) *error = PXPrefsError(PXClonePrefsErrorReadbackMismatch,
+                                         @"write readback mismatch");
+        if (readback) [self _publish:readback root:PXClonePrefsStoreDomain];
+        return NO;
+    }
+
+    [self _publish:readback root:PXClonePrefsStoreDomain];
+    return YES;
+}
 @end

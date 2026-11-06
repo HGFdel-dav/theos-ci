@@ -1,287 +1,359 @@
 #!/usr/bin/env python3
-"""Host-side checks for the RootHide preference store and the accounts page.
+"""Specification mirror for the clone-account visibility store.
 
-Nothing here compiles Objective-C. The HostStore mirrors the contract of
-PXClonePrefs.m (worker-only IO, flock, atomic write, readback, fail-closed) so
-the state machine and migration ordering can be exercised deterministically on
-Alpine. SourceGuards read the real files and pin the invariants that a Python
-model cannot see.
+On device the store is a preferences domain written through CFPreferences, so
+cfprefsd places the file in the active root's Library/Preferences and the store
+never assembles or canonicalises a path. The 0.6 build did assemble one and had
+every write refused ("prefs escaped active root"), which also left the dock menu
+with nothing to inject.
+
+The model below mirrors the C contract: read the domain once, default to
+visible, fail closed before the first load, keep the last good snapshot when a
+write or readback fails, and import an older file-based copy exactly once.
+
+Static/behavioural mirror only: passing says the documented contract holds, not
+that the switch works on a phone.
 """
 import os
-import plistlib
 import re
 import unittest
-from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 COMMON = os.path.join(ROOT, "Common")
 PREFS = os.path.join(ROOT, "Prefs")
+
 HIDDEN = "CXHiddenItems"
+DOMAIN = "com.niubiprass.clonex"
 NOTIFICATION = "com.niubiprass.parallelxclone/changed"
+STORE_BASENAME = DOMAIN + ".plist"
+TAG = "clonex.open"
+CURRENT = ("/var/containers/Bundle/Application/.jbroot-CUR/var/mobile/Library/"
+           "Preferences/" + STORE_BASENAME)
+LEGACY_B = ("/var/mobile/Containers/Shared/AppGroup/.jbroot-B/var/mobile/Library/"
+            "Preferences/" + STORE_BASENAME)
+LEGACY_C = "/var/jb/var/mobile/Library/Preferences/" + STORE_BASENAME
 
 
 def read(rel):
-    with open(os.path.join(ROOT, rel), encoding="utf-8") as handle:
+    with open(rel, "r", encoding="utf-8") as handle:
         return handle.read()
 
 
-class HostStore:
-    """Deterministic mirror of the store's externally visible behaviour."""
+class Store(object):
+    """Mirror of PXClonePrefs: one preferences domain, no paths of our own."""
 
-    def __init__(self, current="/var/mobile/Containers/Shared/AppGroup/.jbroot-A/var/mobile/Library/Preferences/com.niubiprass.clonex.plist"):
-        self.current = current
-        self.files = {}
-        self.mtimes = {}
-        self.loaded = False
+    def __init__(self, domain=None, files=None, mtimes=None, fail_write=False,
+                 fail_readback=False, before_readback=None):
+        self.domain = domain            # what cfprefsd holds (None = never written)
+        self.files = dict(files or {})  # older file-based copies, by path
+        self.mtimes = dict(mtimes or {})
+        self.current = CURRENT
+        self.fail_write = fail_write
+        self.fail_readback = fail_readback
+        self.before_readback = before_readback
         self.snapshot = {}
+        self.loaded = False
         self.error = None
+        self.posts = []
         self.reads = 0
         self.writes = 0
-        self.posts = []
-        self.fail_read = False
-        self.fail_write = False
-        self.fail_readback = False
-        self.before_readback = None
 
-    def put(self, path, data, mtime):
-        self.files[path] = dict(data)
-        self.mtimes[path] = mtime
-
-    def read_file(self, path):
+    # -- primitives -------------------------------------------------------
+    def read_domain(self):
         self.reads += 1
-        if self.fail_read:
-            raise OSError("read failed")
-        if path not in self.files:
-            return None
-        if not isinstance(self.files[path], dict):
-            raise OSError("corrupt")
-        return dict(self.files[path])
+        if isinstance(self.domain, dict):
+            return dict(self.domain)
+        return self.domain            # None, or a corrupt non-dict
 
-    def atomic_write(self, path, data):
+    def write_domain(self, data):
         self.writes += 1
         if self.fail_write:
-            raise OSError("write failed")
-        self.files[path] = dict(data)
+            raise OSError("domain write failed")
+        self.domain = dict(data)
+        if self.fail_readback:
+            raise OSError("domain readback mismatch")
 
-    def sources(self, legacy):
-        out = [self.current] if self.current in self.files else []
-        out += [p for p in legacy if p in self.files]
+    def normalize(self, data):
+        hidden = data.get(HIDDEN, [])
+        if not isinstance(hidden, list):
+            raise OSError("hidden list is not an array")
+        for item in hidden:
+            if not isinstance(item, str):
+                raise OSError("hidden list holds a non-string")
+        out = dict(data)
+        out[HIDDEN] = sorted(set(hidden))
         return out
 
-    @staticmethod
-    def newest(paths, mtimes):
-        best = None
-        for path in paths:
-            if best is None or mtimes[path] > mtimes[best]:
-                best = path
-        return best
+    def sources(self, legacy):
+        seen, out = set(), []
+        for path in [self.current] + list(legacy):
+            if path not in seen:
+                seen.add(path)
+                out.append(path)
+        return out
 
+    # -- public API -------------------------------------------------------
     def reload(self, legacy=(), main=False):
-        if main:
-            return False
-        paths = self.sources(legacy)
-        if any(not isinstance(self.files.get(path), dict) for path in paths):
-            # The ObjC loader reads candidates and skips unparsable ones; a
-            # corrupt current with no good candidate is an error.
-            good = [path for path in paths if isinstance(self.files.get(path), dict)]
-            if not good:
+        if main:                      # the store refuses to touch disk on main
+            raise OSError("main-thread load")
+        data = self.read_domain()
+        if data is not None:
+            if not isinstance(data, dict):
+                self.error = "corrupt store"
                 raise OSError("corrupt store")
-            paths = good
-        baseline = {path: self.mtimes.get(path, 0) for path in paths}
-        chosen = self.newest(paths, self.mtimes)
-        if chosen is None:
-            if self.current in self.files:
-                raise OSError("corrupt current")
-            self.snapshot = {}
-            self.loaded = True
-            self.error = None
+            snapshot = self.normalize(data)
+            self.snapshot, self.loaded, self.error = snapshot, True, None
             return True
-        data = self.read_file(chosen)          # one read picks the candidate
-        if data is None:
-            return False
-        if self.current not in self.files or data != self.files[self.current]:
-            self.atomic_write(self.current, data)
+        return self._import(legacy)
+
+    def _import(self, legacy):
+        readable = [p for p in self.sources(legacy)
+                    if isinstance(self.files.get(p), dict)]
+        valid = []
+        for path in readable:
+            try:
+                self.normalize(self.files[path])
+            except OSError:
+                continue
+            valid.append(path)
+        if not valid:                 # fresh install: defaults, nothing written
+            self.snapshot, self.loaded, self.error = {}, True, None
+            return True
+        chosen = max(valid, key=lambda p: self.mtimes.get(p, 0))
+        baseline = {p: self.mtimes.get(p) for p in valid}
+        data = self.normalize(self.files[chosen])
+        try:
+            self.write_domain(data)
             if self.before_readback:
                 self.before_readback(self)
-            readback = self.read_file(self.current)
+            readback = self.domain
             if readback != data:
-                raise OSError("readback mismatch")
-        self.snapshot = data
-        self.loaded = True
-        self.error = None
-        # only now are old copies removed; untouched current stays
-        for path in paths:
+                raise OSError("migration readback mismatch")
+        except OSError as exc:
+            self.error = str(exc)
+            raise OSError(str(exc))
+        for path in valid:            # verified: drop the stale copies
             if path == self.current:
                 continue
             if path in self.files and self.mtimes.get(path) == baseline.get(path):
                 del self.files[path]
+        self.snapshot, self.loaded, self.error = dict(readback), True, None
         return True
-
-    def set_visible(self, bundle, container, visible, notify=True):
-        if not bundle or not container:
-            return False, "empty"
-        key = bundle + "#" + container
-        try:
-            data = self.read_file(self.current) if self.current in self.files else {}
-            hidden = list(data.get(HIDDEN, []))
-            hidden = [item for item in hidden if item != key]
-            if not visible:
-                hidden.append(key)
-            data[HIDDEN] = hidden
-            self.atomic_write(self.current, data)
-            if self.fail_readback:
-                return False, "readback mismatch"
-            readback = self.read_file(self.current)
-            if readback != data:
-                return False, "readback mismatch"
-            self.snapshot = readback
-            self.loaded = True
-            if notify:
-                self.posts.append(NOTIFICATION)
-            return True, None
-        except OSError as exc:
-            return False, str(exc)
 
     def is_visible(self, bundle, container):
         if not self.loaded:
-            return False
-        return (bundle + "#" + container) not in self.snapshot.get(HIDDEN, [])
+            return False              # fail closed
+        return bundle + "#" + container not in self.snapshot.get(HIDDEN, [])
+
+    def set_visible(self, bundle, container, visible, notify=True):
+        if not bundle or not container:
+            return False, "empty identifier"
+        key = bundle + "#" + container
+        current = self.read_domain()
+        data = dict(current) if isinstance(current, dict) else {}
+        hidden = [i for i in data.get(HIDDEN, []) if i != key]
+        if not visible:
+            hidden.append(key)
+        data[HIDDEN] = sorted(set(hidden))
+        try:
+            self.write_domain(data)
+            readback = self.domain
+            if readback != data:
+                raise OSError("write readback mismatch")
+        except OSError as exc:
+            self.error = str(exc)     # last snapshot stays published
+            return False, str(exc)
+        self.snapshot, self.loaded, self.error = dict(readback), True, None
+        if notify:
+            self.posts.append(NOTIFICATION)
+        return True, None
 
 
 class StoreTests(unittest.TestCase):
-    def setUp(self):
-        self.store = HostStore()
+    def test_fresh_store_is_empty_and_clean(self):
+        store = Store()
+        self.assertTrue(store.reload())
+        self.assertEqual(store.snapshot, {})
+        self.assertIsNone(store.error)
+        self.assertIsNone(store.domain, "a fresh install must not write the domain")
+        self.assertTrue(store.is_visible("m.qidian.QDReaderAppStore", "default"))
 
-    def test_fresh_store_loads_empty_not_error(self):
-        self.assertTrue(self.store.reload())
-        self.assertTrue(self.store.loaded)
-        self.assertEqual(self.store.snapshot, {})
-        self.assertIsNone(self.store.error)
+    def test_main_thread_reload_is_refused(self):
+        store = Store()
+        with self.assertRaises(OSError):
+            store.reload(main=True)
+        self.assertEqual(store.reads, 0, "main thread must not read the domain")
 
-    def test_main_thread_reload_rejected(self):
-        self.store.files[self.store.current] = {}
-        # The ObjC method returns NO and does not touch the disk on main.
-        self.assertFalse(self.store.reload(main=True))
-        self.assertEqual(self.store.reads, 0)
+    def test_visibility_defaults_true_after_load(self):
+        store = Store(domain={})
+        store.reload()
+        self.assertTrue(store.is_visible("com.tencent.xin", "clone-a"))
 
-    def test_visibility_default_true_after_load(self):
-        self.store.reload()
-        self.assertTrue(self.store.is_visible("com.a", "DEFAULT"))
+    def test_fail_closed_before_load(self):
+        store = Store(domain={HIDDEN: ["com.tencent.xin#clone-a"]})
+        self.assertFalse(store.is_visible("com.tencent.xin", "clone-a"))
 
-    def test_visibility_fail_closed_before_load(self):
-        self.assertFalse(self.store.is_visible("com.a", "DEFAULT"))
+    def test_set_hidden_and_reset(self):
+        store = Store(domain={HIDDEN: []})
+        store.reload()
+        ok, error = store.set_visible("com.tencent.xin", "clone-a", False)
+        self.assertTrue(ok, error)
+        self.assertFalse(store.is_visible("com.tencent.xin", "clone-a"))
+        self.assertEqual(store.domain[HIDDEN], ["com.tencent.xin#clone-a"])
+        ok, error = store.set_visible("com.tencent.xin", "clone-a", True)
+        self.assertTrue(ok, error)
+        self.assertTrue(store.is_visible("com.tencent.xin", "clone-a"))
+        self.assertEqual(store.domain[HIDDEN], [])
+        self.assertEqual(len(store.posts), 2)
 
-    def test_set_visible_writes_hidden_key(self):
-        ok, error = self.store.set_visible("com.a", "C1", False)
-        self.assertTrue(ok)
-        self.assertIsNone(error)
-        self.assertEqual(self.store.snapshot.get(HIDDEN), ["com.a#C1"])
-
-    def test_set_visible_false_then_true_roundtrip(self):
-        self.store.set_visible("com.a", "C1", False)
-        self.store.set_visible("com.a", "C1", True)
-        self.assertEqual(self.store.snapshot.get(HIDDEN), [])
-
-    def test_account_isolation_same_bundle(self):
-        self.store.set_visible("com.a", "C1", False)
-        self.assertTrue(self.store.is_visible("com.a", "C2"))
-        self.assertFalse(self.store.is_visible("com.a", "C1"))
+    def test_accounts_are_isolated(self):
+        store = Store(domain={HIDDEN: []})
+        store.reload()
+        store.set_visible("com.tencent.xin", "clone-a", False)
+        self.assertFalse(store.is_visible("com.tencent.xin", "clone-a"))
+        self.assertTrue(store.is_visible("com.tencent.xin", "clone-b"))
+        self.assertTrue(store.is_visible("m.qidian.QDReaderAppStore", "clone-a"))
 
     def test_write_failure_keeps_last_snapshot(self):
-        self.store.set_visible("com.a", "C1", False)
-        before = dict(self.store.snapshot)
-        self.store.fail_write = True
-        ok, _ = self.store.set_visible("com.a", "C2", False)
+        store = Store(domain={HIDDEN: []})
+        store.reload()
+        store.fail_write = True
+        ok, error = store.set_visible("com.tencent.xin", "clone-a", False)
         self.assertFalse(ok)
-        self.assertEqual(self.store.snapshot, before)
+        self.assertTrue(error)
+        self.assertTrue(store.is_visible("com.tencent.xin", "clone-a"))
+        self.assertEqual(store.posts, [], "a failed write must not notify")
 
-    def test_corrupt_store_keeps_last_and_sets_error(self):
-        self.store.set_visible("com.a", "C1", False)
-        before = dict(self.store.snapshot)
-        self.store.files[self.store.current] = "corrupt"
+    def test_corrupt_store_keeps_last_snapshot(self):
+        store = Store(domain={HIDDEN: ["com.tencent.xin#clone-a"]})
+        store.reload()
+        before = dict(store.snapshot)
+        store.domain = ["not", "a", "dictionary"]
         with self.assertRaises(OSError):
-            self.store.reload()
-        self.assertEqual(self.store.snapshot, before)
+            store.reload()
+        self.assertEqual(store.snapshot, before)
+        self.assertIsNotNone(store.error)
 
-    def test_callback_copied_and_called_once(self):
-        calls = []
-        block = lambda ok, error: calls.append((ok, error))
-        copy = block
-        copy(True, None)
-        copy(True, None) if False else None
-        self.assertEqual(len(calls), 1)
+    def test_successful_write_posts_notification(self):
+        store = Store(domain={HIDDEN: []})
+        store.reload()
+        store.posts = []
+        store.set_visible("com.tencent.xin", "clone-a", False)
+        self.assertEqual(store.posts, [NOTIFICATION])
 
-    def test_callback_success_posts_notification(self):
-        ok, _ = self.store.set_visible("com.a", "C1", False)
-        self.assertTrue(ok)
-        self.assertEqual(self.store.posts, [NOTIFICATION])
+    def test_unrelated_keys_are_preserved(self):
+        store = Store(domain={"CXStoreVersion": 2, HIDDEN: []})
+        store.reload()
+        store.set_visible("com.tencent.xin", "clone-a", False)
+        self.assertEqual(store.domain["CXStoreVersion"], 2)
 
-    def test_migration_picks_latest_valid_source(self):
-        old = "/var/mobile/Containers/Shared/AppGroup/.jbroot-B/var/mobile/Library/Preferences/com.niubiprass.clonex.plist"
-        real = "/var/jb/var/mobile/Library/Preferences/com.niubiprass.clonex.plist"
-        self.store.put(old, {HIDDEN: ["com.a#OLD"]}, 10)
-        self.store.put(real, {HIDDEN: ["com.a#NEW"]}, 20)
-        self.store.reload([old, real])
-        self.assertEqual(self.store.snapshot[HIDDEN], ["com.a#NEW"])
+    def test_invalid_identifiers_are_rejected(self):
+        store = Store(domain={HIDDEN: []})
+        store.reload()
+        self.assertFalse(store.set_visible("", "clone-a", False)[0])
+        self.assertFalse(store.set_visible("com.tencent.xin", "", False)[0])
 
-    def test_migration_write_failure_keeps_all_sources(self):
-        old = "/var/mobile/Containers/Shared/AppGroup/.jbroot-B/var/mobile/Library/Preferences/com.niubiprass.clonex.plist"
-        self.store.put(old, {HIDDEN: ["com.a#OLD"]}, 10)
-        self.store.fail_write = True
+    def test_reload_picks_up_an_external_change(self):
+        store = Store(domain={HIDDEN: []})
+        store.reload()
+        store.set_visible("com.tencent.xin", "clone-a", False)
+        store.domain = {HIDDEN: ["com.tencent.xin#clone-a",
+                                 "m.qidian.QDReaderAppStore#clone-a"]}
+        store.reload()
+        self.assertFalse(store.is_visible("m.qidian.QDReaderAppStore", "clone-a"))
+
+
+class MigrationTests(unittest.TestCase):
+    """One-time import of an older file-based copy into the domain."""
+
+    def legacy(self, **kwargs):
+        files = {LEGACY_B: {HIDDEN: ["com.tencent.xin#clone-a"]}}
+        files.update(kwargs.pop("files", {}))
+        mtimes = {LEGACY_B: 1000}
+        mtimes.update(kwargs.pop("mtimes", {}))
+        return Store(files=files, mtimes=mtimes, **kwargs)
+
+    def test_picks_the_newest_valid_source(self):
+        store = self.legacy(files={LEGACY_C: {HIDDEN: [legacy_key_small()]}},
+                            mtimes={LEGACY_C: 5000})
+        store.reload(legacy=[LEGACY_B, LEGACY_C])
+        self.assertEqual(store.domain[HIDDEN], [legacy_key_small()])
+        bundle, container = legacy_key_small().split("#")
+        self.assertFalse(store.is_visible(bundle, container))
+        self.assertTrue(store.is_visible("com.tencent.xin", "clone-a"))
+
+    def test_corrupt_source_is_skipped(self):
+        store = self.legacy(files={LEGACY_C: ["not", "a", "dictionary"]},
+                            mtimes={LEGACY_C: 5000})
+        store.reload(legacy=[LEGACY_B, LEGACY_C])
+        self.assertEqual(store.domain[HIDDEN], ["com.tencent.xin#clone-a"])
+        self.assertIn(LEGACY_C, store.files, "an unreadable source is left alone")
+
+    def test_write_failure_keeps_every_source(self):
+        store = self.legacy(fail_write=True)
         with self.assertRaises(OSError):
-            self.store.reload([old])
-        self.assertIn(old, self.store.files)
-        self.assertFalse(self.store.loaded)
+            store.reload(legacy=[LEGACY_B])
+        self.assertIn(LEGACY_B, store.files)
+        self.assertIsNone(store.domain)
 
-    def test_migration_readback_mismatch_keeps_sources(self):
-        old = "/var/mobile/Containers/Shared/AppGroup/.jbroot-B/var/mobile/Library/Preferences/com.niubiprass.clonex.plist"
-        self.store.put(old, {HIDDEN: ["com.a#OLD"]}, 10)
-        self.store.before_readback = lambda store: store.files.__setitem__(store.current, {})
+    def test_readback_mismatch_keeps_every_source(self):
+        store = self.legacy(before_readback=lambda s: setattr(s, "domain", {}))
         with self.assertRaises(OSError):
-            self.store.reload([old])
-        self.assertIn(old, self.store.files)
+            store.reload(legacy=[LEGACY_B])
+        self.assertIn(LEGACY_B, store.files)
 
-    def test_migration_deletes_old_copy_after_verified(self):
-        old = "/var/mobile/Containers/Shared/AppGroup/.jbroot-B/var/mobile/Library/Preferences/com.niubiprass.clonex.plist"
-        self.store.put(old, {HIDDEN: ["com.a#OLD"]}, 10)
-        self.store.reload([old])
-        self.assertNotIn(old, self.store.files)
-        self.assertIn(self.store.current, self.store.files)
+    def test_verified_source_is_removed(self):
+        store = self.legacy()
+        store.reload(legacy=[LEGACY_B])
+        self.assertNotIn(LEGACY_B, store.files)
+        self.assertEqual(store.domain[HIDDEN], ["com.tencent.xin#clone-a"])
 
-    def test_migration_source_changed_during_copy_survives(self):
-        old = "/var/mobile/Containers/Shared/AppGroup/.jbroot-B/var/mobile/Library/Preferences/com.niubiprass.clonex.plist"
-        self.store.put(old, {HIDDEN: ["com.a#OLD"]}, 10)
-
+    def test_source_changed_during_copy_survives(self):
         def touch(store):
-            store.mtimes[old] = 11      # simulated concurrent write
+            store.mtimes[LEGACY_B] = 4242
 
-        self.store.before_readback = touch
-        self.store.reload([old])
-        self.assertIn(old, self.store.files)
+        store = self.legacy(before_readback=touch)
+        store.reload(legacy=[LEGACY_B])
+        self.assertIn(LEGACY_B, store.files, "a changed copy is never deleted")
 
-    def test_migration_does_not_delete_current(self):
-        self.store.put(self.store.current, {HIDDEN: ["com.a#CUR"]}, 30)
-        self.store.reload([])
-        self.assertIn(self.store.current, self.store.files)
-
-    def test_root_change_invalidates_cache(self):
-        self.store.reload()
-        self.store.loaded = False       # what jbrand/root invalidation does
-        self.store.snapshot = {}
-        self.assertFalse(self.store.is_visible("com.a", "DEFAULT"))
-
-    def test_invalid_bundle_container_rejected(self):
-        self.assertFalse(self.store.set_visible("", "C1", False)[0])
-        self.assertFalse(self.store.set_visible("com.a", "", False)[0])
-
-    def test_old_unrelated_keys_preserved(self):
-        self.store.files[self.store.current] = {"LegacyKey": "keep", HIDDEN: []}
-        self.store.reload()
-        self.store.set_visible("com.a", "C1", False)
-        self.assertEqual(self.store.snapshot["LegacyKey"], "keep")
+    def test_current_file_is_never_deleted(self):
+        store = self.legacy(files={CURRENT: {HIDDEN: ["com.tencent.xin#clone-a"]}},
+                            mtimes={CURRENT: 9000})
+        store.reload(legacy=[LEGACY_B])
+        self.assertIn(CURRENT, store.files)
+        self.assertEqual(store.domain[HIDDEN], ["com.tencent.xin#clone-a"])
 
 
+def legacy_key_small():
+    return "m.qidian.QDReaderAppStore#clone-a"
 class SourceGuards(unittest.TestCase):
+    """Pins the mechanism, so a future edit cannot bring the path back."""
+
+    def test_store_uses_the_preferences_domain(self):
+        source = read("Common/PXClonePrefs.m")
+        self.assertIn("PXClonePrefsStoreDomain", source)
+        self.assertIn("CFPreferencesCopyAppValue", source)
+        self.assertIn("CFPreferencesSetAppValue", source)
+        self.assertIn("CFPreferencesAppSynchronize", source)
+        for banned in ("PXCloneEnsureStorage", "flock(", "O_NOFOLLOW",
+                       "escaped active root", "writeToFile"):
+            self.assertNotIn(banned, source, banned)
+
+    def test_store_domain_matches_the_prefs_file_name(self):
+        source = read("Common/PXClonePrefs.m")
+        match = re.search(r'PXClonePrefsStoreDomain = @"([^"]+)"', source)
+        self.assertIsNotNone(match)
+        self.assertEqual(match.group(1), "com.niubiprass.clonex")
+        self.assertIn("/Preferences/%s.plist" % match.group(1),
+                      read("Common/PXClonePaths.m"))
+
+    def test_write_is_read_back_before_publishing(self):
+        source = read("Common/PXClonePrefs.m")
+        start = source.index("- (BOOL)_mutateVisibility")
+        region = source[start:]
+        self.assertIn("PXReadDomainStore", region)
+        self.assertIn("PXClonePrefsErrorReadbackMismatch", region)
+
     def test_cache_lock_region_is_memory_only(self):
         source = read("Common/PXClonePrefs.m")
         self.assertIn("- (NSDictionary *)snapshot {", source)
@@ -296,7 +368,7 @@ class SourceGuards(unittest.TestCase):
         self.assertIn("[completion copy]", source)
         self.assertIn("dispatch_async(dispatch_get_main_queue()", source)
 
-    def test_main_thread_return_no_disk(self):
+    def test_main_thread_reload_stays_memory_only(self):
         source = read("Common/PXClonePrefs.m")
         self.assertIn("if (NSThread.isMainThread)", source)
         self.assertIn("PXClonePrefsErrorMainThreadLoad", source)
@@ -304,7 +376,7 @@ class SourceGuards(unittest.TestCase):
     def test_paths_uses_jbroot_not_uuid_hardcode(self):
         source = read("Common/PXClonePaths.m")
         self.assertIn("PXCloneJBROOT(@\"/\")", source)
-        self.assertNotRegex(source, r"\\.jbroot-[0-9A-Fa-f-]{8,}")
+        self.assertNotRegex(source, r"\.jbroot-[0-9A-Fa-f-]{8,}")
         self.assertIn("realpath", source)
         self.assertIn("O_NOFOLLOW", source)
 
@@ -337,7 +409,8 @@ class SourceGuards(unittest.TestCase):
         # device those are values ("back"/"close"), not preference domains.
         source = read("Common/PXCloneMenu.m")
         domains = set(re.findall(r'@"(com\.moxuan\.[A-Za-z0-9.-]+)"', source))
-        self.assertEqual(domains, {"com.moxuan.parallelx", "com.moxuan.parallelx.dock-updated"})
+        self.assertEqual(domains, {"com.moxuan.parallelx",
+                                   "com.moxuan.parallelx.dock-updated"})
         self.assertNotRegex(source, r'@"[^"]*bottom(Swipe|DoubleTap|LongPress)[^"]*"')
 
     def test_menu_records_carry_the_marker_and_real_shape(self):
@@ -346,8 +419,14 @@ class SourceGuards(unittest.TestCase):
                     "shortcutSymbols", "shortcutImages"):
             self.assertIn('@"%s"' % key, source)
         self.assertIn('PXCloneRecordType = @"clonex.open"', source)
-        # Cleanup must key on the marker, never on the shared px.custom. prefix.
         self.assertNotIn("PXCloneVirtualPrefix, identifier", source)
+
+
+def read(relative_path):
+    """Read a repo file as text, relative to the debs/ParallelX directory."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(here, os.pardir, relative_path), encoding="utf-8") as handle:
+        return handle.read()
 
 
 if __name__ == "__main__":

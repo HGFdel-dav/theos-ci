@@ -133,13 +133,25 @@
     _visible = YES;
     NSUInteger generation = ++_generation;
     __weak typeof(self) weakSelf = self;
-    // A cached catalog is shown immediately; refresh completes off-main.
-    [PXCloneCrane refreshCatalogWithCompletion:^(NSArray<NSDictionary *> *catalog, NSError *error) {
-        PXCloneAccountsController *strongSelf = weakSelf;
-        if (!strongSelf || !strongSelf->_visible || generation != strongSelf->_generation) return;
-        if (error) strongSelf->_storageErrorText = error.localizedDescription;
-        [strongSelf rebuildAndReload];
-    }];
+    // Load the store before the catalog: until the store is loaded every switch
+    // reads fail-closed ("off"), so a page built first would show every account
+    // as hidden no matter what is actually stored.
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSError *storeError = nil;
+        BOOL loaded = [PXClonePrefs.shared reloadSnapshot:&storeError];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            PXCloneAccountsController *strongSelf = weakSelf;
+            if (!strongSelf || !strongSelf->_visible || generation != strongSelf->_generation) return;
+            if (!loaded) strongSelf->_storageErrorText = storeError.localizedDescription ?: @"存储无法读取";
+            // A cached catalog is shown immediately; refresh completes off-main.
+            [PXCloneCrane refreshCatalogWithCompletion:^(NSArray<NSDictionary *> *catalog, NSError *error) {
+                PXCloneAccountsController *self2 = weakSelf;
+                if (!self2 || !self2->_visible || generation != self2->_generation) return;
+                if (error) self2->_storageErrorText = error.localizedDescription;
+                [self2 rebuildAndReload];
+            }];
+        });
+    });
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
