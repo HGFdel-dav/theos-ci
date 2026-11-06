@@ -82,7 +82,7 @@ def inspect(deb,out):
     for line in raw.splitlines():
         if line and not line.startswith(' ') and ':' in line:
             key,val=line.split(':',1);fields[key]=val.strip()
-    for key,want in {'Package':'com.local.cleanstatus','Version':'0.1.14','Architecture':'iphoneos-arm64e'}.items():
+    for key,want in {'Package':'com.local.cleanstatus','Version':'0.2.0','Architecture':'iphoneos-arm64e'}.items():
         require(fields.get(key)==want,key+' mismatch')
     report={'deb':deb.name,'sha256':hashlib.sha256(deb.read_bytes()).hexdigest(),'fields':fields}
     with tempfile.TemporaryDirectory(prefix='cleanstatus-deb-') as temp:
@@ -99,14 +99,20 @@ def inspect(deb,out):
         pref=payload/'Library/PreferenceBundles/LocalCleanStatusPrefs.bundle'
         info=plistlib.loads((pref/'Info.plist').read_bytes())
         require(info['CFBundleExecutable']=='LocalCleanStatusPrefs' and info['NSPrincipalClass']=='LocalCleanStatusRootListController','panel linkage')
-        require(info['CFBundleVersion']==info['CFBundleShortVersionString']=='0.1.14','panel version')
+        require(info['CFBundleVersion']==info['CFBundleShortVersionString']=='0.2.0','panel version')
         require((pref/'LocalCleanStatusRoot.plist').is_file(),'missing specifiers')
         for name,size in (('icon.png',29),('icon@2x.png',58),('icon@3x.png',87)):
             raw=(pref/name).read_bytes()
             require(raw.startswith(bytes.fromhex('89504e470d0a1a0a')) and int.from_bytes(raw[16:20],'big')==size and int.from_bytes(raw[20:24],'big')==size,'bad icon '+name)
         loader=payload/'Library/PreferenceLoader/Preferences/LocalCleanStatusPrefs.plist'
         entry=plistlib.loads(loader.read_bytes())['entry']; require(entry['bundle']=='LocalCleanStatusPrefs' and entry['icon']=='icon.png','loader bundle/icon')
-        binaries=[dyn/'LocalCleanStatus.dylib',pref/'LocalCleanStatusPrefs']
+        module=payload/'Library/ControlCenter/Bundles/LocalCleanStatusSystemActions.bundle'
+        require((module/'Info.plist').is_file(),'missing CC module plist')
+        module_info=plistlib.loads((module/'Info.plist').read_bytes())
+        require(module_info.get('NSPrincipalClass')=='LCSCSystemActionsModule','module principal class')
+        require(module_info.get('CFBundleExecutable')=='LocalCleanStatusSystemActions','module executable')
+        require(module_info.get('CCSModuleSize',{}).get('Portrait',{}).get('Width')==1,'module 1x1')
+        binaries=[dyn/'LocalCleanStatus.dylib',pref/'LocalCleanStatusPrefs',module/'LocalCleanStatusSystemActions']
         report['binaries']=[macho(p) for p in binaries]
         for p in binaries:
             require(os.access(p,os.X_OK),'binary executable permission')

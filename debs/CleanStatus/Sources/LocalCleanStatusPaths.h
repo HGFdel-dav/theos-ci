@@ -45,3 +45,8 @@ static inline NSError *local_cleanstatus_error(NSInteger code, NSString *message
     return [NSError errorWithDomain:local_cleanstatus_preferenceDomain code:code
         userInfo:@{NSLocalizedDescriptionKey: message}];
 }
+
+// Absolute path of a jailbreak helper binary, resolved once per process and
+// only returned when it is executable. Derives the hidden root from the loaded
+// bundle instead of hardcoding /var/jb or a random .jbroot UUID.
+FOUNDATION_EXPORT NSString *local_cleanstatus_toolPath(NSString *name);

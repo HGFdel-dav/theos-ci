@@ -71,3 +71,4 @@ FOUNDATION_EXPORT void local_cleanstatus_installBatteryHooks(void);
 FOUNDATION_EXPORT void local_cleanstatus_refreshBatteries(void);
 FOUNDATION_EXPORT void local_cleanstatus_installLowPowerBridge(void);
 FOUNDATION_EXPORT void local_cleanstatus_requestLowPowerToggle(void);
+FOUNDATION_EXPORT void local_cleanstatus_installControlCenterHooks(void);

@@ -1,71 +1,49 @@
-# CleanStatus 0.1.14 (unknown-parts notices + native battery fill)
+# CleanStatus 控制中心扩展 — 本地候选
 
-As of 2026-11-05 (Asia/Shanghai).
+## 当前授权
+- 用户要求实现三项：Wi-Fi 长按网络列表、蓝牙长按已配对设备列表、独立系统操作控制中心模块。
+- 仅本地分析、修改和检查；未授权 commit、push、CI、安装、卸载、设备配置修改、注销或重启。
+- 后补授权：只读查看手机已安装的 QuickCC2。已确认 2.0.1 / arm64e；EVO 未安装。
 
-## Phase and authorization
-- User authorized pushing and compiling version 0.1.14 using `GITHUB_TOKEN_QQ` in this conversation. Installation, preference changes, respring, and reboot are not included.
-- Local project: /var/minis/shared/CleanStatus; pushed project path: `HGFdel-dav/theos-ci/CleanStatus`.
-- Target: iPhone 12 / A14 / iOS 15.5 / RootHide / arm64e; iPhoneOS15.5.sdk only.
-- Package: com.local.cleanstatus, repair version 0.1.14; author/maintainer Niubiprass; class prefix LocalCleanStatus.
-- Final commit: `746644cc15a70e45dff150ad0576063c5f23c4ca` on branch `cleanstatus-0.1.14`; GitHub Actions run #10 `42017151244` succeeded. Run #9 failed on unused `ink`.
-- Device package installation/uninstallation, preference changes on device, respring, and reboot remain unauthorized.
+## 工作树与基线
+- 候选：`/var/minis/shared/CleanStatus-cc-local-20261106/`。
+- 原工程：`/var/minis/shared/CleanStatus/`，保留不动。
+- 基线控制字段为 0.1.14；旧 STATUS 的历史版本/CI 数据被以前的全局替换污染，不作为本轮构建证据。
+- 基线 38 文件哈希：`../CleanStatus-cc-research-20261106/baseline/SOURCE-SHA256.json`。
+- 电池源码 SHA256：`b7b20c271905e0ce313bf9fdac47fad295dbe01c4de95a91ec02119f4478706b`；本轮必须保持逐字一致。
+- 计划候选版本 0.2.0，不沿用已交付的 0.1.14。
 
-## Scope
-11 independent status icon visibility controls: airplane, alarm, Bluetooth, Siri, CarPlay, Focus, location, rotation lock, cellular signal, VPN, Wi-Fi.
-3 battery features: inline percentage modern appearance, hide charging bolt, tap status battery to toggle Low Power Mode.
-Chinese PreferenceLoader panel, master switch, Apply button. All switches default OFF. Only Apply publishes changes.
-Only presentation is changed except the explicitly enabled battery-tap Low Power action. No CPU/temperature/network meter.
+## 已查事实
+- QuickCC2 上传包 SHA256：`b081087d68a695d26483a2b5dc4eba80755212363e8fbd6cdf3d3694534ac3e9`。
+- 已装版本 dpkg 显示 2.0.1；过滤器与上传包一致，274464 字节 dylib 哈希不同，原因待分区对比。
+- 实装文件及只读比对：`../CleanStatus-cc-research-20261106/quickcc2/device/IDENTITY.json`。
+- EVO 参考来自 `Niubiprass/Niubiprass.github.io/debs/com.jaysuen.evocenter_3.0.0-beta.2-ios15.2_iphoneos-arm64e.deb`；只作功能静态参考，不捆绑其二进制。
+- 现有配置解析返回真实 `/var/mobile/Library/Preferences`，新三组件不能复制此缺陷；接入所需共用隐根解析正在本地修正，未执行手机迁移。
 
-## Version 0.1.14 artifact verification
-- DEB SHA256: `b177ded0e28ab6bfafb6d998fca82708a89f4e561ef443538810e11d097c01a5`.
-- DEB SHA256: `66de5fff34aaab4b43b9feed054157431b62f7eda9f947681dc81e0edd53a5d2`.
-- DEB compressed 31,692 bytes; installed size stays 196 KB (dylib 90,688 + panel 71,088; no DWARF after Theos stripping).
-- DEB SHA256: `f2a4ad3d8266bb479b53d8b0f4063b6a885fc4d78067974b8c7c49d76c0d86f9`.
-- DEB SHA256: `d30360fe3f1e2b1fb11c839255e15808de7e9032dad9f32614d0a523ea056931`.
-- DEB SHA256: `54b6a73f71821dd470c4ee8a07277b0abddf5a8175ee5a8341f57e7bdfc9c9be`.
-- DEB SHA256: `96b359a60a3ae389bb1d7ff5c307be7edce88dfb594cee5543f7fdd5c8718548`.
-- 9 payload files, author Niubiprass, signatures and three icon sizes verified.
-- DEB SHA256: `eebc534422e440c1efa4a687c210051ce73d14e68f7de11c709cca2e305c5506`.
-- 9 payload files, author Niubiprass, signatures and three icon sizes verified.
-- DEB SHA256: `d8ef5462cd7bccc9e82751eddade8f4379f58c10e927612dce9be8e6312a8840`.
-- Source zip SHA256: `37ca21f134f6f3cecf884812b2b09db72262575d6b176671a0e480bcf3c33f6a`.
-- 9 payload files, three icons 29/58/87 RGBA, author Niubiprass, signatures verified.
-- Delivery directory: `/var/minis/attachments/CleanStatus-0.1.14-ci-41989768520/`.
+## 不改
+- 电池颜色/绘制/填充、现有状态图标隐藏、未知部件实现。
+- 普通 Wi-Fi/蓝牙点击和展开后的原生菜单。
+- 不添加彻底关闭 Wi-Fi/蓝牙，不添加 Jade/EVO 控制中心整体皮肤。
 
-## Previous release (0.1.1)
-- Workflow: dedicated `.github/workflows/build-cleanstatus.yml`, project at root `CleanStatus/`; it does not trigger the shared `debs/**` build.
-- CI host checks, fixed Theos + iPhoneOS15.5 SDK, RootHide arm64e compile, in-workflow strict DEB verification, dSYM retention, and artifact upload all passed.
-- DEB SHA256: `21df7630e1d673b6863dc83040bbade4890e46f23424db97858844775b7703ec`.
-- Source zip SHA256: `3694a9e591a617b3a2848015825d46817420335a1c128541fd7e31c224497c6e`.
-- Independent local verification repeated: 9 payload files, all under RootHide `Library/`, no maintainer scripts; both binaries arm64e with 15.5 SDK/minOS and SHA-1/SHA-256 code pages; empty entitlements.
-- 0.1.1 used the single `CleanStatusIcon@2x.png`; 0.1.14 replaces it with the 29/58/87 set.
-- Delivery directory: `/var/minis/attachments/CleanStatus-0.1.1-ci-41983645879/`.
+## 验收合同
+1. 两个长按列表只有已开启、SpringBoard 内、已解锁、折叠连接模块才可接管。
+2. Wi-Fi 扫描/连接和蓝牙列举/连接必须有真实 API 调用与回调链；错误/超时可见，过期回调不能重开关闭的菜单。
+3. 同类 QuickCC2 重复接管必须处理；本轮不自动停用或卸载原插件。
+4. 新系统操作模块使用有效 PrincipalClass/注册信息，随同一 DEB 安装，通过现有模块支持机制添加。
+5. 系统操作须再次确认；注销、用户空间重启、整机重启不可混用，后端缺失不可执行替代危险动作。
+6. 三组件同域、同隐根、相同默认值；默认三个新开关均关闭。
+7. 锁屏/禁用/缺类或 ABI 不符/加载较晚/重复安装 Hook/关闭后回调/多次点击均有负例。
+8. 本地只能证明模型/静态契约；Swift/ObjC 类型、iOS 构建、DEB 加载和真机功能分别待验证。
 
-## Version 0.1.14 build and source repair
-- Panel and tweak use one fixed logical preference path, `/var/mobile/Library/Preferences/com.local.cleanstatus.plist`; RootHide may redirect `/var/mobile` at the filesystem layer. No root probing and no `jbroot()` identity assumption.
-- Migration candidates are deduplicated by canonical parent and inode; cleanup never deletes a path that is the same file as the target. This addresses the observed cycle where a successful write was then removed as a supposed old copy.
-- Battery track is 28% `labelColor`, fill is solid `labelColor` and shrinks with the charge fraction; green charging, yellow low-power, red <=20%; digits use contrast only inside the filled part.
-- Quiet-mode icon is hidden by hooking `_UIStatusBarIndicatorQuietModeItem` `iconDisplayIdentifier` and `staticIconDisplayIdentifier`, matching Genesis.
-- PreferenceLoader icon uses the 29/58/87 standard set (`icon.png`, `icon@2x.png`, `icon@3x.png`), RGBA with transparent ~22% corners, rendered from one master in `tools/draw_icon.py`. The template icon and the old single 120px asset are removed.
-- Package, panel, metadata, and verifier version: 0.1.14; author/maintainer Niubiprass.
-- New default-ON toggle `hideUnknownParts`: hides battery-health unknown-part warning, About unknown-part rows and Settings badge; hooks derived from static analysis of NoPreferencesTips 1.0.4 (not open source). Release builds use `-Os` and `-Wl,-S` to trim binary size.
-- `tools/check.py`: PASS, 272145 core cases and 148 source invariants.
-- `tools/test_paths.py`: PASS, 33 cases including `/` containment.
-- `tools/test_verify.py`: PASS, 46 synthetic accept/reject cases.
-- All plist files parse; shell syntax passes; template icon absence and custom icon dimensions are asserted.
-
-## Previous release (0.1.0)
-- Repository: `HGFdel-dav/theos-ci`; branch: `cleanstatus-0.1.0`.
-- Commit: `d39888556021e220bb5b7418be7f755cad6bb0d6`; GitHub Actions run #97 `41969854056` succeeded.
-- Previous DEB SHA256: `19d47414cc948960813dc2445253851d99a04b172cb4f189701c9ebeb4c0a9fa`.
-- Previous source zip SHA256: `4e00b49be02be4197d98d63343834dcb3fa216cbf8a107f29dce799ba421d562`.
-
-## Validation boundaries and next gate
-Compilation, CI DEB verification, independent DEB verification, payload review, and icon replacement passed.
-Device installation/loading, `jbroot()` behavior in the real device environment, successful preference save, icon rendering in Settings, SpringBoard behavior, and the 14 features remain unverified. The next gate is installing 0.1.14 and tapping Apply; respring/reboot or device preference changes need separate authorization.
-
-## Delivery 0.1.14 (CI run 99)
-- Branch `cleanstatus-0.1.14` @ 3378139 in `HGFdel-dav/theos-ci`; run 42033763385 success.
-- Artifact `com.local.cleanstatus_0.1.14_iphoneos-arm64e.deb` SHA256 c25e3e479139fa425694efbc09fcbd2356a3663cd990392aafce1af197c00e22, verify_deb.py ok.
-- Local copies: `attachments/CleanStatus-0.1.14/` and `shared/CleanStatus-releases/CleanStatus-0.1.14/`.
-- Not installed, no respring, no on-device confirmation.
+## 当前阶段（本地实现完成，待推送授权）
+- 新增 `Shared/LocalCleanStatusCCPolicy.h`（可移植门槛/代数/超时），`Shared/LocalCleanStatusCCDiagnostics.m`（隐根日志，无密钥内容）。
+- 新增 `Sources/LocalCleanStatusCCBackend.{h,m}`：MobileWiFi 13 符号 dlsym + BluetoothManager 运行时探测。
+- `Sources/LocalCleanStatusPaths.m` 增加 `local_cleanstatus_toolPath()`：由 Bundle 路径反推隐根、退 /var/jb、退 /usr/bin，只返回可执行文件。
+- 新增 `Sources/LocalCleanStatusControlCenter.m`：两个 CC 控制器长按、锁/展开/前台门、代数防过期回调、加密网络跳设置。
+- 新增 `LocalCleanStatusSystemActions/`：标准 CC bundle（NSPrincipalClass、1×1、CCSupport 扫描目录），五个动作：注销/安全模式/用户空间重启/重启/关机，缺后端不显示。
+- 设置面板新增“控制中心”分组三项，默认全关；模块开关未开时模块显示“已关闭”。
+- 依赖新增 `com.opa334.ccsupport`（设备已装 1.3.13）。版本 0.2.0。
+- 主机检查：core 5,252,881 例、CC policy 658 例、源码不变量 223、路径模型 37、验证器自测 46 全过；shell 语法通过。
+- 证据：`../CleanStatus-cc-research-20261106/IMPLEMENTATION-CC.md`、`quickcc2/API-EVIDENCE.md`、`evocenter/API-EVIDENCE.md`。
+- **未编译 iOS、未推送、未出新 DEB、未安装、未注销/重启、未真机验收。**
+- 已知未验证：CCUIRoundButton 类名定位、CCSupport/私有服务权限、与已装 QuickCC2 同时接管时的行为。

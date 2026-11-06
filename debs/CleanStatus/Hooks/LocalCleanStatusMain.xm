@@ -4,7 +4,7 @@
 #import "LocalCleanStatusRuntime.h"
 
 static id lcsPreferenceObserver;
-static NSString * const lcsVersion = @"CleanStatus 0.1.14";
+static NSString * const lcsVersion = @"CleanStatus 0.2.0";
 
 %ctor {
     @autoreleasepool {
@@ -16,6 +16,7 @@ static NSString * const lcsVersion = @"CleanStatus 0.1.14";
             local_cleanstatus_installUnknownPartsHooks();
             local_cleanstatus_installBatteryHooks();
             local_cleanstatus_installLowPowerBridge();
+            local_cleanstatus_installControlCenterHooks();
             lcsPreferenceObserver = [NSNotificationCenter.defaultCenter
                 addObserverForName:local_cleanstatus_preferencesChangedNotification object:nil
                 queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *notification) {

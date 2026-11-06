@@ -6,13 +6,16 @@
 typedef enum {
     LocalCleanStatusAirplane = 0, LocalCleanStatusAlarm, LocalCleanStatusBluetooth, LocalCleanStatusSiri, LocalCleanStatusCarPlay,
     LocalCleanStatusFocus, LocalCleanStatusLocation, LocalCleanStatusRotationLock, LocalCleanStatusCellular, LocalCleanStatusVPN, LocalCleanStatusWiFi,
-    LocalCleanStatusUnknownParts, LocalCleanStatusModernBattery, LocalCleanStatusHideBolt, LocalCleanStatusTapLowPower, LocalCleanStatusFeatureCount
+    LocalCleanStatusUnknownParts, LocalCleanStatusModernBattery, LocalCleanStatusHideBolt, LocalCleanStatusTapLowPower,
+    // Append only: persisted bits 0...14 retain their existing meanings.
+    LocalCleanStatusCCWiFi, LocalCleanStatusCCBluetooth, LocalCleanStatusSystemActions, LocalCleanStatusFeatureCount
 } LocalCleanStatusFeature;
 
 static const char * const local_cleanstatus_featureNames[LocalCleanStatusFeatureCount] = {
     "hideAirplane", "hideAlarm", "hideBluetooth", "hideSiri", "hideCarPlay",
     "hideFocus", "hideLocation", "hideRotationLock", "hideCellular", "hideVPN", "hideWiFi",
-    "hideUnknownParts", "modernBattery", "hideChargingBolt", "tapLowPower"
+    "hideUnknownParts", "modernBattery", "hideChargingBolt", "tapLowPower",
+    "ccWiFiLongPress", "ccBluetoothLongPress", "ccSystemActions"
 };
 
 static inline uint32_t local_cleanstatus_featureBit(LocalCleanStatusFeature feature) {
