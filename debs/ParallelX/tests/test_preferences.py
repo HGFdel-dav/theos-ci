@@ -9,6 +9,7 @@ model cannot see.
 """
 import os
 import plistlib
+import re
 import unittest
 from unittest import mock
 
@@ -317,6 +318,36 @@ class SourceGuards(unittest.TestCase):
         source = read("Prefs/PXCloneAccountsController.m")
         self.assertIn("if (!_specifiers)", source)
         self.assertIn("_specifiers = [self buildSpecifiers]", source)
+
+    def test_switch_selectors_have_implementations(self):
+        # A specifier that points at a selector nobody implements renders as a
+        # dead switch: the cell shows "off" and no tap is ever stored. Pin the
+        # wiring against the real implementations in the same file.
+        source = read("Prefs/PXCloneAccountsController.m")
+        selectors = re.findall(r"(?:set|get):@selector\(([A-Za-z0-9_:]+)\)", source)
+        self.assertTrue(selectors)
+        for selector in selectors:
+            name = selector.split(":", 1)[0]
+            self.assertRegex(source, r"(?m)^-\s*\([^)]*\)\s*" + re.escape(name) + r"\s*:",
+                             "no implementation for selector %s" % selector)
+
+    def test_menu_module_uses_the_single_real_domain(self):
+        # The menu model lives in com.moxuan.parallelx only. Writing to the
+        # per-gesture keys (bottomSwipe*) would be invisible to ParallelX: on
+        # device those are values ("back"/"close"), not preference domains.
+        source = read("Common/PXCloneMenu.m")
+        domains = set(re.findall(r'@"(com\.moxuan\.[A-Za-z0-9.-]+)"', source))
+        self.assertEqual(domains, {"com.moxuan.parallelx", "com.moxuan.parallelx.dock-updated"})
+        self.assertNotRegex(source, r'@"[^"]*bottom(Swipe|DoubleTap|LongPress)[^"]*"')
+
+    def test_menu_records_carry_the_marker_and_real_shape(self):
+        source = read("Common/PXCloneMenu.m")
+        for key in ("applications", "customActions", "applicationNames",
+                    "shortcutSymbols", "shortcutImages"):
+            self.assertIn('@"%s"' % key, source)
+        self.assertIn('PXCloneRecordType = @"clonex.open"', source)
+        # Cleanup must key on the marker, never on the shared px.custom. prefix.
+        self.assertNotIn("PXCloneVirtualPrefix, identifier", source)
 
 
 if __name__ == "__main__":

@@ -110,7 +110,48 @@ class StartupRegression(unittest.TestCase):
         source = (ROOT / "Tweak.xm").read_text()
         self.assertNotIn("weakInstall", source)
         self.assertIn("PXBootstrap(attempt + 1)", source)
-        self.assertIn("attempt >= 25", source)
+        # The retry window is still bounded, but it is now a named constant
+        # because the prefs store and the notify token must not depend on the
+        # tap hook ever appearing.
+        self.assertIn("PXHookAttemptLimit", source)
+        self.assertIn("attempt >= PXHookAttemptLimit", source)
+
+    def test_menu_sync_is_not_gated_on_the_tap_hook(self):
+        source = (ROOT / "Tweak.xm").read_text()
+        bootstrap = source.split("static void PXBootstrap", 1)[1]
+        first_pass = bootstrap.split("if (attempt == 0) {", 1)[1].split("\n    }", 1)[0]
+        # The first pass must register prefs, the settings notification and the
+        # first menu sync without asking whether the hook installed.
+        self.assertIn("PXClonePrefs.shared", first_pass)
+        self.assertIn("notify_register_dispatch", first_pass)
+        self.assertIn("PXRefreshAndSync()", first_pass)
+        # ...and nothing in that first pass may be conditioned on the hook
+        # result. Previously the whole bootstrap returned early when the hook
+        # did not install, so a moved entry point silently disabled the menu.
+        self.assertNotRegex(first_pass, r"if\s*\(\s*!?\s*PXInstallActionHook\s*\(")
+
+    def test_hook_target_is_discovered_by_abi(self):
+        source = (ROOT / "Tweak.xm").read_text()
+        # The declared class name of ParallelX's action entry point is not
+        # stable (Swift mangled names), so name lookup alone must not decide.
+        self.assertIn("PXClassDeclaringSelector", source)
+        hook = source.split("static BOOL PXInstallActionHook", 1)[1]
+        self.assertNotIn('NSClassFromString(@"PXPanelEntry")) return NO', hook)
+        self.assertIn("performConfiguredAction:fromSearchFavorites:", hook)
+        # The pre-move entry point is intercepted too.
+        self.assertIn("performConfiguredAction:", hook)
+
+    def test_swift_class_name_lookup_has_a_mangling_fallback(self):
+        source = (ROOT / "Tweak.xm").read_text()
+        resolver = source.split("static Class PXResolveClass", 1)[1].split("\n}", 1)[0]
+        self.assertIn("NSClassFromString", resolver)
+        self.assertIn("PXClassSnapshot", resolver)
+        self.assertIn("hasSuffix", resolver)
+        # The class list may only be walked through the cached snapshot.
+        self.assertNotIn("objc_getClassList", resolver)
+        snapshot = source.split("static Class *PXClassSnapshot", 1)[1].split("\n}", 1)[0]
+        self.assertIn("dispatch_once", snapshot)
+        self.assertIn("objc_getClassList", snapshot)
 
     def test_paths_use_the_official_overload_not_cast_c_function(self):
         compat = (ROOT / "Common/PXRootHideCompat.h").read_text()

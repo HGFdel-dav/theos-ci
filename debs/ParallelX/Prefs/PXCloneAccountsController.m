@@ -35,17 +35,20 @@
 - (PSSpecifier *)switchForBundle:(NSString *)bundle
                        container:(NSString *)container
                             name:(NSString *)name {
+    // The getter/setter selectors must match the implementations below
+    // (readShown: / writeShown:specifier:). Pointing them at names that do not
+    // exist leaves the cell with no getter at all - the switch then renders
+    // "off" and never stores anything, which is exactly the dead-toggle
+    // symptom this build had.
     PSSpecifier *specifier = [PSSpecifier preferenceSpecifierNamed:name
                                                             target:self
-                                                               set:@selector(setVisible:forSpecifier:)
-                                                               get:@selector(visibleForSpecifier:)
+                                                               set:@selector(writeShown:specifier:)
+                                                               get:@selector(readShown:)
                                                             detail:nil
                                                               cell:PSSwitchCell
                                                               edit:nil];
-    [specifier setProperty:@{
-        @"bundle": bundle,
-        @"container": container,
-    } forKey:@"userInfo"];
+    [specifier setProperty:bundle forKey:@"cxBundleID"];
+    [specifier setProperty:container forKey:@"cxContainerID"];
     [specifier setProperty:@(PXClonePrefs.shared != nil &&
                              [PXClonePrefs.shared isVisibleBundle:bundle container:container])
                     forKey:@"default"];
@@ -147,23 +150,16 @@
 
 #pragma mark - Switch accessors
 
-- (NSDictionary *)identityForSpecifier:(PSSpecifier *)specifier {
-    id userInfo = [specifier propertyForKey:@"userInfo"];
-    return [userInfo isKindOfClass:NSDictionary.class] ? userInfo : @{};
-}
-
-- (id)visibleForSpecifier:(PSSpecifier *)specifier {
-    NSDictionary *identity = [self identityForSpecifier:specifier];
-    NSString *bundle = identity[@"bundle"];
-    NSString *container = identity[@"container"];
+- (id)readShown:(PSSpecifier *)specifier {
+    NSString *bundle = [specifier propertyForKey:@"cxBundleID"];
+    NSString *container = [specifier propertyForKey:@"cxContainerID"];
     if (!bundle.length || !container.length) return @NO;
     return @([PXClonePrefs.shared isVisibleBundle:bundle container:container]);
 }
 
-- (void)setVisible:(id)value forSpecifier:(PSSpecifier *)specifier {
-    NSDictionary *identity = [self identityForSpecifier:specifier];
-    NSString *bundle = identity[@"bundle"];
-    NSString *container = identity[@"container"];
+- (void)writeShown:(id)value specifier:(PSSpecifier *)specifier {
+    NSString *bundle = [specifier propertyForKey:@"cxBundleID"];
+    NSString *container = [specifier propertyForKey:@"cxContainerID"];
     if (!bundle.length || !container.length) return;
 
     BOOL visible = [value boolValue];

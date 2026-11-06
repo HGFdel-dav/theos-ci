@@ -12,16 +12,83 @@
 #define NSLog(...) ((void)0)
 #endif
 
-static BOOL (*PXOrigPerformAction)(id, SEL, id, BOOL);
+// ParallelX moved its action entry point between versions: older builds call
+// -performConfiguredAction: on the scene bridge, newer ones call
+// -performConfiguredAction:fromSearchFavorites: on the panel entry. Both are
+// intercepted when present; the first one reached consumes the identifier.
+static BOOL (*PXOrigPerformAction2)(id, SEL, id, BOOL);
+static BOOL (*PXOrigPerformAction1)(id, SEL, id);
 static NSMutableSet<NSString *> *PXRecent;
 static NSMutableSet<PXCloneTransition *> *PXLiveTransitions;
 static PXCloneTransition *PXCurrentTransition;
 static int PXNotifyToken = -1;
 
+// Bounded retry window for the tap hook. The menu rows and the settings
+// notification are installed on the first pass and stay installed even if the
+// hook never appears, so a missing hook cannot hide the whole feature.
+static const NSUInteger PXHookAttemptLimit = 120;
+static const int64_t PXHookRetryDelayNS = 250 * NSEC_PER_MSEC;
+
+#pragma mark - Class resolution
+
+// The loaded class list is snapshotted once: scanning it is cheap, but the
+// bootstrap retries and every scan would otherwise allocate and walk ~20k
+// classes on the main queue.
+static Class *PXClassSnapshot(int *outCount) {
+    static Class *classes;
+    static int count;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        count = objc_getClassList(NULL, 0);
+        if (count > 0) {
+            classes = (Class *)malloc(sizeof(Class) * (size_t)count);
+            count = classes ? objc_getClassList(classes, count) : 0;
+        }
+    });
+    if (outCount) *outCount = count;
+    return classes;
+}
+
+// Swift-backed classes are registered under their mangled Objective-C name
+// (for example _TtC9ParallelX12PXPanelEntry), so a plain NSClassFromString can
+// return nil. Fall back to a suffix scan over the loaded classes and cache it.
+static Class PXResolveClass(NSString *name) {
+    if (!name.length) return Nil;
+    static NSMutableDictionary<NSString *, id> *cache;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ cache = [NSMutableDictionary dictionary]; });
+
+    @synchronized (cache) {
+        id cached = cache[name];
+        if (cached) return cached == NSNull.null ? Nil : (Class)cached;
+    }
+
+    Class resolved = NSClassFromString(name);
+    if (!resolved) {
+        int count = 0;
+        Class *classes = PXClassSnapshot(&count);
+        for (int i = 0; i < count; i++) {
+            Class cls = classes[i];
+            if (!cls) continue;
+            const char *raw = class_getName(cls);
+            if (!raw) continue;
+            NSString *candidate = @(raw);
+            if (![candidate isEqualToString:name] && ![candidate hasSuffix:name]) continue;
+            resolved = cls;
+            break;
+        }
+    }
+
+    @synchronized (cache) { cache[name] = resolved ?: NSNull.null; }
+    return resolved;
+}
+
+#pragma mark - ParallelX surfaces
+
 static BOOL PXAppRunning(NSString *bundleID) {
     // PXPanelEntry owns +sharedBridge; the returned PXSceneBridge owns
     // -hasSceneForApplication:.
-    Class panel = NSClassFromString(@"PXPanelEntry");
+    Class panel = PXResolveClass(@"PXPanelEntry");
     SEL shared = NSSelectorFromString(@"sharedBridge");
     SEL hasScene = NSSelectorFromString(@"hasSceneForApplication:");
     if (!PXCloneClassMethodMatches(panel, shared, @encode(id), @[], NULL)) return NO;
@@ -32,13 +99,15 @@ static BOOL PXAppRunning(NSString *bundleID) {
 
 static void PXOpenApplication(NSString *bundleID) {
     if (!bundleID.length) return;
-    Class entry = NSClassFromString(@"PXPanelEntry");
+    Class entry = PXResolveClass(@"PXPanelEntry");
     SEL selector = NSSelectorFromString(@"externalOpenApplication:");
     if (!PXCloneClassMethodMatches(entry, selector, @encode(void), @[@"@"], NULL)) return;
     @try {
         ((void (*)(id, SEL, id))objc_msgSend)((id)entry, selector, bundleID);
     } @catch (__unused NSException *exception) { }
 }
+
+#pragma mark - Virtual items
 
 static BOOL PXRecentlyHandled(NSString *identifier) {
     if (!PXRecent) PXRecent = [NSMutableSet set];
@@ -123,21 +192,71 @@ static BOOL PXHandleVirtualItem(id argument) {
     return YES;
 }
 
-static BOOL PXPerformAction(id self, SEL _cmd, id argument, BOOL fromSearch) {
+static BOOL PXPerformAction2(id self, SEL _cmd, id argument, BOOL fromSearch) {
     if (PXHandleVirtualItem(argument)) return YES;
-    return PXOrigPerformAction ? PXOrigPerformAction(self, _cmd, argument, fromSearch) : NO;
+    return PXOrigPerformAction2 ? PXOrigPerformAction2(self, _cmd, argument, fromSearch) : NO;
+}
+
+static BOOL PXPerformAction1(id self, SEL _cmd, id argument) {
+    if (PXHandleVirtualItem(argument)) return YES;
+    return PXOrigPerformAction1 ? PXOrigPerformAction1(self, _cmd, argument) : NO;
+}
+
+// The declaring class is discovered by ABI instead of by name: the entry point
+// lives on a Swift class whose Objective-C name is not stable across builds,
+// and an inherited implementation must not be hooked once per subclass. The
+// method-existence check runs first so the signature matcher - the expensive
+// part - is only reached for the handful of classes that implement the
+// selector at all.
+static Class PXClassDeclaringSelector(SEL selector, const char *returnType,
+                                      NSArray<NSString *> *argumentTypes) {
+    int count = 0;
+    Class *classes = PXClassSnapshot(&count);
+    if (!classes) return Nil;
+    for (int i = 0; i < count; i++) {
+        Class cls = classes[i];
+        if (!cls) continue;
+        Method method = class_getInstanceMethod(cls, selector);
+        if (!method) continue;
+        if (!PXCloneClassInstanceMethodMatches(cls, selector, returnType, argumentTypes)) continue;
+        Class super = class_getSuperclass(cls);
+        Method inherited = super ? class_getInstanceMethod(super, selector) : NULL;
+        if (inherited &&
+            method_getImplementation(method) == method_getImplementation(inherited)) continue;
+        return cls;
+    }
+    return Nil;
 }
 
 static BOOL PXInstallActionHook(void) {
-    Class cls = NSClassFromString(@"PXPanelEntry");
-    SEL selector = NSSelectorFromString(@"performConfiguredAction:fromSearchFavorites:");
-    if (!PXCloneClassInstanceMethodMatches(cls, selector, @encode(BOOL),
-                                           @[@"@", [NSString stringWithUTF8String:@encode(BOOL)]]))
-        return NO;
-    IMP original = NULL;
-    if (!PXCloneHookMessage(cls, selector, (IMP)PXPerformAction, &original)) return NO;
-    PXOrigPerformAction = (BOOL (*)(id, SEL, id, BOOL))original;
-    return YES;
+    BOOL hooked = NO;
+
+    if (PXOrigPerformAction2) {
+        hooked = YES;
+    } else {
+        SEL selector = NSSelectorFromString(@"performConfiguredAction:fromSearchFavorites:");
+        Class cls = PXClassDeclaringSelector(selector, @encode(BOOL),
+                                             @[@"@", [NSString stringWithUTF8String:@encode(BOOL)]]);
+        IMP original = NULL;
+        if (cls && PXCloneHookMessage(cls, selector, (IMP)PXPerformAction2, &original)) {
+            PXOrigPerformAction2 = (BOOL (*)(id, SEL, id, BOOL))original;
+            hooked = YES;
+        }
+    }
+
+    if (PXOrigPerformAction1) {
+        hooked = YES;
+    } else {
+        SEL selector = NSSelectorFromString(@"performConfiguredAction:");
+        Class cls = PXClassDeclaringSelector(selector, @encode(BOOL), @[@"@"]);
+        IMP original = NULL;
+        if (cls && PXCloneHookMessage(cls, selector, (IMP)PXPerformAction1, &original)) {
+            PXOrigPerformAction1 = (BOOL (*)(id, SEL, id))original;
+            hooked = YES;
+        }
+    }
+
+    return hooked;
 }
 
 static void PXRefreshAndSync(void) {
@@ -156,21 +275,23 @@ static void PXRefreshAndSync(void) {
 // dlopen Crane or create its shared manager from the dylib initializer.
 // A named bounded retry avoids scheduling a nil, weak self-referencing block.
 static void PXBootstrap(NSUInteger attempt) {
-    if (!PXInstallActionHook()) {
-        if (attempt >= 25) return;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{ PXBootstrap(attempt + 1); });
-        return;
+    if (attempt == 0) {
+        (void)PXClonePrefs.shared;
+        if (PXNotifyToken < 0) {
+            int status = notify_register_dispatch(PXClonePrefsNotification.UTF8String, &PXNotifyToken,
+                                                  dispatch_get_main_queue(), ^(int token) {
+                (void)token;
+                PXInstallActionHook();
+                PXRefreshAndSync();
+            });
+            if (status != NOTIFY_STATUS_OK) PXNotifyToken = -1;
+        }
+        PXRefreshAndSync();
     }
 
-    (void)PXClonePrefs.shared;
-    int status = notify_register_dispatch(PXClonePrefsNotification.UTF8String, &PXNotifyToken,
-                                          dispatch_get_main_queue(), ^(int token) {
-        (void)token;
-        PXRefreshAndSync();
-    });
-    if (status != NOTIFY_STATUS_OK) PXNotifyToken = -1;
-    PXRefreshAndSync();
+    if (PXInstallActionHook() || attempt >= PXHookAttemptLimit) return;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, PXHookRetryDelayNS),
+                   dispatch_get_main_queue(), ^{ PXBootstrap(attempt + 1); });
 }
 
 %ctor {

@@ -8,8 +8,12 @@ extern "C" {
 NS_ASSUME_NONNULL_BEGIN
 
 FOUNDATION_EXPORT NSString *const PXCloneVirtualPrefix;
+// Marker written into each injected customActions record. Cleanup matches on
+// this instead of the id prefix, so ParallelX's own px.custom.* records are
+// never touched.
+FOUNDATION_EXPORT NSString *const PXCloneRecordType;
 
-// Only ids with our own prefix are ever resolved/handled.
+// Only ids that resolve to a known clone container are ever handled.
 BOOL PXCloneIsVirtualIdentifier(NSString *identifier);
 NSDictionary<NSString *, NSString *> * _Nullable PXCloneItemForIdentifier(NSString *identifier);
 
