@@ -1,10 +1,11 @@
 #import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
 #import <notify.h>
 #import "Common/PXCloneCrane.h"
 #import "Common/PXCloneMenu.h"
-#import "Common/PXClonePolicy.h"
+#import "Common/PXCloneLaunch.h"
 #import "Common/PXClonePrefs.h"
 #import "Common/PXCloneRuntime.h"
 
@@ -12,16 +13,19 @@
 #define NSLog(...) ((void)0)
 #endif
 
-// ParallelX moved its action entry point between versions: older builds call
-// -performConfiguredAction: on the scene bridge, newer ones call
-// -performConfiguredAction:fromSearchFavorites: on the panel entry. Both are
-// intercepted when present; the first one reached consumes the identifier.
+// Both action signatures are intercepted by actual declaring class and ABI.
+// alpha391 metadata places them on PXSceneBridge; no owner-class name guess
+// may decide whether the clone item is consumed.
 static BOOL (*PXOrigPerformAction2)(id, SEL, id, BOOL);
 static BOOL (*PXOrigPerformAction1)(id, SEL, id);
-static NSMutableSet<NSString *> *PXRecent;
-static NSMutableSet<PXCloneTransition *> *PXLiveTransitions;
-static PXCloneTransition *PXCurrentTransition;
+static NSString *PXLastIdentifier;
+static NSTimeInterval PXLastHandledTime;
 static int PXNotifyToken = -1;
+static void (*PXOrigDragHandle)(id, SEL, id);
+static void (*PXOrigContainersChanged)(id, SEL, id);
+static void (*PXOrigContainerSettingsChanged)(id, SEL, id, id);
+static BOOL PXRefreshInFlight;
+static BOOL PXRefreshPending;
 
 // Bounded retry window for the tap hook. The menu rows and the settings
 // notification are installed on the first pass and stay installed even if the
@@ -83,39 +87,15 @@ static Class PXResolveClass(NSString *name) {
     return resolved;
 }
 
-#pragma mark - ParallelX surfaces
-
-static BOOL PXAppRunning(NSString *bundleID) {
-    // PXPanelEntry owns +sharedBridge; the returned PXSceneBridge owns
-    // -hasSceneForApplication:.
-    Class panel = PXResolveClass(@"PXPanelEntry");
-    SEL shared = NSSelectorFromString(@"sharedBridge");
-    SEL hasScene = NSSelectorFromString(@"hasSceneForApplication:");
-    if (!PXCloneClassMethodMatches(panel, shared, @encode(id), @[], NULL)) return NO;
-    id bridge = PXCloneSendId((id)panel, shared);
-    if (!bridge || !PXCloneInstanceMethodMatches(bridge, hasScene, @encode(BOOL), @[@"@"])) return NO;
-    return PXCloneSendBool1(bridge, hasScene, bundleID);
-}
-
-static void PXOpenApplication(NSString *bundleID) {
-    if (!bundleID.length) return;
-    Class entry = PXResolveClass(@"PXPanelEntry");
-    SEL selector = NSSelectorFromString(@"externalOpenApplication:");
-    if (!PXCloneClassMethodMatches(entry, selector, @encode(void), @[@"@"], NULL)) return;
-    @try {
-        ((void (*)(id, SEL, id))objc_msgSend)((id)entry, selector, bundleID);
-    } @catch (__unused NSException *exception) { }
-}
-
 #pragma mark - Virtual items
 
 static BOOL PXRecentlyHandled(NSString *identifier) {
-    if (!PXRecent) PXRecent = [NSMutableSet set];
-    if ([PXRecent containsObject:identifier]) return YES;
-    [PXRecent addObject:identifier];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{ [PXRecent removeObject:identifier]; });
-    return NO;
+    NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
+    BOOL duplicate = [PXLastIdentifier isEqualToString:identifier] && now - PXLastHandledTime < 0.08;
+    PXLastIdentifier = [identifier copy];
+    PXLastHandledTime = now;
+    // Consecutive duplicate only: A→B→A must not swallow the return to A.
+    return duplicate;
 }
 
 static NSString *PXIdentifierFromArgument(id argument) {
@@ -125,15 +105,6 @@ static NSString *PXIdentifierFromArgument(id argument) {
         if ([identifier isKindOfClass:NSString.class]) return identifier;
     }
     return nil;
-}
-
-static void PXTrackTransition(PXCloneTransition *transition) {
-    if (!PXLiveTransitions) PXLiveTransitions = [NSMutableSet set];
-    [PXLiveTransitions addObject:transition];
-}
-
-static void PXUntrackTransition(PXCloneTransition *transition) {
-    [PXLiveTransitions removeObject:transition];
 }
 
 // Handles only our virtual item. YES means PX must not continue its own path.
@@ -148,47 +119,7 @@ static BOOL PXHandleVirtualItem(id argument) {
     if (!bundle.length || !container.length) return YES;
     if (PXRecentlyHandled(identifier)) return YES;
 
-    NSString *active = [PXCloneCrane activeContainerForBundle:bundle];
-    if ([active isEqualToString:container]) {
-        PXOpenApplication(bundle);
-        return YES;
-    }
-
-    if (PXCurrentTransition) [PXCurrentTransition cancel];
-    __block PXCloneTransition *blockTransition = nil;
-    PXCloneTransition *transition =
-        [[PXCloneTransition alloc] initWithBundle:bundle
-                                       container:container
-                                           queue:dispatch_get_main_queue()
-                                      completion:^(BOOL ok, NSError *error) {
-        PXUntrackTransition(blockTransition);
-        if (PXCurrentTransition == blockTransition) PXCurrentTransition = nil;
-        if (ok) PXOpenApplication(bundle);
-        else if (error) NSLog(@"[parallelxclone] open %@ failed: %@", bundle, error.localizedDescription);
-    }];
-    blockTransition = transition;
-    PXCurrentTransition = transition;
-    PXTrackTransition(transition);
-
-    [transition beginWithSwitch:^(void (^done)(BOOL)) {
-        NSError *error = nil;
-        if (![PXCloneCrane selectContainer:container forBundle:bundle error:&error]) {
-            done(NO);
-            return;
-        }
-        if (![PXCloneCrane requestReloadForBundle:bundle error:&error]) {
-            done(NO);
-            return;
-        }
-        done(YES);
-    } verify:^NSString *{
-        NSString *now = [PXCloneCrane activeContainerForBundle:bundle];
-        if (![now isEqualToString:container]) return nil;
-        // Correct config but the old scene is still draining: keep retrying,
-        // and let the policy accept it at the deadline instead of failing.
-        if (PXAppRunning(bundle)) return PXClonePolicySettlingStatus;
-        return now;
-    }];
+    [PXCloneLaunchController.shared requestBundle:bundle container:container];
     return YES;
 }
 
@@ -260,15 +191,69 @@ static BOOL PXInstallActionHook(void) {
 }
 
 static void PXRefreshAndSync(void) {
+    if (!NSThread.isMainThread) {
+        dispatch_async(dispatch_get_main_queue(), ^{ PXRefreshAndSync(); }); return;
+    }
+    if (PXRefreshInFlight) { PXRefreshPending = YES; return; }
+    PXRefreshInFlight = YES;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         NSError *error = nil;
-        // The menu sync reads visibility from the cache; make sure the first
-        // sync cannot run against an unloaded (fail-closed) store.
         [PXClonePrefs.shared reloadSnapshot:&error];
         [PXCloneCrane refreshCatalogWithCompletion:^(NSArray<NSDictionary *> *catalog, NSError *catalogError) {
+            (void)catalog;
+            PXRefreshInFlight = NO;
             if (!catalogError) PXCloneSyncMenu();
+            if (PXRefreshPending) {
+                PXRefreshPending = NO;
+                dispatch_async(dispatch_get_main_queue(), ^{ PXRefreshAndSync(); });
+            }
         }];
     });
+}
+
+static void PXDragHandle(id self, SEL command, id gesture) {
+    if ([gesture isKindOfClass:UIGestureRecognizer.class] &&
+        ((UIGestureRecognizer *)gesture).state == UIGestureRecognizerStateBegan) PXRefreshAndSync();
+    if (PXOrigDragHandle) PXOrigDragHandle(self, command, gesture);
+}
+
+static void PXContainersChanged(id self, SEL command, id bundle) {
+    if (PXOrigContainersChanged) PXOrigContainersChanged(self, command, bundle);
+    PXRefreshAndSync();
+}
+
+static void PXContainerSettingsChanged(id self, SEL command, id container, id bundle) {
+    if (PXOrigContainerSettingsChanged) PXOrigContainerSettingsChanged(self, command, container, bundle);
+    PXRefreshAndSync();
+}
+
+static BOOL PXInstallRefreshHooks(void) {
+    // Current alpha391 metadata and the device libcrane both confirm these
+    // selectors. No timer loop or Settings-only refresh is required.
+    Class panel = PXResolveClass(@"PXPanelEntry");
+    if (!PXOrigDragHandle) {
+        SEL selector = NSSelectorFromString(@"dragHandle:");
+        IMP original = NULL;
+        if (PXCloneClassInstanceMethodMatches(panel, selector, @encode(void), @[@"@"]) &&
+            PXCloneHookMessage(panel, selector, (IMP)PXDragHandle, &original))
+            PXOrigDragHandle = (void (*)(id, SEL, id))original;
+    }
+    Class crane = NSClassFromString(@"CraneManager");
+    if (!PXOrigContainersChanged) {
+        SEL selector = NSSelectorFromString(@"_observers_didChangeContainersOfApplicationWithIdentifier:");
+        IMP original = NULL;
+        if (PXCloneClassInstanceMethodMatches(crane, selector, @encode(void), @[@"@"]) &&
+            PXCloneHookMessage(crane, selector, (IMP)PXContainersChanged, &original))
+            PXOrigContainersChanged = (void (*)(id, SEL, id))original;
+    }
+    if (!PXOrigContainerSettingsChanged) {
+        SEL selector = NSSelectorFromString(@"_observers_didChangeContainerSettingsForContainerWithIdentifier:onApplicationWithIdentifier:");
+        IMP original = NULL;
+        if (PXCloneClassInstanceMethodMatches(crane, selector, @encode(void), @[@"@", @"@"]) &&
+            PXCloneHookMessage(crane, selector, (IMP)PXContainerSettingsChanged, &original))
+            PXOrigContainerSettingsChanged = (void (*)(id, SEL, id, id))original;
+    }
+    return PXOrigDragHandle && PXOrigContainersChanged && PXOrigContainerSettingsChanged;
 }
 
 // Run only after dyld returned to the main run loop. In particular, do not
@@ -289,7 +274,10 @@ static void PXBootstrap(NSUInteger attempt) {
         PXRefreshAndSync();
     }
 
-    if (PXInstallActionHook() || attempt >= PXHookAttemptLimit) return;
+    BOOL actionReady = PXInstallActionHook();
+    BOOL refreshReady = PXInstallRefreshHooks();
+    BOOL launchReady = [PXCloneLaunchController installNativeHooks];
+    if ((actionReady && refreshReady && launchReady) || attempt >= PXHookAttemptLimit) return;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, PXHookRetryDelayNS),
                    dispatch_get_main_queue(), ^{ PXBootstrap(attempt + 1); });
 }

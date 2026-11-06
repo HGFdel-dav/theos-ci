@@ -59,11 +59,10 @@ class Transition:
             self.state = "ready"
             self.finish(True, None)
             return
-        settling = active == "settling"
         self.attempt += 1
         if self.attempt * INTERVAL >= TIMEOUT:
-            self.state = "ready" if settling else "failed"
-            self.finish(settling, None if settling else "timeout")
+            self.state = "failed"
+            self.finish(False, "timeout")
 
     def cancel(self):
         if self.finished:
@@ -130,13 +129,13 @@ class PolicyTests(unittest.TestCase):
         a, b = Transition(), Transition()
         self.assertGreater(b.token, a.token)
 
-    def test_settling_is_accepted_at_deadline(self):
+    def test_old_scene_still_draining_must_fail_at_deadline(self):
         t = Transition()
         t.begin()
         t.switch(True)
         for _ in range(12):
             t.verify("settling")
-        self.assertEqual(t.finished, [(True, None)])
+        self.assertEqual(t.finished, [(False, "timeout")])
 
     def test_second_begin_finishes_busy(self):
         t = Transition()

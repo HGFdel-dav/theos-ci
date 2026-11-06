@@ -27,13 +27,14 @@ TWEAK_NAME = ParallelXClone
 ParallelXClone_FILES = Tweak.xm \
 	Common/PXCloneCrane.m \
 	Common/PXCloneMenu.m \
+	Common/PXCloneLaunch.m \
 	Common/PXClonePaths.m \
 	Common/PXClonePolicy.m \
 	Common/PXClonePrefs.m \
 	Common/PXCloneRuntime.m
 ParallelXClone_CFLAGS = -fobjc-arc -I$(THEOS_PROJECT_DIR) -Wno-unused-parameter -fvisibility=hidden -DPXCLONE_STRIP_LOGS=1
 ParallelXClone_LDFLAGS = -Wl,-x -Wl,-dead_strip
-ParallelXClone_FRAMEWORKS = Foundation UIKit
+ParallelXClone_FRAMEWORKS = Foundation UIKit QuartzCore
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 

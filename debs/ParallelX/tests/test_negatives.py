@@ -76,6 +76,22 @@ def claim(identifier, apps, actions):
 
 
 class MenuNegatives(unittest.TestCase):
+    def test_new_container_appears_after_catalog_change_without_restarting(self):
+        apps, actions = sync([], [])
+        new_catalog = [{**CATALOG[0], "containers": CATALOG[0]["containers"] + [
+            {"container": "C2", "name": "第三个账号", "isDefault": False}]}]
+        apps, actions = sync(apps, actions, catalog=new_catalog, visible=lambda b, c: c != "C1")
+        self.assertIn(virtual_id("com.a", "DEFAULT"), apps)
+        self.assertIn(virtual_id("com.a", "C2"), apps)
+        self.assertNotIn(virtual_id("com.a", "C1"), apps)
+        self.assertEqual(sum(x["id"] == virtual_id("com.a", "C2") for x in actions), 1)
+
+    def test_unchanged_refresh_does_not_reencode_icons_or_post_again(self):
+        source = read("Common/PXCloneMenu.m")
+        self.assertIn("[lastCatalog isEqualToArray:catalog]", source)
+        self.assertIn("[lastVisibility isEqualToDictionary:visibility]", source)
+        self.assertLess(source.index("lastCatalog isEqualToArray"), source.index("UIImage *icon = PXBadgedIcon"))
+
     def test_same_virtual_item_is_not_duplicated(self):
         apps, actions = sync([], [])
         apps, actions = sync(apps, actions)
@@ -162,18 +178,13 @@ class SwitchNegatives(unittest.TestCase):
             opened.append("com.a")
         self.assertEqual(opened, [])
 
-    def test_repeat_tap_is_swallowed(self):
-        recent = set()
-        first = "px.clone.com.a#C1"
-        second = "px.clone.com.a#C2"
+    def test_repeat_tap_is_swallowed_but_return_to_first_is_not(self):
+        last = None
         handles = []
-        for identifier in (first, second, first):
-            if identifier in recent:
-                handles.append(False)
-                continue
-            recent.add(identifier)
-            handles.append(True)
-        self.assertEqual(handles, [True, True, False])
+        for identifier in ("A", "A", "B", "A"):
+            handles.append(identifier != last)
+            last = identifier
+        self.assertEqual(handles, [True, False, True, True])
 
     def test_missing_crane_catalog_is_empty(self):
         self.assertEqual(sync([], [], catalog=[])[0], [])

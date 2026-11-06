@@ -151,6 +151,12 @@ void PXCloneSyncMenu(void) {
 
     NSArray<NSDictionary *> *catalog = PXCloneCrane.cachedCatalog;
     if (catalog.count == 0) return;
+    // Menu-open refresh is frequent. Do not regenerate PNGs, rewrite five
+    // preferences, or redraw ParallelX when the catalog/visibility is unchanged.
+    static NSArray *lastCatalog;
+    static NSDictionary *lastVisibility;
+    NSDictionary *visibility = prefs.snapshot;
+    if ([lastCatalog isEqualToArray:catalog] && [lastVisibility isEqualToDictionary:visibility]) return;
 
     NSMutableArray<NSString *> *applications = [NSMutableArray array];
     id rawApplications = PXRead(@"applications");
@@ -299,6 +305,9 @@ void PXCloneSyncMenu(void) {
     PXWrite(@"applicationNames", names);
     PXWrite(@"shortcutSymbols", symbols);
     PXWrite(@"shortcutImages", images);
-    CFPreferencesAppSynchronize((__bridge CFStringRef)PXPXDomain);
-    notify_post(PXPXDockNotification.UTF8String);
+    if (CFPreferencesAppSynchronize((__bridge CFStringRef)PXPXDomain)) {
+        lastCatalog = [catalog copy];
+        lastVisibility = [visibility copy];
+        notify_post(PXPXDockNotification.UTF8String);
+    }
 }

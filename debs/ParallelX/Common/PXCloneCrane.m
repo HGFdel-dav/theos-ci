@@ -175,57 +175,49 @@ static NSArray<NSDictionary *> *PXCatalog;
         NSSelectorFromString(@"activeContainerIdentifierForApplicationWithIdentifier:"), bundleID);
 }
 
-+ (BOOL)selectContainer:(NSString *)containerID forBundle:(NSString *)bundleID error:(NSError **)error {
-    if (!containerID.length || !bundleID.length) {
-        if (error) *error = PXCraneError(PXCloneCraneErrorInvalidArgument, @"empty container/bundle");
-        return NO;
-    }
++ (BOOL)containerExists:(NSString *)containerID forBundle:(NSString *)bundleID {
+    if (!containerID.length || !bundleID.length) return NO;
     id manager = PXSharedManager();
-    if (!manager) {
-        if (error) *error = PXCraneError(PXCloneCraneErrorUnavailable, @"CraneManager unavailable");
-        return NO;
-    }
-    if (!PXSupported(manager, bundleID)) {
-        if (error) *error = PXCraneError(PXCloneCraneErrorUnsupported, @"app not supported by Crane");
-        return NO;
-    }
+    if (!manager || !PXSupported(manager, bundleID)) return NO;
+    if ([containerID isEqualToString:@"DEFAULT"]) return YES;
+    NSArray *identifiers = PXStringArrayResult(manager,
+        NSSelectorFromString(@"containerIdentifiersOfApplicationWithIdentifier:"), bundleID);
+    return [identifiers containsObject:containerID];
+}
 
-    SEL selector = NSSelectorFromString(@"setActiveContainerIdentifier:forApplicationWithIdentifier:reloadApplication:");
-    if (!PXCloneInstanceMethodMatches(manager, selector, @encode(void), @[@"@", @"@", [NSString stringWithUTF8String:@encode(BOOL)]])) {
-        if (error) *error = PXCraneError(PXCloneCraneErrorABI, @"switch ABI mismatch");
++ (BOOL)switchContainer:(NSString *)containerID forBundle:(NSString *)bundleID
+             completion:(void (^)(BOOL, NSError *))completion error:(NSError **)error {
+    id manager = PXSharedManager();
+    if (!completion || ![self containerExists:containerID forBundle:bundleID]) {
+        if (error) *error = PXCraneError(PXCloneCraneErrorInvalidArgument, @"账号不存在或 Crane 不可用");
         return NO;
     }
+    // libcrane arm64e @0x84d4: v44@0:8@16@24B32@?36. The shorter
+    // usingBiometrics selector defaults reload to YES; do not use it here.
+    SEL selector = NSSelectorFromString(@"setActiveContainerIdentifier:forApplicationWithIdentifier:reloadApplication:usingBiometricsIfNeededWithSuccessHandler:");
+    NSArray *arguments = @[@"@", @"@", [NSString stringWithUTF8String:@encode(BOOL)], @"@?"];
+    if (!PXCloneInstanceMethodMatches(manager, selector, @encode(void), arguments)) {
+        if (error) *error = PXCraneError(PXCloneCraneErrorABI, @"Crane 无重载验证接口不可用");
+        return NO;
+    }
+    __block BOOL returned = NO;
+    void (^callback)(BOOL) = ^(BOOL ok) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (returned) return;
+            returned = YES;
+            BOOL verified = ok && [[self activeContainerForBundle:bundleID] isEqualToString:containerID];
+            completion(verified, verified ? nil : PXCraneError(PXCloneCraneErrorSwitchFailed, @"Crane 验证或账号回读失败"));
+        });
+    };
     @try {
-        ((void (*)(id, SEL, id, id, BOOL))objc_msgSend)(manager, selector, containerID, bundleID, NO);
+        ((void (*)(id, SEL, id, id, BOOL, void (^)(BOOL)))objc_msgSend)(
+            manager, selector, containerID, bundleID, NO, callback);
     } @catch (NSException *exception) {
-        if (error) *error = PXCraneError(PXCloneCraneErrorSwitchFailed, exception.reason ?: @"switch threw");
-        return NO;
-    }
-    NSString *now = [self activeContainerForBundle:bundleID];
-    if (![now isEqualToString:containerID]) {
-        if (error) *error = PXCraneError(PXCloneCraneErrorSwitchFailed, @"active container did not change");
+        if (error) *error = PXCraneError(PXCloneCraneErrorSwitchFailed, exception.reason ?: @"Crane 切换异常");
         return NO;
     }
     return YES;
 }
 
-+ (BOOL)requestReloadForBundle:(NSString *)bundleID error:(NSError **)error {
-    if (!bundleID.length) {
-        if (error) *error = PXCraneError(PXCloneCraneErrorInvalidArgument, @"empty bundle");
-        return NO;
-    }
-    id manager = PXSharedManager();
-    SEL selector = NSSelectorFromString(@"reloadApplicationWithIdentifier:");
-    if (!manager || !PXCloneInstanceMethodMatches(manager, selector, @encode(void), @[@"@"])) {
-        if (error) *error = PXCraneError(PXCloneCraneErrorABI, @"reload ABI mismatch");
-        return NO;
-    }
-    @try { PXCloneSendVoid1(manager, selector, bundleID); }
-    @catch (NSException *exception) {
-        if (error) *error = PXCraneError(PXCloneCraneErrorReloadFailed, exception.reason ?: @"reload threw");
-        return NO;
-    }
-    return YES;
-}
 
 @end

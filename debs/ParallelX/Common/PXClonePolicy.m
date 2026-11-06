@@ -16,7 +16,6 @@ static NSError *PXPolicyError(NSInteger code, NSString *message) {
     NSString * _Nullable (^_verify)(void);
     BOOL _finished;
     BOOL _switchReturned;
-    BOOL _lastSettling;
     NSUInteger _attempt;
 }
 @property (nonatomic, readwrite) NSUInteger token;
@@ -111,18 +110,11 @@ static NSUInteger PXNextToken = 1;
         [self finish:YES error:nil];
         return;
     }
-    _lastSettling = [active isEqualToString:PXClonePolicySettlingStatus];
+    // A settling marker is not the target container and can never be success.
 
     _attempt++;
     NSTimeInterval elapsed = (NSTimeInterval)_attempt * PXClonePolicyVerifyInterval;
     if (elapsed >= PXClonePolicyVerifyTimeout) {
-        if (_lastSettling) {
-            // The container is already correct but the old scene is still
-            // draining (background-resident apps may never drop it in 3 s).
-            self.state = PXClonePolicyStateReady;
-            [self finish:YES error:nil];
-            return;
-        }
         self.state = PXClonePolicyStateFailed;
         [self finish:NO error:PXPolicyError(4, @"active container did not settle")];
         return;

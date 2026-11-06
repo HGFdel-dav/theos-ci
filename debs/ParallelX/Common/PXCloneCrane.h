@@ -30,10 +30,13 @@ typedef NS_ENUM(NSInteger, PXCloneCraneError) {
                                                NSError * _Nullable error))completion;
 
 + (NSString *)activeContainerForBundle:(NSString *)bundleID;
-+ (BOOL)selectContainer:(NSString *)containerID
++ (BOOL)containerExists:(NSString *)containerID forBundle:(NSString *)bundleID;
+// Authenticated Crane switch with reloadApplication:NO. The controller owns
+// the watchdog; a late biometric callback must remain observable.
++ (BOOL)switchContainer:(NSString *)containerID
               forBundle:(NSString *)bundleID
+             completion:(void (^)(BOOL ok, NSError * _Nullable error))completion
                   error:(NSError **)error;
-+ (BOOL)requestReloadForBundle:(NSString *)bundleID error:(NSError **)error;
 
 @end
 
