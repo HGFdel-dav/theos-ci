@@ -65,10 +65,18 @@ jobs:
           git -C "$HOME/theos" rev-parse HEAD > ci-out/THEOS-COMMIT
           xcrun clang --version > ci-out/COMPILER.txt
           cp build-${{ matrix.scheme }}.log ci-out/
+      - name: Resolve artifact label from control
+        id: label
+        working-directory: debs/ParallelX
+        run: |
+          set -euo pipefail
+          version="$(awk -F': ' '/^Version:/{print $2; exit}' control)"
+          test -n "$version"
+          echo "value=$version" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: ParallelX-clone0.5-${{ matrix.scheme }}-${{ github.sha }}
+          name: ParallelX-${{ steps.label.outputs.value }}-${{ matrix.scheme }}-${{ github.sha }}
           path: debs/ParallelX/ci-out/
           if-no-files-found: error
       - name: Upload build log on failure
