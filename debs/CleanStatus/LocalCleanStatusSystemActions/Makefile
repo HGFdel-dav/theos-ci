@@ -1,3 +1,4 @@
+include ../LocalCleanStatusBuild.mk
 BUNDLE_NAME = LocalCleanStatusSystemActions
 LocalCleanStatusSystemActions_FILES = LocalCleanStatusSystemActions.m ../Sources/LocalCleanStatusPaths.m
 LocalCleanStatusSystemActions_INSTALL_PATH = /Library/ControlCenter/Bundles
