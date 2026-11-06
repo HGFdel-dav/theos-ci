@@ -216,7 +216,7 @@ static UIImage *lcscc_symbol(NSString *name,CGFloat size) {
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     if(![self allowed]){[self close];return;}
-    if(self.pendingIdentifier.length||indexPath.row>=self.items.count)return;
+    if(self.pendingIdentifier.length||(NSUInteger)indexPath.row>=self.items.count)return;
     LCSCCTarget *target=self.items[indexPath.row];
     if(self.kind==LCSCCTargetKindWiFi&&target.connected)return;
     if(self.kind==LCSCCTargetKindWiFi&&target.secure&&!target.saved){[self openSettings];return;}
