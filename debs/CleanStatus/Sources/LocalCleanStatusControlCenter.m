@@ -101,6 +101,7 @@ static LocalCleanStatusCCTicket *LCSCCEnsureTicket(id controller) {
         if (!backend.bluetoothAvailable) { [self lcs_alert:@"蓝牙不可用"]; return; }
         __weak typeof(self) weakSelf = self;
         [backend listPairedBluetooth:^(NSArray<LCSCCTarget *> *targets, NSError *error) {
+            (void)error;
             dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf lcs_presentBluetooth:targets anchor:anchor]; });
         }];
     }
@@ -128,10 +129,10 @@ static LocalCleanStatusCCTicket *LCSCCEnsureTicket(id controller) {
         NSString *title = [NSString stringWithFormat:@"%@ %@%@", target.subtitle ?: @"",
                            target.secure ? @"🔒 " : @"", target.title];
         [sheet addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault
-            handler:^(UIAlertAction *action) { [weakSelf lcs_joinWiFi:target]; }]];
+            handler:^(UIAlertAction *action) { (void)action; [weakSelf lcs_joinWiFi:target]; }]];
     }
     [sheet addAction:[UIAlertAction actionWithTitle:@"重新扫描" style:UIAlertActionStyleDefault
-        handler:^(UIAlertAction *action) { [weakSelf lcs_presentFrom:anchor]; }]];
+        handler:^(UIAlertAction *action) { (void)action; [weakSelf lcs_presentFrom:anchor]; }]];
     [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
     sheet.popoverPresentationController.sourceView = anchor ?: self.controller.view;
     [self.controller presentViewController:sheet animated:YES completion:nil];
@@ -155,6 +156,7 @@ static LocalCleanStatusCCTicket *LCSCCEnsureTicket(id controller) {
         message:@"需要在设置中输入密码" preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"打开设置" style:UIAlertActionStyleDefault
         handler:^(UIAlertAction *action) {
+            (void)action;
             Class cls = NSClassFromString(@"LSApplicationWorkspace");
             SEL selector = sel_registerName("defaultWorkspace");
             if (!cls || ![cls respondsToSelector:selector]) return;
@@ -177,7 +179,7 @@ static LocalCleanStatusCCTicket *LCSCCEnsureTicket(id controller) {
     for (LCSCCTarget *target in targets) {
         NSString *title = target.connected ? [@"已连接 · " stringByAppendingString:target.title] : target.title;
         [sheet addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault
-            handler:^(UIAlertAction *action) { [weakSelf lcs_toggle:target]; }]];
+            handler:^(UIAlertAction *action) { (void)action; [weakSelf lcs_toggle:target]; }]];
     }
     [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
     sheet.popoverPresentationController.sourceView = anchor ?: self.controller.view;
@@ -233,7 +235,7 @@ static BOOL LCSCCInstallClass(NSString *name, LCSCCTargetKind kind) {
     if (!cls) return NO;
     SEL viewDidLoad = sel_registerName("viewDidLoad");
     Method method = class_getInstanceMethod(cls, viewDidLoad);
-    if (method && method_getImplementation(method) != IMP(LCSCCInstallFor)) {
+    if (method) {
         IMP original = method_getImplementation(method);
         IMP replacement = imp_implementationWithBlock(^(id self_) {
             ((void(*)(id,SEL))original)(self_, viewDidLoad);
