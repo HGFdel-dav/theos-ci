@@ -162,6 +162,22 @@ def main():
                 errors += fail(f"unused function {name} in {os.path.relpath(path, ROOT)}")
         print("ok unused functions")
 
+    # No script may hardcode a build version other than the one in control;
+    # that is how the packaging check ended up looking for the previous DEB.
+    import glob
+    version = None
+    for line in open(os.path.join(ROOT, "control"), encoding="utf-8"):
+        if line.startswith("Version:"):
+            version = line.split(":", 1)[1].strip()
+    hardcoded = re.compile(r"\d+\.\d+\.\d+~[A-Za-z0-9.+-]*clone[0-9][0-9.]*")
+    for path in sorted(glob.glob(os.path.join(ROOT, "tools", "*.py")) +
+                       glob.glob(os.path.join(ROOT, "tests", "*.py"))):
+        text = open(path, encoding="utf-8").read()
+        for literal in set(hardcoded.findall(text)):
+            if literal != version:
+                errors += fail(f"stale version {literal} in {os.path.relpath(path, ROOT)}")
+    print("ok version literals")
+
     result = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py"],
                             cwd=ROOT, capture_output=True, text=True,
                             env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})

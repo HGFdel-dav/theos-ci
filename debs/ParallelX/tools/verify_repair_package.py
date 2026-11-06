@@ -15,7 +15,20 @@ import tempfile
 from check_pac import inspect, slices
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.1.0~alpha391+clone0.5"
+
+
+def _control_version(name):
+    for line in (ROOT / name).read_text(encoding="utf-8").splitlines():
+        if line.startswith("Version:"):
+            return line.split(":", 1)[1].strip()
+    raise SystemExit("no Version field in %s" % name)
+
+
+# The version lives in control only; deriving it here means a version bump can
+# never leave this check hunting for the previous build's file name.
+VERSION = _control_version("control")
+if _control_version("control.in") != VERSION:
+    raise SystemExit("control and control.in disagree on the version")
 
 
 def signed_pages(path):
