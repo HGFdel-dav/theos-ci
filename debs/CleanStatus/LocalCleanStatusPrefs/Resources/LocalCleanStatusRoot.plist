@@ -10,7 +10,7 @@
 			<key>cell</key>
 			<string>PSGroupCell</string>
 			<key>label</key>
-			<string>CleanStatus 0.1.14</string>
+			<string>CleanStatus 0.2.0</string>
 			<key>footerText</key>
 			<string>除“隐藏未知部件提示”默认开启外，其余默认关闭。修改后点右上角“应用”。关闭总开关并应用可恢复系统显示。</string>
 		</dict>
@@ -233,6 +233,62 @@
 			<string>com.local.cleanstatus</string>
 			<key>default</key>
 			<true/>
+			<key>get</key>
+			<string>readPreferenceValue:</string>
+			<key>set</key>
+			<string>setPreferenceValue:specifier:</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>label</key>
+			<string>控制中心</string>
+			<key>footerText</key>
+			<string>长按控制中心的 Wi-Fi / 蓝牙按钮直接选网络或设备；普通点击和展开菜单保持原生。系统操作需另装 CCSupport 后加入控制中心。仅 iOS 15 生效。</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>label</key>
+			<string>Wi-Fi 长按快捷选择</string>
+			<key>key</key>
+			<string>ccWiFiLongPress</string>
+			<key>defaults</key>
+			<string>com.local.cleanstatus</string>
+			<key>default</key>
+			<false/>
+			<key>get</key>
+			<string>readPreferenceValue:</string>
+			<key>set</key>
+			<string>setPreferenceValue:specifier:</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>label</key>
+			<string>蓝牙长按快捷选择</string>
+			<key>key</key>
+			<string>ccBluetoothLongPress</string>
+			<key>defaults</key>
+			<string>com.local.cleanstatus</string>
+			<key>default</key>
+			<false/>
+			<key>get</key>
+			<string>readPreferenceValue:</string>
+			<key>set</key>
+			<string>setPreferenceValue:specifier:</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSSwitchCell</string>
+			<key>label</key>
+			<string>系统操作模块</string>
+			<key>key</key>
+			<string>ccSystemActions</string>
+			<key>defaults</key>
+			<string>com.local.cleanstatus</string>
+			<key>default</key>
+			<false/>
 			<key>get</key>
 			<string>readPreferenceValue:</string>
 			<key>set</key>
