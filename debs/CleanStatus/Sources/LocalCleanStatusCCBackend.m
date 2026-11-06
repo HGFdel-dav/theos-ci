@@ -209,7 +209,7 @@ static void lcscc_loadWiFi(void) {
         LCSWiFiNetwork network=(LCSWiFiNetwork)CFArrayGetValueAtIndex(results,index);
         NSString *ssid=lcscc_ssid(network); if (!ssid.length) continue;
         LCSCCTarget *row=[LCSCCTarget new]; row.identifier=ssid; row.title=ssid;
-        row.networkRef=(__bridge CFTypeRef)object;
+        row.networkRef=(CFTypeRef)network;
         row.saved=[known containsObject:ssid]; row.connected=[ssid isEqualToString:current];
         row.state=row.connected?2:0;
         row.secure=lcscc_wifi.isWEP(network)||lcscc_wifi.isWPA(network)||lcscc_wifi.isEAP(network);

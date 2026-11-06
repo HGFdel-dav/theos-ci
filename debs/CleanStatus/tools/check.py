@@ -174,4 +174,14 @@ for name,size in (('SettingsIcon.png',29),('SettingsIcon@2x.png',58),('SettingsI
 need('SettingsIcon@2x.png' in text('LocalCleanStatusSystemActions/Makefile'),'module icon shipped')
 need('LocalCleanStatusSystemActions_FILES' not in '' ,'placeholder')
 
+
+# Guards against half-finished rewrites (a stale loop variable reached CI once).
+need('(__bridge CFTypeRef)object' not in backend and 'LCSWiFiNetwork network=(LCSWiFiNetwork)CFArrayGetValueAtIndex' in backend,'scan loop reads CFArray slots directly')
+for stale in ('scanRunning','scanGeneration','setRaw:','\.raw','lcs_showLoading','lcs_alert','LCSCMarkExpanded'):
+    need(not re.search(stale,backend+cc+listvc),'no stale 0.2.0 identifier '+stale)
+need('CFArrayRef scanResults' in backend and 'CFRelease(request.scanResults)' in backend,'scan array released with its request')
+need('lcscc_symbol' in listvc and 'checkmark' in listvc and 'lock.fill' in listvc,'original row glyphs')
+need('CFBundleVersion' in text('LocalCleanStatusSystemActions/Resources/Info.plist'),'module version key')
+need(plistlib.loads((ROOT/'LocalCleanStatusSystemActions/Resources/Info.plist').read_bytes())['CFBundleShortVersionString']=='0.2.1','module version 0.2.1')
+
 print(f'PASS source invariants: {checks}. iOS compile/runtime NOT performed.')
