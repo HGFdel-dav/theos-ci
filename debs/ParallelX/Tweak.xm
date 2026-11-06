@@ -79,7 +79,7 @@ static Class PXResolveClass(NSString *name) {
         }
     }
 
-    @synchronized (cache) { cache[name] = resolved ?: NSNull.null; }
+    @synchronized (cache) { cache[name] = resolved ? (id)resolved : (id)NSNull.null; }
     return resolved;
 }
 
