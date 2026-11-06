@@ -105,13 +105,21 @@ static BOOL lcscc_run(NSString *tool,NSArray<NSString *> *arguments,NSString **r
         @[@"关机",@"power",@(LCSCSystemActionShutdown)],
     ];
     __weak typeof(self) weakSelf=self;
+    BOOL rich=[self respondsToSelector:sel_registerName("addActionWithTitle:subtitle:glyph:handler:")];
     for (NSArray *row in rows) {
         LCSCSystemAction action=(LCSCSystemAction)[row[2] integerValue];
-        [self addActionWithTitle:row[0] subtitle:[self unavailableReasonFor:action] ?: @" "
-                           glyph:[UIImage systemImageNamed:row[1]]
-                         handler:^{ [weakSelf request:action]; }];
+        NSString *why=[self unavailableReasonFor:action];
+        // Availability is stated in the subtitle when the platform supports it
+        // and in the confirmation/error path otherwise. The row always exists.
+        if (rich && why.length) {
+            [self addActionWithTitle:row[0] subtitle:why glyph:[UIImage systemImageNamed:row[1]]
+                             handler:^{ [weakSelf request:action]; }];
+        } else {
+            [self addActionWithTitle:row[0] glyph:[UIImage systemImageNamed:row[1]]
+                             handler:^{ [weakSelf request:action]; }];
+        }
     }
-    self.useTallLayout=YES;
+    if ([self respondsToSelector:sel_registerName("setUseTallLayout:")]) self.useTallLayout=YES;
 }
 - (void)request:(LCSCSystemAction)action {
     NSString *blocked=[self unavailableReasonFor:action];
