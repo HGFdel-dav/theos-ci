@@ -99,7 +99,7 @@ def inspect(deb,out):
         pref=payload/'Library/PreferenceBundles/LocalCleanStatusPrefs.bundle'
         info=plistlib.loads((pref/'Info.plist').read_bytes())
         require(info['CFBundleExecutable']=='LocalCleanStatusPrefs' and info['NSPrincipalClass']=='LocalCleanStatusRootListController','panel linkage')
-        require(info['CFBundleVersion']==info['CFBundleShortVersionString']=='0.2.0','panel version')
+        require(info['CFBundleVersion']==info['CFBundleShortVersionString']=='0.2.1','panel version')
         require((pref/'LocalCleanStatusRoot.plist').is_file(),'missing specifiers')
         for name,size in (('icon.png',29),('icon@2x.png',58),('icon@3x.png',87)):
             raw=(pref/name).read_bytes()
@@ -112,6 +112,10 @@ def inspect(deb,out):
         require(module_info.get('NSPrincipalClass')=='LCSCSystemActionsModule','module principal class')
         require(module_info.get('CFBundleExecutable')=='LocalCleanStatusSystemActions','module executable')
         require(module_info.get('CCSModuleSize',{}).get('Portrait',{}).get('Width')==1,'module 1x1')
+        require(module_info.get('CFBundleIconFiles')==['SettingsIcon'],'module settings icon declared')
+        for name,size in (('SettingsIcon.png',29),('SettingsIcon@2x.png',58),('SettingsIcon@3x.png',87)):
+            raw=(module/name).read_bytes()
+            require(raw.startswith(bytes.fromhex('89504e470d0a1a0a')) and int.from_bytes(raw[16:20],'big')==size and int.from_bytes(raw[20:24],'big')==size,'bad module settings icon '+name)
         binaries=[dyn/'LocalCleanStatus.dylib',pref/'LocalCleanStatusPrefs',module/'LocalCleanStatusSystemActions']
         report['binaries']=[macho(p) for p in binaries]
         for p in binaries:

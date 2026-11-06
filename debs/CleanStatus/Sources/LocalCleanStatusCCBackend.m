@@ -1,260 +1,364 @@
 #import "LocalCleanStatusCCBackend.h"
+#import "LocalCleanStatusCCRuntime.h"
+#import "LocalCleanStatusCCEnvironment.h"
 #import "LocalCleanStatusCCDiagnostics.h"
 #import <dlfcn.h>
-#import <objc/message.h>
-#import <objc/runtime.h>
-#import <CoreFoundation/CoreFoundation.h>
+#include <stdint.h>
 
-// ABI shapes below are rebuilt from the QuickCC2 2.0.1 static analysis
-// (see CleanStatus-cc-research-20261106/quickcc2/API-EVIDENCE.md). Only the
-// argument positions actually proven there are used; unknown callback slots
-// stay opaque and are never read.
-
-typedef struct __WiFiManager *LCSCWiFiManager;
-typedef struct __WiFiDeviceClient *LCSCWiFiDevice;
-typedef struct __WiFiNetwork *LCSCWiFiNetwork;
-typedef void (*LCSCScanCallback)(LCSCWiFiDevice device, CFArrayRef results, int32_t error, void *context);
-typedef void (*LCSAssociateCallback)(LCSCWiFiDevice device, LCSCWiFiNetwork network,
-                                     uintptr_t unknown, int32_t error, void *context);
-
+// Existing QuickCC2 static evidence: scan callback x1/results,w2/error,x3/token;
+// associate x1/network,x2/unused,w3/error,x4/token. Never conflate the callbacks.
+typedef struct __WiFiManager *LCSWiFiManager;
+typedef struct __WiFiDeviceClient *LCSWiFiDevice;
+typedef struct __WiFiNetwork *LCSWiFiNetwork;
+typedef void (*LCSScanCB)(LCSWiFiDevice,CFArrayRef,int32_t,void *);
+typedef void (*LCSAssociateCB)(LCSWiFiDevice,LCSWiFiNetwork,uintptr_t,int32_t,void *);
 typedef struct {
     void *handle;
-    LCSCWiFiManager (*create)(CFAllocatorRef, int32_t);
-    void (*schedule)(LCSCWiFiManager, CFRunLoopRef, CFStringRef);
-    void (*unschedule)(LCSCWiFiManager, CFRunLoopRef, CFStringRef);
-    CFArrayRef (*copyDevices)(LCSCWiFiManager);
-    CFArrayRef (*copyNetworks)(LCSCWiFiManager);
-    LCSCWiFiNetwork (*copyCurrent)(LCSCWiFiDevice);
-    int32_t (*scan)(LCSCWiFiDevice, CFDictionaryRef, LCSCScanCallback, void *);
-    int32_t (*associate)(LCSCWiFiDevice, LCSCWiFiNetwork, LCSAssociateCallback, void *);
-    CFStringRef (*ssid)(LCSCWiFiNetwork);
-    CFTypeRef (*property)(LCSCWiFiNetwork, CFStringRef);
-    int32_t (*isWEP)(LCSCWiFiNetwork);
-    int32_t (*isWPA)(LCSCWiFiNetwork);
-    int32_t (*isEAP)(LCSCWiFiNetwork);
+    LCSWiFiManager (*create)(CFAllocatorRef,int32_t);
+    void (*schedule)(LCSWiFiManager,CFRunLoopRef,CFStringRef);
+    CFArrayRef (*copyDevices)(LCSWiFiManager);
+    CFArrayRef (*copyNetworks)(LCSWiFiManager);
+    LCSWiFiNetwork (*copyCurrent)(LCSWiFiDevice);
+    int32_t (*scan)(LCSWiFiDevice,CFDictionaryRef,LCSScanCB,void *);
+    int32_t (*associate)(LCSWiFiDevice,LCSWiFiNetwork,LCSAssociateCB,void *);
+    CFStringRef (*ssid)(LCSWiFiNetwork);
+    CFTypeRef (*property)(LCSWiFiNetwork,CFStringRef);
+    int32_t (*isWEP)(LCSWiFiNetwork);
+    int32_t (*isWPA)(LCSWiFiNetwork);
+    int32_t (*isEAP)(LCSWiFiNetwork);
     BOOL ready;
-} LCSCWiFiAPI;
+} LCSWiFiAPI;
+static LCSWiFiAPI lcscc_wifi;
+static void lcscc_scanCallback(LCSWiFiDevice,CFArrayRef,int32_t,void *);
+static void lcscc_associateCallback(LCSWiFiDevice,LCSWiFiNetwork,uintptr_t,int32_t,void *);
 
 @implementation LCSCCTarget
-- (void)setRaw:(id)raw {
-    if (_raw == raw) return;
-    if (_raw) CFRelease((__bridge CFTypeRef)_raw);
-    _raw = raw ? (__bridge id)CFRetain((__bridge CFTypeRef)raw) : nil;
+@synthesize networkRef=_networkRef;
+- (void)setNetworkRef:(CFTypeRef)ref {
+    if (ref==_networkRef) return;
+    if (ref) CFRetain(ref);
+    if (_networkRef) CFRelease(_networkRef);
+    _networkRef=ref;
 }
-- (void)dealloc { if (_raw) CFRelease((__bridge CFTypeRef)_raw); }
+- (void)dealloc { if (_networkRef) CFRelease(_networkRef); }
+@end
+
+@interface LCSCCNativeRequest : NSObject
+@property(nonatomic) uintptr_t token;
+@property(nonatomic) CFArrayRef scanResults; // manually retained; not an NSArray
+@property(nonatomic,copy) LCSCCListHandler list;
+@property(nonatomic,copy) LCSCCActionResult action;
+@property(nonatomic,strong) LCSCCTarget *target;
+@property(nonatomic) BOOL desiredConnection;
+@end
+@implementation LCSCCNativeRequest
 @end
 
 @interface LCSCCBackend ()
-@property(nonatomic) LCSCWiFiManager manager;
-@property(nonatomic) LCSCWiFiDevice device;
-@property(nonatomic, strong) dispatch_queue_t queue;
-@property(nonatomic) NSUInteger scanGeneration;
-@property(nonatomic) BOOL scanRunning;
+@property(nonatomic) LCSWiFiManager manager;
+@property(nonatomic) LCSWiFiDevice device;
+@property(nonatomic,strong) NSMutableDictionary<NSNumber *,LCSCCNativeRequest *> *requests;
+@property(nonatomic) uintptr_t nextToken;
+@property(nonatomic,strong) NSMutableArray *bluetoothObservers;
+@property(nonatomic,copy) dispatch_block_t bluetoothChanged;
+- (void)receivedScanRef:(CFArrayRef)results error:(int32_t)error token:(uintptr_t)token;
+- (void)receivedAssociate:(int32_t)error token:(uintptr_t)token;
+- (void)verifyAction:(uintptr_t)token attempts:(NSUInteger)attempts;
 @end
 
-static LCSCWiFiAPI LCSCCWiFi;
-static NSString * const LCSCCWiFiFramework = @"/System/Library/PrivateFrameworks/MobileWiFi.framework/MobileWiFi";
-
-static void LCSCCLoadWiFi(void) {
+static NSError *lcscc_error(NSInteger code,NSString *reason) {
+    return [NSError errorWithDomain:@"CleanStatusCC" code:code userInfo:@{NSLocalizedDescriptionKey:reason}];
+}
+static NSArray *lcscc_array(id value) {
+    if ([value isKindOfClass:NSArray.class]) return value;
+    if ([value isKindOfClass:NSSet.class]) return [value allObjects];
+    return @[];
+}
+static NSString *lcscc_ssid(LCSWiFiNetwork network) {
+    if (!network || !lcscc_wifi.ssid) return nil;
+    CFStringRef s=lcscc_wifi.ssid(network);
+    return s && CFGetTypeID(s)==CFStringGetTypeID()?(__bridge_transfer NSString *)CFRetain(s):nil;
+}
+static void lcscc_loadWiFi(void) {
     static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        void *handle = dlopen(LCSCCWiFiFramework.fileSystemRepresentation, RTLD_LAZY);
-        if (!handle) { local_cleanstatus_ccLog(@"wifi.load",@"dlopen-failed"); return; }
-        LCSCCWiFi.handle = handle;
-        BOOL ok = YES;
-#define LCSCC_SYM(field,name) do { *(void **)(&LCSCCWiFi.field)=dlsym(handle,name); if(!LCSCCWiFi.field) ok=NO; } while(0)
-        LCSCC_SYM(create,"WiFiManagerClientCreate");
-        LCSCC_SYM(copyDevices,"WiFiManagerClientCopyDevices");
-        LCSCC_SYM(copyNetworks,"WiFiManagerClientCopyNetworks");
-        LCSCC_SYM(copyCurrent,"WiFiDeviceClientCopyCurrentNetwork");
-        LCSCC_SYM(scan,"WiFiDeviceClientScanAsync");
-        LCSCC_SYM(associate,"WiFiDeviceClientAssociateAsync");
-        LCSCC_SYM(ssid,"WiFiNetworkGetSSID");
-        LCSCC_SYM(property,"WiFiNetworkGetProperty");
-        LCSCC_SYM(isWEP,"WiFiNetworkIsWEP");
-        LCSCC_SYM(isWPA,"WiFiNetworkIsWPA");
-        LCSCC_SYM(isEAP,"WiFiNetworkIsEAP");
-        LCSCC_SYM(schedule,"WiFiManagerClientScheduleWithRunLoop");
-        LCSCC_SYM(unschedule,"WiFiManagerClientUnscheduleFromRunLoop");
-#undef LCSCC_SYM
-        LCSCCWiFi.ready = ok;
-        if (!ok) local_cleanstatus_ccLog(@"wifi.symbols",@"missing");
+    dispatch_once(&once,^{
+        void *h=dlopen("/System/Library/PrivateFrameworks/MobileWiFi.framework/MobileWiFi",RTLD_LAZY);
+        if (!h) return;
+        lcscc_wifi.handle=h;
+        BOOL ready=YES;
+#define LCS_WIFI(field,symbol) do { *(void **)(&lcscc_wifi.field)=dlsym(h,symbol); if(!lcscc_wifi.field)ready=NO; } while(0)
+        LCS_WIFI(create,"WiFiManagerClientCreate");
+        LCS_WIFI(schedule,"WiFiManagerClientScheduleWithRunLoop");
+        LCS_WIFI(copyDevices,"WiFiManagerClientCopyDevices");
+        LCS_WIFI(copyNetworks,"WiFiManagerClientCopyNetworks");
+        LCS_WIFI(copyCurrent,"WiFiDeviceClientCopyCurrentNetwork");
+        LCS_WIFI(scan,"WiFiDeviceClientScanAsync");
+        LCS_WIFI(associate,"WiFiDeviceClientAssociateAsync");
+        LCS_WIFI(ssid,"WiFiNetworkGetSSID");
+        LCS_WIFI(property,"WiFiNetworkGetProperty");
+        LCS_WIFI(isWEP,"WiFiNetworkIsWEP");
+        LCS_WIFI(isWPA,"WiFiNetworkIsWPA");
+        LCS_WIFI(isEAP,"WiFiNetworkIsEAP");
+#undef LCS_WIFI
+        // Manager lives for this process. The unproven unschedule signature is
+        // not called; no per-modal manager teardown while callbacks are alive.
+        lcscc_wifi.ready=ready;
+        local_cleanstatus_ccLog(@"wifi.symbols",ready?@"ready":@"missing");
     });
 }
-
-static NSString *LCSCCString(CFStringRef value) {
-    return value ? (__bridge_transfer NSString *)CFRetain(value) : nil;
-}
-
-static void LCSCCScanCallback(LCSCWiFiDevice,CFArrayRef,int32_t,void *);
-static void LCSCCAssociateCallback(LCSCWiFiDevice,LCSCWiFiNetwork,uintptr_t,int32_t,void *);
 
 @implementation LCSCCBackend
 + (instancetype)shared {
-    static LCSCCBackend *instance; static dispatch_once_t once;
-    dispatch_once(&once, ^{ instance = [[LCSCCBackend alloc] init]; });
-    return instance;
+    static LCSCCBackend *b; static dispatch_once_t once;
+    dispatch_once(&once,^{b=[LCSCCBackend new];}); return b;
 }
 - (instancetype)init {
-    if ((self = [super init])) _queue = dispatch_queue_create("com.local.cleanstatus.cc", DISPATCH_QUEUE_SERIAL);
+    if ((self=[super init])) { _requests=[NSMutableDictionary new]; _bluetoothObservers=[NSMutableArray new]; }
     return self;
 }
-
-#pragma mark - Wi-Fi
-
-- (BOOL)wiFiAvailable {
-    LCSCCLoadWiFi();
-    if (!LCSCCWiFi.ready) return NO;
+- (BOOL)wiFiAvailable { lcscc_loadWiFi(); return lcscc_wifi.ready; }
+- (BOOL)prepareWiFi {
+    if (![self wiFiAvailable] || !NSThread.isMainThread) return NO;
     if (!self.manager) {
-        self.manager = LCSCCWiFi.create(kCFAllocatorDefault, 0);
-        if (!self.manager) return NO;
-        LCSCCWiFi.schedule(self.manager, CFRunLoopGetMain(), kCFRunLoopDefaultMode);
-        CFArrayRef devices = LCSCCWiFi.copyDevices(self.manager);
+        self.manager=lcscc_wifi.create(kCFAllocatorDefault,0);
+        if (self.manager) lcscc_wifi.schedule(self.manager,CFRunLoopGetMain(),kCFRunLoopDefaultMode);
+    }
+    if (!self.manager) return NO;
+    if (!self.device) {
+        CFArrayRef devices=lcscc_wifi.copyDevices(self.manager);
         if (devices) {
-            if (CFArrayGetCount(devices) > 0) self.device = (LCSCWiFiDevice)CFArrayGetValueAtIndex(devices, 0);
+            if (CFArrayGetCount(devices)>0) self.device=(LCSWiFiDevice)CFRetain(CFArrayGetValueAtIndex(devices,0));
             CFRelease(devices);
         }
     }
-    return self.device != NULL;
+    return self.device!=NULL;
+}
+- (LCSCCNativeRequest *)requestWithTimeout:(NSTimeInterval)timeout {
+    NSAssert(NSThread.isMainThread,@"CC requests must be serialized on main");
+    // Tokens are opaque integers, not pointers to released blocks. Never reuse
+    // a token, including after timeout/cancel; late native calls safely miss.
+    if (self.nextToken==UINTPTR_MAX || self.requests.count>=64) return nil;
+    LCSCCNativeRequest *r=[LCSCCNativeRequest new]; r.token=++self.nextToken;
+    self.requests[@(r.token)]=r;
+    uintptr_t token=r.token;
+    __weak typeof(self) weakSelf=self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(timeout*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+        [weakSelf finish:token success:NO items:nil error:lcscc_error(LCSCCErrorTimeout,@"等待超时，请下拉刷新后重试")];
+    });
+    return r;
+}
+- (void)finish:(uintptr_t)token success:(BOOL)success items:(NSArray *)items error:(NSError *)error {
+    LCSCCNativeRequest *r=self.requests[@(token)]; if (!r) return;
+    [self.requests removeObjectForKey:@(token)];
+    if (r.scanResults) { CFRelease(r.scanResults); r.scanResults=NULL; }
+    if (r.list) r.list(items?:@[],error);
+    if (r.action) r.action(success,error);
+}
+- (void)cancelRequests {
+    NSAssert(NSThread.isMainThread,@"CC cancellation must be serialized on main");
+    for (LCSCCNativeRequest *request in self.requests.allValues)
+        if (request.scanResults) { CFRelease(request.scanResults); request.scanResults=NULL; }
+    [self.requests removeAllObjects];
 }
 
+- (NSString *)currentSSID {
+    if (!self.device) return nil;
+    LCSWiFiNetwork current=lcscc_wifi.copyCurrent(self.device);
+    NSString *ssid=lcscc_ssid(current);
+    if (current) CFRelease(current);
+    return ssid;
+}
+- (NSSet<NSString *> *)knownSSIDs {
+    NSMutableSet *known=[NSMutableSet new];
+    CFArrayRef networks=lcscc_wifi.copyNetworks(self.manager);
+    if (networks) {
+        for (CFIndex i=0;i<CFArrayGetCount(networks);i++) {
+            NSString *s=lcscc_ssid((LCSWiFiNetwork)CFArrayGetValueAtIndex(networks,i));
+            if (s.length) [known addObject:s];
+        }
+        CFRelease(networks);
+    }
+    return known;
+}
 - (void)scanWiFi:(LCSCCListHandler)handler {
-    NSUInteger generation = ++self.scanGeneration;
-    if (![self wiFiAvailable]) {
-        handler(@[], [NSError errorWithDomain:@"CleanStatusCC" code:1 userInfo:@{NSLocalizedDescriptionKey:@"Wi-Fi 不可用"}]);
-        return;
+    if (!handler) return;
+    if (!local_cleanstatus_ccUnlocked() || ![self prepareWiFi]) {
+        handler(@[],lcscc_error(LCSCCErrorUnavailable,@"Wi-Fi 接口未就绪，请打开无线局域网后下拉刷新")); return;
     }
-    void *context = (__bridge_retained void *)[handler copy];
-    self.scanRunning = YES;
-    int32_t status = LCSCCWiFi.scan(self.device, NULL, LCSCCScanCallback, context);
-    if (status != 0) {
-        self.scanRunning = NO;
-        CFBridgingRelease(context);
-        handler(@[], [NSError errorWithDomain:@"CleanStatusCC" code:(NSInteger)status
-            userInfo:@{NSLocalizedDescriptionKey:@"扫描启动失败"}]);
-        return;
-    }
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 6 * NSEC_PER_SEC), self.queue, ^{
-        if (generation == self.scanGeneration && self.scanRunning) {
-            self.scanRunning = NO;
-            local_cleanstatus_ccLog(@"wifi.scan",@"timeout");
-        }
-    });
+    for (LCSCCNativeRequest *r in self.requests.allValues)
+        if (r.list) { handler(@[],lcscc_error(LCSCCErrorUnavailable,@"正在扫描，请稍候")); return; }
+    LCSCCNativeRequest *r=[self requestWithTimeout:8];
+    if (!r) { handler(@[],lcscc_error(LCSCCErrorUnavailable,@"请求队列已满")); return; }
+    r.list=handler;
+    int32_t status=lcscc_wifi.scan(self.device,NULL,lcscc_scanCallback,(void *)r.token);
+    if (status) [self finish:r.token success:NO items:nil
+        error:lcscc_error(status,[NSString stringWithFormat:@"扫描未启动（%d）",status])];
 }
-
-static void LCSCCScanCallback(LCSCWiFiDevice device, CFArrayRef results, int32_t error, void *context) {
-    (void)device;
-    LCSCCListHandler handler = (__bridge_transfer LCSCCListHandler)context;
-    LCSCCBackend *backend = LCSCCBackend.shared;
-    backend.scanRunning = NO;
-    NSMutableArray *targets = [NSMutableArray array];
-    if (error == 0 && results) {
-        CFIndex count = CFArrayGetCount(results);
-        for (CFIndex i = 0; i < count; i++) {
-            LCSCWiFiNetwork network = (LCSCWiFiNetwork)CFArrayGetValueAtIndex(results, i);
-            NSString *ssid = LCSCCString(LCSCCWiFi.ssid(network));
-            if (!ssid.length) continue;
-            LCSCCTarget *target = [LCSCCTarget new];
-            target.title = ssid;
-            target.raw = (__bridge id)network;
-            CFStringRef key = CFSTR("RSSI");
-            CFTypeRef value = LCSCCWiFi.property ? LCSCCWiFi.property(network, key) : NULL;
-            NSInteger rssi = [(__bridge id)value isKindOfClass:NSNumber.class] ? [(__bridge id)value integerValue] : -90;
-            target.subtitle = rssi > -60 ? @"▂▄▆█" : (rssi > -75 ? @"▂▄▆_" : @"▂___");
-            target.secure = (LCSCCWiFi.isWEP && LCSCCWiFi.isWEP(network)) ||
-                            (LCSCCWiFi.isWPA && LCSCCWiFi.isWPA(network)) ||
-                            (LCSCCWiFi.isEAP && LCSCCWiFi.isEAP(network));
-            [targets addObject:target];
-        }
-        [targets sortUsingComparator:^NSComparisonResult(LCSCCTarget *a, LCSCCTarget *b) {
-            return [a.title localizedCaseInsensitiveCompare:b.title];
-        }];
+- (void)receivedScanRef:(CFArrayRef)results error:(int32_t)error token:(uintptr_t)token {
+    // A stale or cancelled request owns a reference we must drop here.
+    LCSCCNativeRequest *request=self.requests[@(token)];
+    if (!request) { if (results) CFRelease(results); return; }
+    if (request.scanResults) { CFRelease(request.scanResults); request.scanResults=NULL; }
+    request.scanResults=results;
+    if (!local_cleanstatus_ccUnlocked()) { [self cancelRequests]; return; }
+    if (error) { [self finish:token success:NO items:nil error:lcscc_error(error,@"扫描失败，请下拉刷新")]; return; }
+    NSSet *known=[self knownSSIDs]; NSString *current=[self currentSSID];
+    NSMutableDictionary<NSString *,LCSCCTarget *> *unique=[NSMutableDictionary new];
+    CFIndex count=results?CFArrayGetCount(results):0;
+    for (CFIndex index=0;index<count;index++) {
+        LCSWiFiNetwork network=(LCSWiFiNetwork)CFArrayGetValueAtIndex(results,index);
+        NSString *ssid=lcscc_ssid(network); if (!ssid.length) continue;
+        LCSCCTarget *row=[LCSCCTarget new]; row.identifier=ssid; row.title=ssid;
+        row.networkRef=(__bridge CFTypeRef)object;
+        row.saved=[known containsObject:ssid]; row.connected=[ssid isEqualToString:current];
+        row.state=row.connected?2:0;
+        row.secure=lcscc_wifi.isWEP(network)||lcscc_wifi.isWPA(network)||lcscc_wifi.isEAP(network);
+        CFTypeRef value=lcscc_wifi.property(network,CFSTR("RSSI"));
+        row.rssi=value && CFGetTypeID(value)==CFNumberGetTypeID()?[(__bridge NSNumber *)value integerValue]:-90;
+        row.signalLevel=row.rssi>-61?1.0:(row.rssi>-73?0.66:0.33);
+        row.subtitle=@"";
+        LCSCCTarget *old=unique[ssid];
+        if (!old || row.rssi>old.rssi || row.connected) unique[ssid]=row;
     }
-    NSError *failure = error == 0 ? nil : [NSError errorWithDomain:@"CleanStatusCC" code:error
-        userInfo:@{NSLocalizedDescriptionKey:@"扫描失败"}];
-    handler(targets, failure);
+    NSArray *rows=[unique.allValues sortedArrayUsingComparator:^NSComparisonResult(LCSCCTarget *a,LCSCCTarget *b){
+        if (a.state!=b.state) return a.state>b.state?NSOrderedAscending:NSOrderedDescending;
+        return [a.title localizedStandardCompare:b.title];
+    }];
+    [self finish:token success:YES items:rows error:nil];
 }
-
 - (void)joinWiFi:(LCSCCTarget *)target completion:(LCSCCActionResult)completion {
-    if (!self.device || !target.raw) { completion(NO, nil); return; }
-    void *context = (__bridge_retained void *)[completion copy];
-    int32_t status = LCSCCWiFi.associate(self.device, (__bridge LCSCWiFiNetwork)target.raw,
-                                         LCSCCAssociateCallback, context);
-    if (status != 0) {
-        CFBridgingRelease(context);
-        completion(NO, [NSError errorWithDomain:@"CleanStatusCC" code:status
-            userInfo:@{NSLocalizedDescriptionKey:@"连接请求失败"}]);
+    if (!completion) return;
+    if (!local_cleanstatus_ccUnlocked() || ![self prepareWiFi] || !target.networkRef) {
+        completion(NO,lcscc_error(LCSCCErrorUnavailable,@"连接接口不可用")); return;
     }
+    if (target.secure && !target.saved && !target.connected) {
+        completion(NO,lcscc_error(LCSCCErrorOpenSettings,@"需要在无线局域网设置中输入密码")); return;
+    }
+    if ([[self currentSSID] isEqualToString:target.identifier]) { completion(YES,nil); return; }
+    for (LCSCCNativeRequest *pending in self.requests.allValues)
+        if (pending.action) { completion(NO,lcscc_error(LCSCCErrorUnavailable,@"正在处理连接，请稍候")); return; }
+    LCSCCNativeRequest *r=[self requestWithTimeout:15];
+    if (!r) { completion(NO,lcscc_error(LCSCCErrorUnavailable,@"请求队列已满")); return; }
+    r.target=target; r.action=completion; r.desiredConnection=YES;
+    int32_t status=lcscc_wifi.associate(self.device,(LCSWiFiNetwork)target.networkRef,
+        lcscc_associateCallback,(void *)r.token);
+    if (status) [self finish:r.token success:NO items:nil error:lcscc_error(status,@"连接请求被拒绝")];
+}
+- (void)receivedAssociate:(int32_t)error token:(uintptr_t)token {
+    if (!self.requests[@(token)]) return;
+    if (error) { [self finish:token success:NO items:nil error:lcscc_error(error,@"连接失败，请检查网络")]; return; }
+    // Associate status=0 is not enough: only an actual currentSSID match makes
+    // the UI checkmark/success state. Verification is bounded to six seconds.
+    [self verifyAction:token attempts:12];
 }
 
-static void LCSCCAssociateCallback(LCSCWiFiDevice device, LCSCWiFiNetwork network,
-                                   uintptr_t unknown, int32_t error, void *context) {
-    (void)device; (void)network; (void)unknown;
-    LCSCCActionResult result = (__bridge_transfer LCSCCActionResult)context;
-    result(error == 0, error == 0 ? nil : [NSError errorWithDomain:@"CleanStatusCC" code:error
-        userInfo:@{NSLocalizedDescriptionKey:@"连接失败"}]);
-}
-
-#pragma mark - Bluetooth
-
-static Class LCSCCBluetoothManagerClass(void) {
-    static Class cls; static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        dlopen("/System/Library/PrivateFrameworks/BluetoothManager.framework/BluetoothManager", RTLD_LAZY);
-        cls = NSClassFromString(@"BluetoothManager");
-    });
-    return cls;
-}
-
+#pragma mark - paired Bluetooth devices, not nearby discovery
 - (id)bluetoothManager {
-    Class cls = LCSCCBluetoothManagerClass();
-    SEL selector = sel_registerName("sharedInstance");
-    return (cls && [cls respondsToSelector:selector]) ? ((id(*)(id,SEL))objc_msgSend)(cls, selector) : nil;
+    static void *handle; static dispatch_once_t once;
+    dispatch_once(&once,^{handle=dlopen("/System/Library/PrivateFrameworks/BluetoothManager.framework/BluetoothManager",RTLD_LAZY);});
+    if (!handle) return nil;
+    return lcscc_object(NSClassFromString(@"BluetoothManager"),"sharedInstance");
 }
-- (BOOL)bluetoothAvailable { return self.bluetoothManager != nil; }
-
-- (NSString *)stringOf:(id)object selector:(const char *)name {
-    SEL selector = sel_registerName(name);
-    if (!object || ![object respondsToSelector:selector]) return nil;
-    id value = ((id(*)(id,SEL))objc_msgSend)(object, selector);
-    return [value isKindOfClass:NSString.class] ? value : nil;
+- (BOOL)bluetoothAvailable {
+    id manager=[self bluetoothManager];
+    return lcscc_can(manager,"pairedDevices",@encode(id));
 }
-
 - (void)listPairedBluetooth:(LCSCCListHandler)handler {
-    id manager = self.bluetoothManager;
-    SEL paired = sel_registerName("pairedDevices");
-    SEL connected = sel_registerName("connectedDevices");
-    if (!manager || ![manager respondsToSelector:paired]) {
-        handler(@[], [NSError errorWithDomain:@"CleanStatusCC" code:2 userInfo:@{NSLocalizedDescriptionKey:@"蓝牙不可用"}]);
-        return;
+    if (!handler) return;
+    id manager=[self bluetoothManager];
+    if (!local_cleanstatus_ccUnlocked() || !lcscc_can(manager,"pairedDevices",@encode(id))) {
+        handler(@[],lcscc_error(LCSCCErrorUnavailable,@"蓝牙设备接口不可用")); return;
     }
-    NSArray *devices = ((id(*)(id,SEL))objc_msgSend)(manager, paired);
-    NSSet *connectedSet = [manager respondsToSelector:connected]
-        ? [NSSet setWithArray:((id(*)(id,SEL))objc_msgSend)(manager, connected)] : [NSSet set];
-    NSMutableArray *targets = [NSMutableArray array];
-    for (id device in devices) {
-        NSString *name = [self stringOf:device selector:"name"];
-        NSString *address = [self stringOf:device selector:"address"];
-        if (!name.length) name = address ?: @"未命名设备";
-        LCSCCTarget *target = [LCSCCTarget new];
-        target.title = name; target.subtitle = address ?: @""; target.raw = device;
-        target.connected = [connectedSet containsObject:device];
-        [targets addObject:target];
+    if (!lcscc_bool(manager,"powered",YES)) {
+        handler(@[],lcscc_error(LCSCCErrorUnavailable,@"蓝牙已关闭，请在蓝牙设置中开启")); return;
     }
-    [targets sortUsingComparator:^NSComparisonResult(LCSCCTarget *a, LCSCCTarget *b) {
-        if (a.connected != b.connected) return a.connected ? NSOrderedAscending : NSOrderedDescending;
+    NSMutableArray *rows=[NSMutableArray new];
+    for (id device in lcscc_array(lcscc_object(manager,"pairedDevices"))) {
+        id addr=lcscc_object(device,"address"),name=lcscc_object(device,"name");
+        if (![addr isKindOfClass:NSString.class] || ![addr length]) continue;
+        LCSCCTarget *row=[LCSCCTarget new]; row.identifier=addr;
+        row.title=[name isKindOfClass:NSString.class] && [name length]?name:addr;
+        row.bluetoothDevice=device; row.connected=lcscc_bool(device,"connected",NO);
+        row.state=row.connected?2:0; row.subtitle=row.connected?@"已连接":@"未连接";
+        [rows addObject:row];
+    }
+    [rows sortUsingComparator:^NSComparisonResult(LCSCCTarget *a,LCSCCTarget *b){
+        if(a.state!=b.state)return a.state>b.state?NSOrderedAscending:NSOrderedDescending;
         return [a.title localizedCaseInsensitiveCompare:b.title];
     }];
-    handler(targets, nil);
+    handler(rows,nil);
 }
-
+- (BOOL)invokeBluetooth:(id)device connecting:(BOOL)connecting {
+    SEL sel=sel_registerName(connecting?"connect":"disconnect");
+    Method method=device?class_getInstanceMethod(object_getClass(device),sel):NULL;
+    if (!method || method_getNumberOfArguments(method)!=2) return NO;
+    char *type=method_copyReturnType(method); const char *t=lcscc_type(type);
+    BOOL isVoid=t && !strcmp(t,"v"),isInt=t && !strcmp(t,"i"); free(type);
+    // Both void/int32 variants exist in dumped system versions; never call an
+    // object/structure ABI via this scalar function pointer.
+    if (isVoid) { ((void(*)(id,SEL))objc_msgSend)(device,sel); return YES; }
+    if (isInt) return ((int(*)(id,SEL))objc_msgSend)(device,sel)==0;
+    return NO;
+}
 - (void)toggleBluetooth:(LCSCCTarget *)target completion:(LCSCCActionResult)completion {
-    id manager = self.bluetoothManager;
-    if (!manager || !target.raw) { completion(NO, nil); return; }
-    const char *name = target.connected ? "disconnectDevice:" : "connectDevice:";
-    SEL selector = sel_registerName(name);
-    if (![manager respondsToSelector:selector]) { completion(NO, nil); return; }
-    ((void(*)(id,SEL,id))objc_msgSend)(manager, selector, target.raw);
-    completion(YES, nil);
+    if (!completion) return;
+    if (!local_cleanstatus_ccUnlocked() || !target.bluetoothDevice) {
+        completion(NO,lcscc_error(LCSCCErrorUnavailable,@"蓝牙设备接口不可用")); return;
+    }
+    for (LCSCCNativeRequest *pending in self.requests.allValues)
+        if (pending.action) { completion(NO,lcscc_error(LCSCCErrorUnavailable,@"正在处理设备连接")); return; }
+    LCSCCNativeRequest *r=[self requestWithTimeout:15];
+    if (!r) { completion(NO,lcscc_error(LCSCCErrorUnavailable,@"请求队列已满")); return; }
+    r.target=target; r.action=completion;
+    r.desiredConnection=!lcscc_bool(target.bluetoothDevice,"connected",NO);
+    if (![self invokeBluetooth:target.bluetoothDevice connecting:r.desiredConnection]) {
+        [self finish:r.token success:NO items:nil error:lcscc_error(LCSCCErrorUnavailable,@"设备连接请求不可用或已被拒绝")]; return;
+    }
+    [self verifyAction:r.token attempts:30];
+}
+- (void)verifyAction:(uintptr_t)token attempts:(NSUInteger)attempts {
+    LCSCCNativeRequest *r=self.requests[@(token)]; if(!r)return;
+    if (!local_cleanstatus_ccUnlocked()) { [self cancelRequests]; return; }
+    BOOL matched=r.target.bluetoothDevice?
+        lcscc_bool(r.target.bluetoothDevice,"connected",NO)==r.desiredConnection:
+        [[self currentSSID] isEqualToString:r.target.identifier];
+    if(matched){ [self finish:token success:YES items:nil error:nil]; return; }
+    if(!attempts){ [self finish:token success:NO items:nil error:lcscc_error(LCSCCErrorTimeout,@"连接状态尚未确认，请下拉刷新")];return; }
+    __weak typeof(self) weakSelf=self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC/2),dispatch_get_main_queue(),^{
+        [weakSelf verifyAction:token attempts:attempts-1];
+    });
+}
+- (void)startBluetoothUpdates:(dispatch_block_t)changed {
+    [self stopBluetoothUpdates]; self.bluetoothChanged=changed;
+    for (NSString *name in @[@"BluetoothDeviceConnectSuccessNotification",@"BluetoothDeviceConnectFailedNotification",
+          @"BluetoothDeviceDisconnectSuccessNotification",@"BluetoothDevicePairedNotification",
+          @"BluetoothDeviceUnpairedNotification",@"BluetoothPowerChangedNotification"]) {
+        __weak typeof(self) weakSelf=self;
+        id observer=[NSNotificationCenter.defaultCenter addObserverForName:name object:nil
+            queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note){
+                (void)note;
+                typeof(self) strongSelf=weakSelf;
+                if(strongSelf.bluetoothChanged) strongSelf.bluetoothChanged();
+            }];
+        [self.bluetoothObservers addObject:observer];
+    }
+}
+- (void)stopBluetoothUpdates {
+    for (id observer in self.bluetoothObservers) [NSNotificationCenter.defaultCenter removeObserver:observer];
+    [self.bluetoothObservers removeAllObjects]; self.bluetoothChanged=nil;
 }
 @end
+
+static void lcscc_scanCallback(LCSWiFiDevice device,CFArrayRef results,int32_t error,void *context) {
+    (void)device; uintptr_t token=(uintptr_t)context;
+    // MobileWiFi networks are CoreFoundation objects; they are never smuggled
+    // through an NSArray/NSDictionary. The array is retained explicitly and the
+    // reference travels with the request token.
+    CFArrayRef held=results?(CFArrayRef)CFRetain(results):NULL;
+    dispatch_async(dispatch_get_main_queue(),^{[LCSCCBackend.shared receivedScanRef:held error:error token:token];});
+}
+static void lcscc_associateCallback(LCSWiFiDevice device,LCSWiFiNetwork network,uintptr_t unused,int32_t error,void *context) {
+    (void)device;(void)network;(void)unused;uintptr_t token=(uintptr_t)context;
+    dispatch_async(dispatch_get_main_queue(),^{[LCSCCBackend.shared receivedAssociate:error token:token];});
+}
