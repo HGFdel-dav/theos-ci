@@ -1,4 +1,8 @@
+#if defined(__APPLE__)
+#define _DARWIN_C_SOURCE 1 /* keep fstatat/AT_* visible on Darwin */
+#else
 #define _POSIX_C_SOURCE 200809L
+#endif
 #include "../Common/PXCloneTraceIO.h"
 #include <assert.h>
 #include <stdlib.h>

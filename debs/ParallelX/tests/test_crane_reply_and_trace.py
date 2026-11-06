@@ -49,9 +49,10 @@ class RootAndTraceTests(unittest.TestCase):
         cc = shutil.which('cc') or shutil.which('clang')
         with tempfile.TemporaryDirectory() as temp:
             exe = Path(temp) / 'trace-io'
-            subprocess.run([cc, '-std=c11', '-Wall', '-Wextra', '-Werror',
+            compiler = subprocess.run([cc, '-std=c11', '-Wall', '-Wextra', '-Werror',
                             str(ROOT / 'tests/trace_io_harness.c'), '-o', str(exe)],
-                           check=True, capture_output=True, text=True)
+                           capture_output=True, text=True)
+            self.assertEqual(compiler.returncode, 0, compiler.stderr)
             text = subprocess.check_output([str(exe)], text=True)
         self.assertGreater(int(re.search(r'trace_io_checks=(\d+)', text)[1]), 25)
 
