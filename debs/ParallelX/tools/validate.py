@@ -143,6 +143,25 @@ def main():
                 errors += fail(f"unused local {name} in {os.path.relpath(path, ROOT)}")
         print("ok unused locals")
 
+    # Same class of build break: -Werror,-Wunused-function for a static
+    # function nobody calls. A name that occurs exactly once in the file can
+    # only be its own definition.
+    static_fn = re.compile(r"(?m)^[ \t]*static[ \t][^;{\n]*?\b([A-Za-z_][A-Za-z0-9_]*)[ \t]*\(")
+
+    def unused_functions(text):
+        return sorted(name for name in set(static_fn.findall(text))
+                      if len(re.findall(r"\b%s\b" % re.escape(name), text)) < 2
+                      and name not in ("void", "int", "BOOL", "id", "instancetype"))
+
+    probe = "static BOOL PXDeadProbe(void) { return YES; }\n"
+    if unused_functions(probe) != ["PXDeadProbe"]:
+        errors += fail("unused-function lint does not detect its own probe")
+    else:
+        for path in lint_targets:
+            for name in unused_functions(open(path, encoding="utf-8").read()):
+                errors += fail(f"unused function {name} in {os.path.relpath(path, ROOT)}")
+        print("ok unused functions")
+
     result = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py"],
                             cwd=ROOT, capture_output=True, text=True,
                             env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})

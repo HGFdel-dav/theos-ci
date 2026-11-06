@@ -136,12 +136,6 @@ static UIImage *PXBadgedIcon(NSString *bundleID, BOOL isDefault) {
 
 #pragma mark - Sync
 
-static BOOL PXStringIsOurs(NSString *identifier, NSSet<NSString *> *previous) {
-    if (![identifier isKindOfClass:NSString.class]) return NO;
-    if ([previous containsObject:identifier]) return YES;
-    return [identifier hasPrefix:PXCloneLegacyPrefix];
-}
-
 void PXCloneSyncMenu(void) {
     if (!NSThread.isMainThread) {
         dispatch_async(dispatch_get_main_queue(), ^{ PXCloneSyncMenu(); });
@@ -187,7 +181,7 @@ void PXCloneSyncMenu(void) {
     NSMutableSet<NSString *> *previous = [NSMutableSet set];
     NSUInteger scanned = 0;
     for (NSDictionary *record in actions) {
-        if (++scanned > PXMaxCleanupSweep) break;
+        if (++scanned > (NSUInteger)PXMaxCleanupSweep) break;
         if (![record[@"type"] isEqual:PXCloneRecordType]) continue;
         id identifier = record[@"id"];
         if ([identifier isKindOfClass:NSString.class]) [previous addObject:identifier];
