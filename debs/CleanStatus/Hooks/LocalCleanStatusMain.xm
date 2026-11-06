@@ -2,14 +2,16 @@
 #import "LocalCleanStatusConfig.h"
 #import "LocalCleanStatusPreferences.h"
 #import "LocalCleanStatusRuntime.h"
+#import "LocalCleanStatusCCEnvironment.h"
 
 static id lcsPreferenceObserver;
-static NSString * const lcsVersion = @"CleanStatus 0.2.0";
+static NSString * const lcsVersion = @"CleanStatus 0.2.1";
 
 %ctor {
     @autoreleasepool {
         (void)lcsVersion;
         if (![NSBundle.mainBundle.bundlePath.pathExtension isEqualToString:@"app"]) return;
+        local_cleanstatus_ccConsumeSafeModeFlag();
         [LocalCleanStatusConfig local_cleanstatus_shared];
         dispatch_async(dispatch_get_main_queue(), ^{
             local_cleanstatus_installStatusHooks();

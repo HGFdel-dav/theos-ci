@@ -1,5 +1,6 @@
 #import "LocalCleanStatusCCDiagnostics.h"
 #import "LocalCleanStatusPaths.h"
+#import "LocalCleanStatusCCEnvironment.h"
 #import <sys/file.h>
 #import <fcntl.h>
 #import <errno.h>
@@ -14,7 +15,7 @@ void local_cleanstatus_ccLog(NSString *event, NSString *reason) {
     NSString *row=[NSString stringWithFormat:@"%.3f %@ %@\n",NSDate.date.timeIntervalSince1970,event,reason ?: @"-"];
     dispatch_async(queue, ^{
         @autoreleasepool {
-            NSString *root=local_cleanstatus_selectedRoot();
+            NSString *root=local_cleanstatus_ccRoot();
             if (!root.length) return;
             NSString *directory=[root stringByAppendingPathComponent:@"var/mobile/Library/Caches/com.local.cleanstatus"];
             if (!local_cleanstatus_pathInsideRoot(directory,root)) return;

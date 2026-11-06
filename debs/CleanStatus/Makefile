@@ -3,7 +3,7 @@ FINALPACKAGE = 1
 include LocalCleanStatusBuild.mk
 include $(THEOS)/makefiles/common.mk
 TWEAK_NAME = LocalCleanStatus
-LocalCleanStatus_FILES = $(wildcard Hooks/*.xm Sources/*.m) Shared/LocalCleanStatusCCDiagnostics.m
+LocalCleanStatus_FILES = $(wildcard Hooks/*.xm Sources/*.m) Shared/LocalCleanStatusCCDiagnostics.m Shared/LocalCleanStatusCCEnvironment.m
 LocalCleanStatus_CFLAGS = -g -Os -fobjc-arc -I./Headers -I./Sources -I./Shared -fvisibility=hidden -DCLEANSTATUS_STRIP_LOGS=1 -Wall -Wextra
 LocalCleanStatus_FRAMEWORKS = UIKit Foundation CoreFoundation QuartzCore
 LocalCleanStatus_LIBRARIES = substrate
