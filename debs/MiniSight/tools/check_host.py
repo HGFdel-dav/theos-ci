@@ -218,7 +218,7 @@ confirm = tweak[tweak.index('static void MiniSightShowConfirm(void) {'):]
 confirm = confirm[:confirm.index('\n}\n')]
 ok(bool(re.search(r'if \(!MiniSightAlwaysShow\(\) && !gMiniSightBurst\) \{[^}]*return;', show_body)),
    '11a 调用模式 show 缺少活动门禁')
-ok('MiniSightAlwaysShow() || (gMiniSightBurst && wasVisible)' in reload_body and 'MiniSightShow();' in reload_body,
+ok('BOOL shouldShow = gMiniSightBurst || MiniSightAlwaysShow();' in reload_body and 'MiniSightShow();' in reload_body,
    '11b 切换常驻后未主动显示')
 ok('if (!MiniSightShown() || (!MiniSightAlwaysShow() && !gMiniSightBurst)) return;' in confirm,
    '11c 空闲确认通知仍可唤醒窗口')
