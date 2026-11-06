@@ -125,21 +125,22 @@ static BOOL LCSCEnabled(void) {
     BOOL enabled = LCSCEnabled();
     self.title = enabled ? @"系统操作" : @"系统操作（已关闭）";
     if (!enabled) return;
+    __weak typeof(self) weakSelf = self;
     if (LCSCRespringAvailable())
         [self addActionWithTitle:@"注销桌面" glyph:[UIImage systemImageNamed:@"arrow.clockwise.circle"]
-                         handler:^{ [self run:^{ LCSCRespring(); }]; }];
+                         handler:^{ [weakSelf run:^{ LCSCRespring(); }]; }];
     if (LCSCToolAvailable(@"killall"))
         [self addActionWithTitle:@"安全模式" glyph:[UIImage systemImageNamed:@"shield.lefthalf.filled"]
-                         handler:^{ [self run:^{ LCSCSafeMode(); }]; }];
+                         handler:^{ [weakSelf run:^{ LCSCSafeMode(); }]; }];
     if (LCSCUserspaceAvailable())
         [self addActionWithTitle:@"用户空间重启" glyph:[UIImage systemImageNamed:@"exclamationmark.arrow.triangle.2.circlepath"]
-                         handler:^{ [self run:^{ LCSCUserspaceReboot(); }]; }];
+                         handler:^{ [weakSelf run:^{ LCSCUserspaceReboot(); }]; }];
     if (LCSCRebootAvailable())
         [self addActionWithTitle:@"重新启动" glyph:[UIImage systemImageNamed:@"restart"]
-                         handler:^{ [self run:^{ LCSCReboot(); }]; }];
+                         handler:^{ [weakSelf run:^{ LCSCReboot(); }]; }];
     if (LCSCShutdownAvailable())
         [self addActionWithTitle:@"关机" glyph:[UIImage systemImageNamed:@"power"]
-                         handler:^{ [self run:^{ LCSCShutdown(); }]; }];
+                         handler:^{ [weakSelf run:^{ LCSCShutdown(); }]; }];
 }
 - (void)run:(void (^)(void))action {
     if (self.busy) return;
