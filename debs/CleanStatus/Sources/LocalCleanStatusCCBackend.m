@@ -52,7 +52,6 @@ typedef struct {
 @property(nonatomic) BOOL scanRunning;
 @end
 
-static void *LCSCCWiFiHandle;
 static LCSCWiFiAPI LCSCCWiFi;
 static NSString * const LCSCCWiFiFramework = @"/System/Library/PrivateFrameworks/MobileWiFi.framework/MobileWiFi";
 
