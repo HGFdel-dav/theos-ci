@@ -28,13 +28,13 @@ typedef NS_ENUM(NSInteger, MiniSightPetState) {
 
 static const NSInteger kMiniSightPetRows = 9;
 static const NSInteger kMiniSightPetMaxCols = 8;
-static const NSTimeInterval kMiniSightSpriteInterval = 1.0 / 7.0;
+static const NSTimeInterval kMiniSightSpriteInterval = 1.0 / 15.0;
 
 // Roaming delays. Only the delay between actions changes; FPS never does.
-static const NSTimeInterval kMiniSightRoamActiveLo = 2.0;   // activityActive == YES
-static const NSTimeInterval kMiniSightRoamActiveHi = 5.0;
-static const NSTimeInterval kMiniSightRoamIdleLo = 9.0;     // activityActive == NO (resident idle)
-static const NSTimeInterval kMiniSightRoamIdleHi = 15.0;
+static const NSTimeInterval kMiniSightRoamActiveLo = 1.2;   // activityActive == YES
+static const NSTimeInterval kMiniSightRoamActiveHi = 3.5;
+static const NSTimeInterval kMiniSightRoamIdleLo = 4.0;     // activityActive == NO (resident idle)
+static const NSTimeInterval kMiniSightRoamIdleHi = 8.0;
 
 static const double kMiniSightWalkSpeed = 160.0;            // points per second
 static const double kMiniSightWalkMinDuration = 0.55;

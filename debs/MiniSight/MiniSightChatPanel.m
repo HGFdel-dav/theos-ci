@@ -313,7 +313,7 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
     _appearancePreferences = [appearancePreferences copy] ?: @{};
     [self updateAppearance];
     [self rebuildQuickRow];
-    self.quickScroll.hidden = ![self.appearancePreferences[@"quick"] boolValue];
+    self.quickScroll.hidden = YES;
     self.messagesDirty = YES;
     if (self.built) [self layoutForCurrentScreen];
 }
@@ -383,7 +383,7 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
     ]];
 
     UIView *composer = [UIView new];
-    composer.layer.cornerRadius = 15;
+    composer.layer.cornerRadius = 17;
     composer.layer.cornerCurve = kCACornerCurveContinuous;
     composer.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
     composer.layer.shadowColor = UIColor.blackColor.CGColor;
@@ -393,7 +393,7 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
     [controller.view addSubview:composer];
     self.cardView = composer;
     UIVisualEffectView *blur = [[UIVisualEffectView alloc] initWithEffect:nil];
-    blur.layer.cornerRadius = 15;
+    blur.layer.cornerRadius = 17;
     blur.clipsToBounds = YES;
     blur.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     [composer addSubview:blur];
@@ -531,6 +531,23 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
 
 #pragma mark Presentation
 
+- (void)animatePresentationIn {
+    if (!self.window || self.window.alpha > 0.9) return;
+    self.window.alpha = 0.0;
+    UIView *body = self.composerVisible ? self.cardView : self.messageStack;
+    body.alpha = 0.0;
+    body.transform = CGAffineTransformConcat(CGAffineTransformMakeScale(0.94, 0.94),
+                                             CGAffineTransformMakeTranslation(0, 6));
+    [UIView animateWithDuration:0.30 delay:0
+         usingSpringWithDamping:0.82 initialSpringVelocity:0.15
+                        options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
+                     animations:^{
+        self.window.alpha = 1.0;
+        body.alpha = 1.0;
+        body.transform = CGAffineTransformIdentity;
+    } completion:nil];
+}
+
 + (BOOL)showInWindowScene:(UIWindowScene *)scene {
     return [[self sharedPanel] showInWindowScene:scene];
 }
@@ -563,6 +580,7 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
     [self layoutForCurrentScreen];
     if (!self.visible) return NO;
     self.window.hidden = NO;
+    [self animatePresentationIn];
     self.editorWindow.hidden = !self.editorActive;
     [self observeKeyboard:YES];
     if (self.editorActive) {
@@ -749,6 +767,7 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
     if (self.composerVisible) return;
     self.composerVisible = YES;
     [self layoutForCurrentScreen];
+    [self animatePresentationIn];
     [self activateEditor];
     MSDiagEvent(@"chat", @"composer", @"ok", @{ @"source": @"pet_second_tap" });
 }
@@ -756,6 +775,7 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
 - (void)revealComposer {
     self.composerVisible = YES;
     [self layoutForCurrentScreen];
+    [self animatePresentationIn];
     MSDiagEvent(@"chat", @"composer", @"ok", @{ @"source": @"bubble_tap", @"sending": @(self.sending) });
 }
 
@@ -925,8 +945,8 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
         content += MAX(0, self.rows.count - 1) * 6 + 8;
         self.measuredMessageHeight = MIN(content, [self configuredHeight]);
     }
-    CGFloat barHeight = 30;
-    CGFloat barWidth = MIN(274 * [self scaleFor:@"bubbleScale" fallback:1], MAX(200, safe.size.width - 16));
+    CGFloat barHeight = 34;
+    CGFloat barWidth = MIN(212 * [self scaleFor:@"bubbleScale" fallback:1], MAX(176, safe.size.width - 16));
     CGFloat centerX = CGRectGetMidX(pet) + self.chatOffset.x;
     CGFloat barX = MIN(MAX(CGRectGetMinX(safe), centerX - barWidth * .5), CGRectGetMaxX(safe) - barWidth);
     CGFloat keyboardLimit = self.keyboardTop > 0 ? self.keyboardTop - 6 : CGRectGetMaxY(safe);
@@ -976,6 +996,7 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
     self.moreButton.hidden = width < 150;
     CGFloat quickH = (self.quickScroll && !self.quickScroll.hidden) ? 28 : 0;
     if (quickH > 0) {
+            self.quickScroll.hidden = YES;
         self.quickScroll.frame = CGRectMake(CGRectGetMinX(self.cardView.frame), CGRectGetMinY(self.cardView.frame) - 34,
                                             MIN(width, self.quickRow.intrinsicContentSize.width), 28);
         self.quickRow.frame = CGRectMake(0, 0, self.quickRow.intrinsicContentSize.width, 28);
@@ -1071,6 +1092,9 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
     CGFloat textScale = [self scaleFor:@"textScale" fallback:1];
     if (fabs(textScale - 1) > 0.01) bubble.label.font = [UIFont systemFontOfSize:12.5 * textScale];
     if (role == MiniSightChatRoleNotice) bubble.label.textColor = UIColor.secondaryLabelColor;
+    bubble.alpha = 0.0;
+    bubble.transform = CGAffineTransformConcat(CGAffineTransformMakeScale(0.96, 0.96),
+                                               CGAffineTransformMakeTranslation(0, 5));
     NSLayoutConstraint *width = [bubble.widthAnchor constraintLessThanOrEqualToAnchor:self.messageStack.widthAnchor];
     [self.messageStack addArrangedSubview:bubble];
     width.active = YES; // Activate only after a common ancestor exists.
@@ -1079,6 +1103,11 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
     [self trimMessages];
     [self layoutForCurrentScreen];
     [self scrollToBottom];
+    [UIView animateWithDuration:0.22 delay:0
+         usingSpringWithDamping:0.86 initialSpringVelocity:0.1
+                        options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
+                     animations:^{ bubble.alpha = 1.0; bubble.transform = CGAffineTransformIdentity; }
+                     completion:nil];
 }
 
 - (void)appendNotice:(NSString *)text {
@@ -1184,12 +1213,19 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
     self.sendButton.hidden = YES;
     [self appendNotice:@"⋯"];
     self.pendingBubble = (MiniSightChatBubble *)self.rows.lastObject;
+    self.pendingBubble.alpha = 1.0;
+    [UIView animateWithDuration:0.62 delay:0.1
+                        options:UIViewAnimationOptionRepeat | UIViewAnimationOptionAutoreverse |
+                                UIViewAnimationOptionAllowUserInteraction | UIViewAnimationOptionBeginFromCurrentState
+                     animations:^{ self.pendingBubble.alpha = 0.35; }
+                     completion:nil];
 }
 
 - (void)endSendingUI {
     self.sending = NO;
     self.cancelButton.hidden = YES;
     if (self.pendingBubble) {
+        [self.pendingBubble.layer removeAllAnimations];
         [self.messageStack removeArrangedSubview:self.pendingBubble];
         [self.rows removeObject:self.pendingBubble];
         [self.pendingBubble removeFromSuperview];

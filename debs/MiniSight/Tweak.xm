@@ -93,6 +93,8 @@ static NSUInteger gMiniSightRecorderConfigGeneration = 0;
 static NSUInteger gMiniSightActivityReadGeneration = 0;
 static dispatch_source_t gMiniSightPresentationTimer;
 static BOOL gMiniSightUserHidden = NO;
+static NSInteger gMiniSightAppliedRenderer = -1;
+static NSInteger gMiniSightAppliedStyle = -1;
 static void MiniSightReconcileAppPresentation(void);
 static NSString *MiniSightRecorderIssueText(MiniSightRecorderIssue issue, NSInteger code, MiniSightRecorderSaveStage stage);
 static void MiniSightInstallRecorderCallbacks(void);
@@ -457,7 +459,7 @@ static NSString *const kMiniSightCenterY   = @"MiniSightCenterY";
 static NSString *const kMiniSightText      = @"Minis 操作中";
 // 版本号：与 DEBIAN/control 的 Version 同步。诊断日志会打印它，
 // 便于装机后确认跑的是哪一版（strings MiniSight.dylib | grep 也能看到）。
-static NSString *const kMiniSightVersion   = @"0.8.0";
+static NSString *const kMiniSightVersion   = @"0.8.1";
 
 #pragma mark - 全局状态
 
@@ -1586,6 +1588,8 @@ static void MiniSightShowAfterOwnershipCheck(void) {
     }
 
     // 重力包络参与布局，必须在第一次 UpdateGeometry 前设置。
+    gMiniSightAppliedRenderer = MiniSightRenderer();
+    gMiniSightAppliedStyle = MiniSightStyle();
     gMiniSightPet.gravityEnabled = MiniSightGravityEnabled();
     MiniSightUpdateGeometry();
     MiniSightApplySavedCenter(YES);
@@ -1676,19 +1680,69 @@ static void MiniSightDestroyUI(void) {
 }
 
 /// 设置变了：按新设置重建（样式/常驻立即生效，不用注销）
-static void MiniSightReloadSettings(void) {
-    [MiniSightRuntimeConfig.shared reloadWithContainer:gMiniSightContainer];
-    MSDiagEvent(@"settings", @"reload", @"pending", @{ @"source": @"plugin", @"reason": @"darwin_notification" });
+static void MiniSightApplySettingsLive(void) {
+    if (!gMiniSightWindow) return;
+    NSInteger appearanceMode = MiniSightRuntimeConfig.shared.darkMode;
+    gMiniSightWindow.overrideUserInterfaceStyle =
+        appearanceMode == 1 ? UIUserInterfaceStyleLight
+        : (appearanceMode == 2 ? UIUserInterfaceStyleDark : UIUserInterfaceStyleUnspecified);
+    MiniSightChatPanel *panel = MiniSightChatPanel.existingPanel;
+    panel.appearancePreferences = gMiniSightPreferences ?: @{};
+    if (!MiniSightShown() || MiniSightAppOwnsPresentation()) { MiniSightHide(); return; }
     BOOL wasVisible = gMiniSightWindow && !gMiniSightWindow.hidden;
-    MiniSightStopGravity();
-    MiniSightDestroyUI();
-    MiniSightRequestResources(YES, ^{
-        if (!MiniSightShown()) return;
-        if (MiniSightAlwaysShow() || (gMiniSightBurst && wasVisible)) MiniSightShow();
-        else MiniSightBuildUI();
-    });
+    if (MiniSightAlwaysShow()) {
+        if (!wasVisible) { MiniSightShow(); return; }
+    } else if (!gMiniSightBurst) {
+        if (wasVisible) MiniSightHide();
+        MiniSightBuildUI();
+        return;
+    }
+    if (gMiniSightPet) {
+        gMiniSightPet.gravityEnabled = MiniSightGravityEnabled();
+        gMiniSightPet.longPressEnabled = MiniSightLongPressEnabled();
+        gMiniSightPet.interactionActive = NO;
+        gMiniSightPet.reducedWork = [NSProcessInfo processInfo].lowPowerModeEnabled;
+    }
+    MiniSightApplyRuntimeConfig();
+    MiniSightRefreshChatAnchor();
 }
 
+static void MiniSightReloadSettings(void) {
+    // Preferences-only refresh. The old path forced a full atlas request and
+    // destroyed the window before a rebuild, which is what made every switch
+    // take 10+ seconds. Only a renderer/style change needs that rebuild.
+    [MiniSightResources refreshPreferences:^(NSString *container, NSDictionary *preferences) {
+        if (container.length) gMiniSightContainer = [container copy];
+        gMiniSightPreferences = [preferences copy] ?: @{};
+        if (container.length) {
+            NSString *shownPath = [container stringByAppendingPathComponent:@"Documents/MiniSight/shown"];
+            NSString *shownText = [NSString stringWithContentsOfFile:shownPath encoding:NSUTF8StringEncoding error:nil];
+            gMiniSightShown = ![shownText isEqualToString:@"0"];
+        }
+        [MiniSightRuntimeConfig.shared reloadWithContainer:gMiniSightContainer];
+        MiniSightConfigureRecorder();
+        MSDiagSettingsSnapshot(@"receive", @"plugin", gMiniSightPreferences);
+        MSDiagEvent(@"settings", @"reload", @"ok", @{ @"source": @"plugin", @"reason": @"darwin_notification" });
+
+        NSInteger renderer = MiniSightRenderer();
+        NSInteger style = MiniSightStyle();
+        BOOL structural = renderer != gMiniSightAppliedRenderer || style != gMiniSightAppliedStyle;
+        BOOL wasVisible = gMiniSightWindow && !gMiniSightWindow.hidden;
+        if (structural) {
+            gMiniSightAppliedRenderer = renderer;
+            gMiniSightAppliedStyle = style;
+            BOOL shouldShow = gMiniSightBurst || MiniSightAlwaysShow();
+            MiniSightStopGravity();
+            MiniSightDestroyUI();
+            MiniSightRequestResources(YES, ^{
+                if (!MiniSightShown() || MiniSightAppOwnsPresentation()) return;
+                if (shouldShow) MiniSightShow(); else MiniSightBuildUI();
+            });
+            return;
+        }
+        MiniSightApplySettingsLive();
+    }];
+}
 
 #pragma mark - 说话气泡（只在 MCP 调用时）
 
@@ -2109,10 +2163,9 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
         return;
     }
     if ([note isEqualToString:kMiniSightSettingsChanged]) {
-        // 设置是异步落盘的，等一拍再读；否则第一次收到通知读到的还是旧值,
-        // 表现为要拨两次开关才生效。
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{ MiniSightReloadSettings(); });
+        // App 在发通知前已经写好 plist/runtime.json，读盘不再需要 0.25s 等待；
+        // 立即回主线程应用，开关随拨随生效。
+        dispatch_async(dispatch_get_main_queue(), ^{ MiniSightReloadSettings(); });
         return;
     }
 
