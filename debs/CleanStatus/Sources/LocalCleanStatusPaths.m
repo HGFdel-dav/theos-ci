@@ -31,7 +31,7 @@ static NSString *LCSCHiddenRoot(void) {
         }
         if (!candidate.length) {
             Dl_info info;
-            if (dladdr((__bridge void *)LCSCHiddenRoot, &info) && info.dli_fname)
+            if (dladdr((void *)LCSCHiddenRoot, &info) && info.dli_fname)
                 candidate = [NSString stringWithUTF8String:info.dli_fname].stringByDeletingLastPathComponent;
         }
         if (candidate.length && access([candidate stringByAppendingPathComponent:@"usr/bin"].fileSystemRepresentation, F_OK) == 0)
