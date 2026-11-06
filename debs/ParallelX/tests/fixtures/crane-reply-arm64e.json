@@ -1,0 +1,47 @@
+{
+  "sample_fat_sha256": "93bf47dfe0c4cde45da81be16c56c00cb749021998943132a64c9b620f56d311",
+  "sample_arm64e_sha256": "3bae009e733c8585b8151159199c7e7765d45d86428a6f544a249f5af77f4497",
+  "method": "setActiveContainerIdentifier:forApplicationWithIdentifier:reloadApplication:usingBiometricsIfNeededWithSuccessHandler:",
+  "method_imp": 34004,
+  "encoding": "v44@0:8@16@24B32@?36",
+  "settings_key": "requireBiometricAuthentication",
+  "set_active_stub": 67008,
+  "instructions": [
+    {
+      "address": 34180,
+      "label": "requires_auth_false_branch",
+      "word": 872417408
+    },
+    {
+      "address": 34468,
+      "label": "plain_switch_call",
+      "word": 2483036103
+    },
+    {
+      "address": 34488,
+      "label": "plain_reply_flag_no",
+      "word": 1384120321
+    },
+    {
+      "address": 34492,
+      "label": "plain_reply_invoke",
+      "word": 3611232552
+    },
+    {
+      "address": 34600,
+      "label": "authenticated_switch_call",
+      "word": 2483036070
+    },
+    {
+      "address": 34620,
+      "label": "authenticated_reply_flag_yes",
+      "word": 1384120353
+    },
+    {
+      "address": 34648,
+      "label": "authenticated_reply_invoke",
+      "word": 3609135202
+    }
+  ],
+  "boundary": "static proof only; not executed on iOS by this test"
+}

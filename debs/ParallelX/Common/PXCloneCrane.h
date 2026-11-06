@@ -31,12 +31,16 @@ typedef NS_ENUM(NSInteger, PXCloneCraneError) {
 
 + (NSString *)activeContainerForBundle:(NSString *)bundleID;
 + (BOOL)containerExists:(NSString *)containerID forBundle:(NSString *)bundleID;
-// Authenticated Crane switch with reloadApplication:NO. The controller owns
-// the watchdog; a late biometric callback must remain observable.
-+ (BOOL)switchContainer:(NSString *)containerID
-              forBundle:(NSString *)bundleID
-             completion:(void (^)(BOOL ok, NSError * _Nullable error))completion
-                  error:(NSError **)error;
+// Requests Crane's normal authentication path with reloadApplication:NO.
+// Return value means the request was started, not that it switched accounts.
+// The reply BOOL is the RAW Crane callback flag, NOT a success flag: Crane's
+// no-biometric branch sets the container, then replies NO (arm64e 0x86a4..bc).
+// Every real reply must reach the controller's bounded active-container check.
+// Errors/throwing before a reply are returned via error; no synthetic reply.
++ (BOOL)requestSwitchToContainer:(NSString *)containerID
+                       forBundle:(NSString *)bundleID
+                           reply:(void (^)(BOOL rawAuthenticationFlag))reply
+                           error:(NSError **)error;
 
 @end
 

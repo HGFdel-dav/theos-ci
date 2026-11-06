@@ -1,35 +1,40 @@
-# clone0.8 本轮对照与本地验证
+# clone0.9 历史对照与回归修复结果
 
 ## 结论边界
-这是源码修复和静态证据，未编译 iOS、未安装、未做真机 A→B→A。不能把下列通过等同运行修好。
+本地纯静态/主机检查，不是 iOS 编译，更不是真机。未推送、未安装、未注销、未重启。
 
-## 已复核事实
-1. **菜单项为自定义动作不等于只能全屏。** alpha391 `PXPanelEntry +externalOpenApplication:` ObjC入口0x29be8（v24@0:8@16）→Swift helper0x537fc→0x2971c→0x33e28创建窗口、host/canvas/overlay；0x35eb8载入`openApplication:inView:keyboardOverlay:completion:`，0x35ed4传bundle/view/overlay和非空completion实际调用。旧回答「externalOpen就是全屏入口」缺证据，已纠正。
-2. **原生托管ABI** `PXSceneBridge -openApplication:inView:keyboardOverlay:completion:` 0x65fc8，v48@0:8@16@24@32@?40。0x667e8/0x667ec向completion传YES，0x66284/0x66288传NO；原生builder Block descriptor0x86328+32→0x7526d为`v12@?0B8`。本轮保留它完整views/原始completion，只包装令牌/单次完成/回调观测。
-3. **旧场景查询找错类。** `+sharedBridge`在PXSceneBridge（0x5c444），不在PXPanelEntry。且原版可能创建独立bridge，单例有无scene不等于所有窗口已释放；本轮跟踪真实开窗收到的bridge（弱表），关闭后检查scene/canvas。
-4. **按bundle关闭原生上下文。** `PXPanelEntry +switcherRemovedApplication:` 0x299a0，v24@0:8@16→0x526f8：匹配当前hostedBundle才调0x22f40；遍历停靠host，仅匹配同bundle的调0x23870。当前host helper移除视图，0x234b4..0x234d4按flag选择close/closeForFullscreen；此入口传0，走close。停靠helper0x2398c removeFromSuperview、0x23a20..0x23a38 close。`PXSceneBridge -close`0x66c44递增generation、清scene/bundle/canvas、释放托管和键盘。不是close-all，不调用closeApplicationAndRemoveSwitcherCard（后者可kill9）。
-5. **ScreenCore 2.0.5顺序证据。** 包SHA256 `4081026da03c7b2b8f2c4ccef444aa2a26b389c740199c6eb7de2aa428dad0e5`；arm64e不同容器分支0x49cf8 sc_beginClosing，0x49ddc stopSceneForSession completion；此Block descriptor0x99928+32→0x79c39=`v8@?0`。后续0x4a628调用terminateApplicationForContainerSwitch...，SCSystemSceneDriver 0x5c868通过FBSystemService sharedInstance请求`terminateApplication:forReason:andReport:withDescription:completion:`；全局completion descriptor0x985a8+16→0x79c39=`v8@?0`。0x5d1e4用FBProcessManager的applicationProcessesForBundleIdentifier:/processesForBundleIdentifier:和isRunning；0x5d6ac轮询，60次×0.1s上限，不能把termination请求当退出完成。本轮复用顺序，原生PX负责窗口，不搬SC引擎。
-6. **真实Crane ABI复核。** 从设备只读读取libcrane.dylib（FAT SHA256 `93bf47dfe0c4cde45da81be16c56c00cb749021998943132a64c9b620f56d311`）并静态分arm64e（非注入/执行）。`-setActiveContainerIdentifier:forApplicationWithIdentifier:usingBiometricsIfNeededWithSuccessHandler:`0x84c8把w4设1，即默认reload=YES。显式reload版0x84d4编码v44@0:8@16@24B32@?36。本轮只走后者reload:NO，保留认证，去掉reloadApplication主动拉起造成的全屏竞争。
-7. **新增/改名账号** 使用真实Crane方法`_observers_didChangeContainersOfApplicationWithIdentifier:`（0x67a0/v24@0:8@16）、`_observers_didChangeContainerSettingsForContainerWithIdentifier:onApplicationWithIdentifier:`（0x68d8/v32@0:8@16@24），加PXPanelEntry -dragHandle:（0x32224/v24@0:8@16）Began后后台合并刷新。目录/隐藏状态未变时不重新编码PNG/重写5个偏好值/发dock通知。
+## 已确认的回调误判
 
-## 源码行为
-- 所有虚拟账号仅进一个串行控制器：清旧PX上下文→验证scene/canvas释放→请求旧进程退出并核对旧process/PID与当前列表→Crane认证reload:NO→active回读→完整原生分屏builder→completion+真实surface+可见层级/屏内区域检查。
-- 当前账号的已验证PID和容器均一致才可复用；否则宁可清场重启同账号，不拿仅active配置当运行账号证据。
-- 新点击只留一个最新pending。认证尚未回调时不取消/并发切换；超45s进入隔离等待，迟到回调收尾后才处理最新账号。快速A→B→A不再被0.8s全局去重吞掉。
-- 失败有短提示，严格停止，不全屏兜底。仅Opening阶段、仅当前bundle阻止PX openFullscreenApplication分支；普通应用/桌面打开不改。
-- 最多32条不含账号名/消息/凭据的阶段证据，写入PXCloneCurrentPrefsPath派生的同隐根`.launch-trace.plist`，路径缓存、异步原子写；不依赖当场抓日志，不写真实var。
+## 根因
+- 当前设备`/usr/lib/libcrane.dylib`（FAT 93bf47df…，arm64e薄片）`-setActiveContainerIdentifier:forApplicationWithIdentifier:reloadApplication:usingBiometricsIfNeededWithSuccessHandler:`@0x84d4。
+- 0x8580读取requireBiometricAuthentication（0xf680 boolValue），为0由0x8584跳到0x8694；0x86a4调用setActiveContainer...reload:（resolver 0x105c0），随后0x86b8 `mov w1,#0`，0x86bc调用callback。认证路径0x8728也调用setActive，0x873c `mov w1,#1`。
+- 因此该回调的BOOL只是**认证标志**，不是统一成功标记。clone0.8与旧版认证兜底都用`success && active==target`，把无需认证的正常切换误判失败，甚至没有active回读。
+- 旧版本大多先走不带callback的直接接口，所以旧故障不一定暴露；clone0.8把它变成主路径。
+
+## 本轮改动
+- Crane接口改名`requestSwitchToContainer:reply:error:`；reply只转原始BOOL；`PXCloneFlowAcceptCraneReply`把NO、YES都转Verifying；只有active==target并可见才Open。保留Crane原认证、reload:NO、旧进程退出、A→B→A最新目标、超时隔离。真实回调未达仍Quarantined，不会轮询active偷开。
+- 新增`tests/fixtures/crane-reply-arm64e.json`固化真实0x8584/0x86a4/0x86b8/0x86bc/0x8728/0x873c/0x8758字和分支偏移。测试反汇编BL偏移，核对setActive stub，不只按名字。
+- 根因修复后，旧“raw NO=失败”模型全部更新。
+
+## 诊断缺失
+- 旧`PXCloneActiveRoot`只jbroot→realpath→必须canonical `.jbroot-*`，不扫描、不缓存、失败无回退；record又忽略EnsureStorage/路径/写盘错误。因此记录可能从未落盘而仍只弹账号错误。
+- 新`PXCloneRootPolicy.h`生产C规则：仅AppGroup `.jbroot-*`；明确排除Bundle/Application（常指向//）和真实var；rootless才接受非/的canonical /var/jb。
+- Paths先官方jbroot，失败再对AppGroup（rootfs与物理路径两入口，最多256项）按含本插件dylib、MobileSubstrate、usr/lib评分取高，同分mtime新，dev/ino去重；成功后进程缓存。UUID不硬编码。
+- EnsureStorage在包括一切mkdir前核对Library/Prefs父目录和既有目录canonical都在选中根内；锁保留O_NOFOLLOW并做额外检查。
+- 诊断走`PXCloneTrace`：固定Preferences目录fd，openat O_EXCL临时、fchmod0600、fsync、renameat、按字节读回，读写前后都复核根/父目录dev/ino及canonical containment；父目录被改例或文件又是symlink即失败，不跟随写其他位置。
+- 失败不是默默return：Darwin notify state + 账号页顶部状态行；Launch首次出现具体状态时toast，同一状态不连续刷屏，不阻止账号操作。
+- 迁移兼容：读CFPreferences已存的CXStore包装、不双重包裹；仅过核验的源去清理；清理前再比内容和指纹；按dev/ino 排除当前域的rootfs/alias别名。旧源全部未过核验时保留文件不删。
 
 ## 本地检查
-- 完整tools/validate.py：103项host测试通过；原版DEB精确哈希、vendor16文件逐字节、plists、roothide/rootless维护脚本、control一致、结构/unused守卫均过。
-- 生产C阶段门禁直接在主机编译运行：85,040断言（这不是编译iOS插件）。覆盖回环、跳阶段、旧令牌、错误账号、待切新目标、未可见、认证超时隔离等。
-- Python队列/菜单测试为确定性模型与源码约束，不假称执行ObjC私有服务或真机测试。
-- 本机Objective-C tree-sitter解析器调用发生Segmentation fault；无可用语法/类型检查结果，未记为通过。iOS ARC/类型/链接/PAC/包维护脚本与签名须CI再验。
+- `tools/validate.py`全过：114项host、vendor 16文件逐字节、baseline DEB hash、plists、两scheme维护脚本/control、结构/unused/版本守卫。- 生产C直接主机编译执行：85068条Flow；916条root alias/rank/containment；29条真实目录atomic写/0600/读回/symlink/父目录改名。C编過-Wall -Wextra -Werror。
+- 均为host，不执行ObjC私有服务；无iOS compiler、无真机。tree-sitter ObjC解析器仍Segfault，未计语法检。
 
 ## 未验证与风险
-- 设备FBSystemService/FBProcessManager的实际运行时编码、权限与响应未调用；源码在使用前逐参校验（reason允许q/i），不可用则显式失败而不乱调。
-- 旧窗口异步关闭、原生scene generation取消、认证弹层和分屏可见判据均待真机。可见不等于画面可交互或真实登录账号已人工验收。
-- Crane从未返回的认证无法安全撤销：超时会提示并阻止并发，不承诺安全重试；不会放行旧回调打开错误账号。
-- 若最后一个分身删除导致目录完全空，仍保留既有空目录不删行保护；点击时实时containerExists阻断被删目标，未来独立处理空目录删除UX。
+- 全新root discovery的SpringBoard真实jbroot/realpath尚未采样；新选择器未在设备执行。不能声称路径本因已定。
+- 父目录dev/ino是防常见替换，不是无锁的全openat O_PATH链；极端并发在核验与renameat间改父目录仍未完全排除，会在写后复核报未确认。
+- 新认证请求仍依赖真实Crane回调；用户取消/无回调是quarantine等待，不会自动成功。权限与运行时ABI待CI/真机。
+- 删最后一个分身仍保留现有空目录不删行保护。
+- CI / DEB构验 / 安装 / 注销重启 / 真机A-B-A和新增C均未做。
 
-## 状态
-本地候选clone0.8；已获用户本轮commit/push/CI授权，当前推进至GitHub CI；未安装/注销/重启，原clone0.7交付包未改。只读设备取库未修改设备或设置。
+## 文件不动的边界
+vendor alpha391、普通应用打开、菜单视觉和排序、CXStore偏好主接口、账号开关面板结构均未改。`Common/PXClonePrefs.m`只改了旧迁移读/清理路径，不改每次开关的CFPreferences读写。

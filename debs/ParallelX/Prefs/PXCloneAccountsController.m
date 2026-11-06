@@ -1,6 +1,8 @@
 #import "PXCloneAccountsController.h"
 #import "../Common/PXCloneCrane.h"
 #import "../Common/PXClonePrefs.h"
+#import "../Common/PXCloneTrace.h"
+#import <notify.h>
 #import <Preferences/PSSpecifier.h>
 
 
@@ -10,6 +12,7 @@
     BOOL _visible;
     NSString *_storageErrorText;
     PSSpecifier *_errorSpecifier;
+    int _traceNotifyToken;
 }
 @end
 
@@ -20,8 +23,13 @@
     if (self) {
         _generation = 0;
         _visible = NO;
+        _traceNotifyToken = -1;
     }
     return self;
+}
+
+- (void)dealloc {
+    if (_traceNotifyToken >= 0) notify_cancel(_traceNotifyToken);
 }
 
 #pragma mark - Specifiers (main thread, memory only)
@@ -64,6 +72,12 @@
         _storageErrorText = storageError.localizedDescription;
         _errorSpecifier = [self groupNamed:@"存储状态" footer:_storageErrorText];
         [specifiers addObject:_errorSpecifier];
+    }
+
+    PXCloneTraceState traceState = [PXCloneTrace state];
+    if (traceState != PXCloneTraceStateUnknown) {
+        [specifiers addObject:[self groupNamed:@"切换记录"
+                          footer:[PXCloneTrace descriptionForState:traceState]]];
     }
 
     if (![PXCloneCrane prepareManager]) {
@@ -131,6 +145,16 @@
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     _visible = YES;
+    if (_traceNotifyToken < 0) {
+        __weak typeof(self) observer = self;
+        if (notify_register_dispatch(PXCloneTraceNotification.UTF8String, &_traceNotifyToken,
+                                     dispatch_get_main_queue(), ^(int token) {
+            (void)token;
+            PXCloneAccountsController *controller = observer;
+            if (controller && controller->_visible && controller.isViewLoaded)
+                [controller rebuildAndReload];
+        }) != NOTIFY_STATUS_OK) _traceNotifyToken = -1;
+    }
     NSUInteger generation = ++_generation;
     __weak typeof(self) weakSelf = self;
     // Load the store before the catalog: until the store is loaded every switch

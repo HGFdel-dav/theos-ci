@@ -37,11 +37,14 @@ class QueueModel:
         self.auth_outstanding = True
         return self.token
 
-    def switch_returned(self, token, success=True):
+    def switch_returned(self, token, raw_authentication_flag=False, active_matches=True):
         if token != self.token or not self.auth_outstanding:
             return
+        # A real callback returns both NO/YES; only active readback determines
+        # whether the chosen account may be opened. Never emulate cancellation
+        # by treating the raw NO flag as a failed callback.
         self.auth_outstanding = False
-        if self.pending or self.quarantined or not success:
+        if self.pending or self.quarantined or not active_matches:
             self.drain()
         else:
             self.opened.append(('split', self.current))
@@ -105,10 +108,26 @@ class LaunchQueueTests(unittest.TestCase):
         self.assertFalse(m.auth_outstanding)
         self.assertEqual(m.opened, [])
 
-    def test_auth_failure_never_opens_wrong_account(self):
+    def test_wrong_active_after_callback_never_opens_account(self):
         m = QueueModel()
         m.request('B')
-        m.switch_returned(m.switch_started(), False)
+        m.switch_returned(m.switch_started(), raw_authentication_flag=False, active_matches=False)
+        self.assertEqual(m.opened, [])
+
+    def test_real_no_and_yes_callbacks_both_open_only_after_matching_active(self):
+        for raw in (False, True):
+            m = QueueModel()
+            m.request('B')
+            m.switch_returned(m.switch_started(), raw_authentication_flag=raw, active_matches=True)
+            self.assertEqual(m.opened, [('split', 'B')])
+
+    def test_cancel_without_callback_never_enters_readback_or_open(self):
+        m = QueueModel()
+        m.request('B')
+        m.switch_started()
+        m.timeout()  # Crane has not delivered a callback
+        self.assertTrue(m.auth_outstanding)
+        self.assertTrue(m.quarantined)
         self.assertEqual(m.opened, [])
 
     def test_only_consecutive_duplicate_is_debounced(self):
@@ -139,6 +158,21 @@ class LaunchSourceGuards(unittest.TestCase):
         self.assertNotIn('PXCurrentTransition', TWEAK)
         self.assertNotIn('PXLiveTransitions', TWEAK)
         self.assertNotIn('0.8 * NSEC_PER_SEC', TWEAK)
+
+    def test_raw_crane_flag_never_short_circuits_actual_account_verification(self):
+        callback = CRANE.split('void (^callback)(BOOL)', 1)[1].split('    @try {', 1)[0]
+        self.assertIn('reply(rawAuthenticationFlag)', callback)
+        self.assertNotIn('activeContainerForBundle:', callback)
+        self.assertNotIn('&&', callback)
+        self.assertNotIn('verified', callback)
+        header = (ROOT / 'Common/PXCloneCrane.h').read_text()
+        self.assertIn('NOT a success flag', header)
+        self.assertIn('requestSwitchToContainer:', header)
+        self.assertIn('PXCloneFlowAcceptCraneReply(&self->_flow, token, rawAuthenticationFlag)', LAUNCH)
+        self.assertIn('crane_reply_no', LAUNCH)
+        self.assertIn('crane_reply_yes', LAUNCH)
+        self.assertIn('container_readback_empty', LAUNCH)
+        self.assertIn('container_readback_timeout', LAUNCH)
 
     def test_only_authenticated_no_reload_api(self):
         self.assertIn('reloadApplication:usingBiometricsIfNeededWithSuccessHandler:', CRANE)
@@ -193,21 +227,28 @@ class LaunchSourceGuards(unittest.TestCase):
         self.assertIn('PXRefreshPending', TWEAK)
 
     def test_trace_is_bounded_private_and_same_mapped_domain(self):
-        self.assertIn('@"CXLaunchTrace"', LAUNCH)
+        writer = (ROOT / 'Common/PXCloneTrace.m').read_text()
+        paths = (ROOT / 'Common/PXClonePaths.m').read_text()
         self.assertIn('_trace.count > 32', LAUNCH)
-        self.assertIn('PXCloneCurrentPrefsPath(NULL)', LAUNCH)
-        self.assertIn('PXCloneEnsureStorage(NULL)', LAUNCH)
-        self.assertIn('NSDataWritingAtomic', LAUNCH)
-        self.assertIn('static NSString *tracePath', LAUNCH)
-        self.assertIn('.launch-trace', LAUNCH)
-        self.assertNotIn('/var/mobile/Library/Preferences', LAUNCH)
-        self.assertNotIn('standardUserDefaults', LAUNCH)
-        self.assertNotIn('CFPreferencesSetAppValue', LAUNCH)
-        self.assertNotIn('/var/jb', LAUNCH)
-        self.assertNotIn('jbroot-', LAUNCH)
-        self.assertNotIn('NSLog(', LAUNCH)
-        self.assertNotIn('syslog(', LAUNCH)
-        self.assertNotIn('system(', LAUNCH)
+        self.assertIn('PXCloneTrace writeEvents:snapshot', LAUNCH)
+        self.assertIn('if (self->_reportedTraceState == state)', LAUNCH)
+        self.assertIn('PXCloneCurrentTracePath(&error)', writer)
+        self.assertIn('PXCloneEnsureStorage(&error)', writer)
+        self.assertIn('PXCloneWriteTraceAt(directory,', writer)
+        io = (ROOT / 'Common/PXCloneTraceIO.h').read_text()
+        self.assertIn('renameat(directory, temporary, directory, name)', io)
+        self.assertIn('memcmp(buffer, bytes + consumed', io)
+        self.assertIn('PXTraceDirectoryIsCurrent(rootPath, parent, directory, rootIdentity)', writer)
+        self.assertIn('static NSString *tracePath', writer)
+        self.assertIn('.launch-trace', paths)
+        self.assertNotIn('/var/mobile/Library/Preferences', LAUNCH + writer)
+        self.assertNotIn('standardUserDefaults', LAUNCH + writer)
+        self.assertNotIn('CFPreferencesSetAppValue', LAUNCH + writer)
+        self.assertNotIn('/var/jb', LAUNCH + writer)
+        self.assertNotIn('jbroot-', LAUNCH + writer)
+        self.assertNotIn('NSLog(', LAUNCH + writer)
+        self.assertNotIn('syslog(', LAUNCH + writer)
+        self.assertNotIn('system(', LAUNCH + writer)
 
     def test_no_unscoped_fullscreen_or_url_launch_hooks(self):
         blocked = LAUNCH.split('- (BOOL)blocksFullscreen:(NSString *)bundle {')[1].split('\n}', 1)[0]

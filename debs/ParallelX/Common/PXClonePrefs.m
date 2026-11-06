@@ -136,9 +136,11 @@ static NSDictionary * _Nullable PXCloneNormalizedStore(NSDictionary *store, NSEr
 static NSDictionary * _Nullable PXCloneFileFingerprint(NSString *path) {
     if (![path isKindOfClass:NSString.class] || !path.length) return nil;
     NSDictionary *attributes = [NSFileManager.defaultManager attributesOfItemAtPath:path error:NULL];
-    if (!attributes) return nil;
+    struct stat st;
+    if (!attributes || lstat(path.fileSystemRepresentation, &st) != 0 || !S_ISREG(st.st_mode)) return nil;
     return @{ @"mtime": attributes[NSFileModificationDate] ?: NSDate.distantPast,
-              @"size": attributes[NSFileSize] ?: @0 };
+              @"size": attributes[NSFileSize] ?: @0,
+              @"device": @((unsigned long long)st.st_dev), @"inode": @((unsigned long long)st.st_ino) };
 }
 
 static BOOL PXCloneFingerprintIsNewer(NSDictionary *a, NSDictionary *b) {
@@ -350,11 +352,17 @@ static BOOL PXCloneFingerprintIsNewer(NSDictionary *a, NSDictionary *b) {
 
     NSString *chosenPath = nil;
     NSDictionary *chosen = nil;
+    NSMutableDictionary *sourceSnapshots = [NSMutableDictionary dictionary];
     for (NSString *path in sources) {
         NSDictionary *raw = PXReadDictionary(path, NULL);
         if (!raw) continue;
-        NSDictionary *candidate = PXCloneNormalizedStore(raw, NULL);
+        id domainStore = raw[PXStoreKey];
+        // A previous CFPreferences file wraps the store under CXStore. Import
+        // the actual visibility store, never wrap CXStore a second time.
+        NSDictionary *payload = domainStore ? ([domainStore isKindOfClass:NSDictionary.class] ? domainStore : nil) : raw;
+        NSDictionary *candidate = payload ? PXCloneNormalizedStore(payload, NULL) : nil;
         if (!candidate) continue;
+        sourceSnapshots[path] = raw;
         if (!chosen || PXCloneFingerprintIsNewer(fingerprints[path], fingerprints[chosenPath])) {
             chosen = candidate;
             chosenPath = path;
@@ -380,11 +388,12 @@ static BOOL PXCloneFingerprintIsNewer(NSDictionary *a, NSDictionary *b) {
     }
 
     for (NSString *path in sources) {
-        if ([path isEqualToString:ownPath]) continue;
+        if ([path isEqualToString:ownPath] || PXCloneIsCurrentPrefsFile(path)) continue;
         NSDictionary *before = fingerprints[path];
         NSDictionary *now = PXCloneFileFingerprint(path);
-        if (!now) continue;
-        if (before && ![before isEqual:now]) continue;  // changed mid-copy: keep it
+        if (!before || !now || ![before isEqual:now]) continue;
+        NSDictionary *reviewed = sourceSnapshots[path];
+        if (!reviewed || !PXSameDictionary(reviewed, PXReadDictionary(path, NULL))) continue;
         [[NSFileManager defaultManager] removeItemAtPath:path error:NULL];
     }
 

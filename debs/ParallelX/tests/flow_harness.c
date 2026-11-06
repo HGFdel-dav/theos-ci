@@ -35,7 +35,29 @@ static void test_roundtrip(uint64_t token, bool auth) {
     CHECK(!PXCloneFlowMaySucceed(&flow, token, true, true));
 }
 
+static void test_crane_reply(bool raw) {
+    PXCloneFlow flow = {77, PXCloneFlowAuthenticating};
+    CHECK(!PXCloneFlowAcceptCraneReply(&flow, 76, raw));
+    CHECK(flow.phase == PXCloneFlowAuthenticating);
+    CHECK(PXCloneFlowAcceptCraneReply(&flow, 77, raw));
+    CHECK(flow.phase == PXCloneFlowVerifying);
+    CHECK(!PXCloneFlowAcceptCraneReply(&flow, 77, raw));
+    CHECK(!PXCloneFlowMayOpen(&flow, 77, false, false));
+    CHECK(PXCloneFlowMayOpen(&flow, 77, true, false));
+    CHECK(!PXCloneFlowMayOpen(&flow, 77, true, true));
+    CHECK(PXCloneFlowRelease(&flow, 77));
+    CHECK(!PXCloneFlowAcceptCraneReply(&flow, 77, raw));
+    flow.token = 78;
+    flow.phase = PXCloneFlowAuthenticating;
+    CHECK(PXCloneFlowTimeout(&flow, 78));
+    CHECK(!PXCloneFlowAcceptCraneReply(&flow, 78, raw));
+    CHECK(flow.phase == PXCloneFlowQuarantined);
+    CHECK(!PXCloneFlowMayOpen(&flow, 78, true, false));
+}
+
 int main(void) {
+    test_crane_reply(false); // actual normal no-biometric libcrane branch
+    test_crane_reply(true);  // authenticated libcrane branch
     // The same production gate applies to first A, switched B, returned A,
     // new C, and reused A. No special "second launch" success shortcut.
     for (uint64_t i = 1; i <= 1000; i++) {

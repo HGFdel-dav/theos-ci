@@ -3,6 +3,7 @@
 #import "PXCloneCrane.h"
 #import "PXCloneRuntime.h"
 #import "PXClonePaths.h"
+#import "PXCloneTrace.h"
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 #import <objc/message.h>
@@ -153,7 +154,7 @@ static pid_t PXProcessPID(id process) {
     BOOL _reuse;
     BOOL _terminationRequested;
     NSUInteger _attempt;
-    dispatch_queue_t _traceQueue;
+    PXCloneTraceState _reportedTraceState;
     NSMutableArray *_trace;
 }
 - (void)startPending;
@@ -224,7 +225,7 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     _hostedContainers = [NSMutableDictionary dictionary];
     _hostedPIDs = [NSMutableDictionary dictionary];
     _trace = [NSMutableArray array];
-    _traceQueue = dispatch_queue_create("com.niubiprass.parallelxclone.trace", DISPATCH_QUEUE_SERIAL);
+    _reportedTraceState = PXCloneTraceStateUnknown;
     return self;
 }
 
@@ -394,19 +395,18 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     if (!PXCloneFlowAdvance(&_flow, token, PXCloneFlowTerminating, PXCloneFlowAuthenticating)) return;
     [self record:@"authenticate_without_reload" code:0];
     NSError *error = nil;
-    BOOL started = [PXCloneCrane switchContainer:_container forBundle:_bundle completion:^(BOOL ok, NSError *switchError) {
+    BOOL started = [PXCloneCrane requestSwitchToContainer:_container forBundle:_bundle reply:^(BOOL rawAuthenticationFlag) {
         if (!PXCloneFlowIsCurrent(&self->_flow, token)) return;
+        [self record:rawAuthenticationFlag ? @"crane_reply_yes" : @"crane_reply_no" code:0];
         if (self->_flow.phase == PXCloneFlowQuarantined) {
-            [self record:@"late_authentication_returned" code:ok ? 0 : 7];
+            [self record:@"late_authentication_returned" code:0];
             [self finish:token error:nil]; return;
         }
-        if (self->_flow.phase != PXCloneFlowAuthenticating) return;
-        if (!ok) { [self finish:token error:switchError ?: PXLaunchError(7, @"Crane 账号验证或切换失败")]; return; }
-        if (!PXCloneFlowAdvance(&self->_flow, token, PXCloneFlowAuthenticating, PXCloneFlowVerifying)) return;
+        if (!PXCloneFlowAcceptCraneReply(&self->_flow, token, rawAuthenticationFlag)) return;
         self->_attempt = 0;
         [self verify:token];
     } error:&error];
-    if (!started) { [self finish:token error:error]; return; }
+    if (!started) { [self finish:token error:error ?: PXLaunchError(7, @"Crane 切换请求未启动")]; return; }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 45 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
         if (!PXCloneFlowIsCurrent(&self->_flow, token) || self->_flow.phase != PXCloneFlowAuthenticating) return;
         PXCloneFlowTimeout(&self->_flow, token);
@@ -418,12 +418,19 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
 - (void)verify:(uint64_t)token {
     if (!PXCloneFlowIsCurrent(&_flow, token) || _flow.phase != PXCloneFlowVerifying) return;
     if (_pending) { [self finish:token error:nil]; return; }
-    BOOL verified = [[PXCloneCrane activeContainerForBundle:_bundle] isEqual:_container];
+    NSString *active = [PXCloneCrane activeContainerForBundle:_bundle];
+    BOOL verified = [active isEqual:_container];
     if (PXCloneFlowMayOpen(&_flow, token, verified, _pending != nil)) {
         [self record:@"container_verified" code:0];
         [self openSplit:token]; return;
     }
-    if (++_attempt >= 12) { [self finish:token error:PXLaunchError(9, @"账号回读不一致，未打开错误账号")]; return; }
+    if (_attempt == 0)
+        [self record:active.length ? @"container_readback_mismatch" : @"container_readback_empty" code:9];
+    if (++_attempt >= 12) {
+        [self record:@"container_readback_timeout" code:9];
+        NSString *message = active.length ? @"当前账号未切到目标，已停止打开" : @"Crane 当前账号回读不可用，已停止打开";
+        [self finish:token error:PXLaunchError(9, message)]; return;
+    }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 250 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ [self verify:token]; });
 }
 
@@ -527,28 +534,22 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     // A bounded, content-free event ring survives a missed live log capture.
     // No account display names, credentials, messages or app content.
     NSDictionary *event = @{ @"time": @(NSDate.date.timeIntervalSince1970),
-                             @"build": @"clone0.8", @"token": @(_flow.token),
+                             @"build": @"clone0.9", @"token": @(_flow.token),
                              @"stage": stage, @"code": @(code),
                              @"bundle": _bundle ?: @"", @"targetHash": @(_container.hash) };
     [_trace addObject:event];
     if (_trace.count > 32) [_trace removeObjectAtIndex:0];
     NSArray *snapshot = [_trace copy];
-    dispatch_async(_traceQueue, ^{
-        // A separate plist in the same resolved hidden Preferences directory:
-        // never rewrite CXStore or rely on another CFPreferences path mapping.
-        static NSString *tracePath;
-        if (!tracePath) {
-            if (!PXCloneEnsureStorage(NULL)) return;
-            NSString *prefsPath = PXCloneCurrentPrefsPath(NULL);
-            if (!prefsPath.length) return;
-            tracePath = [[[prefsPath stringByDeletingPathExtension]
-                          stringByAppendingString:@".launch-trace"] stringByAppendingPathExtension:@"plist"];
-        }
-        NSDictionary *document = @{PXCloneLaunchTraceKey: snapshot};
-        NSData *data = [NSPropertyListSerialization dataWithPropertyList:document
-                         format:NSPropertyListBinaryFormat_v1_0 options:0 error:NULL];
-        [data writeToFile:tracePath options:NSDataWritingAtomic error:NULL];
-    });
+    [PXCloneTrace writeEvents:snapshot completion:^(PXCloneTraceState state, NSError *error) {
+        if (!error) { self->_reportedTraceState = state; return; }
+        if (self->_reportedTraceState == state) return;
+        self->_reportedTraceState = state;
+        // Writing errors are visible even if no trace file can be created.
+        // No recursive record() call, no suppression of the account operation.
+        NSString *message = [NSString stringWithFormat:@"%@（阶段 %lu）",
+                              [PXCloneTrace descriptionForState:state], (unsigned long)state];
+        [self showError:message];
+    }];
 }
 
 - (void)showError:(NSString *)message {

@@ -43,6 +43,15 @@ static inline bool PXCloneFlowAdvance(PXCloneFlow *flow, uint64_t token,
     return true;
 }
 
+// The raw callback flag is intentionally NOT treated as success/failure.
+// Both real NO (no biometric needed) and YES replies enter verification.
+// Authentication cancellation with no callback must not call this function.
+static inline bool PXCloneFlowAcceptCraneReply(PXCloneFlow *flow, uint64_t token,
+                                               bool rawAuthenticationFlag) {
+    (void)rawAuthenticationFlag;
+    return PXCloneFlowAdvance(flow, token, PXCloneFlowAuthenticating, PXCloneFlowVerifying);
+}
+
 static inline bool PXCloneFlowMayOpen(const PXCloneFlow *flow, uint64_t token,
                                       bool containerVerified, bool hasNewerTarget) {
     return PXCloneFlowIsCurrent(flow, token) && flow->phase == PXCloneFlowVerifying &&

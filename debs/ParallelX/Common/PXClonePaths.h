@@ -17,14 +17,18 @@ typedef NS_ENUM(NSInteger, PXClonePathsError) {
     PXClonePathsErrorNotWritable,
 };
 
-// The only authority for where this tweak writes. The current root is always
-// the official jbroot() conversion; callers never scan for a "best" root.
-// Returns the canonical (realpath) active root without trailing slash.
+// One authority for all writes: official jbroot conversion first, then a
+// bounded physical AppGroup discovery ranked module > MobileSubstrate > usr/lib
+// and newest mtime. Successful selection is cached for the process lifetime.
+// Returns a canonical hidden root, never a Bundle/Application // alias.
 NSString * _Nullable PXCloneActiveRoot(NSError **error);
 
 // <active-root>/var/mobile/Library/Preferences/com.niubiprass.clonex.plist
 NSString * _Nullable PXCloneCurrentPrefsPath(NSError **error);
 NSString * _Nullable PXCloneCurrentLockPath(NSError **error);
+NSString * _Nullable PXCloneCurrentTracePath(NSError **error);
+// Read-only identity check; different rootfs paths may name the live domain.
+BOOL PXCloneIsCurrentPrefsFile(NSString *path);
 
 // Creates the hidden Preferences directory and the O_NOFOLLOW lock file.
 BOOL PXCloneEnsureStorage(NSError **error);

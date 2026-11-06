@@ -1,5 +1,6 @@
 #import "PXClonePaths.h"
 #import "PXRootHideCompat.h"
+#import "PXCloneRootPolicy.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -32,40 +33,100 @@ static NSString *PXCanonical(NSString *path, NSError **error) {
 }
 
 BOOL PXCloneValidateRoot(NSString *root, NSError **error) {
-    if (!root.length) return PXSetError(error, PXClonePathsErrorInvalidRoot, @"no active root");
-    if (![root isAbsolutePath]) return PXSetError(error, PXClonePathsErrorInvalidRoot, @"root not absolute");
-
+    if (!root.length || !root.isAbsolutePath)
+        return PXSetError(error, PXClonePathsErrorInvalidRoot, @"root not absolute");
     struct stat st;
     if (stat(root.fileSystemRepresentation, &st) != 0 || !S_ISDIR(st.st_mode))
         return PXSetError(error, PXClonePathsErrorNotDirectory, @"root is not a directory");
-
-    // realpath must resolve to the same string: a symlinked /var/jb is not the
-    // hidden root, while the real .jbroot-UUID directory is.
     NSString *canonical = PXCanonical(root, error);
-    if (!canonical) return NO;
-    if (![canonical isEqualToString:root])
-        return PXSetError(error, PXClonePathsErrorInvalidRoot, @"root is a symlink");
-
-    NSString *last = canonical.lastPathComponent;
-    BOOL hidden = [last hasPrefix:@".jbroot-"];
-    if (!hidden) {
-        // rootless fallback only; a plain "/" is not accepted because writes
-        // would leak into the real domain.
-        if (![canonical isEqualToString:@"/var/jb"])
-            return PXSetError(error, PXClonePathsErrorInvalidRoot, @"not a hidden root");
+    if (!canonical || ![canonical isEqualToString:root])
+        return PXSetError(error, PXClonePathsErrorInvalidRoot, @"root is not canonical");
+    if (PXCloneRootIsAppGroup(canonical.fileSystemRepresentation)) return YES;
+    // Rootless /var/jb is commonly a symlink into preboot. Accept its canonical
+    // target only on a rootless build/environment; never the RootHide // alias.
+    if (!PXCloneIsRootHide()) {
+        NSString *rootless = PXCanonical(@"/var/jb", NULL);
+        if (rootless.length && ![rootless isEqualToString:@"/"] && [canonical isEqualToString:rootless]) return YES;
     }
-    return YES;
+    return PXSetError(error, PXClonePathsErrorInvalidRoot, @"not an AppGroup hidden root");
+}
+
+static int PXRootMarkerRank(NSString *root) {
+    NSFileManager *manager = NSFileManager.defaultManager;
+    BOOL hasModule = [manager fileExistsAtPath:[root stringByAppendingPathComponent:
+                        @"Library/MobileSubstrate/DynamicLibraries/ParallelXClone.dylib"]];
+    BOOL directory = NO;
+    BOOL hasSubstrate = [manager fileExistsAtPath:[root stringByAppendingPathComponent:@"Library/MobileSubstrate"]
+                                    isDirectory:&directory] && directory;
+    directory = NO;
+    BOOL hasLibraries = [manager fileExistsAtPath:[root stringByAppendingPathComponent:@"usr/lib"]
+                                    isDirectory:&directory] && directory;
+    return PXCloneRootRank(hasModule, hasSubstrate, hasLibraries);
+}
+
+static NSString *PXDiscoverRoot(NSError **error) {
+    NSError *resolutionError = nil;
+    NSString *converted = PXCloneJBROOT(@"/");
+    NSString *canonical = converted.length ? PXCanonical(converted, &resolutionError) : nil;
+    if (canonical && PXCloneValidateRoot(canonical, NULL)) return canonical;
+
+    // One bounded, shallow discovery of physical AppGroup roots. Never scan
+    // preference contents or Bundle/Application .jbroot aliases (often -> //).
+    NSMutableArray<NSString *> *bases = [NSMutableArray array];
+    NSString *group = @"/var/mobile/Containers/Shared/AppGroup";
+    NSString *physicalGroup = PXCloneROOTFS(group);
+    if (physicalGroup.length) [bases addObject:physicalGroup];
+    if (![bases containsObject:group]) [bases addObject:group];
+    NSFileManager *manager = NSFileManager.defaultManager;
+    NSString *chosen = nil;
+    int bestRank = 0;
+    NSTimeInterval bestMtime = 0;
+    NSMutableSet *visited = [NSMutableSet set];
+    NSUInteger examined = 0;
+    for (NSString *base in bases) {
+        NSArray *names = [manager contentsOfDirectoryAtPath:base error:&resolutionError];
+        for (NSString *name in names) {
+            if (![name hasPrefix:@".jbroot-"]) continue;
+            if (++examined > 256) break;
+            NSString *candidate = PXCanonical([base stringByAppendingPathComponent:name], NULL);
+            if (!candidate.length || !PXCloneRootIsAppGroup(candidate.fileSystemRepresentation) ||
+                !PXCloneValidateRoot(candidate, NULL)) continue;
+            struct stat st;
+            if (stat(candidate.fileSystemRepresentation, &st) != 0) continue;
+            NSString *identity = [NSString stringWithFormat:@"%llu:%llu", (unsigned long long)st.st_dev,
+                                   (unsigned long long)st.st_ino];
+            if ([visited containsObject:identity]) continue;
+            [visited addObject:identity];
+            int rank = PXRootMarkerRank(candidate);
+            NSTimeInterval mtime = (NSTimeInterval)st.st_mtime;
+            if (!PXCloneRootOutranks(rank, mtime, bestRank, bestMtime)) continue;
+            bestRank = rank;
+            bestMtime = mtime;
+            chosen = candidate;
+        }
+        if (examined > 256) break;
+    }
+    if (chosen.length) return chosen;
+    if (!PXCloneIsRootHide()) {
+        NSString *rootless = PXCanonical(@"/var/jb", NULL);
+        if (rootless && PXCloneValidateRoot(rootless, NULL)) return rootless;
+    }
+    if (error) *error = resolutionError ?: PXPathError(PXClonePathsErrorNoRootHide,
+                                                     @"未找到可用的当前 AppGroup 隐根");
+    return nil;
 }
 
 NSString *PXCloneActiveRoot(NSError **error) {
-    NSString *converted = PXCloneJBROOT(@"/");
-    if (!converted.length)
-        return (PXSetError(error, PXClonePathsErrorNoRootHide, @"jbroot unavailable"), nil);
-
-    NSString *canonical = PXCanonical(converted, error);
-    if (!canonical) return nil;
-    if (!PXCloneValidateRoot(canonical, error)) return nil;
-    return canonical;
+    static NSObject *guard;
+    static NSString *selectedRoot;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ guard = [NSObject new]; });
+    @synchronized (guard) {
+        if (selectedRoot) return selectedRoot;
+        NSString *resolved = PXDiscoverRoot(error);
+        if (resolved) selectedRoot = [resolved copy];
+        return resolved;
+    }
 }
 
 static NSString *PXPrefsRelativePath(void) {
@@ -85,12 +146,49 @@ NSString *PXCloneCurrentLockPath(NSError **error) {
             stringByAppendingPathComponent:@"com.niubiprass.clonex.lock"];
 }
 
+BOOL PXCloneIsCurrentPrefsFile(NSString *path) {
+    struct stat source;
+    if (!path.length || stat(path.fileSystemRepresentation, &source) != 0) return NO;
+    NSMutableArray *currentPaths = [NSMutableArray array];
+    NSString *own = PXCloneCurrentPrefsPath(NULL);
+    NSString *mapped = PXCloneJBROOT(PXPrefsRelativePath());
+    if (own.length) [currentPaths addObject:own];
+    if (mapped.length) [currentPaths addObject:mapped];
+    // Only metadata is read from the process's logical Preferences view.
+    // This raw logical path is NEVER a write destination.
+    [currentPaths addObject:PXPrefsRelativePath()];
+    for (NSString *current in currentPaths) {
+        struct stat target;
+        if (stat(current.fileSystemRepresentation, &target) == 0 &&
+            source.st_dev == target.st_dev && source.st_ino == target.st_ino) return YES;
+    }
+    return NO;
+}
+
+NSString *PXCloneCurrentTracePath(NSError **error) {
+    NSString *prefsPath = PXCloneCurrentPrefsPath(error);
+    if (!prefsPath.length) return nil;
+    return [[[prefsPath stringByDeletingPathExtension] stringByAppendingString:@".launch-trace"]
+             stringByAppendingPathExtension:@"plist"];
+}
+
 BOOL PXCloneEnsureStorage(NSError **error) {
     NSString *root = PXCloneActiveRoot(error);
     if (!root) return NO;
 
     NSFileManager *fm = NSFileManager.defaultManager;
     NSString *dir = [root stringByAppendingString:@"/var/mobile/Library/Preferences"];
+    // Validate the existing parent BEFORE creating anything. A Library or
+    // Preferences symlink leading outside the chosen hidden root is rejected.
+    NSString *parent = PXCanonical(dir.stringByDeletingLastPathComponent, error);
+    if (!parent || !PXClonePathIsContained(root.fileSystemRepresentation, parent.fileSystemRepresentation))
+        return PXSetError(error, PXClonePathsErrorInvalidRoot, @"preferences parent escaped selected root");
+    struct stat before;
+    if (lstat(dir.fileSystemRepresentation, &before) == 0) {
+        NSString *existing = PXCanonical(dir, error);
+        if (!existing || !PXClonePathIsContained(root.fileSystemRepresentation, existing.fileSystemRepresentation))
+            return PXSetError(error, PXClonePathsErrorInvalidRoot, @"preferences directory escaped selected root");
+    }
     NSError *fmError = nil;
     if (![fm createDirectoryAtPath:dir withIntermediateDirectories:YES
                         attributes:nil error:&fmError]) {
@@ -100,7 +198,7 @@ BOOL PXCloneEnsureStorage(NSError **error) {
 
     NSString *canonicalDir = PXCanonical(dir, error);
     if (!canonicalDir) return NO;
-    if (![canonicalDir hasPrefix:[root stringByAppendingString:@"/"]])
+    if (!PXClonePathIsContained(root.fileSystemRepresentation, canonicalDir.fileSystemRepresentation))
         return PXSetError(error, PXClonePathsErrorInvalidRoot, @"prefs escaped active root");
 
     if (access(canonicalDir.fileSystemRepresentation, W_OK) != 0)
@@ -129,6 +227,12 @@ static void PXAddCandidate(NSMutableArray<NSString *> *out, NSMutableSet<NSStrin
     NSString *canonical = [NSString stringWithUTF8String:resolved];
     if (!canonical.length) return;
     if (currentRoot.length && [canonical hasPrefix:[currentRoot stringByAppendingString:@"/"]]) return;
+    // Different rootfs/private aliases can name the same current file. Never
+    // offer that file as an old migration source that could later be deleted.
+    struct stat currentFile;
+    NSString *currentPath = [currentRoot stringByAppendingString:PXPrefsRelativePath()];
+    if (currentRoot.length && stat(currentPath.fileSystemRepresentation, &currentFile) == 0 &&
+        st.st_dev == currentFile.st_dev && st.st_ino == currentFile.st_ino) return;
     if ([seen containsObject:canonical]) return;
     [seen addObject:canonical];
     [out addObject:canonical];

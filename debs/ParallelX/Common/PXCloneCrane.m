@@ -185,10 +185,10 @@ static NSArray<NSDictionary *> *PXCatalog;
     return [identifiers containsObject:containerID];
 }
 
-+ (BOOL)switchContainer:(NSString *)containerID forBundle:(NSString *)bundleID
-             completion:(void (^)(BOOL, NSError *))completion error:(NSError **)error {
++ (BOOL)requestSwitchToContainer:(NSString *)containerID forBundle:(NSString *)bundleID
+                           reply:(void (^)(BOOL))reply error:(NSError **)error {
     id manager = PXSharedManager();
-    if (!completion || ![self containerExists:containerID forBundle:bundleID]) {
+    if (!reply || ![self containerExists:containerID forBundle:bundleID]) {
         if (error) *error = PXCraneError(PXCloneCraneErrorInvalidArgument, @"账号不存在或 Crane 不可用");
         return NO;
     }
@@ -201,12 +201,13 @@ static NSArray<NSDictionary *> *PXCatalog;
         return NO;
     }
     __block BOOL returned = NO;
-    void (^callback)(BOOL) = ^(BOOL ok) {
+    void (^callback)(BOOL) = ^(BOOL rawAuthenticationFlag) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (returned) return;
             returned = YES;
-            BOOL verified = ok && [[self activeContainerForBundle:bundleID] isEqualToString:containerID];
-            completion(verified, verified ? nil : PXCraneError(PXCloneCraneErrorSwitchFailed, @"Crane 验证或账号回读失败"));
+            // A real callback is a reason to VERIFY, never proof of success.
+            // In libcrane 0x8694..0x86bc normal no-biometric switching sends NO.
+            reply(rawAuthenticationFlag);
         });
     };
     @try {
