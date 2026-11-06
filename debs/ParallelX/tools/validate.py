@@ -109,6 +109,40 @@ def main():
                 errors += fail(f"real var prefs hardcoded in {path}")
     print("ok structural guards")
 
+    # A local that is only ever declared is a hard error in the CI build
+    # (-Werror,-Wunused-variable). Catch the cheap cases here rather than
+    # spending a build round on them. The pattern is deliberately narrow: a
+    # real type token, the declaration on one line (no \s, which would span
+    # lines), and a camelCase name, so exported constants and plain
+    # assignments are never reported.
+    import re
+    local_decl = re.compile(
+        r"(?m)^[ \t]*(?:static[ \t]+)?(?:const[ \t]+)?"
+        r"(?:[A-Z][A-Za-z0-9_]*(?:<[^>]*>)?|id|BOOL|SEL|IMP|Class|Method)"
+        r"(?:[ \t]+\*?[ \t]*|\*[ \t]*)([a-z][A-Za-z0-9_]*)[ \t]*=")
+    lint_targets = [os.path.join(ROOT, "Tweak.xm")]
+    for sub in ("Common", "Prefs"):
+        directory = os.path.join(ROOT, sub)
+        if os.path.isdir(directory):
+            lint_targets += [os.path.join(directory, name)
+                             for name in sorted(os.listdir(directory)) if name.endswith(".m")]
+
+    def unused_locals(path, text):
+        found = []
+        for name in set(local_decl.findall(text)):
+            if len(re.findall(r"\b%s\b" % re.escape(name), text)) < 2:
+                found.append(name)
+        return sorted(found)
+
+    probe = "void f(void) {\n    NSString *unusedProbe = nil;\n}\n"
+    if unused_locals("probe.m", probe) != ["unusedProbe"]:
+        errors += fail("unused-local lint does not detect its own probe")
+    else:
+        for path in lint_targets:
+            for name in unused_locals(path, open(path, encoding="utf-8").read()):
+                errors += fail(f"unused local {name} in {os.path.relpath(path, ROOT)}")
+        print("ok unused locals")
+
     result = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py"],
                             cwd=ROOT, capture_output=True, text=True,
                             env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})

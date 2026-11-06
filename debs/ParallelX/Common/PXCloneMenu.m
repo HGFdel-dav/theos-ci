@@ -200,7 +200,6 @@ void PXCloneSyncMenu(void) {
         if (![bundle isKindOfClass:NSString.class] || !bundle.length) continue;
         if (![containers isKindOfClass:NSArray.class] || containers.count < 2) continue;
 
-        NSString *appTitle = app[@"name"] ?: bundle;
         for (NSDictionary *container in containers) {
             NSString *containerID = container[@"container"];
             if (![containerID isKindOfClass:NSString.class] || !containerID.length) continue;
