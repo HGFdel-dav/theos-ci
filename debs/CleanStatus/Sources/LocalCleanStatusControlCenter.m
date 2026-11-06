@@ -96,7 +96,10 @@ static BOOL lcscc_otherPickerEnabled(LCSCCTargetKind kind) {
     if([top isKindOfClass:UIAlertController.class])return;
     LCSCCListViewController *list=[[LCSCCListViewController alloc] initWithKind:self.kind];
     __weak typeof(self) weakSelf=self;
-    list.mayContinue=^{return weakSelf.controller!=nil&&!weakSelf.expanded&&lcscc_viewVisible(weakSelf.button);};
+    list.mayContinue=^{
+        BOOL ok=weakSelf.controller!=nil&&!weakSelf.expanded&&lcscc_viewVisible(weakSelf.button);
+        return ok;
+    };
     list.didClose=^{lcscc_presentedList=nil;};
     lcscc_presentedList=list;
     UIImpactFeedbackGenerator *feedback=[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];[feedback impactOccurred];
