@@ -1727,7 +1727,6 @@ static void MiniSightReloadSettings(void) {
         NSInteger renderer = MiniSightRenderer();
         NSInteger style = MiniSightStyle();
         BOOL structural = renderer != gMiniSightAppliedRenderer || style != gMiniSightAppliedStyle;
-        BOOL wasVisible = gMiniSightWindow && !gMiniSightWindow.hidden;
         if (structural) {
             gMiniSightAppliedRenderer = renderer;
             gMiniSightAppliedStyle = style;
