@@ -77,6 +77,7 @@ static UIImage *lcscc_symbol(NSString *name,CGFloat size) {
 @property(nonatomic,copy) NSArray<LCSCCTarget *> *items;
 @property(nonatomic,copy) NSString *pendingIdentifier;
 @property(nonatomic) BOOL refreshing;
+@property(nonatomic) BOOL refreshFailed;
 @property(nonatomic) BOOL active;
 @property(nonatomic) uint64_t generation;
 @property(nonatomic) NSTimeInterval refreshStart;
@@ -168,7 +169,9 @@ static UIImage *lcscc_symbol(NSString *name,CGFloat size) {
         typeof(self) strongSelf=weakSelf;
         if(!strongSelf||!strongSelf.active||strongSelf.generation!=generation)return;
         if(![strongSelf allowed]){[strongSelf close];return;}
-        if(!strongSelf.refreshing&&!strongSelf.pendingIdentifier.length)[strongSelf refresh];
+        // A failing interface is not retried automatically; pull to refresh or
+        // flipping the switch retries explicitly.
+        if(!strongSelf.refreshing&&!strongSelf.pendingIdentifier.length&&!strongSelf.refreshFailed)[strongSelf refresh];
         [strongSelf scheduleRefresh:generation];
     });
 }
@@ -188,6 +191,7 @@ static UIImage *lcscc_symbol(NSString *name,CGFloat size) {
 - (void)refresh {
     if(![self allowed]){[self close];return;}
     if(self.refreshing)return;
+    self.refreshFailed=NO;
     self.refreshing=YES;self.refreshStart=NSProcessInfo.processInfo.systemUptime;[self.progress startAnimating];self.empty.hidden=YES;
     uint64_t generation=self.generation;__weak typeof(self) weakSelf=self;
     LCSCCListHandler loaded=^(NSArray<LCSCCTarget *> *rows,NSError *error){
@@ -196,6 +200,7 @@ static UIImage *lcscc_symbol(NSString *name,CGFloat size) {
         if(![s allowed]){[s close];return;}
         s.refreshing=NO;[s.progress stopAnimating];
         if(!error){s.items=[rows copy];[s.table reloadData];}
+        s.refreshFailed=error!=nil;
         s.message.text=error.localizedDescription;
         s.empty.hidden=s.items.count!=0||error!=nil;
         NSTimeInterval delay=MAX(0,0.6-(NSProcessInfo.processInfo.systemUptime-s.refreshStart));
@@ -243,7 +248,9 @@ static UIImage *lcscc_symbol(NSString *name,CGFloat size) {
     if(!lcscc_method(object_getClass(workspace),sel,@encode(BOOL),2,args)) {
         self.message.text=@"无法打开设置，请从系统设置手动进入";return;
     }
-    [self stop];[self dismissViewControllerAnimated:NO completion:^{
+    self.refreshFailed=YES; // no rescan between here and the Settings screen
+    [self stop];
+    [self dismissViewControllerAnimated:NO completion:^{
         ((BOOL(*)(id,SEL,id,id))objc_msgSend)(workspace,sel,[NSURL URLWithString:url],nil);
         id cc=lcscc_object(NSClassFromString(@"SBControlCenterController"),"sharedInstance");
         SEL dismiss=sel_registerName("dismissAnimated:");

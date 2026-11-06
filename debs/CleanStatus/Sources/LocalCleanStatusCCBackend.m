@@ -10,8 +10,8 @@
 typedef struct __WiFiManager *LCSWiFiManager;
 typedef struct __WiFiDeviceClient *LCSWiFiDevice;
 typedef struct __WiFiNetwork *LCSWiFiNetwork;
-typedef void (*LCSScanCB)(LCSWiFiDevice,CFArrayRef,int32_t,void *);
-typedef void (*LCSAssociateCB)(LCSWiFiDevice,LCSWiFiNetwork,uintptr_t,int32_t,void *);
+typedef void (*LCSScanCB)(void *,void *,void *,void *);
+typedef void (*LCSAssociateCB)(void *,void *,void *,void *,void *);
 typedef struct {
     void *handle;
     LCSWiFiManager (*create)(CFAllocatorRef,int32_t);
@@ -29,8 +29,8 @@ typedef struct {
     BOOL ready;
 } LCSWiFiAPI;
 static LCSWiFiAPI lcscc_wifi;
-static void lcscc_scanCallback(LCSWiFiDevice,CFArrayRef,int32_t,void *);
-static void lcscc_associateCallback(LCSWiFiDevice,LCSWiFiNetwork,uintptr_t,int32_t,void *);
+static void lcscc_scanCallback(void *,void *,void *,void *);
+static void lcscc_associateCallback(void *,void *,void *,void *,void *);
 
 @implementation LCSCCTarget
 @synthesize networkRef=_networkRef;
@@ -62,6 +62,7 @@ static void lcscc_associateCallback(LCSWiFiDevice,LCSWiFiNetwork,uintptr_t,int32
 @property(nonatomic,strong) NSMutableArray *bluetoothObservers;
 @property(nonatomic,copy) dispatch_block_t bluetoothChanged;
 - (void)receivedScanRef:(CFArrayRef)results error:(int32_t)error token:(uintptr_t)token;
+- (BOOL)hasRequest:(uintptr_t)token;
 - (void)receivedAssociate:(int32_t)error token:(uintptr_t)token;
 - (void)verifyAction:(uintptr_t)token attempts:(NSUInteger)attempts;
 @end
@@ -154,6 +155,9 @@ static void lcscc_loadWiFi(void) {
     if (r.list) r.list(items?:@[],error);
     if (r.action) r.action(success,error);
 }
+- (BOOL)hasRequest:(uintptr_t)token {
+    return token!=0 && self.requests[@(token)]!=nil;
+}
 - (void)cancelRequests {
     NSAssert(NSThread.isMainThread,@"CC cancellation must be serialized on main");
     for (LCSCCNativeRequest *request in self.requests.allValues)
@@ -190,7 +194,9 @@ static void lcscc_loadWiFi(void) {
     LCSCCNativeRequest *r=[self requestWithTimeout:8];
     if (!r) { handler(@[],lcscc_error(LCSCCErrorUnavailable,@"请求队列已满")); return; }
     r.list=handler;
-    int32_t status=lcscc_wifi.scan(self.device,NULL,lcscc_scanCallback,(void *)r.token);
+    // MobileWiFi rejects a NULL parameter dictionary outright (-3900), which is
+    // why the list stayed empty; the reference passes an empty dictionary.
+    int32_t status=lcscc_wifi.scan(self.device,(__bridge CFDictionaryRef)@{},lcscc_scanCallback,(void *)r.token);
     if (status) [self finish:r.token success:NO items:nil
         error:lcscc_error(status,[NSString stringWithFormat:@"扫描未启动（%d）",status])];
 }
@@ -350,15 +356,27 @@ static void lcscc_loadWiFi(void) {
 }
 @end
 
-static void lcscc_scanCallback(LCSWiFiDevice device,CFArrayRef results,int32_t error,void *context) {
-    (void)device; uintptr_t token=(uintptr_t)context;
-    // MobileWiFi networks are CoreFoundation objects; they are never smuggled
-    // through an NSArray/NSDictionary. The array is retained explicitly and the
-    // reference travels with the request token.
-    CFArrayRef held=results?(CFArrayRef)CFRetain(results):NULL;
-    dispatch_async(dispatch_get_main_queue(),^{[LCSCCBackend.shared receivedScanRef:held error:error token:token];});
+// The framework invokes the callback either as (device, results, error, context)
+// or block-shaped as (results, error, context). Instead of guessing, both
+// candidate slots are offered to the token registry: only a live token is
+// accepted, and the results slot is dereferenced only for that layout.
+static void lcscc_scanCallback(void *a1,void *a2,void *a3,void *a4) {
+    uintptr_t first=(uintptr_t)a4,second=(uintptr_t)a3;
+    void *resultsSlot=a2,*firstError=a3;
+    dispatch_async(dispatch_get_main_queue(),^{
+        LCSCCBackend *backend=LCSCCBackend.shared;
+        uintptr_t token=0; void *results=NULL; int32_t error=0;
+        if ([backend hasRequest:first]) { token=first; results=resultsSlot; error=(int32_t)(intptr_t)firstError; }
+        else if ([backend hasRequest:second]) { token=second; results=a1; error=(int32_t)(intptr_t)a2; }
+        else return;
+        [backend receivedScanRef:results?(CFArrayRef)CFRetain(results):NULL error:error token:token];
+    });
 }
-static void lcscc_associateCallback(LCSWiFiDevice device,LCSWiFiNetwork network,uintptr_t unused,int32_t error,void *context) {
-    (void)device;(void)network;(void)unused;uintptr_t token=(uintptr_t)context;
-    dispatch_async(dispatch_get_main_queue(),^{[LCSCCBackend.shared receivedAssociate:error token:token];});
+static void lcscc_associateCallback(void *a1,void *a2,void *a3,void *a4,void *a5) {
+    uintptr_t first=(uintptr_t)a5,second=(uintptr_t)a4;
+    dispatch_async(dispatch_get_main_queue(),^{
+        LCSCCBackend *backend=LCSCCBackend.shared;
+        if ([backend hasRequest:first]) [backend receivedAssociate:(int32_t)(intptr_t)a4 token:first];
+        else if ([backend hasRequest:second]) [backend receivedAssociate:(int32_t)(intptr_t)a3 token:second];
+    });
 }

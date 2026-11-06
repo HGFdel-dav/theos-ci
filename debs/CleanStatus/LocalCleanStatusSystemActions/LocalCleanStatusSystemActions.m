@@ -40,6 +40,31 @@ static id lcscc_service(void) { return lcscc_object(NSClassFromString(@"FBSSyste
 static BOOL lcscc_has(id obj,const char *name,const char *result) {
     return lcscc_method(object_getClass(obj),sel_registerName(name),result,0,NULL);
 }
+static BOOL LCSCIntegerType(const char *type) {
+    const char *name=lcscc_type(type);
+    return name && strchr("cislqCISLQB",name[0]) && name[1]=='\0';
+}
+// +[SBSRelaunchAction actionWithReason:options:targetURL:] is a class method and
+// its options width differs between SDKs, so the option argument accepts any
+// integer scalar instead of one exact encoding.
+static BOOL LCSCRespringFactory(Class cls) {
+    if (!cls) return NO;
+    Method method=class_getClassMethod(cls,sel_registerName("actionWithReason:options:targetURL:"));
+    if (!method || method_getNumberOfArguments(method)!=5) return NO;
+    char *types[3];
+    for (unsigned i=0;i<3;i++) types[i]=method_copyArgumentType(method,i+2);
+    char *result=method_copyReturnType(method);
+    BOOL ok=lcscc_typeEqual(result,@encode(id)) && lcscc_typeEqual(types[0],@encode(id)) &&
+        LCSCIntegerType(types[1]) && lcscc_typeEqual(types[2],@encode(id));
+    for (unsigned i=0;i<3;i++) free(types[i]);
+    free(result);
+    return ok;
+}
+static BOOL LCSCRespringAvailable(void) {
+    return LCSCRespringFactory(NSClassFromString(@"SBSRelaunchAction")) &&
+        lcscc_has(lcscc_service(),"sendActions:withResult:",@encode(void));
+}
+
 // A file that exists and is executable is existence, not privilege; every
 // helper path is probed, and privilege is reported as unverified in the UI.
 static BOOL lcscc_run(NSString *tool,NSArray<NSString *> *arguments,NSString **reason) {
@@ -79,7 +104,7 @@ static BOOL lcscc_run(NSString *tool,NSArray<NSString *> *arguments,NSString **r
 - (NSString *)unavailableReasonFor:(LCSCSystemAction)action {
     switch (action) {
         case LCSCSystemActionRespring:
-            return (NSClassFromString(@"SBSRelaunchAction")&&lcscc_has(lcscc_service(),"sendActions:withResult:",@encode(void)))?nil:@"系统不支持注销动作";
+            return LCSCRespringAvailable()?nil:@"系统不支持注销动作";
         case LCSCSystemActionSafeMode:
             return nil; // implemented by this tweak, always available
         case LCSCSystemActionUserspace:
@@ -156,7 +181,7 @@ static BOOL lcscc_run(NSString *tool,NSArray<NSString *> *arguments,NSString **r
             Class cls=NSClassFromString(@"SBSRelaunchAction");
             id service=lcscc_service();
             SEL make=sel_registerName("actionWithReason:options:targetURL:");
-            if (!lcscc_method(cls,make,@encode(id),3,(const char *[]){@encode(id),@encode(unsigned long long),@encode(id)})) {
+            if (!LCSCRespringAvailable()) {
                 [self report:@"注销动作不可用" success:NO]; return;
             }
             id obj=((id(*)(id,SEL,id,unsigned long long,id))objc_msgSend)(cls,make,@"CleanStatus.Respring",1ULL,nil);
@@ -174,7 +199,7 @@ static BOOL lcscc_run(NSString *tool,NSArray<NSString *> *arguments,NSString **r
             dispatch_async(dispatch_get_main_queue(),^{
                 Class cls=NSClassFromString(@"SBSRelaunchAction");
                 SEL make=sel_registerName("actionWithReason:options:targetURL:");
-                if (lcscc_method(cls,make,@encode(id),3,(const char *[]){@encode(id),@encode(unsigned long long),@encode(id)})) {
+                if (LCSCRespringFactory(cls)) {
                     id obj=((id(*)(id,SEL,id,unsigned long long,id))objc_msgSend)(cls,make,@"CleanStatus.SafeMode",1ULL,nil);
                     if (obj) ((void(*)(id,SEL,id,id))objc_msgSend)(lcscc_service(),sel_registerName("sendActions:withResult:"),[NSSet setWithObject:obj],nil);
                 }
