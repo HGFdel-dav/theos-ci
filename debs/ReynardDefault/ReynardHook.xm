@@ -120,25 +120,74 @@ static NSSet *RDInternalSchemes(void);
 @end
 
 static RDEnsureCallback *rdEnsureCallback;
+static id rdGeckoBackend;
 static BOOL rdEnsureDone;
 
 @implementation RDEnsureCallback
-- (void)sendSuccess:(id)response { RDLog(@"addon ready: %@", response); }
+- (void)sendSuccess:(id)response {
+    RDLog(@"addon ready: %@", response);
+    // The page that is already loaded predates the content script: reload once.
+    if (rdGeckoBackend) {
+        [(id<RDGeckoDispatch>)rdGeckoBackend dispatchToGecko:@"GeckoView:Reload"
+                                                     message:nil callback:nil];
+    }
+}
 - (void)sendError:(id)response { RDLog(@"addon failed: %@", response); rdEnsureDone = NO; }
 @end
 
 // Install the built-in content script extension (it intercepts non-web clicks,
 // which the engine swallows without telling the host).
-static void RDEnsureExtension(id dispatcher) {
-    if (rdEnsureDone) return;
-    if (!dispatcher) return;
+// The wrapper itself does NOT implement dispatchToGecko: — the gecko side lives
+// in its `gecko` ivar. Sending it to the wrapper is an unrecognized selector.
+static id RDGeckoBackend(id wrapper) {
+    Class cls = [wrapper class];
+    unsigned int count = 0;
+    Ivar *ivars = class_copyIvarList(cls, &count);
+    id backend = nil;
+    NSMutableArray *names = [NSMutableArray array];
+    for (unsigned int index = 0; index < count; index++) {
+        const char *raw = ivar_getName(ivars[index]);
+        NSString *name = raw ? @(raw) : @"?";
+        [names addObject:name];
+        if (!backend && [name.lowercaseString containsString:@"gecko"]) {
+            backend = object_getIvar(wrapper, ivars[index]);
+        }
+    }
+    free(ivars);
+    if (!backend && [wrapper respondsToSelector:@selector(valueForKey:)]) {
+        @try { backend = [wrapper valueForKey:@"gecko"]; } @catch (NSException *exception) {
+            (void)exception;
+        }
+    }
+    static BOOL loggedIvars;
+    if (!loggedIvars) { loggedIvars = YES; RDLog(@"backend=%@ ivars=%@",
+        backend ? @"yes" : @"no", [names componentsJoinedByString:@","]); }
+    return backend;
+}
+
+static void RDEnsureExtension(id wrapper) {
+    static int tries;
+    static BOOL logged;
+    if (rdEnsureDone || !wrapper) return;
+
+    id backend = RDGeckoBackend(wrapper);
+    if (!backend || ![backend respondsToSelector:@selector(dispatchToGecko:message:callback:)]) {
+        if (!logged) {
+            logged = YES;
+            RDLog(@"no gecko backend, addon skipped for now");
+        }
+        if (++tries > 80) rdEnsureDone = YES;
+        return;
+    }
+
     rdEnsureDone = YES;
+    rdGeckoBackend = backend;
     if (!rdEnsureCallback) rdEnsureCallback = [RDEnsureCallback new];
     NSString *location = [NSString stringWithFormat:@"file://%@", jbRootPath(kHandoffAddonDir)];
-    [(id<RDGeckoDispatch>)dispatcher dispatchToGecko:kEnsureEvent
-                                             message:@{@"locationUri": location,
-                                                       @"webExtensionId": kHandoffAddonID}
-                                            callback:rdEnsureCallback];
+    [(id<RDGeckoDispatch>)backend dispatchToGecko:kEnsureEvent
+                                          message:@{@"locationUri": location,
+                                                    @"webExtensionId": kHandoffAddonID}
+                                         callback:rdEnsureCallback];
 }
 
 static NSString *RDURLFromPayload(id node) {
