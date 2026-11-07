@@ -62,13 +62,15 @@ static NSArray<NSDictionary *> *PXURLRouterContainers(NSString *bundle) {
 static void (^PXURLRouterOnce(void (^proceed)(void)))(void) {
     __block BOOL done = NO;
     NSObject *lock = [NSObject new];
-    return ^{
+    // A block RETURNED from a function is on the stack unless copied; the
+    // alert keeps it past this frame (crash: objc_retain at 0x20).
+    return [^{
         @synchronized (lock) {
             if (done) return;
             done = YES;
         }
         if (proceed) proceed();
-    };
+    } copy];
 }
 
 @interface PXCloneURLRouter ()
