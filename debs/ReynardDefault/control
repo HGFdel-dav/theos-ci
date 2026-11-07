@@ -1,6 +1,6 @@
 Package: com.guacforlife.reynarddefault
 Name: ReynardDefault
-Version: 1.5.5
+Version: 1.5.6
 Architecture: iphoneos-arm
 Description: 把其他 App 打开的网页链接改到 Reynard；在 Reynard 里点到的 tg://、mailto: 等非网页链接交给对应 App。设置页可分别开关，控制中心控制网页链接改写。
 Maintainer: guacforlife

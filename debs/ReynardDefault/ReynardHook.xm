@@ -150,12 +150,15 @@ static void RDOpenExternally(NSURL *url) {
 
     NSDictionary *payload = (NSDictionary *)message;
     NSString *uri = [payload[@"uri"] isKindOfClass:[NSString class]] ? payload[@"uri"] : nil;
+    if (!uri.length && [payload[@"url"] isKindOfClass:[NSString class]]) uri = payload[@"url"];
+    if (!uri.length && [payload[@"lastVisitedURL"] isKindOfClass:[NSString class]]) {
+        uri = payload[@"lastVisitedURL"];
+    }
     NSURL *url = uri.length ? [NSURL URLWithString:uri] : nil;
     NSString *scheme = url.scheme.lowercaseString;
     BOOL topLevel = RDBoolValue(payload[@"isTopLevel"], YES);
     BOOL userInitiated = RDBoolValue(payload[@"isUserInitiatedNavigation"], YES);
-    RDLog(@"%@ scheme=%@ top=%d user=%d err=%@ keys=%@ uri=%@", type, scheme, topLevel, userInitiated,
-          payload[@"error"], [[payload allKeys] componentsJoinedByString:@","], uri);
+    RDLog(@"%@ scheme=%@ top=%d user=%d msg=%@", type, scheme, topLevel, userInitiated, payload);
 
     BOOL wanted = scheme.length > 0 && ![RDInternalSchemes() containsObject:scheme];
     if (!wanted || !topLevel || !RDHandoffAllowed()) {
