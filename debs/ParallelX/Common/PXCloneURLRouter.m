@@ -169,12 +169,16 @@ static NSString *PXURLRouterBundleForURL(NSURL *url) {
 // browsing) keeps the current account silently.
 static BOOL PXURLRouterLooksLikePayment(NSURL *url) {
     NSString *scheme = url.scheme.lowercaseString;
-    for (NSString *pay in @[@"weixin", @"wechat", @"alipays", @"alipay", @"mqqapi",
-                            @"mqqwallet", @"upwallet", @"unionpay", @"wallet"]) {
+    for (NSString *pay in @[@"weixin", @"wechat", @"wxpay", @"tenpay",
+                            @"alipay", @"alipays", @"alipayqr", @"alipayobject",
+                            @"mqqapi", @"mqqwallet", @"upwallet", @"uppay",
+                            @"unionpay", @"wallet", @"bank"]) {
         if ([scheme isEqualToString:pay]) return YES;
     }
     NSString *text = url.absoluteString.lowercaseString;
-    for (NSString *hint in @[@"pay", @"cashier", @"trade", @"wxpay", @"收银台", @"支付", @"prepay"]) {
+    for (NSString *hint in @[@"pay", @"cashier", @"trade", @"wxpay", @"tenpay",
+                             @"alipay", @"alipays", @"unionpay", @"uppay",
+                             @"收银台", @"支付", @"付款", @"收款", @"转账", @"prepay"]) {
         if ([text containsString:hint]) return YES;
     }
     return NO;
