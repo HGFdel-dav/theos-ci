@@ -139,7 +139,8 @@ static void lcscc_loadWiFi(void) {
     // Tokens are opaque integers, not pointers to released blocks. Never reuse
     // a token, including after timeout/cancel; late native calls safely miss.
     if (self.nextToken==UINTPTR_MAX || self.requests.count>=64) return nil;
-    LCSCCNativeRequest *r=[LCSCCNativeRequest new]; r.token=++self.nextToken;
+    LCSCCNativeRequest *r=[LCSCCNativeRequest new];
+    r.token=LCSCC_TOKEN_MAGIC|(uintptr_t)(++self.nextToken);
     self.requests[@(r.token)]=r;
     uintptr_t token=r.token;
     __weak typeof(self) weakSelf=self;
@@ -356,28 +357,41 @@ static void lcscc_loadWiFi(void) {
 }
 @end
 
-// The framework invokes the callback either as (device, results, error, context)
-// or block-shaped as (results, error, context). Instead of guessing, both
-// candidate slots are offered to the token registry: only a live token is
-// accepted, and the results slot is dereferenced only for that layout.
+// Tokens carry a fixed high half, so an error code or a small integer can never
+// be mistaken for one. A bare counter collided with an error value of 1 on
+// device and routed the callback down the wrong layout.
+#define LCSCC_TOKEN_MAGIC 0x4C53434300000000ULL
+#define LCSCC_TOKEN_MASK  0xFFFFFFFF00000000ULL
+static inline BOOL lcscc_tokenIsMine(uintptr_t token) {
+    return token!=0 && (token&LCSCC_TOKEN_MASK)==LCSCC_TOKEN_MAGIC;
+}
+// The framework lends the results array for the duration of this call only.
+// Retaining it inside the async block touched an object the scan had already
+// released: CFRetain trapped, SpringBoard died and the device dropped into safe
+// mode. The retain is synchronous here, and ownership moves into the block.
 static void lcscc_scanCallback(void *a1,void *a2,void *a3,void *a4) {
     uintptr_t first=(uintptr_t)a4,second=(uintptr_t)a3;
-    void *resultsSlot=a2,*firstError=a3;
+    void *lent=NULL; uintptr_t token=0; int32_t error=0;
+    if (lcscc_tokenIsMine(first)) { token=first; lent=a2; error=(int32_t)(intptr_t)a3; }
+    else if (lcscc_tokenIsMine(second)) { token=second; lent=a1; error=(int32_t)(intptr_t)a2; }
+    else return;
+    // A CF object never lives below 4 GB on this platform, so a small value in
+    // the results slot can only be an error code or a stale register; retaining
+    // it would trap exactly like the 0.2.2 bug did.
+    if ((uintptr_t)lent<0x100000000ULL) lent=NULL;
+    CFArrayRef held=lent?(CFArrayRef)CFRetain(lent):NULL;
     dispatch_async(dispatch_get_main_queue(),^{
-        LCSCCBackend *backend=LCSCCBackend.shared;
-        uintptr_t token=0; void *results=NULL; int32_t error=0;
-        if ([backend hasRequest:first]) { token=first; results=resultsSlot; error=(int32_t)(intptr_t)firstError; }
-        else if ([backend hasRequest:second]) { token=second; results=a1; error=(int32_t)(intptr_t)a2; }
-        else return;
-        [backend receivedScanRef:results?(CFArrayRef)CFRetain(results):NULL error:error token:token];
+        [LCSCCBackend.shared receivedScanRef:held error:error token:token];
     });
 }
 static void lcscc_associateCallback(void *a1,void *a2,void *a3,void *a4,void *a5) {
     (void)a1;(void)a2; // the device slot is not needed, only the error and token
     uintptr_t first=(uintptr_t)a5,second=(uintptr_t)a4;
+    uintptr_t token=0; int32_t error=0;
+    if (lcscc_tokenIsMine(first)) { token=first; error=(int32_t)(intptr_t)a4; }
+    else if (lcscc_tokenIsMine(second)) { token=second; error=(int32_t)(intptr_t)a3; }
+    else return; // nothing is dereferenced on this side of the queue
     dispatch_async(dispatch_get_main_queue(),^{
-        LCSCCBackend *backend=LCSCCBackend.shared;
-        if ([backend hasRequest:first]) [backend receivedAssociate:(int32_t)(intptr_t)a4 token:first];
-        else if ([backend hasRequest:second]) [backend receivedAssociate:(int32_t)(intptr_t)a3 token:second];
+        [LCSCCBackend.shared receivedAssociate:error token:token];
     });
 }
