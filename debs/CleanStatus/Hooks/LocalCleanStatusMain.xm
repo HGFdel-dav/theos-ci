@@ -5,7 +5,7 @@
 #import "LocalCleanStatusCCEnvironment.h"
 
 static id lcsPreferenceObserver;
-static NSString * const lcsVersion = @"CleanStatus 0.2.3";
+static NSString * const lcsVersion = @"CleanStatus 0.2.4";
 
 %ctor {
     @autoreleasepool {

@@ -1,6 +1,6 @@
 Package: com.local.cleanstatus
 Name: CleanStatus
-Version: 0.2.3
+Version: 0.2.4
 Architecture: iphoneos-arm64e
 Description: Status icon visibility and inline battery controls for iOS 15.5
 Maintainer: Niubiprass
