@@ -263,12 +263,24 @@ static void PXHandleWorkspaceRequest(id self, SEL command, id request, id option
 
 static BOOL PXInstallURLRoutingHook(void) {
     if (!PXOrigWorkspaceRequest) {
+        // withResult: is a completion block on this build, not an object; try
+        // both shapes and log which one matched.
         SEL selector = NSSelectorFromString(@"_handleOpenApplicationRequest:options:activationSettings:origin:withResult:");
-        Class cls = PXClassDeclaringSelector(selector, @encode(void),
-                                             @[@"@", @"@", @"@", @"@", @"@"]);
-        IMP original = NULL;
-        if (cls && PXCloneHookMessage(cls, selector, (IMP)PXHandleWorkspaceRequest, &original))
-            PXOrigWorkspaceRequest = (void (*)(id, SEL, id, id, id, id, id))original;
+        NSArray<NSArray<NSString *> *> *shapes = @[
+            @[@"@", @"@", @"@", @"@", @"@?"],
+            @[@"@", @"@", @"@", @"@", @"@"],
+        ];
+        for (NSArray<NSString *> *shape in shapes) {
+            Class cls = PXClassDeclaringSelector(selector, @encode(void), shape);
+            if (!cls) continue;
+            IMP original = NULL;
+            if (PXCloneHookMessage(cls, selector, (IMP)PXHandleWorkspaceRequest, &original)) {
+                PXOrigWorkspaceRequest = (void (*)(id, SEL, id, id, id, id, id))original;
+                [PXCloneProbe log:@"SBHOOK %@ shape=%lu", NSStringFromClass(cls),
+                    (unsigned long)shape.count];
+                break;
+            }
+        }
     }
     if (PXOrigHandleOpenRequest) return YES;
     Class service = NSClassFromString(@"FBSystemService");
