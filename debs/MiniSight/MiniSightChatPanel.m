@@ -300,6 +300,9 @@ static CGRect MSChatScreenRect(UIWindowScene *scene) {
 @property (nonatomic, assign) NSUInteger lifecycleGeneration;
 @property (nonatomic, assign) NSUInteger requestGeneration;
 @property (nonatomic, assign) CGFloat keyboardOverlap;
+- (void)anchorTick:(CADisplayLink *)link;
+- (void)ensureAnchorLink;
+- (void)stopAnchorLink;
 - (void)performCloseForGeneration:(NSUInteger)generation;
 - (void)hideWithoutKey;
 - (void)activateEditor;
