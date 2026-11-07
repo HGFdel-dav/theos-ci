@@ -78,6 +78,11 @@ static UIImage *lcscc_symbol(NSString *name,CGFloat size) {
 @property(nonatomic,copy) NSString *pendingIdentifier;
 @property(nonatomic) BOOL refreshing;
 @property(nonatomic) BOOL refreshFailed;
+@property(nonatomic) BOOL canPowerOn;
+@property(nonatomic,strong) UIView *powerRow;
+@property(nonatomic,strong) UISwitch *powerSwitch;
+@property(nonatomic,strong) NSLayoutConstraint *powerHeight;
+@property(nonatomic) BOOL powerOff;
 @property(nonatomic) BOOL active;
 @property(nonatomic) uint64_t generation;
 @property(nonatomic) NSTimeInterval refreshStart;
@@ -119,9 +124,18 @@ static UIImage *lcscc_symbol(NSString *name,CGFloat size) {
     _table.dataSource=self;_table.delegate=self;_table.tableFooterView=[UIView new];[_table registerClass:LCSCCListCell.class forCellReuseIdentifier:@"LCSCCRow"];
     _refresher=[UIRefreshControl new];_refresher.tintColor=UIColor.whiteColor;[_refresher addTarget:self action:@selector(refresh) forControlEvents:UIControlEventValueChanged];_table.refreshControl=_refresher;
     _empty=[UILabel new];_empty.text=_kind==LCSCCTargetKindWiFi?@"无网络":@"无已配对设备";_empty.font=[UIFont systemFontOfSize:15];_empty.textColor=[UIColor.whiteColor colorWithAlphaComponent:0.6];_empty.textAlignment=NSTextAlignmentCenter;
-    _message=[UILabel new];_message.font=[UIFont systemFontOfSize:12];_message.textColor=[UIColor.whiteColor colorWithAlphaComponent:0.75];_message.textAlignment=NSTextAlignmentCenter;_message.numberOfLines=2;
+    // Only shown while the interface is off, so the on-state keeps its old look.
+    UIView *powerRow=[UIView new];powerRow.hidden=YES;_powerRow=powerRow;
+    UILabel *powerLabel=[UILabel new];powerLabel.text=@"无线局域网";powerLabel.font=[UIFont systemFontOfSize:17];powerLabel.textColor=UIColor.whiteColor;powerLabel.translatesAutoresizingMaskIntoConstraints=NO;[powerRow addSubview:powerLabel];
+    UISwitch *powerSwitch=[UISwitch new];powerSwitch.onTintColor=UIColor.systemGreenColor;_powerSwitch=powerSwitch;
+    powerSwitch.translatesAutoresizingMaskIntoConstraints=NO;[powerSwitch addTarget:self action:@selector(powerChanged) forControlEvents:UIControlEventValueChanged];[powerRow addSubview:powerSwitch];
+    [NSLayoutConstraint activateConstraints:@[
+        [powerLabel.leadingAnchor constraintEqualToAnchor:powerRow.leadingAnchor constant:16],[powerLabel.centerYAnchor constraintEqualToAnchor:powerRow.centerYAnchor],
+        [powerSwitch.trailingAnchor constraintEqualToAnchor:powerRow.trailingAnchor constant:-16],[powerSwitch.centerYAnchor constraintEqualToAnchor:powerRow.centerYAnchor]]];
+    _message=[UILabel new];_message.font=[UIFont systemFontOfSize:12];_message.textColor=[UIColor.whiteColor colorWithAlphaComponent:0.75];_message.textAlignment=NSTextAlignmentCenter;_message.numberOfLines=2;_message.userInteractionEnabled=YES;
+    [_message addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(messageTapped)]];
     UIButton *settings=[UIButton buttonWithType:UIButtonTypeSystem];[settings setTitle:_kind==LCSCCTargetKindWiFi?@"无线局域网设置…":@"蓝牙设置…" forState:UIControlStateNormal];[settings setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];settings.titleLabel.font=[UIFont systemFontOfSize:17];[settings addTarget:self action:@selector(openSettings) forControlEvents:UIControlEventTouchUpInside];
-    for(UIView *v in @[symbol,title,_progress,topLine,_table,_empty,_message,bottomLine,settings]){v.translatesAutoresizingMaskIntoConstraints=NO;[content addSubview:v];}
+    for(UIView *v in @[symbol,title,_progress,topLine,powerRow,_table,_empty,_message,bottomLine,settings]){v.translatesAutoresizingMaskIntoConstraints=NO;[content addSubview:v];}
     UILayoutGuide *safe=self.view.safeAreaLayoutGuide;
     CGFloat desiredWidth=UIDevice.currentDevice.userInterfaceIdiom==UIUserInterfaceIdiomPad?420:340;
     NSLayoutConstraint *width=[_card.widthAnchor constraintEqualToConstant:desiredWidth];width.priority=750;
@@ -141,7 +155,9 @@ static UIImage *lcscc_symbol(NSString *name,CGFloat size) {
         [topLine.leadingAnchor constraintEqualToAnchor:content.leadingAnchor],[topLine.trailingAnchor constraintEqualToAnchor:content.trailingAnchor],
         [topLine.topAnchor constraintEqualToAnchor:content.topAnchor constant:96],[topLine.heightAnchor constraintEqualToConstant:1/UIScreen.mainScreen.scale],
         [_table.leadingAnchor constraintEqualToAnchor:content.leadingAnchor],[_table.trailingAnchor constraintEqualToAnchor:content.trailingAnchor],
-        [_table.topAnchor constraintEqualToAnchor:topLine.bottomAnchor],[_table.bottomAnchor constraintEqualToAnchor:bottomLine.topAnchor],
+        [powerRow.leadingAnchor constraintEqualToAnchor:content.leadingAnchor],[powerRow.trailingAnchor constraintEqualToAnchor:content.trailingAnchor],
+        [powerRow.topAnchor constraintEqualToAnchor:topLine.bottomAnchor],_powerHeight=[powerRow.heightAnchor constraintEqualToConstant:0],_powerHeight,
+        [_table.topAnchor constraintEqualToAnchor:powerRow.bottomAnchor],[_table.bottomAnchor constraintEqualToAnchor:bottomLine.topAnchor],
         [bottomLine.leadingAnchor constraintEqualToAnchor:content.leadingAnchor],[bottomLine.trailingAnchor constraintEqualToAnchor:content.trailingAnchor],
         [bottomLine.bottomAnchor constraintEqualToAnchor:settings.topAnchor],[bottomLine.heightAnchor constraintEqualToConstant:1/UIScreen.mainScreen.scale],
         [settings.leadingAnchor constraintEqualToAnchor:content.leadingAnchor],[settings.trailingAnchor constraintEqualToAnchor:content.trailingAnchor],
@@ -171,7 +187,9 @@ static UIImage *lcscc_symbol(NSString *name,CGFloat size) {
         if(![strongSelf allowed]){[strongSelf close];return;}
         // A failing interface is not retried automatically; pull to refresh or
         // flipping the switch retries explicitly.
-        if(!strongSelf.refreshing&&!strongSelf.pendingIdentifier.length&&!strongSelf.refreshFailed)[strongSelf refresh];
+        // A powered-off interface is retried quietly; a real failure is not.
+        if(!strongSelf.refreshing&&!strongSelf.pendingIdentifier.length&&
+           (!strongSelf.refreshFailed||![LCSCCBackend.shared wiFiPowered]))[strongSelf refresh];
         [strongSelf scheduleRefresh:generation];
     });
 }
@@ -188,6 +206,38 @@ static UIImage *lcscc_symbol(NSString *name,CGFloat size) {
 - (void)close {
     [self stop];[self dismissViewControllerAnimated:YES completion:nil];
 }
+- (void)messageTapped { if(self.canPowerOn)[self powerOn]; }
+- (void)powerOn {
+    if(!self.active) return;
+    self.canPowerOn=NO;
+    self.powerSwitch.on=YES;
+    [LCSCCBackend.shared setWiFiPower:YES];
+    [self retryAfterPowerOn:15];
+}
+- (void)powerChanged {
+    if(self.powerSwitch.isOn){ self.message.text=nil; [LCSCCBackend.shared setWiFiPower:YES]; [self retryAfterPowerOn:15]; return; }
+    [LCSCCBackend.shared setWiFiPower:NO];
+    self.refreshFailed=YES; self.canPowerOn=NO;
+    [self applyPoweredOff:YES];
+}
+- (void)applyPoweredOff:(BOOL)off {
+    if(self.powerOff==off) return;
+    self.powerOff=off;
+    self.powerRow.hidden=!off;
+    self.powerHeight.constant=off?52:0;
+    if(!off) self.powerSwitch.on=YES;
+    [self.view layoutIfNeeded];
+}
+- (void)retryAfterPowerOn:(int)attempts {
+    if(attempts<=0) return;
+    __weak typeof(self) weakSelf=self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.4*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+        typeof(self) s=weakSelf;
+        if(!s||!s.active) return;
+        if([LCSCCBackend.shared wiFiPowered]){ s.refreshFailed=NO; [s refresh]; }
+        else [s retryAfterPowerOn:attempts-1];
+    });
+}
 - (void)refresh {
     if(![self allowed]){[self close];return;}
     if(self.refreshing)return;
@@ -201,7 +251,10 @@ static UIImage *lcscc_symbol(NSString *name,CGFloat size) {
         s.refreshing=NO;[s.progress stopAnimating];
         if(!error){s.items=[rows copy];[s.table reloadData];}
         s.refreshFailed=error!=nil;
-        s.message.text=error.localizedDescription;
+        BOOL off=error.code==LCSCCErrorPoweredOff;
+        s.canPowerOn=off;
+        [s applyPoweredOff:off];
+        s.message.text=off?nil:error.localizedDescription;
         s.empty.hidden=s.items.count!=0||error!=nil;
         NSTimeInterval delay=MAX(0,0.6-(NSProcessInfo.processInfo.systemUptime-s.refreshStart));
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(delay*NSEC_PER_SEC)),dispatch_get_main_queue(),^{

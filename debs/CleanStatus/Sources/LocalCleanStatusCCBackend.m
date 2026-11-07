@@ -26,6 +26,8 @@ typedef struct {
     int32_t (*isWEP)(LCSWiFiNetwork);
     int32_t (*isWPA)(LCSWiFiNetwork);
     int32_t (*isEAP)(LCSWiFiNetwork);
+    int32_t (*getPower)(LCSWiFiManager);       // optional
+    int32_t (*setPower)(LCSWiFiManager,int32_t); // optional
     BOOL ready;
 } LCSWiFiAPI;
 static LCSWiFiAPI lcscc_wifi;
@@ -110,6 +112,10 @@ static void lcscc_loadWiFi(void) {
         LCS_WIFI(isWPA,"WiFiNetworkIsWPA");
         LCS_WIFI(isEAP,"WiFiNetworkIsEAP");
 #undef LCS_WIFI
+        // Optional: without them the scan itself still decides, they only turn
+        // a raw 82 into a state the card can render.
+        *(void **)(&lcscc_wifi.getPower)=dlsym(h,"WiFiManagerClientGetPower");
+        *(void **)(&lcscc_wifi.setPower)=dlsym(h,"WiFiManagerClientSetPower");
         // Manager lives for this process. The unproven unschedule signature is
         // not called; no per-modal manager teardown while callbacks are alive.
         lcscc_wifi.ready=ready;
@@ -127,6 +133,16 @@ static void lcscc_loadWiFi(void) {
     return self;
 }
 - (BOOL)wiFiAvailable { lcscc_loadWiFi(); return lcscc_wifi.ready; }
+- (BOOL)wiFiPowered {
+    if (!self.manager || !lcscc_wifi.getPower) return YES; // unknown: let the scan decide
+    return lcscc_wifi.getPower(self.manager)!=0;
+}
+- (void)setWiFiPower:(BOOL)on {
+    if (self.manager && lcscc_wifi.setPower) lcscc_wifi.setPower(self.manager,on?1:0);
+}
+// A cached device dies when Wi-Fi is toggled; keeping it made every later scan
+// fail until respring.
+- (void)dropDevice { if (self.device) { CFRelease(self.device); self.device=NULL; } }
 - (BOOL)prepareWiFi {
     if (![self wiFiAvailable] || !NSThread.isMainThread) return NO;
     if (!self.manager) {
@@ -204,11 +220,22 @@ static void lcscc_loadWiFi(void) {
     LCSCCNativeRequest *r=[self requestWithTimeout:8];
     if (!r) { handler(@[],lcscc_error(LCSCCErrorUnavailable,@"请求队列已满")); return; }
     r.list=handler;
+    if (![self wiFiPowered]) {
+        [self finish:r.token success:NO items:nil error:lcscc_error(LCSCCErrorPoweredOff,@"无线局域网已关闭")];
+        return;
+    }
     // MobileWiFi rejects a NULL parameter dictionary outright (-3900), which is
     // why the list stayed empty; the reference passes an empty dictionary.
     int32_t status=lcscc_wifi.scan(self.device,(__bridge CFDictionaryRef)@{},lcscc_scanCallback,(void *)r.token);
-    if (status) [self finish:r.token success:NO items:nil
-        error:lcscc_error(status,[NSString stringWithFormat:@"扫描未启动（%d）",status])];
+    if (status) {
+        // 82 is what MobileWiFi returns with the interface down; either way the
+        // cached device is dropped und the next attempt rebuilds it.
+        BOOL off=(status==82)||![self wiFiPowered];
+        [self dropDevice];
+        [self finish:r.token success:NO items:nil error:off
+            ?lcscc_error(LCSCCErrorPoweredOff,@"无线局域网已关闭")
+            :lcscc_error(status,[NSString stringWithFormat:@"扫描未启动（%d）",status])];
+    }
 }
 - (void)receivedScanRef:(CFArrayRef)results error:(int32_t)error token:(uintptr_t)token {
     // A stale or cancelled request owns a reference we must drop here.
