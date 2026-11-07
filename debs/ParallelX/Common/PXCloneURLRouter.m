@@ -24,6 +24,7 @@ static UIWindow *PXURLRouterWindow = nil;
 static NSTimeInterval PXURLRouterLastRefresh = 0;
 static BOOL PXURLRouterCatalogLoading = NO;
 static BOOL PXURLRouterCatalogReady = NO;
+static BOOL PXURLRouterCancelled = NO;
 // Last account per bundle: repeat jumps of the same app must not ask again.
 static NSMutableDictionary<NSString *, NSString *> *PXURLRouterLastChoice;
 static NSMutableDictionary<NSString *, NSNumber *> *PXURLRouterLastChoiceAt;
@@ -280,6 +281,7 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
         (int)PXURLRouterCatalogLoading];
     if (!bundle.length) return NO;
 
+    PXURLRouterCancelled = NO;
     void (^once)(void) = PXURLRouterOnce(proceed);
     NSArray<NSDictionary *> *containers = PXURLRouterContainers(bundle);
     if (containers.count >= 2) {
@@ -404,7 +406,8 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
     [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel
                                            handler:^(__unused UIAlertAction *selected) {
         // Cancelling means "do not open it at all"; the original request is
-        // intentionally not forwarded.
+        // intentionally not forwarded, and the watchdog must not fire either.
+        PXURLRouterCancelled = YES;
         [alert dismissViewControllerAnimated:YES completion:^{
             window.hidden = YES;
             if (PXURLRouterWindow == window) PXURLRouterWindow = nil;
@@ -426,6 +429,10 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
 
     // Never hold the original request forever.
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 8 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        if (PXURLRouterCancelled) {
+            [PXCloneProbe log:@"WATCHDOG skipped (cancelled)"];
+            return;
+        }
         [PXCloneProbe log:@"WATCHDOG release"];
         proceed();
     });
