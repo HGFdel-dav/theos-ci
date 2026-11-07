@@ -250,12 +250,20 @@ static UIImage *lcscc_symbol(NSString *name,CGFloat size) {
     }
     self.refreshFailed=YES; // no rescan between here and the Settings screen
     [self stop];
+    NSTimeInterval t0=CFAbsoluteTimeGetCurrent();
+    // Open first, dismiss afterwards. Waiting for the modal dismissal before
+    // opening is what made the jump feel stalled.
+    ((BOOL(*)(id,SEL,id,id))objc_msgSend)(workspace,sel,[NSURL URLWithString:url],nil);
+    NSTimeInterval t1=CFAbsoluteTimeGetCurrent();
     [self dismissViewControllerAnimated:NO completion:^{
-        ((BOOL(*)(id,SEL,id,id))objc_msgSend)(workspace,sel,[NSURL URLWithString:url],nil);
+        NSTimeInterval t2=CFAbsoluteTimeGetCurrent();
         id cc=lcscc_object(NSClassFromString(@"SBControlCenterController"),"sharedInstance");
         SEL dismiss=sel_registerName("dismissAnimated:");
         if(lcscc_method(object_getClass(cc),dismiss,@encode(void),1,(const char *[]){@encode(BOOL)}))
             ((void(*)(id,SEL,BOOL))objc_msgSend)(cc,dismiss,YES);
+        NSTimeInterval t3=CFAbsoluteTimeGetCurrent();
+        local_cleanstatus_ccLog(@"settings.timing",[NSString stringWithFormat:@"open=%.0fms dismiss=%.0fms cc=%.0fms url=%@",
+            (t1-t0)*1000.0,(t2-t1)*1000.0,(t3-t2)*1000.0,url]);
     }];
 }
 @end

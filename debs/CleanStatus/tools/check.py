@@ -24,8 +24,8 @@ info=plistlib.loads((ROOT/'LocalCleanStatusPrefs/Resources/Info.plist').read_byt
 need(entry['detail']==info['NSPrincipalClass']=='LocalCleanStatusRootListController','panel controller identity')
 need(entry['bundle']==info['CFBundleExecutable']=='LocalCleanStatusPrefs','bundle executable identity')
 need(entry['isController'] is True,'real controller enabled')
-need(info['CFBundleVersion']==info['CFBundleShortVersionString']=='0.2.2','panel version')
-need('Version: 0.2.2' in text('control'),'package version')
+need(info['CFBundleVersion']==info['CFBundleShortVersionString']=='0.2.3','panel version')
+need('Version: 0.2.3' in text('control'),'package version')
 need('Maintainer: Niubiprass' in text('control') and 'Author: Niubiprass' in text('control'),'package author')
 need(entry['icon']=='icon.png' and all(('Resources/'+n) in text('LocalCleanStatusPrefs/Makefile') for n in ('icon.png','icon@2x.png','icon@3x.png')),'three original PreferenceLoader icons')
 for name,size in (('icon.png',29),('icon@2x.png',58),('icon@3x.png',87)):
@@ -177,21 +177,27 @@ need('LocalCleanStatusSystemActions_FILES' not in '' ,'placeholder')
 
 # Guards against half-finished rewrites (a stale loop variable reached CI once).
 need('(__bridge CFTypeRef)object' not in backend and 'LCSWiFiNetwork network=(LCSWiFiNetwork)CFArrayGetValueAtIndex' in backend,'scan loop reads CFArray slots directly')
-for stale in ('scanRunning','scanGeneration','setRaw:','\.raw','lcs_showLoading','lcs_alert','LCSCMarkExpanded'):
+for stale in ('scanRunning','scanGeneration','setRaw:',r'\.raw','lcs_showLoading','lcs_alert','LCSCMarkExpanded'):
     need(not re.search(stale,backend+cc+listvc),'no stale 0.2.0 identifier '+stale)
 need('CFArrayRef scanResults' in backend and 'CFRelease(request.scanResults)' in backend,'scan array released with its request')
 need('lcscc_symbol' in listvc and 'checkmark' in listvc and 'lock.fill' in listvc,'original row glyphs')
 need('CFBundleVersion' in text('LocalCleanStatusSystemActions/Resources/Info.plist'),'module version key')
-need(plistlib.loads((ROOT/'LocalCleanStatusSystemActions/Resources/Info.plist').read_bytes())['CFBundleShortVersionString']=='0.2.2','module version 0.2.1')
+need(plistlib.loads((ROOT/'LocalCleanStatusSystemActions/Resources/Info.plist').read_bytes())['CFBundleShortVersionString']=='0.2.3','module version 0.2.1')
 
 
 # 0.2.2 regressions that reached the device.
 actions=text('LocalCleanStatusSystemActions/LocalCleanStatusSystemActions.m')
-need('LCSCRespringFactory' in actions and 'class_getClassMethod' in actions,'respring factory checked as a class method')
-need('LCSCIntegerType' in actions,'respring options width accepted loosely')
+need('LCSCRespringFactory' in actions and 'respondsToSelector:sel_registerName("actionWithReason' in actions,'respring presence check, not an exact signature match')
+need('注销动作创建失败' in actions,'a respring that cannot be built reports the failure')
 need('(__bridge CFDictionaryRef)@{}' in backend,'scan parameters are an empty dictionary, not NULL')
-need('[backend hasRequest:' in backend and 'hasRequest' in backend,'callback layout resolved through the token registry')
+need('LCSCC_TOKEN_MAGIC' in backend and 'lcscc_tokenIsMine' in backend,'callbacks identify their own context by a magic token, never by a bare counter')
+need('CFArrayRef held=lent?(CFArrayRef)CFRetain(lent):NULL;' in backend,'the scan results are retained inside the callback, before the async hop')
+need('0x100000000ULL' in backend,'a small value in the results slot is refused instead of retained')
+need(backend.index('CFArrayRef held=lent')<backend.index('receivedScanRef:held error:error token:token'),'retain precedes the async hop')
+need('accepted, and the results slot' not in backend,'the released-object retain is gone')
 need('refreshFailed' in listvc,'a failing interface is not rescanned every ten seconds')
 need('self.refreshFailed=YES;' in listvc,'settings jump suspends the rescan first')
+need('settings.timing' in listvc,'the settings jump is timed so the next round has numbers')
+need(listvc.index('((BOOL(*)(id,SEL,id,id))objc_msgSend)(workspace,sel,[NSURL URLWithString:url],nil);')<listvc.index('[self dismissViewControllerAnimated:NO completion:^{'),'the URL opens before the modal dismissal')
 
 print(f'PASS source invariants: {checks}. iOS compile/runtime NOT performed.')
