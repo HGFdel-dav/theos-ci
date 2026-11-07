@@ -357,6 +357,7 @@ static BOOL PXInstallRefreshHooks(void) {
 // A named bounded retry avoids scheduling a nil, weak self-referencing block.
 static void PXBootstrap(NSUInteger attempt) {
     NSString *bundleID = NSBundle.mainBundle.bundleIdentifier;
+    if (attempt == 0) [PXCloneProbe log:@"BOOT-LOADED bid=%@", bundleID ?: @"(nil)"];
     BOOL springboard = [bundleID isEqualToString:@"com.apple.springboard"];
     if (!springboard) {
         // Injected into every process now; daemons get one line and nothing else.

@@ -63,7 +63,8 @@ class TestURLRouting(unittest.TestCase):
         self.assertIn('APP-BOOT', TWEAK)
         # The filter must no longer be SpringBoard-only.
         plist = (ROOT / 'ParallelXClone.plist').read_text()
-        self.assertNotIn('com.apple.springboard', plist)
+        self.assertIn('<string>UIApplication</string>', plist)
+        self.assertNotIn('<key>Bundles</key>', plist)
         self.assertIn('PXInstallProbeHooks();', TWEAK)
         self.assertIn('PXInAppReentry', TWEAK)
 

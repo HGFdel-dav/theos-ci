@@ -116,11 +116,14 @@ def main():
                              ("ParallelXPrefsUI", "com.apple.Preferences")):
             image = lib / (name + ".dylib")
             document = plistlib.loads((lib / (name + ".plist")).read_bytes())
-            filters = document.get("Filter", {}).get("Bundles")
-            # PXClone now has to see URL opens from ANY app, so its module
-            # plist must not restrict injection to SpringBoard.
-            expected = [bundle] if bundle else None
-            if filters != expected or image.stat().st_mode & 0o111 == 0:
+            filters = document.get("Filter", {})
+            # PXClone must see URL opens from ANY app: match on a class every
+            # UIKit process has instead of a bundle whitelist.
+            if bundle:
+                ok = filters.get("Bundles") == [bundle]
+            else:
+                ok = filters.get("Classes") == ["UIApplication"] and "Bundles" not in filters
+            if not ok or image.stat().st_mode & 0o111 == 0:
                 raise ValueError(f"wrong filter/permissions for {name}: {filters}")
             pac = inspect(image, arch)
             if any(x["issues"] for x in pac):
