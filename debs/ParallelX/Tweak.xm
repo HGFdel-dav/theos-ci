@@ -292,9 +292,17 @@ static void PXProbeOpenURLOptions(id self, SEL command, id url, id options, id c
     proceed();
 }
 
+// This is the real choke point for web views: a WebContent process performs
+// the open, and it has no UIApplication. Route here as well.
 static BOOL PXProbeWorkspaceOpen(id self, SEL command, id url, id options) {
-    [PXCloneProbe log:@"%@ url=%@ opts=%@", NSStringFromSelector(command), url, options];
-    return PXOrigWorkspaceOpen ? PXOrigWorkspaceOpen(self, command, url, options) : NO;
+    [PXCloneProbe log:@"WS %@ url=%@", NSStringFromSelector(command), url];
+    void (^proceed)(void) = ^{
+        if (PXOrigWorkspaceOpen) PXOrigWorkspaceOpen(self, command, url, options);
+    };
+    if ([url isKindOfClass:NSURL.class] &&
+        [PXCloneURLRouter handleOpenURL:(NSURL *)url proceed:proceed]) return YES;
+    if (PXOrigWorkspaceOpen) return PXOrigWorkspaceOpen(self, command, url, options);
+    return NO;
 }
 
 static BOOL PXInstallProbeHooks(void) {

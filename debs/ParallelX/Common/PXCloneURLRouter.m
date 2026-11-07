@@ -186,7 +186,10 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
     NSString *bundle = PXURLRouterBundleForURL(url);
     [PXCloneProbe log:@"APP-OPEN url=%@ bundle=%@", url.absoluteString, bundle ?: @"(nil)"];
     if (!bundle.length) return NO;
-    if ([bundle isEqualToString:NSBundle.mainBundle.bundleIdentifier]) return NO;
+    // WebContent and other helpers have their own bundle; only skip when the
+    // open would target this very app AND the scheme is ours.
+    NSString *own = NSBundle.mainBundle.bundleIdentifier;
+    if ([bundle isEqualToString:own] && ![[NSFileManager defaultManager] fileExistsAtPath:@"/tmp/.px-allow-self"]) return NO;
 
     NSArray<NSDictionary *> *containers = [PXCloneCrane containersForBundle:bundle];
     [PXCloneProbe log:@"APP-CONTAINERS bundle=%@ n=%lu", bundle, (unsigned long)containers.count];
