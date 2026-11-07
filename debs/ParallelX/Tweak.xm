@@ -245,7 +245,31 @@ static void PXHandleOpenRequest(id self, SEL command, id service, id request, id
     proceed();
 }
 
+// The real choke point, the one ScreenCore uses: SBWorkspace handles EVERY
+// application open (URL scheme, universal link, notification) inside
+// SpringBoard. FBSystemService is asked later and misses universal links.
+static void (*PXOrigWorkspaceRequest)(id, SEL, id, id, id, id, id);
+
+static void PXHandleWorkspaceRequest(id self, SEL command, id request, id options,
+                                     id settings, id origin, id result) {
+    [PXCloneProbe log:@"SBREQ req=%@", NSStringFromClass([request class])];
+    void (^proceed)(void) = ^{
+        if (PXOrigWorkspaceRequest)
+            PXOrigWorkspaceRequest(self, command, request, options, settings, origin, result);
+    };
+    if ([PXCloneURLRouter handleOpenRequest:request proceed:proceed]) return;
+    proceed();
+}
+
 static BOOL PXInstallURLRoutingHook(void) {
+    if (!PXOrigWorkspaceRequest) {
+        SEL selector = NSSelectorFromString(@"_handleOpenApplicationRequest:options:activationSettings:origin:withResult:");
+        Class cls = PXClassDeclaringSelector(selector, @encode(void),
+                                             @[@"@", @"@", @"@", @"@", @"@"]);
+        IMP original = NULL;
+        if (cls && PXCloneHookMessage(cls, selector, (IMP)PXHandleWorkspaceRequest, &original))
+            PXOrigWorkspaceRequest = (void (*)(id, SEL, id, id, id, id, id))original;
+    }
     if (PXOrigHandleOpenRequest) return YES;
     Class service = NSClassFromString(@"FBSystemService");
     SEL selector = NSSelectorFromString(@"systemService:handleOpenApplicationRequest:withCompletion:");
