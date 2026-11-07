@@ -28,6 +28,7 @@ ParallelXClone_FILES = Tweak.xm \
 	Common/PXCloneCrane.m \
 	Common/PXCloneMenu.m \
 	Common/PXCloneLaunch.m \
+	Common/PXCloneURLRouter.m \
 	Common/PXClonePaths.m \
 	Common/PXClonePolicy.m \
 	Common/PXClonePrefs.m \

@@ -41,15 +41,15 @@ static void PXPublishTraceState(PXCloneTraceState state, NSError *error,
 static BOOL PXTraceDirectoryIsCurrent(NSString *root, NSString *parent, int directory,
                                       struct stat identity) {
     if (!PXCloneValidateRoot(root, NULL)) return NO;
-    struct stat now, pathDirectory, pinned;
-    if (stat(root.fileSystemRepresentation, &now) != 0 ||
-        now.st_dev != identity.st_dev || now.st_ino != identity.st_ino ||
-        stat(parent.fileSystemRepresentation, &pathDirectory) != 0 ||
+    struct stat pathDirectory, pinned;
+    if (stat(parent.fileSystemRepresentation, &pathDirectory) != 0 ||
         fstat(directory, &pinned) != 0 || pathDirectory.st_dev != pinned.st_dev ||
         pathDirectory.st_ino != pinned.st_ino) return NO;
     char canonical[PATH_MAX];
-    return realpath(parent.fileSystemRepresentation, canonical) &&
-           PXClonePathIsContained(root.fileSystemRepresentation, canonical);
+    if (!realpath(parent.fileSystemRepresentation, canonical)) return NO;
+    // Same rule as EnsureStorage: var/ may resolve back to the live domain, so
+    // require AppGroup membership of the resolved directory, not a prefix.
+    return PXCloneRootIsAppGroup(canonical);
 }
 
 @implementation PXCloneTrace

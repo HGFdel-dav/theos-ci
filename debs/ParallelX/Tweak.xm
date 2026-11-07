@@ -8,6 +8,7 @@
 #import "Common/PXCloneLaunch.h"
 #import "Common/PXClonePrefs.h"
 #import "Common/PXCloneRuntime.h"
+#import "Common/PXCloneURLRouter.h"
 
 #ifdef PXCLONE_STRIP_LOGS
 #define NSLog(...) ((void)0)
@@ -26,6 +27,7 @@ static void (*PXOrigContainersChanged)(id, SEL, id);
 static void (*PXOrigContainerSettingsChanged)(id, SEL, id, id);
 static BOOL PXRefreshInFlight;
 static BOOL PXRefreshPending;
+static void (*PXOrigHandleOpenRequest)(id, SEL, id, id, id);
 
 // Bounded retry window for the tap hook. The menu rows and the settings
 // notification are installed on the first pass and stay installed even if the
@@ -227,6 +229,29 @@ static void PXContainerSettingsChanged(id self, SEL command, id container, id bu
     PXRefreshAndSync();
 }
 
+// SpringBoard asks FBSystemService to open an app for an incoming URL (an app
+// handoff, a payment app jumping into WeChat, ...). Intercepting here is the
+// only place where the clone account can still be chosen before the target app
+// is launched. A request without a second container is forwarded immediately.
+static void PXHandleOpenRequest(id self, SEL command, id service, id request, id completion) {
+    void (^proceed)(void) = ^{
+        if (PXOrigHandleOpenRequest) PXOrigHandleOpenRequest(self, command, service, request, completion);
+    };
+    if ([PXCloneURLRouter handleOpenRequest:request proceed:proceed]) return;
+    proceed();
+}
+
+static BOOL PXInstallURLRoutingHook(void) {
+    if (PXOrigHandleOpenRequest) return YES;
+    Class service = NSClassFromString(@"FBSystemService");
+    SEL selector = NSSelectorFromString(@"systemService:handleOpenApplicationRequest:withCompletion:");
+    if (!service || !class_getInstanceMethod(service, selector)) return NO;
+    IMP original = NULL;
+    if (!PXCloneHookMessage(service, selector, (IMP)PXHandleOpenRequest, &original)) return NO;
+    PXOrigHandleOpenRequest = (void (*)(id, SEL, id, id, id))original;
+    return YES;
+}
+
 static BOOL PXInstallRefreshHooks(void) {
     // Current alpha391 metadata and the device libcrane both confirm these
     // selectors. No timer loop or Settings-only refresh is required.
@@ -277,7 +302,8 @@ static void PXBootstrap(NSUInteger attempt) {
     BOOL actionReady = PXInstallActionHook();
     BOOL refreshReady = PXInstallRefreshHooks();
     BOOL launchReady = [PXCloneLaunchController installNativeHooks];
-    if ((actionReady && refreshReady && launchReady) || attempt >= PXHookAttemptLimit) return;
+    BOOL routingReady = PXInstallURLRoutingHook();
+    if ((actionReady && refreshReady && launchReady && routingReady) || attempt >= PXHookAttemptLimit) return;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, PXHookRetryDelayNS),
                    dispatch_get_main_queue(), ^{ PXBootstrap(attempt + 1); });
 }

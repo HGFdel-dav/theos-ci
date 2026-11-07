@@ -1,0 +1,30 @@
+#pragma once
+#import <Foundation/Foundation.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+NS_ASSUME_NONNULL_BEGIN
+
+// Routes SpringBoard's external "open application with URL" requests through a
+// clone-account chooser. Only bundles that actually have more than one Crane
+// container are intercepted; everything else proceeds untouched.
+@interface PXCloneURLRouter : NSObject
+
+// Returns YES when the router owns this request and will call `proceed` itself
+// (immediately for coincident choices, or after the chosen account is active).
+// Returns NO when the caller must run its normal path right now.
+//
+// `proceed` is invoked exactly once, on the main thread, and may be deferred;
+// the caller must not run the original implementation before that.
++ (BOOL)handleOpenRequest:(nullable id)request
+                  proceed:(void (^)(void))proceed;
+
+@end
+
+NS_ASSUME_NONNULL_END
+
+#ifdef __cplusplus
+}
+#endif

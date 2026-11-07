@@ -178,17 +178,13 @@ BOOL PXCloneEnsureStorage(NSError **error) {
 
     NSFileManager *fm = NSFileManager.defaultManager;
     NSString *dir = [root stringByAppendingString:@"/var/mobile/Library/Preferences"];
-    // Validate the existing parent BEFORE creating anything. A Library or
-    // Preferences symlink leading outside the chosen hidden root is rejected.
+    // RootHide routinely redirects var/ or var/mobile/ back to the live var
+    // domain, so realpath(dir) is NOT required to keep the root prefix. Judge
+    // the FINAL resolved directory: it must still live inside an AppGroup
+    // hidden root (never plain var, never a Bundle/Application // alias).
     NSString *parent = PXCanonical(dir.stringByDeletingLastPathComponent, error);
-    if (!parent || !PXClonePathIsContained(root.fileSystemRepresentation, parent.fileSystemRepresentation))
-        return PXSetError(error, PXClonePathsErrorInvalidRoot, @"preferences parent escaped selected root");
-    struct stat before;
-    if (lstat(dir.fileSystemRepresentation, &before) == 0) {
-        NSString *existing = PXCanonical(dir, error);
-        if (!existing || !PXClonePathIsContained(root.fileSystemRepresentation, existing.fileSystemRepresentation))
-            return PXSetError(error, PXClonePathsErrorInvalidRoot, @"preferences directory escaped selected root");
-    }
+    if (!parent)
+        return PXSetError(error, PXClonePathsErrorInvalidRoot, @"preferences parent unresolvable");
     NSError *fmError = nil;
     if (![fm createDirectoryAtPath:dir withIntermediateDirectories:YES
                         attributes:nil error:&fmError]) {
@@ -198,8 +194,11 @@ BOOL PXCloneEnsureStorage(NSError **error) {
 
     NSString *canonicalDir = PXCanonical(dir, error);
     if (!canonicalDir) return NO;
-    if (!PXClonePathIsContained(root.fileSystemRepresentation, canonicalDir.fileSystemRepresentation))
-        return PXSetError(error, PXClonePathsErrorInvalidRoot, @"prefs escaped active root");
+    if (!PXCloneRootIsAppGroup(canonicalDir.fileSystemRepresentation) &&
+        !(PXCloneIsRootHide() == NO && PXClonePathIsContained(root.fileSystemRepresentation,
+                                                             canonicalDir.fileSystemRepresentation)))
+        return PXSetError(error, PXClonePathsErrorInvalidRoot,
+                          @"prefs resolved outside every AppGroup hidden root");
 
     if (access(canonicalDir.fileSystemRepresentation, W_OK) != 0)
         return PXSetError(error, PXClonePathsErrorNotWritable,

@@ -534,7 +534,7 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     // A bounded, content-free event ring survives a missed live log capture.
     // No account display names, credentials, messages or app content.
     NSDictionary *event = @{ @"time": @(NSDate.date.timeIntervalSince1970),
-                             @"build": @"clone0.9", @"token": @(_flow.token),
+                             @"build": @"clone0.10", @"token": @(_flow.token),
                              @"stage": stage, @"code": @(code),
                              @"bundle": _bundle ?: @"", @"targetHash": @(_container.hash) };
     [_trace addObject:event];
@@ -545,9 +545,11 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
         if (self->_reportedTraceState == state) return;
         self->_reportedTraceState = state;
         // Writing errors are visible even if no trace file can be created.
-        // No recursive record() call, no suppression of the account operation.
-        NSString *message = [NSString stringWithFormat:@"%@（阶段 %lu）",
-                              [PXCloneTrace descriptionForState:state], (unsigned long)state];
+        // The underlying reason is shown so a screenshot identifies the exact
+        // failing step without reading logs on the device.
+        NSString *reason = error.localizedDescription.length ? error.localizedDescription : @"未知原因";
+        NSString *message = [NSString stringWithFormat:@"%@：%@（阶段 %lu）",
+                              [PXCloneTrace descriptionForState:state], reason, (unsigned long)state];
         [self showError:message];
     }];
 }

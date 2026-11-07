@@ -81,11 +81,12 @@ class RootAndTraceTests(unittest.TestCase):
         self.assertIn('!PXCloneIsRootHide()', p)
         self.assertNotRegex(p, r'\.jbroot-[0-9a-fA-F-]{8,}')
 
-    def test_directory_creation_cannot_precede_parent_scope_check(self):
+    def test_directory_creation_judges_the_resolved_directory(self):
         p = (ROOT / 'Common/PXClonePaths.m').read_text().split('BOOL PXCloneEnsureStorage', 1)[1]
-        self.assertLess(p.index('PXClonePathIsContained'), p.index('createDirectoryAtPath'))
+        self.assertIn('PXCloneRootIsAppGroup(canonicalDir.fileSystemRepresentation)', p)
+        self.assertLess(p.index('createDirectoryAtPath'), p.index('PXCloneRootIsAppGroup(canonicalDir'))
         self.assertIn('O_NOFOLLOW', p)
-        self.assertIn('PXClonePathIsContained', p)
+        self.assertNotIn('prefs escaped active root', p)
 
     def test_trace_is_confirmed_only_after_atomic_write_and_byte_readback(self):
         p = (ROOT / 'Common/PXCloneTrace.m').read_text()
@@ -109,7 +110,10 @@ class RootAndTraceTests(unittest.TestCase):
         self.assertNotIn('CFPreferencesSetAppValue', p)
         self.assertNotIn('snapshot = [snapshot', p)  # no assignment to a const block capture
 
-    def test_file_failures_have_an_independent_status_and_visible_feedback(self):
+    def test_trace_directory_check_uses_appgroup_membership(self):
+        p = (ROOT / 'Common/PXCloneTrace.m').read_text()
+        self.assertIn('return PXCloneRootIsAppGroup(canonical);', p)
+        self.assertNotIn('PXClonePathIsContained(root.fileSystemRepresentation, canonical)', p)
         p = (ROOT / 'Common/PXCloneTrace.m').read_text()
         view = (ROOT / 'Prefs/PXCloneAccountsController.m').read_text()
         launch = (ROOT / 'Common/PXCloneLaunch.m').read_text()
