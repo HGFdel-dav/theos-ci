@@ -27,7 +27,7 @@ static BOOL PXURLRouterCatalogReady = NO;
 // Last account per bundle: repeat jumps of the same app must not ask again.
 static NSMutableDictionary<NSString *, NSString *> *PXURLRouterLastChoice;
 static NSMutableDictionary<NSString *, NSNumber *> *PXURLRouterLastChoiceAt;
-static NSTimeInterval const PXURLRouterChoiceTTL = 60.0;
+static NSTimeInterval const PXURLRouterChoiceTTL = 120.0;
 
 static NSString *PXURLRouterString(id object, NSArray<NSString *> *keys) {
     if (!object) return nil;
