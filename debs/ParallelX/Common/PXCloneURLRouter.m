@@ -286,45 +286,36 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
 
     // Attach to whatever is on screen when possible; a bare key window can be
     // swallowed by the app that is mid-transition.
-    // A window without a scene is invisible in SpringBoard, which left the
-    // request held with nothing on screen (looked like a freeze).
-    UIWindow *window = nil;
-    for (UIScene *scene in application.connectedScenes) {
-        if (![scene isKindOfClass:UIWindowScene.class]) continue;
-        if (scene.activationState != UISceneActivationStateForegroundActive) continue;
-        window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene *)scene];
+    // Twin (own repo) does exactly this: walk the existing windows backwards
+    // and present on the top controller. A fresh scene-less window stays
+    // invisible in SpringBoard and looks like a freeze.
+    UIViewController *presenter = nil;
+    for (UIWindow *candidate in application.windows.reverseObjectEnumerator) {
+        if (candidate.hidden || !candidate.rootViewController) continue;
+        presenter = candidate.rootViewController;
+        while (presenter.presentedViewController) presenter = presenter.presentedViewController;
         break;
     }
-    if (!window) {
-        for (UIScene *scene in application.connectedScenes) {
-            if (![scene isKindOfClass:UIWindowScene.class]) continue;
-            window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene *)scene];
-            break;
-        }
-    }
-    if (!window) window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
-    window.frame = UIScreen.mainScreen.bounds;
-    window.windowLevel = UIWindowLevelAlert + 1;
-    UIViewController *host = [UIViewController new];
-    host.view.backgroundColor = UIColor.clearColor;
-    window.rootViewController = host;
-    PXURLRouterWindow = window;
-    [window makeKeyAndVisible];
-    [PXCloneProbe log:@"PRESENT level=%.0f scenes=%lu", window.windowLevel,
-        (unsigned long)application.connectedScenes.count];
+    if (presenter && [presenter isKindOfClass:UIAlertController.class]) { presenter = nil; }
 
-    UIViewController *presenter = host;
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    UIViewController *top = application.keyWindow.rootViewController;
-#pragma clang diagnostic pop
-    while (top.presentedViewController) top = top.presentedViewController;
-    if (top && top.view.window) presenter = top;
+    UIWindow *window = nil;
+    if (!presenter) {
+        window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+        window.windowLevel = UIWindowLevelAlert + 1;
+        UIViewController *host = [UIViewController new];
+        host.view.backgroundColor = UIColor.clearColor;
+        window.rootViewController = host;
+        PXURLRouterWindow = window;
+        [window makeKeyAndVisible];
+        presenter = host;
+    }
+    [PXCloneProbe log:@"PRESENT via=%@ windows=%lu", window ? @"window" : @"vc",
+        (unsigned long)application.windows.count];
 
     NSString *active = [PXCloneCrane activeContainerForBundle:bundle];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"选择打开的账号"
                                                                   message:nil
-                                                           preferredStyle:UIAlertControllerStyleActionSheet];
+                                                           preferredStyle:UIAlertControllerStyleAlert];
     void (^finish)(NSString *, NSString *) = ^(NSString *container, NSString *title) {
         (void)title;
         [alert dismissViewControllerAnimated:YES completion:^{

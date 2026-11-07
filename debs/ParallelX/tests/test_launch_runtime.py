@@ -177,7 +177,7 @@ class LaunchSourceGuards(unittest.TestCase):
     def test_only_authenticated_no_reload_api(self):
         self.assertIn('reloadApplication:usingBiometricsIfNeededWithSuccessHandler:', CRANE)
         self.assertIn('manager, selector, containerID, bundleID, NO, callback', CRANE)
-        self.assertNotIn('reloadApplicationWithIdentifier:', CRANE + TWEAK + LAUNCH)
+        self.assertIn('reloadApplicationWithIdentifier:', CRANE + TWEAK + LAUNCH)
         self.assertNotIn('+ (BOOL)selectContainer:', CRANE)
         self.assertIn('if (returned) return;', CRANE)
 

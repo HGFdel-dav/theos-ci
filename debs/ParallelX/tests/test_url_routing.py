@@ -123,7 +123,7 @@ class TestURLRouting(unittest.TestCase):
 
     def test_chooser_uses_its_own_alert_window(self):
         self.assertIn('UIWindowLevelAlert + 1', ROUTER)
-        self.assertIn('UIAlertControllerStyleActionSheet', ROUTER)
+        self.assertIn('UIAlertControllerStyleAlert', ROUTER)
         self.assertIn('makeKeyAndVisible', ROUTER)
         self.assertIn('style:UIAlertActionStyleCancel', ROUTER)
 
