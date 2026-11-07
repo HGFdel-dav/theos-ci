@@ -103,10 +103,113 @@ static NSString *PXURLRouterBundleFromRequest(id request) {
     if (!target) return nil;
     return PXURLRouterString(target, @[@"bundleIdentifier", @"bundleID", @"applicationIdentifier"]);
 }
+// An app-originated open (the normal payment flow) already picked an account
+// and forwarded; SpringBoard will see the same URL a moment later and must not
+// prompt a second time.
+static NSTimeInterval PXURLRouterLastAppHandoff = 0;
+static NSTimeInterval const PXURLRouterHandoffWindow = 8.0;
+
+static id PXURLRouterWorkspace(void) {
+    Class workspace = NSClassFromString(@"LSApplicationWorkspace");
+    SEL shared = NSSelectorFromString(@"defaultWorkspace");
+    if (!PXCloneClassMethodMatches(workspace, shared, @encode(id), @[], NULL)) return nil;
+    return ((id (*)(id, SEL))objc_msgSend)((id)workspace, shared);
+}
+
+static NSString *PXURLRouterProxyBundle(id proxy) {
+    if (!proxy) return nil;
+    for (NSString *key in @[@"bundleIdentifier", @"bundleID", @"applicationIdentifier"]) {
+        SEL selector = NSSelectorFromString(key);
+        if (![proxy respondsToSelector:selector]) continue;
+        id value = nil;
+        @try { value = [proxy valueForKey:key]; }
+        @catch (NSException *exception) { (void)exception; continue; }
+        if ([value isKindOfClass:NSString.class] && [(NSString *)value length]) return value;
+    }
+    return nil;
+}
+
+// Ask LaunchServices which app a scheme belongs to. Both selectors exist on
+// different iOS builds; either answer is enough, no scheme table is hardcoded.
+static NSString *PXURLRouterBundleForURL(NSURL *url) {
+    if (!url) return nil;
+    id workspace = PXURLRouterWorkspace();
+    if (!workspace) return nil;
+    SEL single = NSSelectorFromString(@"applicationForURL:");
+    if (PXCloneInstanceMethodMatches(workspace, single, @encode(id), @[@"@"])) {
+        id proxy = nil;
+        @try { proxy = ((id (*)(id, SEL, id))objc_msgSend)(workspace, single, url); }
+        @catch (__unused NSException *exception) { proxy = nil; }
+        NSString *bundle = PXURLRouterProxyBundle(proxy);
+        if (bundle.length) return bundle;
+    }
+    SEL many = NSSelectorFromString(@"applicationsForOpeningURL:");
+    if (PXCloneInstanceMethodMatches(workspace, many, @encode(id), @[@"@"])) {
+        id list = nil;
+        @try { list = ((id (*)(id, SEL, id))objc_msgSend)(workspace, many, url); }
+        @catch (__unused NSException *exception) { list = nil; }
+        if ([list isKindOfClass:NSArray.class] && [list count]) {
+            NSString *bundle = PXURLRouterProxyBundle(((NSArray *)list).firstObject);
+            if (bundle.length) return bundle;
+        }
+    }
+    return nil;
+}
+
+static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
+    NSString *scheme = url.scheme.lowercaseString;
+    if (!scheme.length) return YES;
+    for (NSString *web in @[@"http", @"https", @"about", @"file", @"data", @"javascript"]) {
+        if ([scheme isEqualToString:web]) return YES;
+    }
+    return NO;
+}
+
 @implementation PXCloneURLRouter
+
++ (BOOL)recentAppHandoff {
+    return PXURLRouterLastAppHandoff > 0 &&
+           NSDate.date.timeIntervalSince1970 - PXURLRouterLastAppHandoff < PXURLRouterHandoffWindow;
+}
+
++ (void)noteAppHandoff {
+    PXURLRouterLastAppHandoff = NSDate.date.timeIntervalSince1970;
+}
+
+// Called from every app process for -[UIApplication openURL:options:...].
+// Returns YES when the router owns the request and will run `proceed` later.
++ (BOOL)handleOpenURL:(NSURL *)url proceed:(void (^)(void))proceed {
+    if (!proceed || !url.absoluteString.length) return NO;
+    if (PXURLRouterSchemeIsWeb(url)) return NO;
+
+    NSString *bundle = PXURLRouterBundleForURL(url);
+    [PXCloneProbe log:@"APP-OPEN url=%@ bundle=%@", url.absoluteString, bundle ?: @"(nil)"];
+    if (!bundle.length) return NO;
+    if ([bundle isEqualToString:NSBundle.mainBundle.bundleIdentifier]) return NO;
+
+    NSArray<NSDictionary *> *containers = [PXCloneCrane containersForBundle:bundle];
+    [PXCloneProbe log:@"APP-CONTAINERS bundle=%@ n=%lu", bundle, (unsigned long)containers.count];
+    if (containers.count < 2) return NO;
+
+    void (^once)(void) = PXURLRouterOnce(proceed);
+    void (^owned)(void) = ^{
+        [self noteAppHandoff];
+        once();
+    };
+    void (^present)(void) = ^{
+        [self presentChooserForBundle:bundle containers:containers proceed:owned];
+    };
+    if (NSThread.isMainThread) present();
+    else dispatch_async(dispatch_get_main_queue(), present);
+    return YES;
+}
 
 + (BOOL)handleOpenRequest:(id)request proceed:(void (^)(void))proceed {
     if (!proceed) return NO;
+    if ([self recentAppHandoff]) {
+        [PXCloneProbe log:@"SB-SKIP (app already handled)"];
+        return NO;
+    }
     NSString *bundle = PXURLRouterBundleFromRequest(request);
     [PXCloneProbe log:@"ROUTE bundle=%@ catalog=%lu ready=%d loading=%d", bundle ?: @"(nil)",
         (unsigned long)PXCloneCrane.cachedCatalog.count, (int)PXURLRouterCatalogReady,

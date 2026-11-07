@@ -168,6 +168,38 @@ static NSArray<NSDictionary *> *PXCatalog;
     return catalog;
 }
 
++ (NSArray<NSString *> *)containerIdentifiersForBundle:(NSString *)bundleID {
+    id manager = PXSharedManager();
+    if (!manager || !bundleID.length) return @[];
+    if (!PXSupported(manager, bundleID)) return @[];
+    return PXStringArrayResult(manager,
+        NSSelectorFromString(@"containerIdentifiersOfApplicationWithIdentifier:"), bundleID);
+}
+
++ (NSArray<NSDictionary *> *)containersForBundle:(NSString *)bundleID {
+    id manager = PXSharedManager();
+    if (!manager || !bundleID.length) return @[];
+    NSArray<NSString *> *identifiers = [self containerIdentifiersForBundle:bundleID];
+    if (identifiers.count < 2) return @[];
+
+    NSMutableArray<NSDictionary *> *containers = [NSMutableArray array];
+    NSMutableSet<NSString *> *seen = [NSMutableSet set];
+    if (![identifiers containsObject:@"DEFAULT"]) {
+        [containers addObject:@{@"container": @"DEFAULT", @"name": @"默认", @"isDefault": @YES}];
+        [seen addObject:@"DEFAULT"];
+    }
+    for (NSString *identifier in identifiers) {
+        if ([seen containsObject:identifier]) continue;
+        [seen addObject:identifier];
+        BOOL isDefault = [identifier isEqualToString:@"DEFAULT"];
+        NSString *name = isDefault ? @"默认" : PXDisplayName(manager, identifier, bundleID);
+        [containers addObject:@{@"container": identifier,
+                                @"name": name.length ? name : identifier,
+                                @"isDefault": @(isDefault)}];
+    }
+    return containers.count >= 2 ? containers : @[];
+}
+
 + (NSString *)activeContainerForBundle:(NSString *)bundleID {
     id manager = PXSharedManager();
     if (!manager || !bundleID.length) return @"";

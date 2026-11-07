@@ -33,8 +33,10 @@ class TestURLRouting(unittest.TestCase):
 
     def test_only_multi_container_bundles_are_intercepted(self):
         self.assertIn('if (containers.count >= 2) {', ROUTER)
+        self.assertIn('if (containers.count < 2) return NO;', ROUTER)
+        handler = ROUTER.split('+ (BOOL)handleOpenRequest', 1)[1]
         # No chooser may be presented for a single-container bundle.
-        self.assertLess(ROUTER.index('containers.count >= 2'), ROUTER.index('presentChooserForBundle'))
+        self.assertLess(handler.index('containers.count >= 2'), handler.index('presentChooserForBundle'))
 
     def test_cold_catalog_is_awaited_instead_of_forwarded(self):
         # A request can beat the first async catalog load. Forwarding there was
@@ -45,8 +47,25 @@ class TestURLRouting(unittest.TestCase):
         handler = ROUTER.split('+ (BOOL)handleOpenRequest', 1)[1].split('+ (void)loadCatalogForRequest', 1)[0]
         # Only "no block" and "no bundle at all" may decline; the
         # cold-catalog path must keep ownership and return YES.
-        self.assertEqual(handler.count('return NO;'), 2)
+        self.assertEqual(handler.count('return NO;'), 3)
         self.assertEqual(handler.count('return YES;'), 2)
+
+    def test_any_app_can_route_before_springboard(self):
+        # The payment page lives in the SOURCE app (Unicom/Mobile/Taobao...).
+        # SpringBoard never sees those opens, so every app hooks openURL.
+        self.assertIn('+ (BOOL)handleOpenURL:(nullable NSURL *)url', ROUTER_H)
+        self.assertIn('applicationsForOpeningURL:', ROUTER)
+        self.assertIn('applicationForURL:', ROUTER)
+        self.assertIn('NSBundle.mainBundle.bundleIdentifier', ROUTER)
+        self.assertIn('recentAppHandoff', ROUTER)
+        # Web URLs keep their normal handling.
+        self.assertIn('PXURLRouterSchemeIsWeb', ROUTER)
+        self.assertIn('APP-BOOT', TWEAK)
+        # The filter must no longer be SpringBoard-only.
+        plist = (ROOT / 'ParallelXClone.plist').read_text()
+        self.assertNotIn('com.apple.springboard', plist)
+        self.assertIn('PXInstallProbeHooks();', TWEAK)
+        self.assertIn('PXInAppReentry', TWEAK)
 
     def test_request_target_falls_back_to_nested_selectors(self):
         self.assertIn('PXURLRouterBundleFromRequest', ROUTER)

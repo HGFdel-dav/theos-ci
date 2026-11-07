@@ -27,6 +27,14 @@ NS_ASSUME_NONNULL_BEGIN
 + (BOOL)handleOpenRequest:(nullable id)request
                   proceed:(void (^)(void))proceed;
 
+// In-app path: every app process hooks -[UIApplication openURL:...] so a
+// payment handoff is caught at its SOURCE, whichever app it comes from
+// (China Unicom, China Mobile, Taobao, Safari ...), not just SpringBoard.
+// Returns YES when the router owns the request.
++ (BOOL)handleOpenURL:(nullable NSURL *)url proceed:(void (^)(void))proceed;
++ (BOOL)recentAppHandoff;
++ (void)noteAppHandoff;
+
 @end
 
 NS_ASSUME_NONNULL_END

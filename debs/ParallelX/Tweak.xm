@@ -262,14 +262,34 @@ static BOOL (*PXOrigOpenURL)(id, SEL, id);
 static void (*PXOrigOpenURLOptions)(id, SEL, id, id, id);
 static BOOL (*PXOrigWorkspaceOpen)(id, SEL, id, id);
 
+static BOOL PXInAppReentry;
+
 static BOOL PXProbeOpenURL(id self, SEL command, id url) {
-    [PXCloneProbe log:@"UIApp.openURL url=%@", url];
-    return PXOrigOpenURL ? PXOrigOpenURL(self, command, url) : NO;
+    void (^proceed)(void) = ^{
+        if (!PXOrigOpenURL) return;
+        PXInAppReentry = YES;
+        PXOrigOpenURL(self, command, url);
+        PXInAppReentry = NO;
+    };
+    if ([url isKindOfClass:NSURL.class] &&
+        [PXCloneURLRouter handleOpenURL:(NSURL *)url proceed:proceed]) return YES;
+    [PXCloneProbe log:@"UIApp.openURL passthru url=%@", url];
+    if (PXOrigOpenURL) return PXOrigOpenURL(self, command, url);
+    return NO;
 }
 
 static void PXProbeOpenURLOptions(id self, SEL command, id url, id options, id completion) {
-    [PXCloneProbe log:@"UIApp.openURL:options: url=%@ opts=%@", url, options];
-    if (PXOrigOpenURLOptions) PXOrigOpenURLOptions(self, command, url, options, completion);
+    if (PXInAppReentry) {
+        if (PXOrigOpenURLOptions) PXOrigOpenURLOptions(self, command, url, options, completion);
+        return;
+    }
+    void (^proceed)(void) = ^{
+        if (PXOrigOpenURLOptions) PXOrigOpenURLOptions(self, command, url, options, completion);
+    };
+    if ([url isKindOfClass:NSURL.class] &&
+        [PXCloneURLRouter handleOpenURL:(NSURL *)url proceed:proceed]) return;
+    [PXCloneProbe log:@"UIApp.openURL:options: passthru url=%@", url];
+    proceed();
 }
 
 static BOOL PXProbeWorkspaceOpen(id self, SEL command, id url, id options) {
@@ -336,6 +356,21 @@ static BOOL PXInstallRefreshHooks(void) {
 // dlopen Crane or create its shared manager from the dylib initializer.
 // A named bounded retry avoids scheduling a nil, weak self-referencing block.
 static void PXBootstrap(NSUInteger attempt) {
+    NSString *bundleID = NSBundle.mainBundle.bundleIdentifier;
+    BOOL springboard = [bundleID isEqualToString:@"com.apple.springboard"];
+    if (!springboard) {
+        // Injected into every process now; daemons get one line and nothing else.
+        if (attempt == 0 && bundleID.length) {
+            [PXCloneProbe log:@"APP-BOOT %@", bundleID];
+            PXInstallProbeHooks();
+        }
+        if (!bundleID.length) return;
+        BOOL ready = PXOrigOpenURL || PXOrigOpenURLOptions;
+        if (ready || attempt >= PXHookAttemptLimit) return;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, PXHookRetryDelayNS),
+                       dispatch_get_main_queue(), ^{ PXBootstrap(attempt + 1); });
+        return;
+    }
     if (attempt == 0) {
         (void)PXClonePrefs.shared;
         if (PXNotifyToken < 0) {
