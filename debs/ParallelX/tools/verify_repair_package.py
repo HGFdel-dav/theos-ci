@@ -122,9 +122,8 @@ def main():
             if bundle:
                 ok = filters.get("Bundles") == [bundle]
             else:
-                classes = filters.get("Classes") or []
-                ok = ("UIApplication" in classes and "LSApplicationWorkspace" in classes
-                      and "Bundles" not in filters)
+                ok = ("com.apple.springboard" in (filters.get("Bundles") or [])
+                      and "WebContent" in (filters.get("Executables") or []))
             if not ok or image.stat().st_mode & 0o111 == 0:
                 raise ValueError(f"wrong filter/permissions for {name}: {filters}")
             pac = inspect(image, arch)
