@@ -286,13 +286,32 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
 
     // Attach to whatever is on screen when possible; a bare key window can be
     // swallowed by the app that is mid-transition.
-    UIWindow *window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+    // A window without a scene is invisible in SpringBoard, which left the
+    // request held with nothing on screen (looked like a freeze).
+    UIWindow *window = nil;
+    for (UIScene *scene in application.connectedScenes) {
+        if (![scene isKindOfClass:UIWindowScene.class]) continue;
+        if (scene.activationState != UISceneActivationStateForegroundActive) continue;
+        window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene *)scene];
+        break;
+    }
+    if (!window) {
+        for (UIScene *scene in application.connectedScenes) {
+            if (![scene isKindOfClass:UIWindowScene.class]) continue;
+            window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene *)scene];
+            break;
+        }
+    }
+    if (!window) window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+    window.frame = UIScreen.mainScreen.bounds;
     window.windowLevel = UIWindowLevelAlert + 1;
     UIViewController *host = [UIViewController new];
     host.view.backgroundColor = UIColor.clearColor;
     window.rootViewController = host;
     PXURLRouterWindow = window;
     [window makeKeyAndVisible];
+    [PXCloneProbe log:@"PRESENT level=%.0f scenes=%lu", window.windowLevel,
+        (unsigned long)application.connectedScenes.count];
 
     UIViewController *presenter = host;
 #pragma clang diagnostic push
@@ -339,7 +358,17 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
         }];
     }]];
 
-    [presenter presentViewController:alert animated:YES completion:nil];
+    [presenter presentViewController:alert animated:YES completion:^{
+        if (alert.presentingViewController == nil) {
+            [host presentViewController:alert animated:YES completion:nil];
+        }
+    }];
+
+    // Never hold the original request forever.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 8 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        [PXCloneProbe log:@"WATCHDOG release"];
+        proceed();
+    });
 }
 
 + (void)activateContainer:(NSString *)container
