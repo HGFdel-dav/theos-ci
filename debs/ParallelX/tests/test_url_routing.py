@@ -41,7 +41,7 @@ class TestURLRouting(unittest.TestCase):
     def test_unknown_bundle_never_throws(self):
         # All request fields are read through respondsToSelector + @try.
         self.assertIn('respondsToSelector:selector', ROUTER)
-        self.assertIn('@catch (__unused NSException *exception)', ROUTER)
+        self.assertIn('@catch (NSException *exception) { (void)exception;', ROUTER)
         for key in ('applicationIdentifier', 'bundleIdentifier', 'targetApplicationIdentifier'):
             self.assertIn(key, ROUTER)
 
