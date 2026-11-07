@@ -5,15 +5,14 @@
 }
 
 - (BOOL)isSelected {
-    NSUserDefaults *prefs = [[NSUserDefaults alloc] initWithSuiteName:kSuiteName];
-    _selected = [prefs objectForKey:kEnabledKey] ? [prefs boolForKey:kEnabledKey] : NO;
+    _selected = RDReadBoolPref(kSystemLinksKey, YES);
     return _selected;
 }
 
 - (void)setSelected:(BOOL)selected {
     _selected = selected;
     NSUserDefaults *prefs = [[NSUserDefaults alloc] initWithSuiteName:kSuiteName];
-    [prefs setBool:selected forKey:kEnabledKey];
+    [prefs setBool:selected forKey:kSystemLinksKey];
     [prefs synchronize];
     [super refreshState];
 }

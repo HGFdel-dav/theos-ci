@@ -15,9 +15,10 @@ both: rootless rootful
 	@echo "Built both variants in packages/"
 
 TWEAK_NAME = ReynardDefault
-ReynardDefault_FILES = Tweak.x
-ReynardDefault_CFLAGS = -fobjc-arc
-ReynardDefault_FRAMEWORKS = Foundation
+ReynardDefault_FILES = Tweak.x ReynardHook.xm
+ReynardDefault_CFLAGS = -fobjc-arc -fvisibility=hidden -DREYNARD_STRIP_LOGS=1
+ReynardDefault_LDFLAGS = -Wl,-x -Wl,-dead_strip
+ReynardDefault_FRAMEWORKS = Foundation UIKit
 ReynardDefault_EXTRA_FRAMEWORKS = FrontBoardServices
 
 SUBPROJECTS = ReynardDefaultPrefs ReynardDefaultCC

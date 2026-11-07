@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import "Common/Common.h"
+#import <objc/runtime.h>
 
 @interface FBSystemServiceOpenApplicationRequest : NSObject
 @property (nonatomic, copy) NSURL *URL;
@@ -10,10 +11,11 @@ static NSString *const kReynardBundleID = @"com.minh-ton.Reynard";
 static NSString *const kReynardURLScheme = @"reynard";
 
 static BOOL enabled = NO;
+static BOOL systemLinksEnabled = YES;
 
 static void loadPrefs(void) {
-    NSUserDefaults *prefs = [[NSUserDefaults alloc] initWithSuiteName:kSuiteName];
-    enabled = [prefs objectForKey:kEnabledKey] ? [prefs boolForKey:kEnabledKey] : NO;
+    enabled = RDReadBoolPref(kEnabledKey, YES);
+    systemLinksEnabled = RDReadBoolPref(kSystemLinksKey, YES);
 }
 
 // Wrap http(s) URLs as reynard://open?url=<encoded> so iOS routes them via
@@ -32,11 +34,13 @@ static NSURL *wrapHTTPURLForReynard(NSURL *original) {
     return [NSURL URLWithString:[NSString stringWithFormat:@"%@://open?url=%@", kReynardURLScheme, encoded]];
 }
 
+%group SpringBoardGroup
+
 %hook FBSystemServiceOpenApplicationRequest
 
 - (void)setBundleIdentifier:(NSString *)bundleIdentifier {
     loadPrefs();
-    if (enabled && [bundleIdentifier isEqualToString:kSafariBundleID]) {
+    if (enabled && systemLinksEnabled && [bundleIdentifier isEqualToString:kSafariBundleID]) {
         if ([self respondsToSelector:@selector(URL)] && [self respondsToSelector:@selector(setURL:)]) {
             NSURL *wrapped = wrapHTTPURLForReynard(self.URL);
             if (wrapped) self.URL = wrapped;
@@ -48,3 +52,11 @@ static NSURL *wrapHTTPURLForReynard(NSURL *original) {
 }
 
 %end
+
+%end
+
+%ctor {
+    NSString *bundleID = [NSBundle mainBundle].bundleIdentifier;
+    if (![bundleID isEqualToString:@"com.apple.springboard"]) return;
+    %init(SpringBoardGroup);
+}

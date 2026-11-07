@@ -7,8 +7,9 @@ When enabled, any link that would normally open in Safari is intercepted at the 
 ## Features
 
 - **Safari redirect** — hooks `FBSystemServiceOpenApplicationRequest` in SpringBoard to swap the bundle identifier
-- **Settings toggle** — enable/disable from Settings via PreferenceLoader
-- **Control Centre toggle** — quick toggle via CCSupport module
+- **External link handoff** — inside Reynard, non-web links (`tg://`, `mailto:`, `tel:`, …) are handed to the matching app instead of dying in the browser. Hooks `-[GeckoEventDispatcherWrapper dispatchToSwift:message:callback:]` in `Frameworks/GeckoView.framework`, answers "handled" to Gecko and calls `UIApplication.openURL:`; web schemes stay in the browser
+- **Settings toggles** — master switch plus one switch per direction, via PreferenceLoader
+- **Control Centre toggle** — quick toggle for the Safari redirect via CCSupport module
 
 ## Icon
 
