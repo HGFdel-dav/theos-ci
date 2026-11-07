@@ -1,9 +1,13 @@
 TARGET = iphone:15.5:15.0
 SDKVERSION = 15.5
 FINALPACKAGE = 1
-# Theos scheme (roothide/rootless) chooses installation layout; the device is A14 arm64e.
-# Build each scheme package as one arm64e slice instead of shipping universal dylibs.
+# Theos scheme chooses installation layout AND slice: RootHide keeps arm64e
+# (PAC), rootless ships plain arm64. Never label an arm64e slice as rootless.
+ifeq ($(THEOS_PACKAGE_SCHEME),rootless)
+ARCHS = arm64
+else
 ARCHS = arm64e
+endif
 INSTALL_TARGET_PROCESSES = SpringBoard
 
 include $(THEOS)/makefiles/common.mk
