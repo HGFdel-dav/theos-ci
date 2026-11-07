@@ -19,6 +19,13 @@ static NSString *const kReynardBundleID = @"com.minh-ton.Reynard";
 static NSString *const kDispatcherClass = @"_TtC9GeckoView27GeckoEventDispatcherWrapper";
 static NSString *const kOnLoadRequestEvent = @"GeckoView:OnLoadRequest";
 
+// GeckoView's EventCallback (ObjC protocol in the framework). Declared here so
+// the .xm compiles as ObjC++ without dragging in the framework headers.
+@protocol RDEventCallback <NSObject>
+- (void)sendSuccess:(id)response;
+- (void)sendError:(id)response;
+@end
+
 static NSString *RDLogPath(void) {
     static NSString *path;
     static dispatch_once_t once;
@@ -95,10 +102,6 @@ static NSSet *RDInternalSchemes(void) {
 static void RDOpenExternally(NSURL *url) {
     dispatch_async(dispatch_get_main_queue(), ^{
         UIApplication *application = [UIApplication sharedApplication];
-        if (![application respondsToSelector:@selector(openURL:options:completionHandler:)]) {
-            [application openURL:url];
-            return;
-        }
         [application openURL:url options:@{} completionHandler:^(BOOL success) {
             RDLog(@"open %@ ok=%d", url.scheme, success);
         }];
@@ -109,7 +112,7 @@ static void RDOpenExternally(NSURL *url) {
 
 %hook _TtC9GeckoView27GeckoEventDispatcherWrapper
 
-- (void)dispatchToSwift:(NSString *)type message:(id)message callback:(id)callback {
+- (void)dispatchToSwift:(NSString *)type message:(id)message callback:(id<RDEventCallback>)callback {
     if (![type isEqualToString:kOnLoadRequestEvent] ||
         ![message isKindOfClass:[NSDictionary class]] ||
         !RDHandoffAllowed()) {
@@ -145,9 +148,7 @@ static void RDOpenExternally(NSURL *url) {
     RDOpenExternally(url);
 
     // true == "handled by the app", Gecko stops the navigation.
-    if ([callback respondsToSelector:@selector(sendSuccess:)]) {
-        [callback sendSuccess:@(YES)];
-    }
+    [callback sendSuccess:@(YES)];
 }
 
 %end
