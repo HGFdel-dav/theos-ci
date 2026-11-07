@@ -112,12 +112,16 @@ def main():
             raise ValueError("account entry not wired to injected controller")
         if (prefix / "Library/PreferenceBundles/ParallelXClonePrefs.bundle").exists():
             raise ValueError("obsolete standalone prefs bundle still packaged")
-        for name, bundle in (("ParallelXClone", "com.apple.springboard"),
+        for name, bundle in (("ParallelXClone", None),
                              ("ParallelXPrefsUI", "com.apple.Preferences")):
             image = lib / (name + ".dylib")
-            filters = plistlib.loads((lib / (name + ".plist")).read_bytes())["Filter"]["Bundles"]
-            if filters != [bundle] or image.stat().st_mode & 0o111 == 0:
-                raise ValueError(f"wrong filter/permissions for {name}")
+            document = plistlib.loads((lib / (name + ".plist")).read_bytes())
+            filters = document.get("Filter", {}).get("Bundles")
+            # PXClone now has to see URL opens from ANY app, so its module
+            # plist must not restrict injection to SpringBoard.
+            expected = [bundle] if bundle else None
+            if filters != expected or image.stat().st_mode & 0o111 == 0:
+                raise ValueError(f"wrong filter/permissions for {name}: {filters}")
             pac = inspect(image, arch)
             if any(x["issues"] for x in pac):
                 raise ValueError(f"return-address ABI violation: {pac}")
