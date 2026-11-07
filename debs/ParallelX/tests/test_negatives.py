@@ -203,8 +203,10 @@ class SourceNegatives(unittest.TestCase):
 
     def test_plain_launch_has_no_hook(self):
         source = read("Tweak.xm")
-        # No openURL / application-launch hook: ordinary desktop launches pass through.
-        self.assertNotIn("openURL", source)
+        # openURL is only probed on exact selectors, so ordinary desktop
+        # launches still pass through untouched.
+        self.assertIn("NSSelectorFromString(@\"openURL:\")", source)
+        self.assertIn("NSSelectorFromString(@\"openURL:options:completionHandler:\")", source)
         self.assertNotIn("application:didFinishLaunching", source)
 
     def test_failed_transition_finishes_no(self):

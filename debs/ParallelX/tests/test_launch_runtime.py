@@ -254,8 +254,11 @@ class LaunchSourceGuards(unittest.TestCase):
         blocked = LAUNCH.split('- (BOOL)blocksFullscreen:(NSString *)bundle {')[1].split('\n}', 1)[0]
         self.assertIn('_flow.phase == PXCloneFlowOpening', blocked)
         self.assertIn('[_bundle isEqual:bundle]', blocked)
-        self.assertNotIn('openURL', LAUNCH + TWEAK)
+        # Only exact, ABI-checked selectors may be hooked - never a wildcard.
         self.assertNotIn('FBSOpenApplication', LAUNCH)
+        self.assertIn('openURL:options:completionHandler:', TWEAK)
+        self.assertIn('openSensitiveURL:withOptions:', TWEAK)
+        self.assertIn('PXCloneClassInstanceMethodMatches(app, options', TWEAK)
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

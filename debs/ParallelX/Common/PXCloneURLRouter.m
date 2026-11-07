@@ -1,6 +1,7 @@
 #import "PXCloneURLRouter.h"
 #import "PXCloneCrane.h"
 #import "PXCloneRuntime.h"
+#import "PXCloneProbe.h"
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 
@@ -107,6 +108,9 @@ static NSString *PXURLRouterBundleFromRequest(id request) {
 + (BOOL)handleOpenRequest:(id)request proceed:(void (^)(void))proceed {
     if (!proceed) return NO;
     NSString *bundle = PXURLRouterBundleFromRequest(request);
+    [PXCloneProbe log:@"ROUTE bundle=%@ catalog=%lu ready=%d loading=%d", bundle ?: @"(nil)",
+        (unsigned long)PXCloneCrane.cachedCatalog.count, (int)PXURLRouterCatalogReady,
+        (int)PXURLRouterCatalogLoading];
     if (!bundle.length) return NO;
 
     void (^once)(void) = PXURLRouterOnce(proceed);
@@ -144,10 +148,12 @@ static NSString *PXURLRouterBundleFromRequest(id request) {
     }
     if (PXURLRouterCatalogReady && !PXURLRouterCatalogLoading) {
         // A completed catalog with one container is a real negative result.
+        [PXCloneProbe log:@"PASS-1CONTAINER bundle=%@ n=%lu", bundle, (unsigned long)containers.count];
         proceed();
         return;
     }
     if (attempt >= PXURLRouterCatalogWaitLimit) {
+        [PXCloneProbe log:@"WAIT-TIMEOUT bundle=%@", bundle];
         [self showRoutingError:@"账号目录尚未就绪，付款链接未打开，请重试"];
         return;
     }
@@ -225,7 +231,11 @@ static NSString *PXURLRouterBundleFromRequest(id request) {
         [self showRoutingError:@"无法读取当前账号，付款链接未打开，请重试"];
         return;
     }
-    if ([container isEqualToString:active]) { proceed(); return; }
+    if ([container isEqualToString:active]) {
+        [PXCloneProbe log:@"PASS-SAME active=%@", active];
+        proceed();
+        return;
+    }
 
     NSError *error = nil;
     BOOL started = [PXCloneCrane requestSwitchToContainer:container
@@ -237,6 +247,7 @@ static NSString *PXURLRouterBundleFromRequest(id request) {
         [self showRoutingError:reason];
         return;
     }
+    [PXCloneProbe log:@"SWITCH-STARTED target=%@ active=%@", container, active];
     [self waitForContainer:container bundle:bundle attempt:0 proceed:proceed];
 }
 
@@ -245,8 +256,13 @@ static NSString *PXURLRouterBundleFromRequest(id request) {
                  attempt:(NSUInteger)attempt
                  proceed:(void (^)(void))proceed {
     NSString *active = [PXCloneCrane activeContainerForBundle:bundle];
-    if ([container isEqualToString:active]) { proceed(); return; }
+    if ([container isEqualToString:active]) {
+        [PXCloneProbe log:@"SWITCH-VERIFIED target=%@ attempts=%lu", container, (unsigned long)attempt];
+        proceed();
+        return;
+    }
     if (attempt >= PXURLRouterPollLimit) {
+        [PXCloneProbe log:@"SWITCH-TIMEOUT target=%@ active=%@", container, active];
         // Fail closed: forwarding a payment URL onto the wrong account is
         // worse than asking the user to tap again.
         [self showRoutingError:@"账号未切换完成，付款链接未打开，请重试"];

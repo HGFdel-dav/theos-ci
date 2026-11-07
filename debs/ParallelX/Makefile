@@ -30,6 +30,7 @@ ParallelXClone_FILES = Tweak.xm \
 	Common/PXCloneLaunch.m \
 	Common/PXCloneURLRouter.m \
 	Common/PXClonePaths.m \
+	Common/PXCloneProbe.m \
 	Common/PXClonePolicy.m \
 	Common/PXClonePrefs.m \
 	Common/PXCloneTrace.m \
@@ -44,6 +45,7 @@ LIBRARY_NAME = ParallelXPrefsUI
 ParallelXPrefsUI_FILES = Prefs/PXCloneAccountsController.m \
 	Common/PXCloneCrane.m \
 	Common/PXClonePaths.m \
+	Common/PXCloneProbe.m \
 	Common/PXClonePrefs.m \
 	Common/PXCloneTrace.m \
 	Common/PXCloneRuntime.m

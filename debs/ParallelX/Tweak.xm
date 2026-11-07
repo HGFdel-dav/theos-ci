@@ -9,6 +9,7 @@
 #import "Common/PXClonePrefs.h"
 #import "Common/PXCloneRuntime.h"
 #import "Common/PXCloneURLRouter.h"
+#import "Common/PXCloneProbe.h"
 
 #ifdef PXCLONE_STRIP_LOGS
 #define NSLog(...) ((void)0)
@@ -234,6 +235,9 @@ static void PXContainerSettingsChanged(id self, SEL command, id container, id bu
 // only place where the clone account can still be chosen before the target app
 // is launched. A request without a second container is forwarded immediately.
 static void PXHandleOpenRequest(id self, SEL command, id service, id request, id completion) {
+    [PXCloneProbe log:@"HOOK self=%@ req=%@ desc=%@",
+        NSStringFromClass([self class]), NSStringFromClass([request class]),
+        [[request description] substringToIndex:MIN(300u, [request description].length)]];
     void (^proceed)(void) = ^{
         if (PXOrigHandleOpenRequest) PXOrigHandleOpenRequest(self, command, service, request, completion);
     };
@@ -249,6 +253,53 @@ static BOOL PXInstallURLRoutingHook(void) {
     IMP original = NULL;
     if (!PXCloneHookMessage(service, selector, (IMP)PXHandleOpenRequest, &original)) return NO;
     PXOrigHandleOpenRequest = (void (*)(id, SEL, id, id, id))original;
+    return YES;
+}
+
+// Log-only probes: which lower-level entry points actually see an app->app URL
+// open. They never change behavior; the routing decision stays in one place.
+static BOOL (*PXOrigOpenURL)(id, SEL, id);
+static void (*PXOrigOpenURLOptions)(id, SEL, id, id, id);
+static BOOL (*PXOrigWorkspaceOpen)(id, SEL, id, id);
+
+static BOOL PXProbeOpenURL(id self, SEL command, id url) {
+    [PXCloneProbe log:@"UIApp.openURL url=%@", url];
+    return PXOrigOpenURL ? PXOrigOpenURL(self, command, url) : NO;
+}
+
+static void PXProbeOpenURLOptions(id self, SEL command, id url, id options, id completion) {
+    [PXCloneProbe log:@"UIApp.openURL:options: url=%@ opts=%@", url, options];
+    if (PXOrigOpenURLOptions) PXOrigOpenURLOptions(self, command, url, options, completion);
+}
+
+static BOOL PXProbeWorkspaceOpen(id self, SEL command, id url, id options) {
+    [PXCloneProbe log:@"%@ url=%@ opts=%@", NSStringFromSelector(command), url, options];
+    return PXOrigWorkspaceOpen ? PXOrigWorkspaceOpen(self, command, url, options) : NO;
+}
+
+static BOOL PXInstallProbeHooks(void) {
+    Class app = NSClassFromString(@"UIApplication");
+    SEL plain = NSSelectorFromString(@"openURL:");
+    if (!PXOrigOpenURL && PXCloneClassInstanceMethodMatches(app, plain, @encode(BOOL), @[@"@"])) {
+        IMP original = NULL;
+        if (PXCloneHookMessage(app, plain, (IMP)PXProbeOpenURL, &original))
+            PXOrigOpenURL = (BOOL (*)(id, SEL, id))original;
+    }
+    SEL options = NSSelectorFromString(@"openURL:options:completionHandler:");
+    if (!PXOrigOpenURLOptions &&
+        PXCloneClassInstanceMethodMatches(app, options, @encode(void), @[@"@", @"@", @"@?"])) {
+        IMP original = NULL;
+        if (PXCloneHookMessage(app, options, (IMP)PXProbeOpenURLOptions, &original))
+            PXOrigOpenURLOptions = (void (*)(id, SEL, id, id, id))original;
+    }
+    Class workspace = NSClassFromString(@"LSApplicationWorkspace");
+    for (NSString *name in @[@"openSensitiveURL:withOptions:", @"openURL:withOptions:"]) {
+        SEL selector = NSSelectorFromString(name);
+        if (!PXCloneClassInstanceMethodMatches(workspace, selector, @encode(BOOL), @[@"@", @"@"])) continue;
+        IMP original = NULL;
+        if (PXCloneHookMessage(workspace, selector, (IMP)PXProbeWorkspaceOpen, &original))
+            PXOrigWorkspaceOpen = (BOOL (*)(id, SEL, id, id))original;
+    }
     return YES;
 }
 
@@ -303,6 +354,7 @@ static void PXBootstrap(NSUInteger attempt) {
     BOOL refreshReady = PXInstallRefreshHooks();
     BOOL launchReady = [PXCloneLaunchController installNativeHooks];
     BOOL routingReady = PXInstallURLRoutingHook();
+    PXInstallProbeHooks();
     if ((actionReady && refreshReady && launchReady && routingReady) || attempt >= PXHookAttemptLimit) return;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, PXHookRetryDelayNS),
                    dispatch_get_main_queue(), ^{ PXBootstrap(attempt + 1); });
