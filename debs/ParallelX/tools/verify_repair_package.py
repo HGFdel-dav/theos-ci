@@ -122,7 +122,9 @@ def main():
             if bundle:
                 ok = filters.get("Bundles") == [bundle]
             else:
-                ok = filters.get("Classes") == ["UIApplication"] and "Bundles" not in filters
+                classes = filters.get("Classes") or []
+                ok = ("UIApplication" in classes and "LSApplicationWorkspace" in classes
+                      and "Bundles" not in filters)
             if not ok or image.stat().st_mode & 0o111 == 0:
                 raise ValueError(f"wrong filter/permissions for {name}: {filters}")
             pac = inspect(image, arch)
