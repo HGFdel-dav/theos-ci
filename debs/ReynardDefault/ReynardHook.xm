@@ -23,6 +23,8 @@ static NSString *const kPortMessageEvent = @"GeckoView:WebExtension:PortMessage"
 static NSString *const kEnsureEvent = @"GeckoView:WebExtension:EnsureBuiltIn";
 static NSString *const kHandoffAddonID = @"reynarddefault@local";
 static NSString *const kHandoffAddonDir = @"/Library/ReynardDefault/handoff/";
+static NSString *const kHandoffXpiPath = @"/Library/ReynardDefault/handoff.xpi";
+static NSString *const kInstallEvent = @"GeckoView:WebExtension:Install";
 
 // GeckoView's EventCallback (ObjC protocol in the framework). Declared here so
 // the .xm compiles as ObjC++ without dragging in the framework headers.
@@ -123,6 +125,20 @@ static RDEnsureCallback *rdEnsureCallback;
 static id rdGeckoBackend;
 static BOOL rdEnsureDone;
 
+static BOOL rdInstallTried;
+
+static void RDInstallPackedExtension(void) {
+    if (rdInstallTried || !rdGeckoBackend) return;
+    rdInstallTried = YES;
+    static int counter;
+    NSString *location = [NSString stringWithFormat:@"file://%@", jbRootPath(kHandoffXpiPath)];
+    RDLog(@"install packed addon %@", location);
+    [(id<RDGeckoDispatch>)rdGeckoBackend dispatchToGecko:kInstallEvent
+                                                message:@{@"locationUri": location,
+                                                          @"installId": [NSString stringWithFormat:@"reynarddefault-%d", ++counter]}
+                                               callback:rdEnsureCallback];
+}
+
 @implementation RDEnsureCallback
 - (void)sendSuccess:(id)response {
     RDLog(@"addon ready: %@", response);
@@ -132,7 +148,16 @@ static BOOL rdEnsureDone;
                                                      message:nil callback:nil];
     }
 }
-- (void)sendError:(id)response { RDLog(@"addon failed: %@", response); rdEnsureDone = NO; }
+- (void)sendError:(id)response {
+    RDLog(@"addon error: %@", response);
+    if (!rdInstallTried) {
+        // Built-in location refused (built-ins normally live in resource://app):
+        // fall back to a normal packed install, the user confirms once.
+        RDInstallPackedExtension();
+    } else {
+        rdEnsureDone = YES;
+    }
+}
 @end
 
 // Install the built-in content script extension (it intercepts non-web clicks,
