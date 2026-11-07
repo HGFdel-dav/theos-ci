@@ -86,6 +86,10 @@ static CGPoint MSPetCGPoint(MSPoint p) { return CGPointMake((CGFloat)p.x, (CGFlo
     CALayer *_gravityLayer;
     MiniSightPetState _state;
     NSInteger _column;
+    NSInteger _variantIndex;
+    CGFloat _flingSpin;
+    CGFloat _flingSpinVelocity;
+    CGFloat _flingSquash;
     CFTimeInterval _lastSpriteTime;
     BOOL _wantsPlaying, _suspended, _hasCenterBounds;
     BOOL _geometryReady, _settingGeometry, _motionActive;
