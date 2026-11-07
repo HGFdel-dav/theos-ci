@@ -24,6 +24,10 @@ static UIWindow *PXURLRouterWindow = nil;
 static NSTimeInterval PXURLRouterLastRefresh = 0;
 static BOOL PXURLRouterCatalogLoading = NO;
 static BOOL PXURLRouterCatalogReady = NO;
+// Last account per bundle: repeat jumps of the same app must not ask again.
+static NSMutableDictionary<NSString *, NSString *> *PXURLRouterLastChoice;
+static NSMutableDictionary<NSString *, NSNumber *> *PXURLRouterLastChoiceAt;
+static NSTimeInterval const PXURLRouterChoiceTTL = 600.0;
 
 static NSString *PXURLRouterString(id object, NSArray<NSString *> *keys) {
     if (!object) return nil;
@@ -161,6 +165,21 @@ static NSString *PXURLRouterBundleForURL(NSURL *url) {
     return nil;
 }
 
+// Only payment handoffs should ask. Everything else (plain links, app-to-app
+// browsing) keeps the current account silently.
+static BOOL PXURLRouterLooksLikePayment(NSURL *url) {
+    NSString *scheme = url.scheme.lowercaseString;
+    for (NSString *pay in @[@"weixin", @"wechat", @"alipays", @"alipay", @"mqqapi",
+                            @"mqqwallet", @"upwallet", @"unionpay", @"wallet"]) {
+        if ([scheme isEqualToString:pay]) return YES;
+    }
+    NSString *text = url.absoluteString.lowercaseString;
+    for (NSString *hint in @[@"pay", @"cashier", @"trade", @"wxpay", @"收银台", @"支付", @"prepay"]) {
+        if ([text containsString:hint]) return YES;
+    }
+    return NO;
+}
+
 static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
     NSString *scheme = url.scheme.lowercaseString;
     if (!scheme.length) return YES;
@@ -171,6 +190,21 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
 }
 
 @implementation PXCloneURLRouter
+
++ (NSString *)rememberedChoiceForBundle:(NSString *)bundle {
+    if (!bundle.length) return nil;
+    NSNumber *when = PXURLRouterLastChoiceAt[bundle];
+    if (!when || NSDate.date.timeIntervalSince1970 - when.doubleValue > PXURLRouterChoiceTTL) return nil;
+    return PXURLRouterLastChoice[bundle];
+}
+
++ (void)rememberChoice:(NSString *)container forBundle:(NSString *)bundle {
+    if (!bundle.length || !container.length) return;
+    if (!PXURLRouterLastChoice) PXURLRouterLastChoice = [NSMutableDictionary dictionary];
+    if (!PXURLRouterLastChoiceAt) PXURLRouterLastChoiceAt = [NSMutableDictionary dictionary];
+    PXURLRouterLastChoice[bundle] = container;
+    PXURLRouterLastChoiceAt[bundle] = @(NSDate.date.timeIntervalSince1970);
+}
 
 + (BOOL)recentAppHandoff {
     return PXURLRouterLastAppHandoff > 0 &&
@@ -203,6 +237,15 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
     NSArray<NSDictionary *> *containers = [PXCloneCrane containersForBundle:bundle];
     [PXCloneProbe log:@"APP-CONTAINERS bundle=%@ n=%lu", bundle, (unsigned long)containers.count];
     if (containers.count < 2) return NO;
+
+    if (!PXURLRouterLooksLikePayment(url)) return NO;
+
+    NSString *remembered = [self rememberedChoiceForBundle:bundle];
+    if (remembered.length) {
+        [PXCloneProbe log:@"REMEMBERED %@ -> %@", bundle, remembered];
+        [self activateContainer:remembered bundle:bundle proceed:proceed];
+        return YES;
+    }
 
     void (^once)(void) = PXURLRouterOnce(proceed);
     void (^owned)(void) = ^{
@@ -345,6 +388,7 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
         UIAlertAction *action = [UIAlertAction actionWithTitle:title
                                                         style:UIAlertActionStyleDefault
                                                       handler:^(__unused UIAlertAction *selected) {
+            [self rememberChoice:container forBundle:bundle];
             finish(container, title);
         }];
         [alert addAction:action];
