@@ -29,6 +29,15 @@ typedef struct {
     BOOL ready;
 } LCSWiFiAPI;
 static LCSWiFiAPI lcscc_wifi;
+
+// Tokens carry a fixed high half, so an error code or a small integer can never
+// be mistaken for one. A bare counter collided with an error value of 1 on
+// device and routed the callback down the wrong layout.
+#define LCSCC_TOKEN_MAGIC 0x4C53434300000000ULL
+#define LCSCC_TOKEN_MASK  0xFFFFFFFF00000000ULL
+static inline BOOL lcscc_tokenIsMine(uintptr_t token) {
+    return token!=0 && (token&LCSCC_TOKEN_MASK)==LCSCC_TOKEN_MAGIC;
+}
 static void lcscc_scanCallback(void *,void *,void *,void *);
 static void lcscc_associateCallback(void *,void *,void *,void *,void *);
 
@@ -360,11 +369,6 @@ static void lcscc_loadWiFi(void) {
 // Tokens carry a fixed high half, so an error code or a small integer can never
 // be mistaken for one. A bare counter collided with an error value of 1 on
 // device and routed the callback down the wrong layout.
-#define LCSCC_TOKEN_MAGIC 0x4C53434300000000ULL
-#define LCSCC_TOKEN_MASK  0xFFFFFFFF00000000ULL
-static inline BOOL lcscc_tokenIsMine(uintptr_t token) {
-    return token!=0 && (token&LCSCC_TOKEN_MASK)==LCSCC_TOKEN_MAGIC;
-}
 // The framework lends the results array for the duration of this call only.
 // Retaining it inside the async block touched an object the scan had already
 // released: CFRetain trapped, SpringBoard died and the device dropped into safe
