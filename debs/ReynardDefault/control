@@ -1,8 +1,8 @@
 Package: com.guacforlife.reynarddefault
 Name: ReynardDefault
-Version: 1.5.3
+Version: 1.5.4
 Architecture: iphoneos-arm
-Description: Redirects Safari URL opens to Reynard browser, and hands non-web links tapped inside Reynard to the matching app. Toggle in Settings and Control Centre.
+Description: 把其他 App 打开的网页链接改到 Reynard；在 Reynard 里点到的 tg://、mailto: 等非网页链接交给对应 App。设置页可分别开关，控制中心控制网页链接改写。
 Maintainer: guacforlife
 Author: guacforlife
 Section: Tweaks

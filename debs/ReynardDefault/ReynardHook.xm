@@ -124,33 +124,27 @@ static void RDOpenExternally(NSURL *url) {
 %hook _TtC9GeckoView27GeckoEventDispatcherWrapper
 
 - (void)dispatchToSwift:(NSString *)type message:(id)message callback:(id<RDEventCallback>)callback {
-    RDLogTypeOnce(type);
-    if (!([type isEqualToString:kOnLoadRequestEvent] || [type hasSuffix:@"OnLoadRequest"]) ||
-        ![message isKindOfClass:[NSDictionary class]] ||
-        !RDHandoffAllowed()) {
+    BOOL isRequest = [type isEqualToString:kOnLoadRequestEvent] ||
+                      [type hasSuffix:@"OnLoadRequest"] ||
+                      [type hasSuffix:@"OnPreNavigation"];
+    BOOL isError = [type hasSuffix:@"OnLoadError"];
+    if ((!isRequest && !isError) || ![message isKindOfClass:[NSDictionary class]]) {
+        RDLogTypeOnce(type);
         %orig;
         return;
     }
 
     NSDictionary *payload = (NSDictionary *)message;
     NSString *uri = [payload[@"uri"] isKindOfClass:[NSString class]] ? payload[@"uri"] : nil;
-    if (uri.length == 0) {
-        %orig;
-        return;
-    }
-
+    NSURL *url = uri.length ? [NSURL URLWithString:uri] : nil;
+    NSString *scheme = url.scheme.lowercaseString;
     BOOL topLevel = RDBoolValue(payload[@"isTopLevel"], YES);
     BOOL userInitiated = RDBoolValue(payload[@"isUserInitiatedNavigation"], YES);
-    RDLog(@"req %@ top=%d user=%d keys=%@", uri, topLevel, userInitiated,
-          [[payload allKeys] componentsJoinedByString:@","]);
-    if (!topLevel) {
-        %orig;
-        return;
-    }
+    RDLog(@"%@ scheme=%@ top=%d user=%d err=%@ uri=%@", type, scheme, topLevel, userInitiated,
+          payload[@"error"], uri);
 
-    NSURL *url = [NSURL URLWithString:uri];
-    NSString *scheme = url.scheme.lowercaseString;
-    if (scheme.length == 0 || [RDInternalSchemes() containsObject:scheme]) {
+    BOOL wanted = scheme.length > 0 && ![RDInternalSchemes() containsObject:scheme];
+    if (!wanted || !topLevel || !RDHandoffAllowed()) {
         %orig;
         return;
     }
@@ -158,8 +152,14 @@ static void RDOpenExternally(NSURL *url) {
     RDLog(@"handoff %@ %@", scheme, url.absoluteString);
     RDOpenExternally(url);
 
-    // true == "handled by the app", Gecko stops the navigation.
-    [callback sendSuccess:@(YES)];
+    if (isError) {
+        // Known failure path for unknown schemes: replace the error page with
+        // an empty document, the user is already in the other app.
+        [callback sendSuccess:@""];
+    } else {
+        // true == "handled by the app", Gecko stops the navigation.
+        [callback sendSuccess:@(YES)];
+    }
 }
 
 %end

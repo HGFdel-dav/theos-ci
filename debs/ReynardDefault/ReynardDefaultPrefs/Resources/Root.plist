@@ -10,7 +10,7 @@
             <key>label</key>
             <string>ReynardDefault</string>
             <key>footerText</key>
-            <string>Web links opened by other apps go to Reynard instead of Safari, and non-web links tapped inside Reynard open in the matching app.</string>
+            <string>其他 App 打开的网页链接改用 Reynard 打开；在 Reynard 里点到的非网页链接交给对应的 App。</string>
         </dict>
         <dict>
             <key>cell</key>
@@ -22,15 +22,15 @@
             <key>key</key>
             <string>enabled</string>
             <key>label</key>
-            <string>Enabled</string>
+            <string>总开关</string>
         </dict>
         <dict>
             <key>cell</key>
             <string>PSGroupCell</string>
             <key>label</key>
-            <string>Behaviour</string>
+            <string>具体行为</string>
             <key>footerText</key>
-            <string>Both options only apply while Enabled is on.</string>
+            <string>两项都要在「总开关」打开时才生效。</string>
         </dict>
         <dict>
             <key>cell</key>
@@ -42,7 +42,7 @@
             <key>key</key>
             <string>externalLinksToSystem</string>
             <key>label</key>
-            <string>Open web links in Reynard</string>
+            <string>网页链接改用 Reynard</string>
         </dict>
         <dict>
             <key>cell</key>
@@ -54,13 +54,13 @@
             <key>key</key>
             <string>handoffExternalLinks</string>
             <key>label</key>
-            <string>Hand non-web links to apps</string>
+            <string>非网页链接交给对应 App</string>
         </dict>
         <dict>
             <key>cell</key>
             <string>PSGroupCell</string>
             <key>footerText</key>
-            <string>Links such as tg://, mailto: or tel: are handed to the system and the tab stays where it is. Web links (http, https, about, data, blob, file, ftp, ws, wss) are still rendered by Reynard.</string>
+            <string>tg://、mailto:、tel: 等链接会交给系统对应的 App，当前页面保留不动；http、https、about、data、blob、file、ftp、ws、wss 等仍由 Reynard 自己打开。</string>
         </dict>
     </array>
     <key>title</key>
