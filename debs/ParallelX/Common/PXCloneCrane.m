@@ -251,6 +251,35 @@ static NSArray<NSDictionary *> *PXCatalog;
     return [identifiers containsObject:containerID];
 }
 
++ (BOOL)switchToContainer:(NSString *)containerID forBundle:(NSString *)bundleID
+                   reload:(BOOL)reload error:(NSError **)error {
+    id manager = PXSharedManager();
+    if (!manager || ![self containerExists:containerID forBundle:bundleID]) {
+        if (error) *error = PXCraneError(PXCloneCraneErrorInvalidArgument, @"账号不存在或 Crane 不可用");
+        return NO;
+    }
+    SEL plain = NSSelectorFromString(@"setActiveContainerIdentifier:forApplicationWithIdentifier:reloadApplication:");
+    if (!PXCloneInstanceMethodMatches(manager, plain, @encode(void),
+            @[@"@", @"@", [NSString stringWithUTF8String:@encode(BOOL)]])) {
+        if (error) *error = PXCraneError(PXCloneCraneErrorABI, @"Crane 无切换接口");
+        return NO;
+    }
+    @try {
+        ((void (*)(id, SEL, id, id, BOOL))objc_msgSend)(manager, plain, containerID, bundleID, NO);
+    } @catch (NSException *exception) {
+        if (error) *error = PXCraneError(PXCloneCraneErrorSwitchFailed, exception.reason ?: @"Crane 切换异常");
+        return NO;
+    }
+    if (reload) {
+        SEL reloadSelector = NSSelectorFromString(@"reloadApplicationWithIdentifier:");
+        if (PXCloneInstanceMethodMatches(manager, reloadSelector, @encode(void), @[@"@"])) {
+            @try { ((void (*)(id, SEL, id))objc_msgSend)(manager, reloadSelector, bundleID); }
+            @catch (__unused NSException *exception) { }
+        }
+    }
+    return YES;
+}
+
 + (BOOL)requestSwitchToContainer:(NSString *)containerID forBundle:(NSString *)bundleID
                            reply:(void (^)(BOOL))reply error:(NSError **)error {
     id manager = PXSharedManager();
@@ -274,7 +303,6 @@ static NSArray<NSDictionary *> *PXCatalog;
             return YES;
         } @catch (__unused NSException *exception) { }
     }
-    BOOL reload = YES;
     // libcrane arm64e @0x84d4: v44@0:8@16@24B32@?36. The shorter
     // usingBiometrics selector defaults reload to YES; do not use it here.
     SEL selector = NSSelectorFromString(@"setActiveContainerIdentifier:forApplicationWithIdentifier:reloadApplication:usingBiometricsIfNeededWithSuccessHandler:");
