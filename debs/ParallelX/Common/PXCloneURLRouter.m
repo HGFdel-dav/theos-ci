@@ -78,6 +78,16 @@ static void (^PXURLRouterOnce(void (^proceed)(void)))(void) {
     } copy];
 }
 
+@interface PXURLRouterDismisser : NSObject <UIAdaptivePresentationControllerDelegate>
+@end
+
+@implementation PXURLRouterDismisser
+- (void)presentationControllerDidDismiss:(UIPresentationController *)controller {
+    (void)controller;
+    PXURLRouterCancelled = YES;
+}
+@end
+
 @interface PXCloneURLRouter ()
 + (void)loadCatalogForRequest:(id)request proceed:(void (^)(void))proceed
                       bundle:(NSString *)bundle attempt:(NSUInteger)attempt;
@@ -413,6 +423,12 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
             if (PXURLRouterWindow == window) PXURLRouterWindow = nil;
         }];
     }]];
+
+    // Dismissing by swipe/outside counts as Cancel as well.
+    static PXURLRouterDismisser *dismisser;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{ dismisser = [PXURLRouterDismisser new]; });
+    alert.presentationController.delegate = dismisser;
 
     // An action sheet needs an anchor in SpringBoard.
     if (alert.popoverPresentationController) {
