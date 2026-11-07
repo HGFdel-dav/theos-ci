@@ -257,12 +257,12 @@ static void PXHandleWorkspaceRequest(id self, SEL command, id request, id option
         if (PXOrigWorkspaceRequest)
             PXOrigWorkspaceRequest(self, command, request, options, settings, origin, result);
     };
-    // On iOS 15 this entry passes the BUNDLE IDENTIFIER as a plain string,
-    // not a request object; property lookup on it always returned nil.
-    id subject = request;
+    // On iOS 15 this entry passes the BUNDLE IDENTIFIER as a plain string.
+    // Do NOT wrap it in a dictionary: the router probes keys with
+    // respondsToSelector:, which NSDictionary does not answer.
     if ([request isKindOfClass:NSString.class])
-        subject = @{ @"applicationIdentifier": request };
-    if ([PXCloneURLRouter handleOpenRequest:subject proceed:proceed]) return;
+        [PXCloneProbe log:@"SBREQ bundle=%@", request];
+    if ([PXCloneURLRouter handleOpenRequest:request proceed:proceed]) return;
     proceed();
 }
 

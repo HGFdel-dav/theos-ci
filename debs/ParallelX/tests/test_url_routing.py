@@ -69,6 +69,8 @@ class TestURLRouting(unittest.TestCase):
         # This entry hands over the bundle id STRING, not a request object.
         self.assertIn('isKindOfClass:NSString.class', TWEAK)
         self.assertIn('if ([request isKindOfClass:NSString.class]', ROUTER)
+        # The hook must pass the string through, not wrap it.
+        self.assertNotIn('@{ @"applicationIdentifier": request }', TWEAK)
         self.assertIn('PXInstallProbeHooks();', TWEAK)
         self.assertIn('PXInAppReentry', TWEAK)
 
