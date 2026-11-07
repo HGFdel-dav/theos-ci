@@ -354,35 +354,31 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
     // Twin (own repo) does exactly this: walk the existing windows backwards
     // and present on the top controller. A fresh scene-less window stays
     // invisible in SpringBoard and looks like a freeze.
-    UIViewController *presenter = nil;
-    UIViewController *host = nil;
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    for (UIWindow *candidate in application.windows.reverseObjectEnumerator) {
-        if (candidate.hidden || !candidate.rootViewController) continue;
-        presenter = candidate.rootViewController;
-        while (presenter.presentedViewController) presenter = presenter.presentedViewController;
+    UIWindow *window = nil;
+    for (UIScene *scene in application.connectedScenes) {
+        if (![scene isKindOfClass:UIWindowScene.class]) continue;
+        if (scene.activationState != UISceneActivationStateForegroundActive) continue;
+        window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene *)scene];
         break;
     }
-#pragma clang diagnostic pop
-    if (presenter && [presenter isKindOfClass:UIAlertController.class]) { presenter = nil; }
-
-    UIWindow *window = nil;
-    if (!presenter) {
-        window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
-        window.windowLevel = UIWindowLevelAlert + 1;
-        host = [UIViewController new];
-        host.view.backgroundColor = UIColor.clearColor;
-        window.rootViewController = host;
-        PXURLRouterWindow = window;
-        [window makeKeyAndVisible];
-        presenter = host;
+    if (!window) {
+        for (UIScene *scene in application.connectedScenes) {
+            if (![scene isKindOfClass:UIWindowScene.class]) continue;
+            window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene *)scene];
+            break;
+        }
     }
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    NSUInteger windowCount = application.windows.count;
-#pragma clang diagnostic pop
-    [PXCloneProbe log:@"PRESENT via=%@ windows=%lu", window ? @"window" : @"vc",
+    if (!window) window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+    window.frame = UIScreen.mainScreen.bounds;
+    // Above the share sheet, which lives in its own high-level window.
+    window.windowLevel = UIWindowLevelAlert + 100;
+    UIViewController *host = [UIViewController new];
+    host.view.backgroundColor = UIColor.clearColor;
+    window.rootViewController = host;
+    PXURLRouterWindow = window;
+    [window makeKeyAndVisible];
+    UIViewController *presenter = host;
+    [PXCloneProbe log:@"PRESENT level=%.0f windows=%lu", window.windowLevel,
         (unsigned long)windowCount];
 
     NSString *active = [PXCloneCrane activeContainerForBundle:bundle];

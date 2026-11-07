@@ -124,7 +124,8 @@ class TestURLRouting(unittest.TestCase):
 
     def test_chooser_uses_its_own_alert_window(self):
         # Reuse an existing window when possible; own window only as fallback.
-        self.assertIn('application.windows.reverseObjectEnumerator', ROUTER)
+        self.assertIn('initWithWindowScene', ROUTER)
+        self.assertIn('UIWindowLevelAlert + 100', ROUTER)
         self.assertIn('UIWindowLevelAlert + 1', ROUTER)
         self.assertIn('UIAlertControllerStyleActionSheet', ROUTER)
         self.assertIn('makeKeyAndVisible', ROUTER)
