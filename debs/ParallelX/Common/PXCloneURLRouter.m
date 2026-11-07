@@ -290,27 +290,35 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
     // and present on the top controller. A fresh scene-less window stays
     // invisible in SpringBoard and looks like a freeze.
     UIViewController *presenter = nil;
+    UIViewController *host = nil;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     for (UIWindow *candidate in application.windows.reverseObjectEnumerator) {
         if (candidate.hidden || !candidate.rootViewController) continue;
         presenter = candidate.rootViewController;
         while (presenter.presentedViewController) presenter = presenter.presentedViewController;
         break;
     }
+#pragma clang diagnostic pop
     if (presenter && [presenter isKindOfClass:UIAlertController.class]) { presenter = nil; }
 
     UIWindow *window = nil;
     if (!presenter) {
         window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
         window.windowLevel = UIWindowLevelAlert + 1;
-        UIViewController *host = [UIViewController new];
+        host = [UIViewController new];
         host.view.backgroundColor = UIColor.clearColor;
         window.rootViewController = host;
         PXURLRouterWindow = window;
         [window makeKeyAndVisible];
         presenter = host;
     }
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    NSUInteger windowCount = application.windows.count;
+#pragma clang diagnostic pop
     [PXCloneProbe log:@"PRESENT via=%@ windows=%lu", window ? @"window" : @"vc",
-        (unsigned long)application.windows.count];
+        (unsigned long)windowCount];
 
     NSString *active = [PXCloneCrane activeContainerForBundle:bundle];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"选择打开的账号"
