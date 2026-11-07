@@ -1022,7 +1022,7 @@ static void MiniSightToggleRecording(void);
 static void MiniSightShowBubble(NSString *raw);
 static void MiniSightReloadSettings(void);
 static void MiniSightBringMinisFront(void);
-static void MiniSightOpenChat(void);
+static BOOL MiniSightOpenChat(void);
 static void MiniSightSayPresetLine(void);
 static void MiniSightStopPulse(void);
 
@@ -2112,10 +2112,10 @@ static void MiniSightSayPresetLine(void) {
     MiniSightShowLine(line);
 }
 
-static void MiniSightOpenChat(void) {
+static BOOL MiniSightOpenChat(void) {
     if (!gMiniSightContainer.length || !gMiniSightWindow) {
         MiniSightSayPresetLine();
-        return;
+        return NO;
     }
     MiniSightChatPanel *panel = MiniSightChatPanel.sharedPanel;
     panel.containerPath = gMiniSightContainer;
@@ -2124,13 +2124,13 @@ static void MiniSightOpenChat(void) {
     panel.anchorView = gMiniSightPet ?: gMiniSightPill;
     if (gMiniSightConfirming) {
         MSDiagEvent(@"chat", @"show", @"skipped", @{ @"reason": @"approval_visible" });
-        return;
+        return NO;
     }
     MiniSightHideBubble();
     MSDiagEvent(@"chat", @"entry", @"pending", @{ @"source": @"plugin_double_tap" });
-    if (![MiniSightChatPanel showInWindowScene:gMiniSightWindow.windowScene]) {
-        MiniSightSayPresetLine();
-    }
+    BOOL opened = [MiniSightChatPanel showInWindowScene:gMiniSightWindow.windowScene];
+    if (!opened) MiniSightSayPresetLine();
+    return opened;
 }
 
 #pragma mark - Darwin 通知
