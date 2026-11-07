@@ -2,7 +2,7 @@
 #import <Foundation/Foundation.h>
 #import <CoreFoundation/CoreFoundation.h>
 typedef NS_ENUM(NSInteger,LCSCCTargetKind) { LCSCCTargetKindWiFi=0,LCSCCTargetKindBluetooth=1 };
-typedef NS_ENUM(NSInteger,LCSCCErrorCode) { LCSCCErrorUnavailable=1,LCSCCErrorTimeout=2,LCSCCErrorOpenSettings=3,LCSCCErrorCancelled=4 };
+typedef NS_ENUM(NSInteger,LCSCCErrorCode) { LCSCCErrorUnavailable=1,LCSCCErrorTimeout=2,LCSCCErrorOpenSettings=3,LCSCCErrorCancelled=4,LCSCCErrorPoweredOff=5 };
 @interface LCSCCTarget : NSObject
 @property(nonatomic,copy) NSString *identifier;
 @property(nonatomic,copy) NSString *title;
@@ -22,6 +22,9 @@ typedef void (^LCSCCActionResult)(BOOL success,NSError *error);
 @interface LCSCCBackend : NSObject
 + (instancetype)shared;
 - (BOOL)wiFiAvailable;
+- (BOOL)wiFiPowered;
+- (void)setWiFiPower:(BOOL)on;
+- (void)dropDevice;
 - (BOOL)bluetoothAvailable;
 - (void)scanWiFi:(LCSCCListHandler)handler;
 - (void)listPairedBluetooth:(LCSCCListHandler)handler;

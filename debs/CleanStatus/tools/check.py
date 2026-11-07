@@ -24,8 +24,8 @@ info=plistlib.loads((ROOT/'LocalCleanStatusPrefs/Resources/Info.plist').read_byt
 need(entry['detail']==info['NSPrincipalClass']=='LocalCleanStatusRootListController','panel controller identity')
 need(entry['bundle']==info['CFBundleExecutable']=='LocalCleanStatusPrefs','bundle executable identity')
 need(entry['isController'] is True,'real controller enabled')
-need(info['CFBundleVersion']==info['CFBundleShortVersionString']=='0.2.4','panel version')
-need('Version: 0.2.4' in text('control'),'package version')
+need(info['CFBundleVersion']==info['CFBundleShortVersionString']=='0.2.5','panel version')
+need('Version: 0.2.5' in text('control'),'package version')
 need('Maintainer: Niubiprass' in text('control') and 'Author: Niubiprass' in text('control'),'package author')
 need(entry['icon']=='icon.png' and all(('Resources/'+n) in text('LocalCleanStatusPrefs/Makefile') for n in ('icon.png','icon@2x.png','icon@3x.png')),'three original PreferenceLoader icons')
 for name,size in (('icon.png',29),('icon@2x.png',58),('icon@3x.png',87)):
@@ -182,7 +182,7 @@ for stale in ('scanRunning','scanGeneration','setRaw:',r'\.raw','lcs_showLoading
 need('CFArrayRef scanResults' in backend and 'CFRelease(request.scanResults)' in backend,'scan array released with its request')
 need('lcscc_symbol' in listvc and 'checkmark' in listvc and 'lock.fill' in listvc,'original row glyphs')
 need('CFBundleVersion' in text('LocalCleanStatusSystemActions/Resources/Info.plist'),'module version key')
-need(plistlib.loads((ROOT/'LocalCleanStatusSystemActions/Resources/Info.plist').read_bytes())['CFBundleShortVersionString']=='0.2.4','module version 0.2.1')
+need(plistlib.loads((ROOT/'LocalCleanStatusSystemActions/Resources/Info.plist').read_bytes())['CFBundleShortVersionString']=='0.2.5','module version 0.2.1')
 
 
 # 0.2.2 regressions that reached the device.
@@ -201,5 +201,13 @@ need('settings.timing' in listvc,'the settings jump is timed so the next round h
 need('dispatch_get_global_queue(QOS_CLASS_USER_INITIATED' in listvc,'the settings URL is opened off the main thread')
 need('[self stop];\n    NSURL *target' in listvc,'the panel is released before the blocking launch starts')
 need('settings.launch' in listvc,'the launch duration is logged')
+need('LCSCCErrorPoweredOff' in Path('Sources/LocalCleanStatusCCBackend.h').read_text(),'the powered-off state has its own error code')
+need('WiFiManagerClientGetPower' in backend and 'WiFiManagerClientSetPower' in backend,'Wi-Fi power is read and set through MobileWiFi')
+need('dropDevice' in backend and '[self dropDevice];' in backend,'a failed scan drops the cached device so the next attempt rebuilds it')
+need('canPowerOn' in listvc and 'messageTapped' in listvc and 'setWiFiPower:YES' in listvc,'a powered-off card can be tapped to turn Wi-Fi on')
+need('![LCSCCBackend.shared wiFiPowered]' in listvc,'a powered-off interface is retried quietly, a real failure is not')
+need('powerRow.hidden=YES' in listvc,'the power row starts hidden so the on-state look is unchanged')
+need('self.powerRow.hidden=!off;' in listvc and 'powerHeight.constant=off?52:0' in listvc,'the power row appears only while the interface is off')
+need('UIControlEventValueChanged' in listvc and 'applyPoweredOff' in listvc,'the switch drives the interface both ways')
 
 print(f'PASS source invariants: {checks}. iOS compile/runtime NOT performed.')
