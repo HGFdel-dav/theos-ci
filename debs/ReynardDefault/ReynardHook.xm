@@ -92,6 +92,19 @@ static void RDLogTypeOnce(NSString *type) {
     }
 }
 
+// Clicks on unknown schemes produce no request event at all in this build; the
+// only signal is the history event. Keep a short window so one click cannot
+// open twice when several events describe it.
+static BOOL RDClaimHandoff(NSString *uri) {
+    static NSString *lastURI;
+    static NSTimeInterval lastAt;
+    NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+    if (lastURI && [lastURI isEqualToString:uri] && now - lastAt < 3.0) return NO;
+    lastURI = [uri copy];
+    lastAt = now;
+    return YES;
+}
+
 static BOOL RDHandoffAllowed(void) {
     return RDReadBoolPref(kEnabledKey, YES) && RDReadBoolPref(kHandoffKey, YES);
 }
@@ -128,7 +141,8 @@ static void RDOpenExternally(NSURL *url) {
                       [type hasSuffix:@"OnLoadRequest"] ||
                       [type hasSuffix:@"OnPreNavigation"];
     BOOL isError = [type hasSuffix:@"OnLoadError"];
-    if ((!isRequest && !isError) || ![message isKindOfClass:[NSDictionary class]]) {
+    BOOL isVisited = [type hasSuffix:@"OnVisited"];
+    if ((!isRequest && !isError && !isVisited) || ![message isKindOfClass:[NSDictionary class]]) {
         RDLogTypeOnce(type);
         %orig;
         return;
@@ -140,11 +154,26 @@ static void RDOpenExternally(NSURL *url) {
     NSString *scheme = url.scheme.lowercaseString;
     BOOL topLevel = RDBoolValue(payload[@"isTopLevel"], YES);
     BOOL userInitiated = RDBoolValue(payload[@"isUserInitiatedNavigation"], YES);
-    RDLog(@"%@ scheme=%@ top=%d user=%d err=%@ uri=%@", type, scheme, topLevel, userInitiated,
-          payload[@"error"], uri);
+    RDLog(@"%@ scheme=%@ top=%d user=%d err=%@ keys=%@ uri=%@", type, scheme, topLevel, userInitiated,
+          payload[@"error"], [[payload allKeys] componentsJoinedByString:@","], uri);
 
     BOOL wanted = scheme.length > 0 && ![RDInternalSchemes() containsObject:scheme];
     if (!wanted || !topLevel || !RDHandoffAllowed()) {
+        %orig;
+        return;
+    }
+
+    if (isVisited) {
+        // History event: keep the app's own handling, just open the app too.
+        %orig;
+        if (RDClaimHandoff(url.absoluteString)) {
+            RDLog(@"handoff(visited) %@ %@", scheme, url.absoluteString);
+            RDOpenExternally(url);
+        }
+        return;
+    }
+
+    if (!RDClaimHandoff(url.absoluteString)) {
         %orig;
         return;
     }
