@@ -18,12 +18,21 @@
 static NSString *const kReynardBundleID = @"com.minh-ton.Reynard";
 static NSString *const kDispatcherClass = @"_TtC9GeckoView27GeckoEventDispatcherWrapper";
 static NSString *const kOnLoadRequestEvent = @"GeckoView:OnLoadRequest";
+static NSString *const kMessageEvent = @"GeckoView:WebExtension:Message";
+static NSString *const kPortMessageEvent = @"GeckoView:WebExtension:PortMessage";
+static NSString *const kEnsureEvent = @"GeckoView:WebExtension:EnsureBuiltIn";
+static NSString *const kHandoffAddonID = @"reynarddefault@local";
+static NSString *const kHandoffAddonDir = @"/Library/ReynardDefault/handoff/";
 
 // GeckoView's EventCallback (ObjC protocol in the framework). Declared here so
 // the .xm compiles as ObjC++ without dragging in the framework headers.
 @protocol RDEventCallback <NSObject>
 - (void)sendSuccess:(id)response;
 - (void)sendError:(id)response;
+@end
+
+@protocol RDGeckoDispatch <NSObject>
+- (void)dispatchToGecko:(NSString *)type message:(id)message callback:(id<RDEventCallback>)callback;
 @end
 
 static NSString *RDLogPath(void) {
@@ -105,6 +114,62 @@ static BOOL RDClaimHandoff(NSString *uri) {
     return YES;
 }
 
+@interface RDEnsureCallback : NSObject <RDEventCallback>
+@end
+
+static RDEnsureCallback *rdEnsureCallback;
+static BOOL rdEnsureDone;
+
+@implementation RDEnsureCallback
+- (void)sendSuccess:(id)response { RDLog(@"addon ready: %@", response); }
+- (void)sendError:(id)response { RDLog(@"addon failed: %@", response); rdEnsureDone = NO; }
+@end
+
+// Install the built-in content script extension (it intercepts non-web clicks,
+// which the engine swallows without telling the host).
+static void RDEnsureExtension(id dispatcher) {
+    if (rdEnsureDone) return;
+    if (!dispatcher) return;
+    rdEnsureDone = YES;
+    if (!rdEnsureCallback) rdEnsureCallback = [RDEnsureCallback new];
+    NSString *location = [NSString stringWithFormat:@"file://%@", jbRootPath(kHandoffAddonDir)];
+    [(id<RDGeckoDispatch>)dispatcher dispatchToGecko:kEnsureEvent
+                                             message:@{@"locationUri": location,
+                                                       @"webExtensionId": kHandoffAddonID}
+                                            callback:rdEnsureCallback];
+}
+
+static NSString *RDURLFromPayload(id node) {
+    if ([node isKindOfClass:[NSString class]]) {
+        NSString *text = (NSString *)node;
+        if ([text hasPrefix:@"{"] || [text hasPrefix:@"["]) {
+            id parsed = [NSJSONSerialization JSONObjectWithData:[text dataUsingEncoding:NSUTF8StringEncoding]
+                                                       options:0 error:NULL];
+            if (parsed) {
+                NSString *nested = RDURLFromPayload(parsed);
+                if (nested) return nested;
+            }
+        }
+        NSString *scheme = [NSURL URLWithString:text].scheme.lowercaseString;
+        if (scheme.length && ![RDInternalSchemes() containsObject:scheme]) return text;
+        return nil;
+    }
+    if ([node isKindOfClass:[NSDictionary class]]) {
+        for (id value in [(NSDictionary *)node allValues]) {
+            NSString *found = RDURLFromPayload(value);
+            if (found) return found;
+        }
+        return nil;
+    }
+    if ([node isKindOfClass:[NSArray class]]) {
+        for (id value in (NSArray *)node) {
+            NSString *found = RDURLFromPayload(value);
+            if (found) return found;
+        }
+    }
+    return nil;
+}
+
 static BOOL RDHandoffAllowed(void) {
     return RDReadBoolPref(kEnabledKey, YES) && RDReadBoolPref(kHandoffKey, YES);
 }
@@ -137,6 +202,19 @@ static void RDOpenExternally(NSURL *url) {
 %hook _TtC9GeckoView27GeckoEventDispatcherWrapper
 
 - (void)dispatchToSwift:(NSString *)type message:(id)message callback:(id<RDEventCallback>)callback {
+    if (!rdEnsureDone) RDEnsureExtension(self);
+
+    if ([type isEqualToString:kMessageEvent] || [type isEqualToString:kPortMessageEvent] ||
+        [type hasSuffix:@"WebExtension:Message"] || [type hasSuffix:@"WebExtension:PortMessage"]) {
+        NSString *found = RDURLFromPayload(message);
+        if (found && RDHandoffAllowed() && RDClaimHandoff(found)) {
+            RDLog(@"handoff(script) %@", found);
+            RDOpenExternally([NSURL URLWithString:found]);
+        }
+        %orig;
+        return;
+    }
+
     BOOL isRequest = [type isEqualToString:kOnLoadRequestEvent] ||
                       [type hasSuffix:@"OnLoadRequest"] ||
                       [type hasSuffix:@"OnPreNavigation"];
