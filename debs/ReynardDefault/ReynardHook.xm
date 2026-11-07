@@ -81,6 +81,17 @@ static BOOL RDBoolValue(id value, BOOL fallback) {
     return fallback;
 }
 
+static void RDLogTypeOnce(NSString *type) {
+    static NSMutableSet *seen;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ seen = [NSMutableSet set]; });
+    @synchronized (seen) {
+        if ([seen containsObject:type]) return;
+        [seen addObject:type];
+        RDLog(@"event type %@", type);
+    }
+}
+
 static BOOL RDHandoffAllowed(void) {
     return RDReadBoolPref(kEnabledKey, YES) && RDReadBoolPref(kHandoffKey, YES);
 }
@@ -113,7 +124,8 @@ static void RDOpenExternally(NSURL *url) {
 %hook _TtC9GeckoView27GeckoEventDispatcherWrapper
 
 - (void)dispatchToSwift:(NSString *)type message:(id)message callback:(id<RDEventCallback>)callback {
-    if (![type isEqualToString:kOnLoadRequestEvent] ||
+    RDLogTypeOnce(type);
+    if (!([type isEqualToString:kOnLoadRequestEvent] || [type hasSuffix:@"OnLoadRequest"]) ||
         ![message isKindOfClass:[NSDictionary class]] ||
         !RDHandoffAllowed()) {
         %orig;
@@ -127,12 +139,11 @@ static void RDOpenExternally(NSURL *url) {
         return;
     }
 
-    if (!RDBoolValue(payload[@"isTopLevel"], YES)) {
-        %orig;
-        return;
-    }
-
-    if (!RDBoolValue(payload[@"isUserInitiatedNavigation"], YES)) {
+    BOOL topLevel = RDBoolValue(payload[@"isTopLevel"], YES);
+    BOOL userInitiated = RDBoolValue(payload[@"isUserInitiatedNavigation"], YES);
+    RDLog(@"req %@ top=%d user=%d keys=%@", uri, topLevel, userInitiated,
+          [[payload allKeys] componentsJoinedByString:@","]);
+    if (!topLevel) {
         %orig;
         return;
     }
@@ -144,7 +155,7 @@ static void RDOpenExternally(NSURL *url) {
         return;
     }
 
-    RDLog(@"handoff %@", scheme);
+    RDLog(@"handoff %@ %@", scheme, url.absoluteString);
     RDOpenExternally(url);
 
     // true == "handled by the app", Gecko stops the navigation.
@@ -175,6 +186,7 @@ static void RDInstallHook(int attempt) {
 %ctor {
     NSString *bundleID = [NSBundle mainBundle].bundleIdentifier;
     if (![bundleID isEqualToString:kReynardBundleID]) return;
-    RDLog(@"loaded in %@", bundleID);
+    RDLog(@"loaded in %@ enabled=%d handoff=%d", bundleID,
+          RDReadBoolPref(kEnabledKey, YES), RDReadBoolPref(kHandoffKey, YES));
     RDInstallHook(0);
 }
