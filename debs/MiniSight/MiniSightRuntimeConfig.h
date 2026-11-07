@@ -8,6 +8,7 @@ NS_ASSUME_NONNULL_BEGIN
 @interface MiniSightRuntimeConfig : NSObject
 + (instancetype)shared;
 - (void)reloadWithContainer:(nullable NSString *)container;
+- (void)reloadWithContainer:(nullable NSString *)container preferences:(nullable NSDictionary<NSString *, id> *)preferences;
 @property (nonatomic, readonly) BOOL valid;
 @property (nonatomic, readonly) NSInteger activity;      // 0 lively 1 quiet 2 off
 @property (nonatomic, readonly) double activityInterval; // seconds between roams

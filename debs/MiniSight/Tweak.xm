@@ -446,6 +446,7 @@ static const CGFloat kMiniSightConfirmReserve = 124.0; // 确认气泡（两行�
 static NSString *const kMiniSightStarted   = @"com.openminis.agent.started";
 static NSString *const kMiniSightStopped   = @"com.openminis.agent.stopped";
 static NSString *const kMiniSightSettingsChanged = @"com.openminis.minisight.settings";
+static NSString *const kMiniSightResourcesChanged = @"com.openminis.minisight.resources";
 static NSString *const kMiniSightStatus = @"com.openminis.minisight.status";
 static NSString *const kMiniSightShow = @"com.openminis.minisight.show";
 static NSString *const kMiniSightConfirmNote = @"com.openminis.minisight.confirm";
@@ -459,7 +460,7 @@ static NSString *const kMiniSightCenterY   = @"MiniSightCenterY";
 static NSString *const kMiniSightText      = @"Minis 操作中";
 // 版本号：与 DEBIAN/control 的 Version 同步。诊断日志会打印它，
 // 便于装机后确认跑的是哪一版（strings MiniSight.dylib | grep 也能看到）。
-static NSString *const kMiniSightVersion   = @"0.8.1";
+static NSString *const kMiniSightVersion   = @"0.8.2";
 
 #pragma mark - 全局状态
 
@@ -1074,10 +1075,19 @@ static BOOL MiniSightGestureEnabled(NSString *key) {
 
 static void MiniSightRunGesture(NSString *action, BOOL allowSecondTap) {
     MiniSightChatPanel *panel = MiniSightChatPanel.existingPanel;
-    if ([action isEqualToString:@"input"]) { MiniSightOpenChat(); return; }
+    if ([action isEqualToString:@"input"]) {
+        if (!MiniSightOpenChat()) return;
+        [MiniSightChatPanel.existingPanel showInput]; return;
+    }
     if ([action isEqualToString:@"conversation"]) { MiniSightOpenChat(); return; }
-    if ([action isEqualToString:@"voice"]) { MiniSightOpenChat(); [panel revealComposerIfNeeded]; return; }
-    if ([action isEqualToString:@"menu"]) { MiniSightOpenChat(); [panel revealComposerIfNeeded]; return; }
+    if ([action isEqualToString:@"voice"]) {
+        if (!MiniSightOpenChat()) return;
+        [MiniSightChatPanel.existingPanel beginVoiceInput]; return;
+    }
+    if ([action isEqualToString:@"menu"]) {
+        if (!MiniSightOpenChat()) return;
+        [MiniSightChatPanel.existingPanel showMenu]; return;
+    }
     if ([action isEqualToString:@"record"]) { MiniSightToggleRecording(); return; }
     if (allowSecondTap && panel.isVisible && !panel.sending) { [panel revealComposerIfNeeded]; return; }
     MiniSightSayPresetLine();
@@ -1153,13 +1163,21 @@ static void MiniSightRunGesture(NSString *action, BOOL allowSecondTap) {
 - (void)handleSingleTap:(UITapGestureRecognizer *)tap {
     (void)tap;
     [MiniSightBlip playIfEnabled:MiniSightRuntimeConfig.shared.sound];
-    if (!MiniSightGestureEnabled(@"singleTap")) return;
+    if (!MiniSightGestureEnabled(@"singleTap")) {
+        MSDiagEvent(@"gesture", @"single", @"skipped", @{ @"reason": @"disabled" });
+        return;
+    }
+    MSDiagEvent(@"gesture", @"single", @"ok", @{ @"action": MiniSightRuntimeConfig.shared.singleTap ?: @"" });
     MiniSightRunGesture(MiniSightRuntimeConfig.shared.singleTap, YES);
 }
 
 - (void)handleDoubleTap:(UITapGestureRecognizer *)tap {
     (void)tap;
-    if (!MiniSightGestureEnabled(@"doubleTap")) return;
+    if (!MiniSightGestureEnabled(@"doubleTap")) {
+        MSDiagEvent(@"gesture", @"double", @"skipped", @{ @"reason": @"disabled" });
+        return;
+    }
+    MSDiagEvent(@"gesture", @"double", @"ok", @{ @"action": MiniSightRuntimeConfig.shared.doubleTap ?: @"" });
     UIImpactFeedbackGenerator *feedback =
         [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
     [feedback impactOccurred];
@@ -1175,7 +1193,11 @@ static void MiniSightRunGesture(NSString *action, BOOL allowSecondTap) {
             MiniSightInteractionBegin();
             [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium] impactOccurred];
             [MiniSightBlip playIfEnabled:MiniSightRuntimeConfig.shared.sound];
-            if (!MiniSightGestureEnabled(@"longPress")) break;
+            if (!MiniSightGestureEnabled(@"longPress")) {
+                MSDiagEvent(@"gesture", @"long", @"skipped", @{ @"reason": @"disabled" });
+                break;
+            }
+            MSDiagEvent(@"gesture", @"long", @"ok", @{ @"action": MiniSightRuntimeConfig.shared.longPress ?: @"" });
             if ([MiniSightRuntimeConfig.shared.longPress isEqualToString:@"record"]) MiniSightToggleRecording();
             else MiniSightRunGesture(MiniSightRuntimeConfig.shared.longPress, NO);
             break;
@@ -1347,6 +1369,10 @@ static void MiniSightRequestResources(BOOL force, void (^completion)(void)) {
         gMiniSightShown = shown;
         gMiniSightAtlas = atlas;
         gMiniSightTintBase = atlas;
+        if (gMiniSightPet && atlas) {
+            gMiniSightPet.image = atlas;
+            MiniSightApplyTint(MiniSightRuntimeConfig.shared.tint);
+        }
         [MiniSightRuntimeConfig.shared reloadWithContainer:container];
         MSDiagConfigure([preferences[@"minisight.diagnostics"] boolValue], container);
         MSDiagSettingsSnapshot(@"receive", @"plugin", gMiniSightPreferences);
@@ -1930,6 +1956,7 @@ static void MiniSightCancelConfirm(void) {
 /// 点按钮：写结果、收起气泡；超时自动拒绝，免得对面一直等。
 static void MiniSightAnswerConfirm(BOOL allow) {
     if (!gMiniSightConfirming) return;
+    MSDiagEvent(@"approval", @"answer", allow ? @"allow" : @"deny", @{ @"source": @"plugin" });
     gMiniSightConfirming = NO;
     if (gMiniSightConfirmTimeout) { dispatch_block_cancel(gMiniSightConfirmTimeout); gMiniSightConfirmTimeout = nil; }
     MiniSightWriteConfirmResult(allow);
@@ -1946,7 +1973,10 @@ static void MiniSightAnswerConfirm(BOOL allow) {
 /// 读 confirm.json，把问题+命令塞进气泡，底下挂两个按钮。
 static void MiniSightShowConfirm(void) {
     [[MiniSightChatPanel existingPanel] hideWithoutKey];
-    if (!MiniSightShown() || (!MiniSightAlwaysShow() && !gMiniSightBurst)) return;
+    if (!MiniSightShown() || (!MiniSightAlwaysShow() && !gMiniSightBurst)) {
+        MSDiagEvent(@"approval", @"show", @"skipped", @{ @"reason": MiniSightShown() ? @"not_burst" : @"pet_hidden" });
+        return;
+    }
     @try {
     NSString *container = MiniSightAppContainer();
     if (!container) return;
@@ -1960,6 +1990,7 @@ static void MiniSightShowConfirm(void) {
 
     gMiniSightConfirmId = ident;
     gMiniSightConfirming = YES;
+    MSDiagEvent(@"approval", @"show", @"ok", @{ @"source": @"plugin", @"chars": @([command length]) });
     if (![action isKindOfClass:NSString.class] || ![command isKindOfClass:NSString.class] ||
         [command lengthOfBytesUsingEncoding:NSUTF8StringEncoding] > 65536) {
         gMiniSightConfirmId = ident;
@@ -2005,6 +2036,10 @@ static void MiniSightShowConfirm(void) {
     CGFloat w = gMiniSightBubble.bounds.size.width;
     CGFloat h = gMiniSightBubble.bounds.size.height;
     MiniSightPlaceBubble(w, h);
+    if (gMiniSightBubbleShown) {
+        NSString *ack = [container stringByAppendingPathComponent:@"Documents/MiniSight/confirm-shown.txt"];
+        [ident writeToFile:ack atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    }
 
     if (gMiniSightConfirmTimeout) dispatch_block_cancel(gMiniSightConfirmTimeout);
     gMiniSightConfirmTimeout = dispatch_block_create(DISPATCH_BLOCK_DETACHED, ^{ MiniSightAnswerConfirm(NO); });
@@ -2167,6 +2202,20 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
         dispatch_async(dispatch_get_main_queue(), ^{ MiniSightReloadSettings(); });
         return;
     }
+    if ([note isEqualToString:kMiniSightResourcesChanged]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            BOOL visible = gMiniSightWindow && !gMiniSightWindow.hidden;
+            [MiniSightResources releaseCachedAtlas];
+            gMiniSightResourcesReady = NO;
+            MiniSightRequestResources(YES, ^{
+                if (!visible || MiniSightAppOwnsPresentation()) return;
+                if (!gMiniSightWindow || gMiniSightWindow.hidden) MiniSightShow();
+                else MiniSightApplySettingsLive();
+            });
+            MSDiagEvent(@"assets", @"load", @"pending", @{ @"source": @"plugin", @"reason": @"catalog_changed" });
+        });
+        return;
+    }
 
     BOOL shouldShow = [note isEqualToString:kMiniSightStarted];
     BOOL shouldHide = [note isEqualToString:kMiniSightStopped];
@@ -2303,6 +2352,12 @@ static void MiniSightBringMinisFront(void) {
                                         (__bridge const void *)kMiniSightSettingsChanged,
                                         MiniSightDarwinCallback,
                                         (__bridge CFStringRef)kMiniSightSettingsChanged,
+                                        NULL,
+                                        CFNotificationSuspensionBehaviorDeliverImmediately);
+        CFNotificationCenterAddObserver(center,
+                                        (__bridge const void *)kMiniSightResourcesChanged,
+                                        MiniSightDarwinCallback,
+                                        (__bridge CFStringRef)kMiniSightResourcesChanged,
                                         NULL,
                                         CFNotificationSuspensionBehaviorDeliverImmediately);
         CFNotificationCenterAddObserver(center,

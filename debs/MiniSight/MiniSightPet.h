@@ -14,6 +14,12 @@ NS_ASSUME_NONNULL_BEGIN
 FOUNDATION_EXPORT double MiniSightGravityRollForDevice(double x, double y, int orientation);
 FOUNDATION_EXPORT double MiniSightGravityFilterRoll(double previous, double sample, double deltaTime);
 
+typedef NS_OPTIONS(NSUInteger, MiniSightPetMotionLockReason) {
+    MiniSightPetMotionLockChatEditor = 1u << 0,
+    MiniSightPetMotionLockApproval = 1u << 1,
+    MiniSightPetMotionLockHost = 1u << 2,
+};
+
 @interface MiniSightPetView : UIImageView
 /// Current atlas or costume bitmap (tint is baked in).
 @property (nonatomic, strong, null_resettable) UIImage *image;
@@ -27,6 +33,8 @@ FOUNDATION_EXPORT double MiniSightGravityFilterRoll(double previous, double samp
 /// Clear intent and invalidate every clock/motion; unsuspending cannot restart it.
 - (void)stopPlaying;
 - (void)setSuspended:(BOOL)suspended;
+/// Independent owner-scoped gates; clearing one never clears another owner.
+- (void)setMotionLocked:(BOOL)locked forReason:(MiniSightPetMotionLockReason)reason;
 
 /// Main-thread normalized roll input in the range -1...1 (-1 left, +1 right).
 /// The visual tilt is finite and clamped; this never changes center, bounds, or

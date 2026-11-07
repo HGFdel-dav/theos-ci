@@ -1,4 +1,5 @@
 #import "MiniSightResources.h"
+#import "MiniSightBridgeIO.h"
 #import <ImageIO/ImageIO.h>
 #import <math.h>
 
@@ -6,6 +7,56 @@
 static NSString *MSResourceContainer;
 static NSString *MSAtlasIdentity;
 static UIImage *MSAtlas;
++ (NSDictionary<NSString *, NSString *> *)runtimeFields {
+    static NSDictionary *fields; static dispatch_once_t once;
+    dispatch_once(&once, ^{ fields = @{
+        @"minisight.style": @"style", @"minisight.renderer": @"renderer",
+        @"minisight.mode": @"mode", @"minisight.petSize": @"petSize",
+        @"minisight.gravity": @"gravity", @"minisight.gravity.strength": @"gravityStrength",
+        @"minisight.gravity.shake": @"gravityShake", @"minisight.interaction": @"interaction",
+        @"minisight.gesture.single": @"singleTap", @"minisight.gesture.double": @"doubleTap",
+        @"minisight.gesture.long": @"longPress", @"minisight.activity": @"activity",
+        @"minisight.activity.interval": @"activityInterval", @"minisight.frameLimit": @"frameLimit",
+        @"minisight.dragResponse": @"dragResponse", @"minisight.petSound": @"sound",
+        @"minisight.bottomGap": @"bottomGap", @"minisight.pet.tint": @"tint",
+        @"minisight.pet.costume": @"costume", @"minisight.ai.supplier": @"supplier",
+        @"minisight.asset.source": @"downloadSource", @"minisight.darkMode": @"darkMode",
+        @"minisight.ai.persona": @"persona", @"minisight.ai.nickname": @"nickname",
+        @"minisight.ai.adjust": @"aiAdjust", @"minisight.ai.permissions": @"aiPermissions",
+        @"minisight.ai.adjustments": @"adjustments", @"minisight.proactive": @"proactive",
+        @"minisight.proactive.interval": @"proactiveInterval", @"minisight.dialogue.scale": @"bubbleScale",
+        @"minisight.dialogue.textScale": @"textScale", @"minisight.dialogue.dwell": @"dwell",
+        @"minisight.dialogue.return": @"returnKey", @"minisight.voice.reply": @"voiceReply",
+        @"minisight.voice.input": @"voiceInput", @"minisight.voice.snore": @"snore",
+        @"minisight.quick.enabled": @"quick", @"minisight.quick.position": @"quickPosition",
+        @"minisight.quick.lines": @"quickLines", @"minisight.quick.order": @"quickOrder",
+        @"minisight.record": @"record", @"minisight.longPress": @"longPressRecord",
+        @"minisight.diagnostics": @"diagnostics", @"minisight.shown": @"shown",
+        @"minisight.settings.revision": @"revision"
+    }; });
+    return fields;
+}
++ (NSDictionary<NSString *, id> *)mergedPreferencesWithContainer:(NSString *)container
+                                                  preferences:(NSDictionary<NSString *,id> *)preferences {
+    NSMutableDictionary *merged = [NSMutableDictionary dictionary];
+    if ([preferences isKindOfClass:NSDictionary.class]) {
+        for (NSString *key in preferences) if ([key isKindOfClass:NSString.class] &&
+            [key hasPrefix:@"minisight."]) merged[key] = preferences[key];
+    }
+    NSDictionary *snapshot = container.length ? MSBridgeRead(container, @"runtime.json", 1024 * 1024) : nil;
+    NSDictionary *fields = self.runtimeFields;
+    // v1 snapshots used runtime aliases; accept them only for known fields.
+    for (NSString *key in fields) {
+        id value = snapshot[fields[key]];
+        if (value && ![value isKindOfClass:NSNull.class]) merged[key] = value;
+    }
+    NSDictionary *canonical = [snapshot isKindOfClass:NSDictionary.class] ? snapshot[@"preferences"] : nil;
+    if ([canonical isKindOfClass:NSDictionary.class]) {
+        for (NSString *key in canonical) if ([self.runtimeFields objectForKey:key] &&
+            ![canonical[key] isKindOfClass:NSNull.class]) merged[key] = canonical[key];
+    }
+    return [merged copy];
+}
 static dispatch_queue_t MSResourceQueue(void) {
     static dispatch_queue_t q; static dispatch_once_t once;
     dispatch_once(&once, ^{ q = dispatch_queue_create("com.openminis.minisight.resources", DISPATCH_QUEUE_SERIAL); });
@@ -77,7 +128,7 @@ static UIImage *MSLoadAtlas(NSString *path) {
             for (NSString *key in prefs) {
                 if ([key isKindOfClass:NSString.class] && [key hasPrefix:@"minisight."]) filtered[key] = prefs[key];
             }
-            NSDictionary *snapshot = [filtered copy];
+            NSDictionary *snapshot = [self mergedPreferencesWithContainer:container preferences:filtered];
             dispatch_async(dispatch_get_main_queue(), ^{ if (completion) completion(container, snapshot); });
         }
     });
@@ -97,7 +148,7 @@ static UIImage *MSLoadAtlas(NSString *path) {
             NSString *shown = shownPath ? [NSString stringWithContentsOfFile:shownPath encoding:NSUTF8StringEncoding error:nil] : nil;
             NSString *petPath = [container stringByAppendingPathComponent:@"Documents/MiniSight/pet.png"];
             UIImage *atlas = petPath ? MSLoadAtlas(petPath) : nil;
-            NSDictionary *snapshot = [filtered copy];
+            NSDictionary *snapshot = [self mergedPreferencesWithContainer:container preferences:filtered];
             dispatch_async(dispatch_get_main_queue(), ^{ if (completion) completion(container, snapshot, ![shown isEqual:@"0"], atlas); });
         }
     });

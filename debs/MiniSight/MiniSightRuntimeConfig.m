@@ -1,5 +1,5 @@
 #import "MiniSightRuntimeConfig.h"
-#import "MiniSightBridgeIO.h"
+#import "MiniSightResources.h"
 
 @implementation MiniSightRuntimeConfig
 + (instancetype)shared {
@@ -10,9 +10,23 @@
 }
 
 - (void)reloadWithContainer:(NSString *)container {
-    NSDictionary *json = container.length ? MSBridgeRead(container, @"runtime.json", 16384) : nil;
-    _valid = json != nil;
-    if (!json) return;
+    NSString *path = [container stringByAppendingPathComponent:@"Library/Preferences/com.openminis.app.plist"];
+    NSDictionary *preferences = path ? [NSDictionary dictionaryWithContentsOfFile:path] : nil;
+    [self reloadWithContainer:container preferences:
+        [MiniSightResources mergedPreferencesWithContainer:container preferences:preferences]];
+}
+
+- (void)reloadWithContainer:(NSString *)container preferences:(NSDictionary<NSString *,id> *)preferences {
+    // Pass Resources' immutable merged preferences here for the same generation
+    // used by visibility/rendering. Never wait for runtime.json to exist first.
+    NSDictionary *merged = preferences ?: [MiniSightResources mergedPreferencesWithContainer:container preferences:nil];
+    NSMutableDictionary *json = [NSMutableDictionary dictionary];
+    NSDictionary *fields = MiniSightResources.runtimeFields;
+    for (NSString *key in fields) {
+        id value = merged[key];
+        if (value && ![value isKindOfClass:NSNull.class]) json[fields[key]] = value;
+    }
+    _valid = json.count > 0;
     _activity = [json[@"activity"] isKindOfClass:NSString.class]
         ? [@[@"lively", @"quiet", @"off"] indexOfObject:json[@"activity"]] : 0;
     if (_activity == NSNotFound) _activity = 0;
@@ -37,8 +51,9 @@
     _voiceReply = [json[@"voiceReply"] boolValue];
     _snore = [json[@"snore"] isKindOfClass:NSString.class] ? json[@"snore"] : @"off";
     _quickPosition = [json[@"quickPosition"] isKindOfClass:NSString.class] ? json[@"quickPosition"] : @"above";
-    _quickOrder = [json[@"quickOrder"] isKindOfClass:NSString.class]
-        ? [(NSString *)json[@"quickOrder"] componentsSeparatedByString:@","] : @[];
+    id order = json[@"quickOrder"];
+    _quickOrder = [order isKindOfClass:NSArray.class] ? order :
+        ([order isKindOfClass:NSString.class] && [order length] ? [order componentsSeparatedByString:@","] : @[@"greet", @"wave", @"jump", @"pat", @"walk"]);
     _quickLines = [json[@"quickLines"] isKindOfClass:NSDictionary.class] ? json[@"quickLines"] : @{};
     _revision = [json[@"revision"] isKindOfClass:NSString.class] ? json[@"revision"] : @"";
     _gravityShake = json[@"gravityShake"] ? [json[@"gravityShake"] boolValue] : YES;

@@ -98,6 +98,10 @@ static CGPoint MSPetCGPoint(MSPoint p) { return CGPointMake((CGFloat)p.x, (CGFlo
     BOOL _gravityEnabled;
     CGFloat _gravityRoll;
     CGFloat _gravityImpulseAngle;
+    MSGravityBody _gravityBody;
+    BOOL _physicsMotion;
+    CFTimeInterval _lastMotionTick;
+    NSUInteger _motionLockReasons;
     CFTimeInterval _gravityImpulseBegan;
     CFTimeInterval _gravityImpulseDuration;
     NSUInteger _gravityGeneration;
@@ -170,12 +174,30 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
 }
 
 @implementation MiniSightPetView
-@dynamic image; // implemented by UIImageView; redeclared only for the host API guard
+// UIImageView's normal image paints the WHOLE atlas behind the sprite child.
+// Treat image as the atlas source and keep the host backing layer empty.
 @synthesize centerBounds = _centerBounds, onGeometryChanged = _onGeometryChanged;
 @synthesize activityActive = _activityActive, longPressEnabled = _longPressEnabled;
 @synthesize roamingPaused = _roamingPaused, interactionActive = _interactionActive;
 @synthesize reducedWork = _reducedWork, onLongPress = _onLongPress;
 @synthesize roamPace = _roamPace, preferredFPS = _preferredFPS;
+
+- (UIImage *)image { return _sheet; }
+- (void)setImage:(UIImage *)image {
+    NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
+    if (!image.CGImage) return;
+    _sheet = image;
+    [super setImage:nil];
+    self.layer.contents = nil;
+    [self ensureGravityLayer];
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    _gravityLayer.contents = (__bridge id)image.CGImage;
+    _gravityLayer.contentsScale = image.scale;
+    _gravityLayer.contentsRect = CGRectZero;
+    [CATransaction commit];
+    [self applySpriteFrame];
+}
 
 - (instancetype)initWithSprite:(UIImage *)sprite displaySize:(CGSize)displaySize {
     NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
@@ -185,6 +207,7 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     if (self) {
         _sheet = sprite;
         _longPressEnabled = YES; // Configuration storage; the host owns gestures.
+        _roamPace = 1.;
         self.contentMode = UIViewContentModeScaleAspectFit;
         self.userInteractionEnabled = YES;
         self.layer.contentsGravity = kCAGravityResizeAspect;
@@ -247,7 +270,17 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     [self reconcilePlayback]; // Never invents playback intent; startPlaying is not called.
 }
 
+- (void)setMotionLocked:(BOOL)locked forReason:(MiniSightPetMotionLockReason)reason {
+    NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
+    NSUInteger mask = (NSUInteger)reason;
+    NSUInteger next = locked ? (_motionLockReasons | mask) : (_motionLockReasons & ~mask);
+    if (!mask || next == _motionLockReasons) return;
+    _motionLockReasons = next;
+    [self reconcilePlayback];
+}
+
 - (void)setRoamPace:(double)pace {
+    pace = MSClamp(MSFinite(pace, 1.), 0., 10.);
     if (_roamPace == pace) return;
     _roamPace = pace;
     [self invalidateRoamTimer];
@@ -323,7 +356,9 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
 - (BOOL)mayRoam {
     MSRect area = [self feasibleCenters];
     return [self shouldAnimate] && _hasCenterBounds &&
-           !_roamingPaused && !_interactionActive && (area.w > 0. || area.h > 0.);
+           MSGravityMotionAllowed(_wantsPlaying, _suspended, [self isActuallyVisible],
+                                  _roamingPaused, _interactionActive, (unsigned)_motionLockReasons) &&
+           (area.w > 0. || area.h > 0.);
 }
 
 - (void)reconcilePlayback {
@@ -337,6 +372,7 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     if (![self mayRoam]) {
         [self invalidateRoamTimer];
         [self cancelMotion];
+        [self cancelGravityImpulse];
     }
     if (!_motionActive) [self ensureFrameTimer];
     if (!_motionActive && !_roamTimer && _stateHoldUntil <= 0.) [self scheduleRoam];
@@ -500,7 +536,9 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     _gravityEnabled = enabled;
     if (!enabled) {
         _gravityRoll = 0.0;
+        if (_physicsMotion) [self cancelMotion];
         [self cancelGravityImpulse];
+        [self reconcilePlayback];
     }
     [self updateGravityLayerGeometry];
     [self applyGravityTransformAtTime:CACurrentMediaTime()];
@@ -516,7 +554,7 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
 
 - (void)setGravityRoll:(CGFloat)roll {
     NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
-    if (_interactionActive) return; // finger-down freezes the visible tilt too
+    if (_interactionActive || _roamingPaused || _motionLockReasons) return; // editing/approval freezes sway too
     _gravityRoll = MSPetClampUnit(roll);
     [self applyGravityTransformAtTime:CACurrentMediaTime()];
 }
@@ -544,9 +582,26 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     [self applyGravityTransformAtTime:CACurrentMediaTime()];
 }
 
+- (void)triggerGravityFlingWithDirection:(CGFloat)direction strength:(CGFloat)strength {
+    if (!_gravityEnabled || ![self mayRoam]) return;
+    [self cancelMotion];
+    MSPoint velocity = MSGravityLaunchVelocity(direction, strength);
+    MSGravityBodyLaunch(&_gravityBody, [self feasibleCenters], MSPetPoint(self.center), velocity);
+    _physicsMotion = _gravityBody.active;
+    _motionActive = _physicsMotion;
+    _activeMotionGeneration = ++_motionGeneration;
+    _lastMotionTick = CACurrentMediaTime();
+    _restAfterMotion = .65;
+    [self setSpriteState:MiniSightPetStateJumping];
+    [self invalidateFrameTimer];
+    [self invalidateRoamTimer];
+    [self ensureMotionLink];
+    if (!_motionActive) [self reconcilePlayback];
+}
+
 - (void)triggerGravityImpulseWithDirection:(CGFloat)direction strength:(CGFloat)strength {
     NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
-    if (!_gravityEnabled || !_wantsPlaying || _suspended || _interactionActive || ![self isActuallyVisible]) return;
+    if (!_gravityEnabled || ![self mayRoam]) return;
     direction = MSPetClampUnit(direction);
     strength = MIN(1.0, MAX(0.0, isfinite(strength) ? strength : 0.0));
     if (fabs(direction) < 0.01 || strength < 0.05) return;
@@ -554,13 +609,14 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     _gravityImpulseBegan = CACurrentMediaTime();
     _gravityImpulseDuration = kMiniSightGravityImpulseDuration;
     _activeGravityGeneration = ++_gravityGeneration;
+    [self triggerGravityFlingWithDirection:direction strength:strength];
     [self ensureGravityLink];
     [self applyGravityTransformAtTime:_gravityImpulseBegan];
 }
 
 - (void)gravityTick:(CADisplayLink *)link {
     if (link != _gravityLink) return;
-    if (!_gravityEnabled || !_wantsPlaying || _suspended || _interactionActive || ![self isActuallyVisible]) {
+    if (!_gravityEnabled || ![self mayRoam]) {
         [self cancelGravityImpulse];
         return;
     }
@@ -734,7 +790,9 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
     // Without a host-provided feasible range there is nothing safe to move to.
     if (!_hasCenterBounds || ![self shouldAnimate]) return;
-    if (_roamingPaused || _interactionActive) return;
+    if (_roamingPaused || _interactionActive || _motionLockReasons) return;
+    _physicsMotion = NO;
+    MSGravityBodyCancel(&_gravityBody);
     _stateHoldUntil = 0.;
 
     CGPoint start = [self clampedCenter:self.center];
@@ -807,13 +865,29 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
 - (void)motionTick:(CADisplayLink *)link {
     if (link != _motionLink) return;
     if (!_motionActive || _activeMotionGeneration != _motionGeneration) return;
-    if (![self shouldAnimate] || _roamingPaused || _interactionActive) {
+    if (![self shouldAnimate] || _roamingPaused || _interactionActive || _motionLockReasons) {
         // Freeze at the actual position, then let reconcile resume the sprite clock.
         [self cancelMotion];
         [self reconcilePlayback];
         return;
     }
-    double t = _motionDuration > 0. ? (CACurrentMediaTime() - _motionBegan) / _motionDuration : 1.;
+    CFTimeInterval now = CACurrentMediaTime();
+    NSUInteger generation = _activeMotionGeneration;
+    if (_physicsMotion) {
+        uint64_t token = _gravityBody.activeGeneration;
+        double elapsed = now - _lastMotionTick;
+        _lastMotionTick = now;
+        MSGravityBodyStep(&_gravityBody, [self feasibleCenters], _gravityRoll, elapsed, token);
+        self.center = MSPetCGPoint(_gravityBody.position);
+        // Geometry callbacks may hide, replace, resize, or lock this pet.
+        if (!_motionActive || generation != _motionGeneration || !_physicsMotion) return;
+        [self applyGravityTransformAtTime:now];
+        if (!_motionActive || generation != _motionGeneration) return;
+        if (!_gravityBody.active) { [self finishMotion]; return; }
+        [self advanceSpriteAtTime:now];
+        return;
+    }
+    double t = _motionDuration > 0. ? (now - _motionBegan) / _motionDuration : 1.;
     if (t >= 1.) { [self finishMotion]; return; }
     if (t < 0.) t = 0.;
 
@@ -827,17 +901,28 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
 }
 
 - (void)finishMotion {
+    NSUInteger generation = _motionGeneration;
+    CGPoint end = _physicsMotion ? MSPetCGPoint(_gravityBody.position) : MSPetCGPoint(_motionEnd);
+    self.center = [self clampedCenter:end];
+    if (!_motionActive || generation != _motionGeneration) return;
     _motionActive = NO;
+    _physicsMotion = NO;
+    _activeMotionGeneration = 0;
+    MSGravityBodyCancel(&_gravityBody);
     [_motionLink invalidate];
     _motionLink = nil;
-    self.center = [self clampedCenter:MSPetCGPoint(_motionEnd)];
     [self setSpriteState:MiniSightPetStateIdle];
-    [self reconcilePlayback]; // Restarts the sprite clock and arms the next roam.
+    [self applyGravityTransformAtTime:CACurrentMediaTime()];
+    [self reconcilePlayback]; // Restarts sprite clock; never invents a rebound target.
 }
 
 - (void)cancelMotion {
     ++_motionGeneration; // Fence any already-delivered callback before it can rearm.
     _motionActive = NO;
+    _physicsMotion = NO;
+    _activeMotionGeneration = 0;
+    _lastMotionTick = 0.;
+    MSGravityBodyCancel(&_gravityBody);
     _jumpHeight = 0.;
     _stateHoldUntil = 0.;
     _restAfterMotion = 0.;

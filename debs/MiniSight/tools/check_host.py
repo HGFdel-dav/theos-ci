@@ -220,7 +220,8 @@ ok(bool(re.search(r'if \(!MiniSightAlwaysShow\(\) && !gMiniSightBurst\) \{[^}]*r
    '11a 调用模式 show 缺少活动门禁')
 ok('BOOL shouldShow = gMiniSightBurst || MiniSightAlwaysShow();' in reload_body and 'MiniSightShow();' in reload_body,
    '11b 切换常驻后未主动显示')
-ok('if (!MiniSightShown() || (!MiniSightAlwaysShow() && !gMiniSightBurst)) return;' in confirm,
+ok('if (!MiniSightShown() || (!MiniSightAlwaysShow() && !gMiniSightBurst)) {' in confirm
+   and '@"not_burst" : @"pet_hidden"' in confirm and 'MiniSightShow();' in confirm,
    '11c 空闲确认通知仍可唤醒窗口')
 ok('if (gMiniSightBurst || MiniSightAlwaysShow()) {' in callback,
    '11d 状态通知未受活动/常驻约束')

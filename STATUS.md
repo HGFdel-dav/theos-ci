@@ -1,24 +1,26 @@
-# MiniSight repair status
+# MiniSight 0.8.2 repair status
 
-- **阶段**：本地修改与静态/便携测试完成；第一轮 GitHub CI 已触发但双架构在 Theos 编译阶段因 `Tweak.xm` 未使用辅助函数（`-Werror`）失败；已在本地删除该函数，准备修复提交后重跑。未安装、未注销、未重启手机。
-- **基线**：`HGFdel-dav/theos-ci` / `minisight-0.4.0-chat-freeze` / `25be7d990cdf72b4c23811d1b0d5b30802e9ea57`。
-- **本地分支**：`local/chatpanel-lifecycle-20261103`。
-- **本轮修改**：
-  - `MiniSightChatPanel` 状态 getter 改为直接 ivar，初始化 `MiniSightAI`，同步 `containerPath`。
-  - 聊天 overlay 保持 non-key；只在输入时显示独立 editor window 接管键盘，空白区域穿透。
-  - close/teardown/show、AI 回包和取消加入生命周期/请求代数保护；旧的 `previousKeyWindow` 手动恢复移除。
-  - teardown 使用 `existingPanel`，不因清理路径懒创建聊天 UI。
-  - 单击改为本地预置短句；双击打开多轮聊天；“隐藏桌宠”移入聊天面板菜单。
-  - 删除宿主内旧的单句联网请求路径；AI 多轮仍由 `MiniSightAI` 读取 App 的 `ai.json`。
-  - 更新 README 与静态检查脚本。
-- **检查证据**：
-  - `tools/check_host.py`：115 项通过。
-  - `tools/chat/run_local_checks.py`：74 项通过。
-  - `tools/recorder/run_local_checks.py`：21 项通过；gcc/clang 各 224246 项、100000 reducer events。
-  - `layout_test.c`：1600001 项通过；`gravity_test.c`：40007 项通过。
-  - `git diff --check`：通过；Objective-C 文件括号/段落静态配平通过。
-- **未验证/风险**：
-  - 本机没有 Theos/iPhoneOS15.5 SDK，未做真实 arm64/arm64e 编译；不能把静态检查当作编译成功。
-  - 独立 editor window、非 key overlay、键盘与 SpringBoard 触摸穿透尚未真机验收。
-  - 录屏系统后端、桌宠流畅度、重力传感器、AI 服务端响应仍未真机验收。
-- **下一闸门**：先向用户报告本地结果；只有用户当前明确授权后才可 commit/push/CI。安装、注销、重启另行授权。
+- 阶段：本地修复与静态/可移植检查完成；等待推送 CI。未安装、未注销、未重启。
+- 基线：`HGFdel-dav/theos-ci` / `minisight-0.8.1-20261106` / `413da95`。
+- 本轮：0.8.2。长按动作按配置分派；运行快照/偏好合并读取；独立日志字段；语音启动确认/最终结果/取消/去重；审批确认时序与回退；通用抛飞-落地-回弹物理；跟随面板 30fps、键盘恢复；图集单帧渲染；素材专用重载通知。
+
+## 证据
+
+- `tools/check_host.py` 122 项
+- `tools/check_repairs_20261107.py` 通过
+- `tests/physics_fling_20261107.c` 187850 项
+- `tests/chat/layout_follow_20261107.c` 5732 项
+- `tests/chat/chat_layout_test.c` 110336 项
+- `tests/gravity_test.c` 40015 项
+- `tests/chat/chat_test.c` 233 项
+- `git diff --check`、ObjC 括号检查通过
+
+## 未验证
+
+- 未做 arm64e 编译；未安装；未真机验收。
+- SpringBoard 真机手势分派、语音权限/识别、审批气泡、物理手感、键盘收起、素材下载都需装机验证。
+- 设备安装 234 时 13:10 卡死栈已确证为 `read_image → resizedImageData → UIImageJPEGRepresentation → ImageIO` 主线程；本地已改后台 ImageIO。系统 CPU 报告另有 iSH 模拟 CPU 占用，非同一栈。
+
+## 授权
+
+- 用户 2026-11-07：“继续修吧，修完了再推送” = 完成本地修复后允许推送 CI。安装/注销/重启仍需单独授权。

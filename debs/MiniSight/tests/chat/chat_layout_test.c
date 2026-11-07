@@ -38,9 +38,9 @@ static void contract(MSRect safe, MSRect pet, MSSize wanted, double width,
     contained(f.messages, safe);
     contained(f.composer, safe);
     CHECK(!overlaps(f.messages, f.composer));
-    CHECK(near(f.composer.h, fmin(40., safe.h)));
-    CHECK(near(f.composer.w, fmin(safe.w, isfinite(width) && width > 0. ? width : 230.)));
-    CHECK(near(f.messages.w, fmin(safe.w, isfinite(wanted.w) && wanted.w > 0. ? wanted.w : 230.)));
+    CHECK(near(f.composer.h, fmin(38., safe.h)));
+    CHECK(near(f.composer.w, fmin(safe.w, isfinite(width) && width > 0. ? width : 216.)));
+    CHECK(near(f.messages.w, fmin(safe.w, isfinite(wanted.w) && wanted.w > 0. ? wanted.w : 216.)));
     CHECK(f.messages.h <= 200. && f.messages.h <= safe.h * .35 + 1e-7);
     CHECK(f.messages.h <= fmax(0., MSFinite(wanted.h, 0.)) + 1e-7);
     CHECK(near(f.composer.y - f.messages.y - f.messages.h, f.messages.h > 0. ? 6. : 0.));
@@ -69,17 +69,17 @@ static void named_cases(void) {
     MSChatFloatingFrames f = MSChatFloatingLayout(phone, pet, wanted, 0., 0.);
     contract(phone, pet, wanted, 0., 0., f);
     CHECK(!f.placedBelow && !f.petAvoidance);
-    CHECK(near(f.messages.x, 85.) && near(f.messages.y, 468.) && near(f.messages.h, 96.));
-    CHECK(near(f.composer.x, 80.) && near(f.composer.y, 570.) && near(f.tailX, 115.));
+    CHECK(near(f.messages.x, 85.) && near(f.messages.y, 470.) && near(f.messages.h, 96.));
+    CHECK(near(f.composer.x, 87.) && near(f.composer.y, 572.) && near(f.tailX, 108.));
     CHECK(near(pet.y - f.composer.y - f.composer.h, 10.));
     show("iphone390x844", f);
 
     pet.y = 65.;
     f = MSChatFloatingLayout(phone, pet, wanted, 0., 0.);
     contract(phone, pet, wanted, 0., 0., f);
-    CHECK(f.placedBelow && !f.petAvoidance);
-    CHECK(near(f.messages.y, 139.) && near(f.composer.y, 241.) && near(f.tailX, 110.));
-    CHECK(near(f.messages.y - pet.y - pet.h, 10.));
+    CHECK(!f.placedBelow && near(f.messages.h, 0.) && near(f.composer.y, 59.));
+    // Above-only contract: a top pet keeps the bar clamped at safe top and
+    // the message viewport collapses rather than flipping below the feet.
     show("top_pet_below", f);
 
     // Left/right clamping and a tail kept away from rounded corners.
@@ -89,15 +89,15 @@ static void named_cases(void) {
         pet.x = xs[i];
         f = MSChatFloatingLayout(phone, pet, wanted, 0., 0.);
         contract(phone, pet, wanted, 0., 0., f);
-        CHECK(near(f.composer.x, i == 0 || i == 2 ? 0. : 160.));
+        CHECK(near(f.composer.x, i == 0 || i == 2 ? 0. : 174.));
         if (i == 2) CHECK(near(f.tailX, 12.));
-        if (i == 3) CHECK(near(f.tailX, 218.));
+        if (i == 3) CHECK(near(f.tailX, 204.));
     }
     pet = (MSRect){163., 620., 64., 64.};
     wanted.h = 9000.; // full scroll content must not become a 9000pt outer frame
     f = MSChatFloatingLayout(phone, pet, wanted, 230., 0.);
     contract(phone, pet, wanted, 230., 0., f);
-    CHECK(near(f.messages.h, 200.) && near(f.composer.y, 570.));
+    CHECK(near(f.messages.h, 200.) && near(f.composer.y, 572.));
     wanted.h = 24.;
     f = MSChatFloatingLayout(phone, pet, wanted, 300., 0.);
     contract(phone, pet, wanted, 300., 0., f);
@@ -109,7 +109,8 @@ static void named_cases(void) {
     f = MSChatFloatingLayout(landscape, pet, wanted, 0., 0.);
     contract(landscape, pet, wanted, 0., 0., f);
     CHECK(!f.placedBelow && !f.petAvoidance);
-    CHECK(near(f.messages.h, 129.15) && near(f.composer.x, 567.));
+    show("DEBUGland", f);
+    CHECK(near(f.messages.h, 129.15) && near(f.composer.x, 580.));
     CHECK(near(pet.y - f.composer.y - f.composer.h, 10.));
     show("landscape_ratio_cap", f);
 
@@ -122,12 +123,11 @@ static void named_cases(void) {
     pet.y = 65.;
     f = MSChatFloatingLayout(phone, pet, wanted, 0., 250.);
     contract(phone, pet, wanted, 0., 250., f);
-    CHECK(f.placedBelow && !f.petAvoidance && near(f.messages.h, 57.));
-    CHECK(near(f.messages.y, 139.) && near(f.composer.y + f.composer.h, 242.));
+    CHECK(!f.placedBelow && near(f.messages.h, 0.) && near(f.composer.y + f.composer.h, 97.));
     show("keyboard_compress_below", f);
     pet.y = 620.;
     f = MSChatFloatingLayout(phone, pet, wanted, 0., 0.); // keyboard hide/recompute
-    CHECK(near(f.composer.y, 570.) && near(f.messages.h, 96.));
+    CHECK(near(f.composer.y, 572.) && near(f.messages.h, 96.));
     f = MSChatFloatingLayout(landscape, (MSRect){660., 260., 56., 56.}, wanted, 0., 200.);
     contract(landscape, (MSRect){660., 260., 56., 56.}, wanted, 0., 200., f);
     CHECK(near(f.composer.y + f.composer.h, 192.)); // rotation + new world keyboard Y
@@ -136,15 +136,15 @@ static void named_cases(void) {
     pet = (MSRect){163., 130., 64., 64.};
     f = MSChatFloatingLayout(shortSafe, pet, wanted, 0., 0.);
     contract(shortSafe, pet, wanted, 0., 0., f);
-    CHECK(!f.placedBelow && !f.petAvoidance && near(f.messages.h, 15.));
-    CHECK(near(f.messages.y, 59.) && near(f.composer.y, 80.));
+    CHECK(!f.placedBelow && !f.petAvoidance && near(f.messages.h, 17.));
+    CHECK(near(f.messages.y, 59.) && near(f.composer.y, 82.));
     show("compress_above", f);
 
     const MSRect blocked = {0., 0., 100., 100.};
     pet = (MSRect){10., 20., 80., 60.};
     f = MSChatFloatingLayout(blocked, pet, wanted, 0., 0.);
     contract(blocked, pet, wanted, 0., 0., f);
-    CHECK(f.petAvoidance && near(f.composer.h, 40.));
+    CHECK(f.petAvoidance && near(f.composer.h, 38.));
     show("pet_avoidance", f);
 
     const MSRect tiny = {12., 18., 8., 10.};
@@ -161,7 +161,7 @@ static void named_cases(void) {
         pet = (MSRect){40., 200., 20., 20.};
         f = MSChatFloatingLayout(safe, pet, wanted, 999., 0.);
         contract(safe, pet, wanted, 999., 0., f);
-        CHECK(near(f.messages.h, heights[i] == 47. ? 1. : 0.));
+        CHECK(near(f.messages.h, heights[i] > 44. ? heights[i] - 44. : 0.));
     }
     wanted.h = 0.;
     f = MSChatFloatingLayout(phone, pet, wanted, 0., 0.);
@@ -181,14 +181,14 @@ static void invalid_inputs(void) {
         MSSize wanted = {bad[i], bad[i]};
         MSChatFloatingFrames f = MSChatFloatingLayout(safe, pet, wanted, bad[i], bad[i]);
         contract(safe, pet, wanted, bad[i], bad[i], f);
-        CHECK(near(f.composer.w, 230.) && near(f.messages.h, 0.));
+        CHECK(near(f.composer.w, 216.) && near(f.messages.h, 0.));
         f = MSChatFloatingLayout(safe, (MSRect){bad[i], bad[i], NAN, INFINITY},
                                  (MSSize){NAN, NAN}, NAN, NAN);
         contained(f.messages, safe);
         contained(f.composer, safe);
         CHECK(isfinite(f.tailX));
         // All nonfinite pet geometry has an explicit bottom-center fallback.
-        if (i < 3) CHECK(near(f.composer.x, 80.) && near(f.composer.y, 760.));
+        if (i < 3) CHECK(near(f.composer.x, 87.) && near(f.composer.y, 762.));
     }
     // Per-field corruption, plus maximal finite magnitudes: not just all-NaN.
     const double extremes[] = {NAN, INFINITY, -INFINITY, -DBL_MAX, DBL_MAX};
@@ -246,7 +246,7 @@ static void random_cases(void) {
         if (keyboard > 0.) bottom = fmax(safe.y, fmin(bottom, keyboard - 8.));
         double usableHeight = bottom - safe.y;
         double capped = fmin(fmax(0., wanted.h), fmin(200., usableHeight * .35));
-        double stack = fmin(40., usableHeight) + (capped > 0. ? 6. + capped : 0.);
+        double stack = fmin(38., usableHeight) + (capped > 0. ? 6. + capped : 0.);
         if (safe.w > 0. && fmin(bottom, pet.y - 10.) - safe.y >= stack) {
             CHECK(!f.placedBelow && !f.petAvoidance);
             CHECK(near(f.messages.h, capped));

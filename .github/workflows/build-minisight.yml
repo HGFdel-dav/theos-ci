@@ -29,6 +29,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/check_host.py
+          python3 tools/check_repairs_20261107.py
           clang -std=c11 -O2 -Wall -Wextra -Werror tests/recorder/recorder_test.c -o "$RUNNER_TEMP/ms-recorder"
           "$RUNNER_TEMP/ms-recorder"
           clang -std=c11 -O2 -Wall -Wextra -Werror tests/layout_test.c -lm -o "$RUNNER_TEMP/ms-layout"
@@ -37,6 +38,10 @@ jobs:
           "$RUNNER_TEMP/ms-gravity"
           clang -std=c11 -O2 -Wall -Wextra -Werror tests/chat/chat_test.c tools/chat/ChatCore.c -o "$RUNNER_TEMP/ms-chat"
           "$RUNNER_TEMP/ms-chat"
+          clang -std=c11 -O2 -Wall -Wextra -Werror tests/physics_fling_20261107.c -lm -o "$RUNNER_TEMP/ms-fling"
+          "$RUNNER_TEMP/ms-fling"
+          clang -std=c11 -O2 -Wall -Wextra -Werror tests/chat/layout_follow_20261107.c -lm -o "$RUNNER_TEMP/ms-follow"
+          "$RUNNER_TEMP/ms-follow"
           python3 tools/chat/run_local_checks.py
           python3 tools/chat/check_chat_layout.py --cc clang
           python3 -B -m unittest discover -s tests/diagnostics -p 'test_*.py' -v
