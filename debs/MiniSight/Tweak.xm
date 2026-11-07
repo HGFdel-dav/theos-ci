@@ -536,7 +536,7 @@ static void MiniSightApplyTint(NSString *name) {
         [base drawAtPoint:CGPointZero];
         // sourceAtop tints only opaque sprite pixels, never the transparent
         // gaps between frames (plain Color blend filled a coloured rectangle).
-        ctx.CGContext.blendMode = kCGBlendModeSourceAtop;
+        CGContextSetBlendMode(ctx.CGContext, kCGBlendModeSourceAtop);
         CGContextSetFillColorWithColor(ctx.CGContext, tint.CGColor);
         UIRectFillUsingBlendMode(CGRectMake(0, 0, base.size.width, base.size.height), kCGBlendModeSourceAtop);
     }];
