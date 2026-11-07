@@ -323,7 +323,7 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
     NSString *active = [PXCloneCrane activeContainerForBundle:bundle];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"选择打开的账号"
                                                                   message:nil
-                                                           preferredStyle:UIAlertControllerStyleAlert];
+                                                           preferredStyle:UIAlertControllerStyleActionSheet];
     void (^finish)(NSString *, NSString *) = ^(NSString *container, NSString *title) {
         (void)title;
         [alert dismissViewControllerAnimated:YES completion:^{
@@ -357,6 +357,13 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
         }];
     }]];
 
+    // An action sheet needs an anchor in SpringBoard.
+    if (alert.popoverPresentationController) {
+        alert.popoverPresentationController.sourceView = presenter.view;
+        alert.popoverPresentationController.sourceRect =
+            CGRectMake(CGRectGetMidX(presenter.view.bounds), CGRectGetMidY(presenter.view.bounds), 1, 1);
+        alert.popoverPresentationController.permittedArrowDirections = 0;
+    }
     [presenter presentViewController:alert animated:YES completion:^{
         if (alert.presentingViewController == nil) {
             [host presentViewController:alert animated:YES completion:nil];
@@ -390,10 +397,10 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
     }
 
     NSError *error = nil;
-    BOOL started = [PXCloneCrane requestSwitchToContainer:container
-                                                forBundle:bundle
-                                                    reply:^(__unused BOOL rawAuthenticationFlag) {}
-                                                    error:&error];
+    // Do not reload here: the app must stay stopped so the original handoff
+    // launches it WITH the payment URL. Reloading first opened an empty app
+    // and the URL was lost ("未完成支付").
+    BOOL started = [PXCloneCrane switchToContainer:container forBundle:bundle reload:NO error:&error];
     if (!started) {
         NSString *reason = error.localizedDescription.length ? error.localizedDescription : @"账号切换未启动";
         [self showRoutingError:reason];

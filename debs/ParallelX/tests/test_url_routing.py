@@ -98,7 +98,8 @@ class TestURLRouting(unittest.TestCase):
         self.assertNotIn('proceed()', cancel.split('}]];', 1)[0])
 
     def test_account_change_uses_crane_request_api(self):
-        self.assertIn('[PXCloneCrane requestSwitchToContainer:', ROUTER)
+        # reload:NO so the handoff itself launches the app with its URL.
+        self.assertIn('[PXCloneCrane switchToContainer:container forBundle:bundle reload:NO error:&error]', ROUTER)
         self.assertIn('waitForContainer:', ROUTER)
         self.assertIn('PXURLRouterPollLimit', ROUTER)
         # A bare container setter would bypass Crane's authentication path.
@@ -122,8 +123,10 @@ class TestURLRouting(unittest.TestCase):
         self.assertIn('stringByAppendingString:message', ROUTER)
 
     def test_chooser_uses_its_own_alert_window(self):
+        # Reuse an existing window when possible; own window only as fallback.
+        self.assertIn('application.windows.reverseObjectEnumerator', ROUTER)
         self.assertIn('UIWindowLevelAlert + 1', ROUTER)
-        self.assertIn('UIAlertControllerStyleAlert', ROUTER)
+        self.assertIn('UIAlertControllerStyleActionSheet', ROUTER)
         self.assertIn('makeKeyAndVisible', ROUTER)
         self.assertIn('style:UIAlertActionStyleCancel', ROUTER)
 

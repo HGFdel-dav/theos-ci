@@ -176,7 +176,41 @@ static NSArray<NSDictionary *> *PXCatalog;
         NSSelectorFromString(@"containerIdentifiersOfApplicationWithIdentifier:"), bundleID);
 }
 
+// Crane keeps the full account list (DEFAULT + every clone, with the user's
+// own names) in its preferences. The runtime selector returns only a subset,
+// which truncated the chooser to two rows. Prefs are read-only here.
++ (NSArray<NSDictionary *> *)prefsContainersForBundle:(NSString *)bundleID {
+    if (!bundleID.length) return @[];
+    NSString *root = PXCloneJBROOT(@"/");
+    NSString *path = [(root.length ? root : @"")
+        stringByAppendingString:@"/var/mobile/Library/Preferences/com.opa334.craneprefs.plist"];
+    NSDictionary *prefs = [NSDictionary dictionaryWithContentsOfFile:path];
+    if (![prefs isKindOfClass:NSDictionary.class]) return @[];
+    id settings = prefs[[@"appSettings_" stringByAppendingString:bundleID]];
+    if (![settings isKindOfClass:NSDictionary.class]) return @[];
+    id list = ((NSDictionary *)settings)[@"Containers"];
+    if (![list isKindOfClass:NSArray.class]) return @[];
+
+    NSMutableArray<NSDictionary *> *out = [NSMutableArray array];
+    NSMutableSet<NSString *> *seen = [NSMutableSet set];
+    for (NSDictionary *entry in list) {
+        if (![entry isKindOfClass:NSDictionary.class]) continue;
+        id identifier = entry[@"identifier"];
+        if (![identifier isKindOfClass:NSString.class] || ![identifier length]) continue;
+        if ([seen containsObject:identifier]) continue;
+        [seen addObject:identifier];
+        BOOL isDefault = [identifier isEqualToString:@"DEFAULT"];
+        id name = entry[@"name"];
+        NSString *title = [name isKindOfClass:NSString.class] && [name length] ? name : nil;
+        if (!title.length) title = isDefault ? @"默认" : identifier;
+        [out addObject:@{@"container": identifier, @"name": title, @"isDefault": @(isDefault)}];
+    }
+    return out.count >= 2 ? out : @[];
+}
+
 + (NSArray<NSDictionary *> *)containersForBundle:(NSString *)bundleID {
+    NSArray<NSDictionary *> *fromPrefs = [self prefsContainersForBundle:bundleID];
+    if (fromPrefs.count >= 2) return fromPrefs;
     id manager = PXSharedManager();
     if (!manager || !bundleID.length) return @[];
     NSArray<NSString *> *identifiers = [self containerIdentifiersForBundle:bundleID];
@@ -232,7 +266,7 @@ static NSArray<NSDictionary *> *PXCatalog;
         SEL reload = NSSelectorFromString(@"reloadApplicationWithIdentifier:");
         @try {
             ((void (*)(id, SEL, id, id, BOOL))objc_msgSend)(manager, plain, containerID, bundleID, NO);
-            if (PXCloneInstanceMethodMatches(manager, reload, @encode(void), @[@"@"]) && reply) {
+            if (reload && PXCloneInstanceMethodMatches(manager, reload, @encode(void), @[@"@"]) && reply) {
                 ((void (*)(id, SEL, id))objc_msgSend)(manager, reload, bundleID);
                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)),
                                dispatch_get_main_queue(), ^{ reply(YES); });
@@ -240,6 +274,7 @@ static NSArray<NSDictionary *> *PXCatalog;
             return YES;
         } @catch (__unused NSException *exception) { }
     }
+    BOOL reload = YES;
     // libcrane arm64e @0x84d4: v44@0:8@16@24B32@?36. The shorter
     // usingBiometrics selector defaults reload to YES; do not use it here.
     SEL selector = NSSelectorFromString(@"setActiveContainerIdentifier:forApplicationWithIdentifier:reloadApplication:usingBiometricsIfNeededWithSuccessHandler:");

@@ -32,6 +32,7 @@ typedef NS_ENUM(NSInteger, PXCloneCraneError) {
 + (NSArray<NSString *> *)containerIdentifiersForBundle:(NSString *)bundleID;
 // Same shape as the catalog entries, for ONE bundle (no full app scan).
 + (NSArray<NSDictionary *> *)containersForBundle:(NSString *)bundleID;
++ (NSArray<NSDictionary *> *)prefsContainersForBundle:(NSString *)bundleID;
 + (NSString *)activeContainerForBundle:(NSString *)bundleID;
 + (BOOL)containerExists:(NSString *)containerID forBundle:(NSString *)bundleID;
 // Requests Crane's normal authentication path with reloadApplication:NO.
@@ -40,6 +41,10 @@ typedef NS_ENUM(NSInteger, PXCloneCraneError) {
 // no-biometric branch sets the container, then replies NO (arm64e 0x86a4..bc).
 // Every real reply must reach the controller's bounded active-container check.
 // Errors/throwing before a reply are returned via error; no synthetic reply.
+// reload:YES restarts the app in the new container (good for a plain launch).
+// reload:NO leaves it stopped so a URL handoff can launch it WITH its URL.
++ (BOOL)switchToContainer:(NSString *)containerID forBundle:(NSString *)bundleID
+                   reload:(BOOL)reload error:(NSError **)error;
 + (BOOL)requestSwitchToContainer:(NSString *)containerID
                        forBundle:(NSString *)bundleID
                            reply:(void (^)(BOOL rawAuthenticationFlag))reply
