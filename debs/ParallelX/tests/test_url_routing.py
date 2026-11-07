@@ -66,6 +66,9 @@ class TestURLRouting(unittest.TestCase):
         # SpringBoard only again: the workspace hook is the choke point.
         self.assertIn('<string>com.apple.springboard</string>', plist)
         self.assertIn('_handleOpenApplicationRequest:options:activationSettings:origin:withResult:', TWEAK)
+        # This entry hands over the bundle id STRING, not a request object.
+        self.assertIn('isKindOfClass:NSString.class', TWEAK)
+        self.assertIn('@"applicationIdentifier": request', TWEAK)
         self.assertIn('PXInstallProbeHooks();', TWEAK)
         self.assertIn('PXInAppReentry', TWEAK)
 
