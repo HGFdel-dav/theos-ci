@@ -23,6 +23,10 @@ need('preferredFramesPerSecond = 30' in panel, 'anchor follower limited to 30fps
 need('currentAnchorRect' in panel, 'follower uses tilt-safe anchor')
 pet=(ROOT/'MiniSightPet.m').read_text()
 need('packCols * innerCols' in pet and 'variantIndex' in pet, 'outer pet + inner frame slicing')
+need('_spriteLayout == 1' in pet and 'CGRectMake(0, 0, 1, 1)' in pet, 'single image is never sliced')
+need('MSLoadAtlas(petPath, single)' in (ROOT/'MiniSightResources.m').read_text(), 'single image loads at its own ratio')
+need(tweak.count('0.40') >= 2, 'drag gain is applied on change and on release')
+need('setCategory' not in open(ROOT/'MiniSightBlip.m').read(), 'blip never hijacks the audio session')
 need('"trash", @"清空"' in panel and '@[@"mic", @"听写"]' not in panel, 'menu is icon-only without duplicate mic')
 need('MSKeyOutBlackBackground' in (ROOT/'MiniSightResources.m').read_text(), 'black sheet background is keyed out')
 if fails:

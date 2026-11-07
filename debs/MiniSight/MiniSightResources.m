@@ -115,24 +115,30 @@ static void MSKeyOutBlackBackground(uint8_t *pixels, size_t w, size_t h) {
     free(seen); free(queue);
 }
 
-static UIImage *MSLoadAtlas(NSString *path) {
+static UIImage *MSLoadAtlas(NSString *path, BOOL single) {
     NSDictionary *attrs = [NSFileManager.defaultManager attributesOfItemAtPath:path error:nil];
     if (!attrs || ![attrs[NSFileType] isEqual:NSFileTypeRegular] ||
         [attrs[NSFileSize] unsignedLongLongValue] > 16 * 1024 * 1024) return nil;
-    NSString *identity = [NSString stringWithFormat:@"%@|%@|%@", path, attrs[NSFileSize], attrs[NSFileModificationDate]];
+    NSString *identity = [NSString stringWithFormat:@"%@|%@|%@|%@", path, attrs[NSFileSize], attrs[NSFileModificationDate], single ? @"s" : @"p"];
     if ([identity isEqual:MSAtlasIdentity]) return MSAtlas;
     CGImageSourceRef source = CGImageSourceCreateWithURL((__bridge CFURLRef)[NSURL fileURLWithPath:path], NULL);
     if (!source) return nil;
     NSDictionary *props = CFBridgingRelease(CGImageSourceCopyPropertiesAtIndex(source, 0, NULL));
     double w = [props[(id)kCGImagePropertyPixelWidth] doubleValue];
     double h = [props[(id)kCGImagePropertyPixelHeight] doubleValue];
-    if (w < 8. || h < 9. || w > 16384. || h > 16384. || fabs(w/h-768./936.) > .025) {
-        CFRelease(source); return nil;
+    if (w < 1. || h < 1. || w > 16384. || h > 16384.) { CFRelease(source); return nil; }
+    if (!single && fabs(w/h-768./936.) > .025) { CFRelease(source); return nil; }
+    size_t targetW, targetH;
+    if (single) {
+        double scale = MIN(1., 1536. / MAX(w, h));
+        targetW = MAX(1, (size_t)llround(w * scale));
+        targetH = MAX(1, (size_t)llround(h * scale));
+    } else {
+        // The atlas never needs a Retina-sized 2304x2808 backing. Decode at
+        // most 768x936 once on this queue, not on a swipe frame.
+        targetW = (size_t)(MIN(w, 768.) / 8.) * 8;
+        targetH = (size_t)llround((double)targetW * 936. / 768. / 9.) * 9;
     }
-    // The atlas never needs a Retina-sized 2304x2808 backing. Decode at most
-    // 768x936 pixels once on this queue (roughly 2.75 MiB), not on a swipe frame.
-    size_t targetW = (size_t)(MIN(w, 768.) / 8.) * 8;
-    size_t targetH = (size_t)llround((double)targetW * 936. / 768. / 9.) * 9;
     NSDictionary *opts = @{(id)kCGImageSourceCreateThumbnailFromImageAlways:@YES,
         (id)kCGImageSourceCreateThumbnailWithTransform:@YES,
         (id)kCGImageSourceShouldCacheImmediately:@YES,
@@ -146,7 +152,7 @@ static UIImage *MSLoadAtlas(NSString *path) {
     CGColorSpaceRelease(cs);
     if (!context) { CGImageRelease(thumb); return nil; }
     CGContextDrawImage(context, CGRectMake(0, 0, targetW, targetH), thumb);
-    MSKeyOutBlackBackground(CGBitmapContextGetData(context), targetW, targetH);
+    if (!single) MSKeyOutBlackBackground(CGBitmapContextGetData(context), targetW, targetH);
     CGImageRef decoded = CGBitmapContextCreateImage(context);
     CGContextRelease(context); CGImageRelease(thumb);
     UIImage *image = decoded ? [UIImage imageWithCGImage:decoded scale:1. orientation:UIImageOrientationUp] : nil;
@@ -184,7 +190,11 @@ static UIImage *MSLoadAtlas(NSString *path) {
             NSString *shownPath = [container stringByAppendingPathComponent:@"Documents/MiniSight/shown"];
             NSString *shown = shownPath ? [NSString stringWithContentsOfFile:shownPath encoding:NSUTF8StringEncoding error:nil] : nil;
             NSString *petPath = [container stringByAppendingPathComponent:@"Documents/MiniSight/pet.png"];
-            UIImage *atlas = petPath ? MSLoadAtlas(petPath) : nil;
+            NSData *metaData = [NSData dataWithContentsOfFile:[container stringByAppendingPathComponent:@"Documents/MiniSight/pet.json"]];
+            NSDictionary *petMeta = metaData ? [NSJSONSerialization JSONObjectWithData:metaData options:0 error:nil] : nil;
+            BOOL single = [petMeta isKindOfClass:NSDictionary.class] &&
+                [petMeta[@"sourceKind"] isEqual:@"singleImage"];
+            UIImage *atlas = petPath ? MSLoadAtlas(petPath, single) : nil;
             NSDictionary *snapshot = [self mergedPreferencesWithContainer:container preferences:filtered];
             dispatch_async(dispatch_get_main_queue(), ^{ if (completion) completion(container, snapshot, ![shown isEqual:@"0"], atlas); });
         }

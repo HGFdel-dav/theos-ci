@@ -69,6 +69,19 @@ static BOOL gMiniSightResourceLoading = NO;
 static BOOL gMiniSightResourceRefreshAgain = NO;
 static NSMutableArray *gMiniSightResourceCompletions;
 static void MiniSightReloadSettings(void);
+
+// 0 pack, 1 whole single image, 2 legacy outer cell, 3 old tiled inner cell.
+static NSInteger MiniSightSpriteLayoutForContainer(NSString *container) {
+    if (container.length == 0) return 0;
+    NSString *path = [container stringByAppendingPathComponent:@"Documents/MiniSight/pet.json"];
+    NSData *data = [NSData dataWithContentsOfFile:path];
+    NSDictionary *meta = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+    if (![meta isKindOfClass:NSDictionary.class] || ![meta[@"sourceKind"] isEqual:@"singleImage"]) return 0;
+    NSInteger layout = [meta[@"layoutVersion"] integerValue];
+    if (layout >= 3) return 1;
+    if (layout == 2) return 3;
+    return 2;
+}
 static void MiniSightShow(void);
 static void MiniSightShowAfterOwnershipCheck(void);
 static void MiniSightRefreshAppOwnership(void (^completion)(void));
@@ -1139,7 +1152,7 @@ static void MiniSightRunGesture(NSString *action, BOOL allowSecondTap) {
         }
         case UIGestureRecognizerStateChanged: {
             if (!gMiniSightDragOriginValid) break; // 防御异常的无 Began 回调
-            CGFloat gain = MiniSightRuntimeConfig.shared.dragResponse ? 1.0 : 0.55;
+            CGFloat gain = MiniSightRuntimeConfig.shared.dragResponse ? 1.0 : 0.40;
             CGPoint want = CGPointMake(gMiniSightDragOrigin.x + translation.x * gain,
                                        gMiniSightDragOrigin.y + translation.y * gain);
             MiniSightSetAnchor(want, NO);
@@ -1147,9 +1160,11 @@ static void MiniSightRunGesture(NSString *action, BOOL allowSecondTap) {
         }
         case UIGestureRecognizerStateEnded: {
             if (gMiniSightDragOriginValid) {
-                // Ended 也可能带最后一段 translation，落地一次完整的最终位置。
-                CGPoint want = CGPointMake(gMiniSightDragOrigin.x + translation.x,
-                                           gMiniSightDragOrigin.y + translation.y);
+                // Ended 也可能带最后一段 translation。必须沿用与 Changed
+                // 相同的增益，否则关掉「增强拖动响应」后松手会突然跳到全速位置。
+                CGFloat gain = MiniSightRuntimeConfig.shared.dragResponse ? 1.0 : 0.40;
+                CGPoint want = CGPointMake(gMiniSightDragOrigin.x + translation.x * gain,
+                                           gMiniSightDragOrigin.y + translation.y * gain);
                 // 保持 dragging 到 SetAnchor 完成，避免气泡让位把刚拖到的中心改掉。
                 MiniSightSetAnchor(want, YES); // 只有用户拖动才写盘
                 MSDiagEvent(@"drag", @"end", @"ok", @{ @"source": @"plugin", @"x": @(gMiniSightAnchor.x), @"y": @(gMiniSightAnchor.y) });
@@ -1377,9 +1392,13 @@ static void MiniSightRequestResources(BOOL force, void (^completion)(void)) {
         gMiniSightShown = shown;
         gMiniSightAtlas = atlas;
         gMiniSightTintBase = atlas;
-        if (gMiniSightPet && atlas) {
-            gMiniSightPet.image = atlas;
-            MiniSightApplyTint(MiniSightRuntimeConfig.shared.tint);
+        NSInteger spriteLayout = MiniSightSpriteLayoutForContainer(container);
+        if (gMiniSightPet) {
+            gMiniSightPet.spriteLayout = spriteLayout;
+            if (atlas) {
+                gMiniSightPet.image = atlas;
+                MiniSightApplyTint(MiniSightRuntimeConfig.shared.tint);
+            }
         }
         [MiniSightRuntimeConfig.shared reloadWithContainer:container];
         MSDiagConfigure([preferences[@"minisight.diagnostics"] boolValue], container);
@@ -1514,6 +1533,7 @@ static void MiniSightBuildUI(void) {
             MiniSightRefreshChatAnchor();
         };
         gMiniSightPet.longPressEnabled = MiniSightLongPressEnabled();
+        gMiniSightPet.spriteLayout = MiniSightSpriteLayoutForContainer(gMiniSightContainer);
         NSString *variantPath = [gMiniSightContainer stringByAppendingPathComponent:@"Documents/MiniSight/variant"];
         gMiniSightPet.variantIndex = [[NSString stringWithContentsOfFile:variantPath encoding:NSUTF8StringEncoding error:nil] integerValue];
         gMiniSightPet.reducedWork = [NSProcessInfo processInfo].lowPowerModeEnabled;
