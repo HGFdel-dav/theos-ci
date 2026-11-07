@@ -167,8 +167,8 @@ static NSString *PXURLRouterBundleForURL(NSURL *url) {
     return nil;
 }
 
-// Only payment handoffs should ask. Everything else (plain links, app-to-app
-// browsing) keeps the current account silently.
+// Payment AND share handoffs should ask (both are "move my content into
+// another app"); plain browsing links keep the current account silently.
 static BOOL PXURLRouterLooksLikePayment(NSURL *url) {
     NSString *scheme = url.scheme.lowercaseString;
     for (NSString *pay in @[@"weixin", @"wechat", @"wxpay", @"tenpay",
@@ -180,7 +180,9 @@ static BOOL PXURLRouterLooksLikePayment(NSURL *url) {
     NSString *text = url.absoluteString.lowercaseString;
     for (NSString *hint in @[@"pay", @"cashier", @"trade", @"wxpay", @"tenpay",
                              @"alipay", @"alipays", @"unionpay", @"uppay",
-                             @"收银台", @"支付", @"付款", @"收款", @"转账", @"prepay"]) {
+                             @"收银台", @"支付", @"付款", @"收款", @"转账", @"prepay",
+                             @"sharetimeline", @"share", @"sendfile", @"分享",
+                             @"发送给", @"upload", @"dl/send"]) {
         if ([text containsString:hint]) return YES;
     }
     return NO;
