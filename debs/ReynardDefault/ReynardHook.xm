@@ -92,6 +92,8 @@ static BOOL RDBoolValue(id value, BOOL fallback) {
     return fallback;
 }
 
+static void RDLogOnce(NSString *type, id payload);
+
 static void RDLogTypeOnce(NSString *type) {
     static NSMutableSet *seen;
     static dispatch_once_t once;
@@ -106,6 +108,19 @@ static void RDLogTypeOnce(NSString *type) {
 // Clicks on unknown schemes produce no request event at all in this build; the
 // only signal is the history event. Keep a short window so one click cannot
 // open twice when several events describe it.
+// Some extension events only need to be seen once per type, with their payload.
+static void RDLogOnce(NSString *type, id payload) {
+    static NSMutableSet *seen;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ seen = [NSMutableSet set]; });
+    @synchronized (seen) {
+        NSString *key = [NSString stringWithFormat:@"%@|%@", type, payload];
+        if ([seen containsObject:key]) return;
+        [seen addObject:key];
+        RDLog(@"%@ %@", type, payload);
+    }
+}
+
 static BOOL RDClaimHandoff(NSString *uri) {
     static NSString *lastURI;
     static NSTimeInterval lastAt;
@@ -126,6 +141,27 @@ static id rdGeckoBackend;
 static BOOL rdEnsureDone;
 
 static BOOL rdInstallTried;
+static BOOL rdAddonConfirmed;
+
+// Our callback object must really conform to GeckoView's EventCallback, otherwise
+// the Swift side's `as? EventCallback` fails and the response is dropped.
+static void RDConformToEventCallback(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        Protocol *protocol = objc_getProtocol("EventCallback");
+        if (!protocol) {
+            RDLog(@"EventCallback protocol not found");
+            return;
+        }
+        Class cls = [RDEnsureCallback class];
+        if (!class_conformsToProtocol(cls, protocol)) {
+            class_addProtocol(cls, protocol);
+        }
+        RDLog(@"callback conforms=%@", class_conformsToProtocol(cls, protocol) ? @"yes" : @"no");
+    });
+}
+
+static void RDInstallPackedExtension(void);
 
 static void RDInstallPackedExtension(void) {
     if (rdInstallTried || !rdGeckoBackend) return;
@@ -141,6 +177,7 @@ static void RDInstallPackedExtension(void) {
 
 @implementation RDEnsureCallback
 - (void)sendSuccess:(id)response {
+    rdAddonConfirmed = YES;
     RDLog(@"addon ready: %@", response);
     // The page that is already loaded predates the content script: reload once.
     if (rdGeckoBackend) {
@@ -192,6 +229,7 @@ static id RDGeckoBackend(id wrapper) {
 
 static void RDEnsureExtension(id wrapper) {
     static int tries;
+    RDConformToEventCallback();
     static BOOL logged;
     if (rdEnsureDone || !wrapper) return;
 
@@ -213,6 +251,15 @@ static void RDEnsureExtension(id wrapper) {
                                           message:@{@"locationUri": location,
                                                     @"webExtensionId": kHandoffAddonID}
                                          callback:rdEnsureCallback];
+
+    // No answer (callback dropped / engine refuses) -> install the packed copy.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(4.0 * NSEC_PER_SEC)),
+                   dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        if (!rdAddonConfirmed && !rdInstallTried) {
+            RDLog(@"no answer from built-in install, falling back");
+            RDInstallPackedExtension();
+        }
+    });
 }
 
 static NSString *RDURLFromPayload(id node) {
@@ -297,7 +344,11 @@ static void RDOpenExternally(NSURL *url) {
     BOOL isError = [type hasSuffix:@"OnLoadError"];
     BOOL isVisited = [type hasSuffix:@"OnVisited"];
     if ((!isRequest && !isError && !isVisited) || ![message isKindOfClass:[NSDictionary class]]) {
-        RDLogTypeOnce(type);
+        if ([type hasPrefix:@"GeckoView:WebExtension:On"]) {
+            RDLogOnce(type, message);
+        } else {
+            RDLogTypeOnce(type);
+        }
         %orig;
         return;
     }
