@@ -58,8 +58,8 @@ class TestURLRouting(unittest.TestCase):
         self.assertIn('applicationForURL:', ROUTER)
         self.assertIn('NSBundle.mainBundle.bundleIdentifier', ROUTER)
         self.assertIn('recentAppHandoff', ROUTER)
-        # Web URLs keep their normal handling.
-        self.assertIn('PXURLRouterSchemeIsWeb', ROUTER)
+        # https universal links must be resolved, not blanket-passed.
+        self.assertNotIn('if (PXURLRouterSchemeIsWeb(url)) return NO;', ROUTER)
         self.assertIn('APP-BOOT', TWEAK)
         # The filter must no longer be SpringBoard-only.
         plist = (ROOT / 'ParallelXClone.plist').read_text()

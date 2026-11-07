@@ -183,11 +183,16 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
 // Returns YES when the router owns the request and will run `proceed` later.
 + (BOOL)handleOpenURL:(NSURL *)url proceed:(void (^)(void))proceed {
     if (!proceed || !url.absoluteString.length) return NO;
-    if (PXURLRouterSchemeIsWeb(url)) return NO;
 
+    // Web URLs matter too: a WeChat/Alipay payment handoff is an https
+    // universal link, not a scheme. Resolve the owner; only a bundle with
+    // several containers is intercepted, everything else keeps normal handling.
+    if (PXURLRouterSchemeIsWeb(url) && ![url.scheme.lowercaseString isEqualToString:@"https"]
+        && ![url.scheme.lowercaseString isEqualToString:@"http"]) return NO;
     NSString *bundle = PXURLRouterBundleForURL(url);
     [PXCloneProbe log:@"APP-OPEN url=%@ bundle=%@", url.absoluteString, bundle ?: @"(nil)"];
     if (!bundle.length) return NO;
+    [PXCloneProbe log:@"APP-OPEN url=%@ bundle=%@", url.absoluteString, bundle ?: @"(nil)"];
     // WebContent and other helpers have their own bundle; only skip when the
     // open would target this very app AND the scheme is ours.
     NSString *own = NSBundle.mainBundle.bundleIdentifier;
@@ -279,6 +284,8 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
     UIApplication *application = UIApplication.sharedApplication;
     if (!application) { proceed(); return; }
 
+    // Attach to whatever is on screen when possible; a bare key window can be
+    // swallowed by the app that is mid-transition.
     UIWindow *window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
     window.windowLevel = UIWindowLevelAlert + 1;
     UIViewController *host = [UIViewController new];
@@ -286,6 +293,11 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
     window.rootViewController = host;
     PXURLRouterWindow = window;
     [window makeKeyAndVisible];
+
+    UIViewController *presenter = host;
+    UIViewController *top = application.keyWindow.rootViewController;
+    while (top.presentedViewController) top = top.presentedViewController;
+    if (top && top.view.window) presenter = top;
 
     NSString *active = [PXCloneCrane activeContainerForBundle:bundle];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"选择打开的账号"
@@ -324,7 +336,7 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
         }];
     }]];
 
-    [host presentViewController:alert animated:YES completion:nil];
+    [presenter presentViewController:alert animated:YES completion:nil];
 }
 
 + (void)activateContainer:(NSString *)container
