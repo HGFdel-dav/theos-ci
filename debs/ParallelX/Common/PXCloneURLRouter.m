@@ -92,6 +92,8 @@ static void PXURLRouterRefreshCatalog(void) {
 }
 
 static NSString *PXURLRouterBundleFromRequest(id request) {
+    // SBWorkspace hands the bundle identifier itself, as a plain string.
+    if ([request isKindOfClass:NSString.class] && [(NSString *)request length]) return request;
     NSString *bundle = PXURLRouterString(request,
         @[@"applicationIdentifier", @"bundleIdentifier", @"targetApplicationIdentifier"]);
     if (bundle.length) return bundle;

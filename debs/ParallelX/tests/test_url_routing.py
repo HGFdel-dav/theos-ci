@@ -68,7 +68,7 @@ class TestURLRouting(unittest.TestCase):
         self.assertIn('_handleOpenApplicationRequest:options:activationSettings:origin:withResult:', TWEAK)
         # This entry hands over the bundle id STRING, not a request object.
         self.assertIn('isKindOfClass:NSString.class', TWEAK)
-        self.assertIn('@"applicationIdentifier": request', TWEAK)
+        self.assertIn('if ([request isKindOfClass:NSString.class]', ROUTER)
         self.assertIn('PXInstallProbeHooks();', TWEAK)
         self.assertIn('PXInAppReentry', TWEAK)
 
