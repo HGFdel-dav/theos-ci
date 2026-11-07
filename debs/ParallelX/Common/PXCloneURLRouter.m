@@ -378,8 +378,8 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
     PXURLRouterWindow = window;
     [window makeKeyAndVisible];
     UIViewController *presenter = host;
-    [PXCloneProbe log:@"PRESENT level=%.0f windows=%lu", window.windowLevel,
-        (unsigned long)windowCount];
+    [PXCloneProbe log:@"PRESENT level=%.0f scenes=%lu", window.windowLevel,
+        (unsigned long)application.connectedScenes.count];
 
     NSString *active = [PXCloneCrane activeContainerForBundle:bundle];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"选择打开的账号"
