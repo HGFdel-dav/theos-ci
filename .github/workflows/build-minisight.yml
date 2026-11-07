@@ -2,7 +2,7 @@ name: MiniSight Build
 
 on:
   push:
-    branches: [minisight-0.4.0-chat-freeze, minisight-0.7.0-unified-20261105, minisight-0.8.0-20261105, minisight-0.8.1-20261106, minisight-0.8.2-20261107]
+    branches: [minisight-0.4.0-chat-freeze, minisight-0.7.0-unified-20261105, minisight-0.8.0-20261105, minisight-0.8.1-20261106, minisight-0.8.2-20261107, minisight-0.8.3-20261107]
     paths:
       - 'debs/MiniSight/**'
       - '.github/workflows/build-minisight.yml'
