@@ -3,6 +3,7 @@
 #import "PXCloneRuntime.h"
 #import "PXCloneProbe.h"
 #import <UIKit/UIKit.h>
+#import <objc/message.h>
 #import <objc/runtime.h>
 
 // SpringBoard hands an external "open this app with this URL" request to
