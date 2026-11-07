@@ -29,7 +29,7 @@ static NSString *PXURLRouterString(id object, NSArray<NSString *> *keys) {
         if (![object respondsToSelector:selector]) continue;
         id value = nil;
         @try { value = [object valueForKey:key]; }
-        @catch (__unused NSException *exception) { continue; }
+        @catch (NSException *exception) { (void)exception; continue; }
         if ([value isKindOfClass:NSString.class] && [(NSString *)value length]) return value;
     }
     return nil;
@@ -46,15 +46,17 @@ static NSArray<NSDictionary *> *PXURLRouterContainers(NSString *bundle) {
 }
 
 // A request may be observed more than once; the original call must happen
-// exactly once no matter which path finishes first.
+// exactly once no matter which path finishes first. Blocks are not objects
+// Clang accepts in @synchronized, so a dedicated NSObject is the lock.
 static void (^PXURLRouterOnce(void (^proceed)(void)))(void) {
     __block BOOL done = NO;
+    NSObject *lock = [NSObject new];
     return ^{
-        @synchronized (proceed) {
+        @synchronized (lock) {
             if (done) return;
             done = YES;
         }
-        proceed();
+        if (proceed) proceed();
     };
 }
 
