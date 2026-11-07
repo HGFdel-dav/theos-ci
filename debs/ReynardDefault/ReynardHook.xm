@@ -114,6 +114,8 @@ static BOOL RDClaimHandoff(NSString *uri) {
     return YES;
 }
 
+static NSSet *RDInternalSchemes(void);
+
 @interface RDEnsureCallback : NSObject <RDEventCallback>
 @end
 
