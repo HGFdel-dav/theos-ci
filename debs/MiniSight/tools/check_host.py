@@ -188,7 +188,7 @@ tap = tweak[tweak.index('- (void)handleSingleTap:(UITapGestureRecognizer *)tap {
 tap = tap[:tap.index('\n}\n')]
 double_tap = tweak[tweak.index('- (void)handleDoubleTap:(UITapGestureRecognizer *)tap {'):]
 double_tap = double_tap[:double_tap.index('\n}\n')]
-open_chat = tweak[tweak.index('static void MiniSightOpenChat(void) {'):]
+open_chat = tweak[tweak.index('static BOOL MiniSightOpenChat(void) {'):]
 open_chat = open_chat[:open_chat.index('\n}\n')]
 ok(('MiniSightSayPresetLine();' in tap or 'MiniSightRunGesture' in tap) and 'MiniSightSpeakLine' not in tweak,
    '13c 单击必须是本地短句，不应触发联网请求')
