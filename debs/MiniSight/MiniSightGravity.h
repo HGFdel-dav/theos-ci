@@ -105,12 +105,12 @@ static inline uint64_t MSGravityBodyLaunch(MSGravityBody *b, MSRect range,
 static inline MSPoint MSGravityLaunchVelocity(double direction, double strength) {
     double s = MSClamp(MSFinite(strength, 0.), 0., 1.);
     double d = MSClamp(MSFinite(direction, 0.), -1., 1.);
-    return (MSPoint){d * (280. + 600. * s), -(210. + 330. * s)};
+    return (MSPoint){d * (480. + 760. * s), -(300. + 410. * s)};
 }
 static inline double MSGravityImpactVelocity(double incoming, unsigned impacts, int floor) {
-    double loss = (floor ? .52 : .62) * pow(.87, fmin(impacts, 8));
+    double loss = (floor ? .68 : .74) * pow(.93, fmin(impacts, 8));
     double outgoing = fabs(MSFinite(incoming, 0.)) * loss;
-    return outgoing < (floor ? 52. : 18.) ? 0. : outgoing;
+    return outgoing < (floor ? 34. : 14.) ? 0. : outgoing;
 }
 static inline unsigned MSGravityBodyStep(MSGravityBody *b, MSRect range, double roll,
                                         double elapsed, uint64_t token) {
@@ -143,7 +143,7 @@ static inline unsigned MSGravityBodyStep(MSGravityBody *b, MSRect range, double 
         else if (b->position.y < range.y && b->velocity.y < 0.) {
             b->position.y = range.y; b->velocity.y = MSGravityImpactVelocity(b->velocity.y, b->impacts++, 0); hits |= MSGravityHitCeiling;
         } else if (b->position.y >= range.y + range.h && b->velocity.y > 0.) {
-            b->position.y = range.y + range.h; b->velocity.y = -MSGravityImpactVelocity(b->velocity.y, b->impacts++, 1); b->velocity.x *= .76; hits |= MSGravityHitFloor;
+            b->position.y = range.y + range.h; b->velocity.y = -MSGravityImpactVelocity(b->velocity.y, b->impacts++, 1); b->velocity.x *= .92; hits |= MSGravityHitFloor;
         }
         b->position = MSClampCenter(range, b->position);
         b->age += h;

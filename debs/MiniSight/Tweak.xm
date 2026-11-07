@@ -177,10 +177,14 @@ static void MiniSightUserHide(void) {
     gMiniSightShown = NO;
     gMiniSightUserHidden = YES;
     MSMiniSightSetPreference(@"MiniSightUserHidden", @YES);
+    // Both transports: the App switch and every runtime reader see the hide,
+    // not only the plugin's in-memory gMiniSightShown flag.
+    MSMiniSightSetPreference(@"minisight.shown", @NO);
     [MiniSightResources writeShown:NO container:gMiniSightContainer];
     [[MiniSightChatPanel existingPanel] close];
-    MiniSightCancelConfirm();
+    MiniSightCancelConfirm(); // hide must not be blocked by an approval bubble
     MiniSightHide();
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"MiniSightUserHiddenChanged" object:nil];
 }
 
 /// 录屏开关（App 设置里，默认关）
@@ -460,7 +464,7 @@ static NSString *const kMiniSightCenterY   = @"MiniSightCenterY";
 static NSString *const kMiniSightText      = @"Minis 操作中";
 // 版本号：与 DEBIAN/control 的 Version 同步。诊断日志会打印它，
 // 便于装机后确认跑的是哪一版（strings MiniSight.dylib | grep 也能看到）。
-static NSString *const kMiniSightVersion   = @"0.8.2";
+static NSString *const kMiniSightVersion   = @"0.8.3";
 
 #pragma mark - 全局状态
 
@@ -530,7 +534,11 @@ static void MiniSightApplyTint(NSString *name) {
     UIGraphicsImageRenderer *r = [[UIGraphicsImageRenderer alloc] initWithSize:base.size];
     gMiniSightPet.image = [r imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
         [base drawAtPoint:CGPointZero];
-        UIRectFillUsingBlendMode(CGRectMake(0, 0, base.size.width, base.size.height), kCGBlendModeColor);
+        // sourceAtop tints only opaque sprite pixels, never the transparent
+        // gaps between frames (plain Color blend filled a coloured rectangle).
+        ctx.CGContext.blendMode = kCGBlendModeSourceAtop;
+        CGContextSetFillColorWithColor(ctx.CGContext, tint.CGColor);
+        UIRectFillUsingBlendMode(CGRectMake(0, 0, base.size.width, base.size.height), kCGBlendModeSourceAtop);
     }];
 }
 
@@ -1506,6 +1514,8 @@ static void MiniSightBuildUI(void) {
             MiniSightRefreshChatAnchor();
         };
         gMiniSightPet.longPressEnabled = MiniSightLongPressEnabled();
+        NSString *variantPath = [gMiniSightContainer stringByAppendingPathComponent:@"Documents/MiniSight/variant"];
+        gMiniSightPet.variantIndex = [[NSString stringWithContentsOfFile:variantPath encoding:NSUTF8StringEncoding error:nil] integerValue];
         gMiniSightPet.reducedWork = [NSProcessInfo processInfo].lowPowerModeEnabled;
         [root addSubview:gMiniSightPet];
         [gMiniSightPet addGestureRecognizer:pan];
@@ -1826,11 +1836,18 @@ static void MiniSightPlaceBubble(CGFloat w, CGFloat h) {
         gMiniSightBubbleLabel.frame = CGRectMake(0.0, 0.0, gMiniSightBubbleScroll.contentSize.width,
                                                   gMiniSightBubbleScroll.contentSize.height);
         gMiniSightBubbleScroll.scrollEnabled = gMiniSightBubbleContentHeight > textViewport.size.height + 0.5;
-        if (gMiniSightConfirming && gMiniSightConfirmBar)
-            gMiniSightConfirmBar.frame = CGRectMake(10.0, box.h - 40.0, box.w - 20.0, 30.0);
         gMiniSightBubbleLayoutSize = layoutSize;
         gMiniSightBubbleLayoutContentHeight = gMiniSightBubbleContentHeight;
         gMiniSightBubbleLayoutValid = YES;
+    }
+    // The bar is created AFTER the first sizing pass, so a same-size second
+    // pass used to skip this and leave its frame at zero until the pet moved.
+    if (gMiniSightConfirming && gMiniSightConfirmBar) {
+        gMiniSightConfirmBar.frame = CGRectMake(10.0, box.h - 40.0, box.w - 20.0, 30.0);
+        [gMiniSightBubble bringSubviewToFront:gMiniSightConfirmBar];
+        gMiniSightConfirmBar.hidden = NO;
+        [gMiniSightConfirmBar setNeedsLayout];
+        [gMiniSightConfirmBar layoutIfNeeded];
     }
 
     CGFloat cx = MIN(MAX(host.center.x - box.x, radius + 4.0), box.w - radius - 4.0);

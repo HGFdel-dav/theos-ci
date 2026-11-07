@@ -23,6 +23,8 @@ typedef NS_OPTIONS(NSUInteger, MiniSightPetMotionLockReason) {
 @interface MiniSightPetView : UIImageView
 /// Current atlas or costume bitmap (tint is baked in).
 @property (nonatomic, strong, null_resettable) UIImage *image;
+/// 0..71: outer pet in an 8x9 pack. Each outer cell contains its own 8x9 frames.
+@property (nonatomic) NSInteger variantIndex;
 
 /// Main-thread API, like UIView. sprite is an already decoded/downsampled,
 /// upright 9-row / 8-column atlas; preparation belongs to the host, off-main.

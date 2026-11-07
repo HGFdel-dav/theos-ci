@@ -21,6 +21,10 @@ need('finishVoiceWithReason' in panel and 'voicePending' in panel, 'voice failur
 need('setMotionLocked' in panel, 'editor/approval freeze pet without fighting host')
 need('preferredFramesPerSecond = 30' in panel, 'anchor follower limited to 30fps')
 need('currentAnchorRect' in panel, 'follower uses tilt-safe anchor')
+pet=(ROOT/'MiniSightPet.m').read_text()
+need('packCols * innerCols' in pet and 'variantIndex' in pet, 'outer pet + inner frame slicing')
+need('"trash", @"清空"' in panel and '@[@"mic", @"听写"]' not in panel, 'menu is icon-only without duplicate mic')
+need('MSKeyOutBlackBackground' in (ROOT/'MiniSightResources.m').read_text(), 'black sheet background is keyed out')
 if fails:
     print('FAIL plugin repairs'); [print(' -',x) for x in fails]; sys.exit(1)
 print('PASS MiniSight plugin repair locks')

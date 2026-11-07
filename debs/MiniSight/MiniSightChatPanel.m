@@ -565,8 +565,10 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
     self.moreButton = more;
     UIStackView *actions = [[UIStackView alloc] init];
     actions.axis = UILayoutConstraintAxisHorizontal;
-    actions.spacing = 4;
+    actions.spacing = 2;
     actions.distribution = UIStackViewDistributionFillEqually;
+    actions.layoutMargins = UIEdgeInsetsMake(2, 3, 2, 3);
+    actions.layoutMarginsRelativeArrangement = YES;
     actions.hidden = YES;
     actions.backgroundColor = [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *t) {
         return t.userInterfaceStyle == UIUserInterfaceStyleDark
@@ -578,14 +580,15 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
     actions.layer.borderColor = UIColor.separatorColor.CGColor;
     [controller.view addSubview:actions];
     self.actionBar = actions;
-    for (NSArray *item in @[@[@"mic", @"听写"], @[@"trash", @"清空"], @[@"eye.slash", @"隐藏"], @[@"xmark", @"收起"]]) {
+    // Icon-only: the mic already lives in the composer, so repeating "听写"
+    // here only made the row wide and text-heavy.
+    NSInteger actionTag = 0;
+    for (NSArray *item in @[@[@"trash", @"清空"], @[@"eye.slash", @"隐藏"], @[@"xmark", @"收起"]]) {
         UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
         [button setImage:[UIImage systemImageNamed:item[0]] forState:UIControlStateNormal];
-        [button setTitle:item[1] forState:UIControlStateNormal];
-        button.titleLabel.font = [UIFont systemFontOfSize:10];
-        [button setTitleColor:UIColor.secondaryLabelColor forState:UIControlStateNormal];
         button.tintColor = UIColor.secondaryLabelColor;
-        button.tag = [@[@"mic", @"trash", @"eye.slash", @"xmark"] indexOfObject:item[0]];
+        button.accessibilityLabel = item[1];
+        button.tag = actionTag++;
         [button addTarget:self action:@selector(actionTapped:) forControlEvents:UIControlEventTouchUpInside];
         [actions addArrangedSubview:button];
     }
@@ -1063,12 +1066,8 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
 - (void)actionTapped:(UIButton *)sender {
     [self menuDismiss];
     switch (sender.tag) {
-        case 0:
-            [self activateEditor];
-            MSDiagEvent(@"voice", @"entry", @"pending", @{ @"source": @"keyboard_dictation" });
-            break;
-        case 1: [self clearConversation]; break;
-        case 2: [self hidePetFromMenu]; break;
+        case 0: [self clearConversation]; break;
+        case 1: [self hidePetFromMenu]; break;
         default: [self close]; break;
     }
 }
@@ -1221,9 +1220,11 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
     self.cardView.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:self.cardView.bounds cornerRadius:self.cardView.layer.cornerRadius].CGPath;
     if (self.menuOpen) {
         CGFloat menuBottom = self.scrollView.hidden ? CGRectGetMinY(self.cardView.frame) - 6. : CGRectGetMinY(self.scrollView.frame) - 6.;
-        CGFloat menuHeight = MIN(30., MAX(0., menuBottom - CGRectGetMinY(safe)));
+        CGFloat menuHeight = MIN(28., MAX(0., menuBottom - CGRectGetMinY(safe)));
+        CGFloat menuWidth = MIN(104., width);
         self.actionBar.hidden = menuHeight < 20.;
-        self.actionBar.frame = CGRectMake(CGRectGetMinX(self.cardView.frame), menuBottom - menuHeight, width, menuHeight);
+        self.actionBar.frame = CGRectMake(CGRectGetMidX(self.cardView.frame) - menuWidth / 2.,
+                                          menuBottom - menuHeight, menuWidth, menuHeight);
     }
     [self.scrollView layoutIfNeeded];
     MiniSightChatBubble *latest = (MiniSightChatBubble *)self.rows.lastObject;

@@ -79,6 +79,42 @@ static NSString *MSFindContainer(void) {
     }
     return MSResourceContainer;
 }
+/// Some exported sheets bake a black rectangle behind every frame. Flood
+/// near-black pixels connected to the atlas border, then clear their alpha.
+/// This keeps interior black eyes/outlines, and runs only on the resource queue.
+static void MSKeyOutBlackBackground(uint8_t *pixels, size_t w, size_t h) {
+    if (!pixels || w < 2 || h < 2 || w * h > 2000000) return;
+    uint8_t *seen = calloc(w * h, 1);
+    size_t *queue = malloc(sizeof(size_t) * w * h * 4);
+    if (!seen || !queue) { free(seen); free(queue); return; }
+    size_t head = 0, tail = 0;
+    #define MSDARK(px,py) (pixels[((py) * w + (px)) * 4 + 3] > 0 && \
+        pixels[((py) * w + (px)) * 4] < 32 && pixels[((py) * w + (px)) * 4 + 1] < 32 && \
+        pixels[((py) * w + (px)) * 4 + 2] < 32)
+    for (size_t x = 0; x < w; x++) {
+        if (MSDARK(x, 0)) queue[tail++] = x;
+        if (MSDARK(x, h - 1)) queue[tail++] = (h - 1) * w + x;
+    }
+    for (size_t y = 0; y < h; y++) {
+        if (MSDARK(0, y)) queue[tail++] = y * w;
+        if (MSDARK(w - 1, y)) queue[tail++] = y * w + w - 1;
+    }
+    while (head < tail) {
+        size_t p = queue[head++];
+        if (seen[p]) continue;
+        seen[p] = 1;
+        size_t x = p % w, y = p / w;
+        if (!MSDARK(x, y)) continue;
+        pixels[p * 4 + 3] = 0;
+        if (x) queue[tail++] = p - 1;
+        if (x + 1 < w) queue[tail++] = p + 1;
+        if (y) queue[tail++] = p - w;
+        if (y + 1 < h) queue[tail++] = p + w;
+    }
+    #undef MSDARK
+    free(seen); free(queue);
+}
+
 static UIImage *MSLoadAtlas(NSString *path) {
     NSDictionary *attrs = [NSFileManager.defaultManager attributesOfItemAtPath:path error:nil];
     if (!attrs || ![attrs[NSFileType] isEqual:NSFileTypeRegular] ||
@@ -110,6 +146,7 @@ static UIImage *MSLoadAtlas(NSString *path) {
     CGColorSpaceRelease(cs);
     if (!context) { CGImageRelease(thumb); return nil; }
     CGContextDrawImage(context, CGRectMake(0, 0, targetW, targetH), thumb);
+    MSKeyOutBlackBackground(CGBitmapContextGetData(context), targetW, targetH);
     CGImageRef decoded = CGBitmapContextCreateImage(context);
     CGContextRelease(context); CGImageRelease(thumb);
     UIImage *image = decoded ? [UIImage imageWithCGImage:decoded scale:1. orientation:UIImageOrientationUp] : nil;

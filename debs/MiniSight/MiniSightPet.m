@@ -29,6 +29,7 @@ typedef NS_ENUM(NSInteger, MiniSightPetState) {
 static const NSInteger kMiniSightPetRows = 9;
 static const NSInteger kMiniSightPetMaxCols = 8;
 static const NSTimeInterval kMiniSightSpriteInterval = 1.0 / 15.0;
+static const NSTimeInterval kMiniSightIdleSpriteInterval = 1.0 / 4.0;
 
 // Roaming delays. Only the delay between actions changes; FPS never does.
 static const NSTimeInterval kMiniSightRoamActiveLo = 1.2;   // activityActive == YES
@@ -428,23 +429,44 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     [self applySpriteFrame];
 }
 
+- (NSTimeInterval)currentSpriteInterval {
+    // Idle clip has only six poses; at 15 fps it blinked roughly once a second.
+    // Walking/acting keeps the snappy 15 fps.
+    return _state == MiniSightPetStateIdle ? kMiniSightIdleSpriteInterval : kMiniSightSpriteInterval;
+}
+
 - (void)advanceSpriteAtTime:(CFTimeInterval)now {
+    NSTimeInterval interval = [self currentSpriteInterval];
     double elapsed = fmax(0., now - _lastSpriteTime);
-    if (elapsed < kMiniSightSpriteInterval) return;
-    double steps = floor(elapsed / kMiniSightSpriteInterval);
+    if (elapsed < interval) return;
+    double steps = floor(elapsed / interval);
     NSInteger count = [self frameCountForRow:_state];
-    _lastSpriteTime = now - fmod(elapsed, kMiniSightSpriteInterval);
+    _lastSpriteTime = now - fmod(elapsed, interval);
     NSInteger next = (_column + (NSInteger)fmod(steps, (double)count)) % count;
     if (next == _column) return;
     _column = next;
     [self applySpriteFrame];
 }
 
+- (void)setVariantIndex:(NSInteger)variantIndex {
+    _variantIndex = MIN(71, MAX(0, variantIndex));
+    [self applySpriteFrame];
+}
+- (NSInteger)variantIndex { return _variantIndex; }
+
 - (void)applySpriteFrame {
     if (!_sheet.CGImage || !_gravityLayer) return;
-    CGRect rect = CGRectMake((CGFloat)_column / kMiniSightPetMaxCols,
-                             (CGFloat)_state / kMiniSightPetRows,
-                             1.0 / kMiniSightPetMaxCols, 1.0 / kMiniSightPetRows);
+    // The pack is 8x9 outer pets; EACH outer cell is a full 8x9 animation
+    // atlas. Slice 64x81, not 8x9, or the view paints the whole contact sheet.
+    const NSInteger packCols = 8, packRows = 9;
+    const NSInteger innerCols = 8, innerRows = 9;
+    NSInteger v = MIN(71, MAX(0, _variantIndex));
+    NSInteger maxCol = [self frameCountForRow:_state];
+    NSInteger col = MIN(MAX(0, _column), MAX(0, maxCol - 1));
+    NSInteger totalCols = packCols * innerCols, totalRows = packRows * innerRows;
+    CGRect rect = CGRectMake((CGFloat)((v % packCols) * innerCols + col) / totalCols,
+                             (CGFloat)((v / packCols) * innerRows + _state) / totalRows,
+                             1.0 / totalCols, 1.0 / totalRows);
     if (CGRectEqualToRect(_gravityLayer.contentsRect, rect)) return;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
@@ -591,7 +613,10 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     _motionActive = _physicsMotion;
     _activeMotionGeneration = ++_motionGeneration;
     _lastMotionTick = CACurrentMediaTime();
-    _restAfterMotion = .65;
+    _restAfterMotion = .45;
+    _flingSpin = 0.;
+    _flingSpinVelocity = (direction >= 0 ? 1. : -1.) * (2.0 + 3.4 * MAX(.2, strength));
+    _flingSquash = 0.;
     [self setSpriteState:MiniSightPetStateJumping];
     [self invalidateFrameTimer];
     [self invalidateRoamTimer];
@@ -877,10 +902,23 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
         uint64_t token = _gravityBody.activeGeneration;
         double elapsed = now - _lastMotionTick;
         _lastMotionTick = now;
-        MSGravityBodyStep(&_gravityBody, [self feasibleCenters], _gravityRoll, elapsed, token);
+        unsigned hits = MSGravityBodyStep(&_gravityBody, [self feasibleCenters], _gravityRoll, elapsed, token);
         self.center = MSPetCGPoint(_gravityBody.position);
         // Geometry callbacks may hide, replace, resize, or lock this pet.
         if (!_motionActive || generation != _motionGeneration || !_physicsMotion) return;
+        double spinDT = MIN(MAX(elapsed, 0.), .1);
+        _flingSpin += _flingSpinVelocity * spinDT;
+        _flingSpinVelocity *= exp(-1.7 * spinDT);
+        if (hits & MSGravityHitFloor) {
+            _flingSpinVelocity *= -0.62;
+            _flingSquash = 1.0;
+        } else {
+            _flingSquash *= exp(-9.0 * spinDT);
+        }
+        CGFloat sx = 1.0 + 0.10 * _flingSquash;
+        CGFloat sy = 1.0 - 0.16 * _flingSquash;
+        self.transform = CGAffineTransformConcat(CGAffineTransformMakeRotation(_flingSpin),
+                                                 CGAffineTransformMakeScale(sx, sy));
         [self applyGravityTransformAtTime:now];
         if (!_motionActive || generation != _motionGeneration) return;
         if (!_gravityBody.active) { [self finishMotion]; return; }
@@ -908,6 +946,8 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     _motionActive = NO;
     _physicsMotion = NO;
     _activeMotionGeneration = 0;
+    _flingSpin = 0.; _flingSpinVelocity = 0.; _flingSquash = 0.;
+    self.transform = CGAffineTransformIdentity;
     MSGravityBodyCancel(&_gravityBody);
     [_motionLink invalidate];
     _motionLink = nil;
@@ -921,6 +961,8 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     _motionActive = NO;
     _physicsMotion = NO;
     _activeMotionGeneration = 0;
+    _flingSpin = 0.; _flingSpinVelocity = 0.; _flingSquash = 0.;
+    self.transform = CGAffineTransformIdentity;
     _lastMotionTick = 0.;
     MSGravityBodyCancel(&_gravityBody);
     _jumpHeight = 0.;
