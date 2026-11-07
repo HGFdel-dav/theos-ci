@@ -33,6 +33,8 @@ typedef NS_ENUM(NSInteger, PXCloneCraneError) {
 // Same shape as the catalog entries, for ONE bundle (no full app scan).
 + (NSArray<NSDictionary *> *)containersForBundle:(NSString *)bundleID;
 + (NSArray<NSDictionary *> *)prefsContainersForBundle:(NSString *)bundleID;
++ (BOOL)isApplicationRunning:(NSString *)bundleID;
++ (BOOL)terminateApplication:(NSString *)bundleID;
 + (NSString *)activeContainerForBundle:(NSString *)bundleID;
 + (BOOL)containerExists:(NSString *)containerID forBundle:(NSString *)bundleID;
 // Requests Crane's normal authentication path with reloadApplication:NO.

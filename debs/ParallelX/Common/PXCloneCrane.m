@@ -234,6 +234,43 @@ static NSArray<NSDictionary *> *PXCatalog;
     return containers.count >= 2 ? containers : @[];
 }
 
++ (BOOL)isApplicationRunning:(NSString *)bundleID {
+    Class cls = NSClassFromString(@"FBProcessManager");
+    SEL shared = NSSelectorFromString(@"sharedInstance");
+    if (!PXCloneClassMethodMatches(cls, shared, @encode(id), @[], NULL)) return NO;
+    id manager = PXCloneSendId((id)cls, shared);
+    SEL list = NSSelectorFromString(@"applicationProcessesForBundleIdentifier:");
+    if (!PXCloneInstanceMethodMatches(manager, list, @encode(id), @[@"@"])) return NO;
+    id processes = nil;
+    @try { processes = PXCloneSendId1(manager, list, bundleID); }
+    @catch (__unused NSException *exception) { return NO; }
+    for (id process in processes) {
+        SEL running = NSSelectorFromString(@"isRunning");
+        if (PXCloneInstanceMethodMatches(process, running, @encode(BOOL), @[]) &&
+            PXCloneSendBool(process, running)) return YES;
+    }
+    return NO;
+}
+
++ (BOOL)terminateApplication:(NSString *)bundleID {
+    Class cls = NSClassFromString(@"FBSystemService");
+    SEL shared = NSSelectorFromString(@"sharedInstance");
+    if (!PXCloneClassMethodMatches(cls, shared, @encode(id), @[], NULL)) return NO;
+    id service = PXCloneSendId((id)cls, shared);
+    SEL selector = NSSelectorFromString(@"terminateApplication:forReason:andReport:withDescription:completion:");
+    void (^completion)(void) = ^{};
+    @try {
+        if (PXCloneInstanceMethodMatches(service, selector, @encode(void),
+                @[@"@", [NSString stringWithUTF8String:@encode(NSInteger)],
+                  [NSString stringWithUTF8String:@encode(BOOL)], @"@", @"@?"])) {
+            ((void (*)(id, SEL, id, NSInteger, BOOL, id, id))objc_msgSend)(
+                service, selector, bundleID, 1, YES, @"ParallelX account switch", completion);
+            return YES;
+        }
+    } @catch (__unused NSException *exception) { return NO; }
+    return NO;
+}
+
 + (NSString *)activeContainerForBundle:(NSString *)bundleID {
     id manager = PXSharedManager();
     if (!manager || !bundleID.length) return @"";

@@ -84,6 +84,8 @@ static void (^PXURLRouterOnce(void (^proceed)(void)))(void) {
                   proceed:(void (^)(void))proceed;
 + (void)waitForContainer:(NSString *)container bundle:(NSString *)bundle
                  attempt:(NSUInteger)attempt proceed:(void (^)(void))proceed;
++ (void)waitForTermination:(NSString *)bundle attempt:(NSUInteger)attempt
+                  proceed:(void (^)(void))proceed container:(NSString *)container;
 + (void)showRoutingError:(NSString *)message;
 @end
 
@@ -457,7 +459,27 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
         return;
     }
     [PXCloneProbe log:@"SWITCH-STARTED target=%@ active=%@", container, active];
+
+    if ([PXCloneCrane isApplicationRunning:bundle] && [PXCloneCrane terminateApplication:bundle]) {
+        [PXCloneProbe log:@"TERMINATE sent"];
+        [self waitForTermination:bundle attempt:0 proceed:proceed container:container];
+        return;
+    }
     [self waitForContainer:container bundle:bundle attempt:0 proceed:proceed];
+}
+
++ (void)waitForTermination:(NSString *)bundle attempt:(NSUInteger)attempt
+                  proceed:(void (^)(void))proceed container:(NSString *)container {
+    BOOL running = [PXCloneCrane isApplicationRunning:bundle];
+    if (!running || attempt >= 15) {
+        [PXCloneProbe log:@"TERMINATE running=%d attempts=%lu", (int)running, (unsigned long)attempt];
+        [self waitForContainer:container bundle:bundle attempt:0 proceed:proceed];
+        return;
+    }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        [self waitForTermination:bundle attempt:attempt + 1 proceed:proceed container:container];
+    });
 }
 
 + (void)waitForContainer:(NSString *)container
