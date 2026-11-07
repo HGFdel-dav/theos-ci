@@ -295,7 +295,10 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
     [window makeKeyAndVisible];
 
     UIViewController *presenter = host;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     UIViewController *top = application.keyWindow.rootViewController;
+#pragma clang diagnostic pop
     while (top.presentedViewController) top = top.presentedViewController;
     if (top && top.view.window) presenter = top;
 
