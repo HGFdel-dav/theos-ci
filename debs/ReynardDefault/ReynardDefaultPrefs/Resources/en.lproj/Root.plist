@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>items</key>
+    <array>
+        <dict>
+            <key>cell</key>
+            <string>PSGroupCell</string>
+            <key>label</key>
+            <string>ReynardDefault</string>
+            <key>footerText</key>
+            <string>Web links opened by other apps go to Reynard instead of Safari, and non-web links tapped inside Reynard open in the matching app.</string>
+        </dict>
+        <dict>
+            <key>cell</key>
+            <string>PSSwitchCell</string>
+            <key>default</key>
+            <true/>
+            <key>defaults</key>
+            <string>com.guacforlife.reynarddefaultprefs</string>
+            <key>key</key>
+            <string>enabled</string>
+            <key>label</key>
+            <string>Enabled</string>
+        </dict>
+        <dict>
+            <key>cell</key>
+            <string>PSGroupCell</string>
+            <key>label</key>
+            <string>Behaviour</string>
+            <key>footerText</key>
+            <string>Both options only apply while Enabled is on.</string>
+        </dict>
+        <dict>
+            <key>cell</key>
+            <string>PSSwitchCell</string>
+            <key>default</key>
+            <true/>
+            <key>defaults</key>
+            <string>com.guacforlife.reynarddefaultprefs</string>
+            <key>key</key>
+            <string>externalLinksToSystem</string>
+            <key>label</key>
+            <string>Open web links in Reynard</string>
+        </dict>
+        <dict>
+            <key>cell</key>
+            <string>PSSwitchCell</string>
+            <key>default</key>
+            <true/>
+            <key>defaults</key>
+            <string>com.guacforlife.reynarddefaultprefs</string>
+            <key>key</key>
+            <string>handoffExternalLinks</string>
+            <key>label</key>
+            <string>Hand non-web links to apps</string>
+        </dict>
+        <dict>
+            <key>cell</key>
+            <string>PSGroupCell</string>
+            <key>footerText</key>
+            <string>Links such as tg://, mailto: or tel: are handed to the system and the page stays where it is. Web links (http, https, about, data, blob, file, ftp, ws, wss) are still rendered by Reynard.</string>
+        </dict>
+    </array>
+    <key>title</key>
+    <string>ReynardDefault</string>
+</dict>
+</plist>
