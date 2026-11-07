@@ -16,7 +16,13 @@ NS_ASSUME_NONNULL_BEGIN
 // (immediately for coincident choices, or after the chosen account is active).
 // Returns NO when the caller must run its normal path right now.
 //
-// `proceed` is invoked exactly once, on the main thread, and may be deferred;
+// While the account catalog is still loading the router already owns the
+// request, so the URL cannot slip through to the current account. If the
+// chosen account cannot be confirmed, `proceed` is NOT called: the router
+// shows a short error and the user retries, instead of opening the wrong
+// account silently.
+//
+// `proceed` is invoked at most once, on the main thread, and may be deferred;
 // the caller must not run the original implementation before that.
 + (BOOL)handleOpenRequest:(nullable id)request
                   proceed:(void (^)(void))proceed;

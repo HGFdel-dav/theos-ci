@@ -10,17 +10,18 @@
 // the active container, and only then let the original request run - so the app
 // the system launches for the URL is the account the user picked.
 //
-// The chosen container is confirmed by reading Crane's active container back
-// with a bounded wait; a switch that does not land still proceeds, so an
-// incoming payment URL is never swallowed silently.
-
+// The catalog is refreshed on demand, but a request can arrive before the
+// first asynchronous refresh has completed. Never fall through to the
+// current account in that window: the URL must wait for a complete catalog.
 static NSTimeInterval const PXURLRouterPollInterval = 0.2;
 static NSUInteger const PXURLRouterPollLimit = 25;
-// The catalog is refreshed at most once per minute from this path, so a burst
-// of launches cannot turn into a burst of Crane queries.
-static NSTimeInterval const PXURLRouterRefreshThrottle = 60.0;
+static NSTimeInterval const PXURLRouterCatalogWaitInterval = 0.1;
+static NSUInteger const PXURLRouterCatalogWaitLimit = 50;
+static NSTimeInterval const PXURLRouterRefreshThrottle = 1.0;
 static UIWindow *PXURLRouterWindow = nil;
 static NSTimeInterval PXURLRouterLastRefresh = 0;
+static BOOL PXURLRouterCatalogLoading = NO;
+static BOOL PXURLRouterCatalogReady = NO;
 
 static NSString *PXURLRouterString(id object, NSArray<NSString *> *keys) {
     if (!object) return nil;
@@ -33,6 +34,14 @@ static NSString *PXURLRouterString(id object, NSArray<NSString *> *keys) {
         if ([value isKindOfClass:NSString.class] && [(NSString *)value length]) return value;
     }
     return nil;
+}
+
+static id PXURLRouterValue(id object, NSString *key) {
+    if (!object || !key.length) return nil;
+    SEL selector = NSSelectorFromString(key);
+    if (![object respondsToSelector:selector]) return nil;
+    @try { return [object valueForKey:key]; }
+    @catch (NSException *exception) { (void)exception; return nil; }
 }
 
 static NSArray<NSDictionary *> *PXURLRouterContainers(NSString *bundle) {
@@ -60,36 +69,93 @@ static void (^PXURLRouterOnce(void (^proceed)(void)))(void) {
     };
 }
 
+@interface PXCloneURLRouter ()
++ (void)loadCatalogForRequest:(id)request proceed:(void (^)(void))proceed
+                      bundle:(NSString *)bundle attempt:(NSUInteger)attempt;
++ (void)activateContainer:(NSString *)container bundle:(NSString *)bundle
+                  proceed:(void (^)(void))proceed;
++ (void)waitForContainer:(NSString *)container bundle:(NSString *)bundle
+                 attempt:(NSUInteger)attempt proceed:(void (^)(void))proceed;
++ (void)showRoutingError:(NSString *)message;
+@end
+
+static void PXURLRouterRefreshCatalog(void) {
+    if (PXURLRouterCatalogLoading) return;
+    PXURLRouterCatalogLoading = YES;
+    PXURLRouterLastRefresh = NSDate.date.timeIntervalSince1970;
+    [PXCloneCrane refreshCatalogWithCompletion:^(NSArray<NSDictionary *> *catalog, NSError *error) {
+        PXURLRouterCatalogLoading = NO;
+        PXURLRouterCatalogReady = (catalog != nil && error == nil);
+    }];
+}
+
+static NSString *PXURLRouterBundleFromRequest(id request) {
+    NSString *bundle = PXURLRouterString(request,
+        @[@"applicationIdentifier", @"bundleIdentifier", @"targetApplicationIdentifier"]);
+    if (bundle.length) return bundle;
+
+    id target = nil;
+    for (NSString *key in @[@"target", @"application", @"applicationProxy"]) {
+        target = PXURLRouterValue(request, key);
+        if (target) break;
+    }
+    if (!target) return nil;
+    return PXURLRouterString(target, @[@"bundleIdentifier", @"bundleID", @"applicationIdentifier"]);
+}
 @implementation PXCloneURLRouter
 
 + (BOOL)handleOpenRequest:(id)request proceed:(void (^)(void))proceed {
     if (!proceed) return NO;
-    NSString *bundle = PXURLRouterString(request,
-        @[@"applicationIdentifier", @"bundleIdentifier", @"targetApplicationIdentifier"]);
+    NSString *bundle = PXURLRouterBundleFromRequest(request);
     if (!bundle.length) return NO;
 
+    void (^once)(void) = PXURLRouterOnce(proceed);
     NSArray<NSDictionary *> *containers = PXURLRouterContainers(bundle);
-    if (containers.count < 2) {
-        // Nothing to choose. Refresh a missing/stale catalog at most once a
-        // minute so the next request already knows this bundle's containers.
-        NSTimeInterval now = NSDate.date.timeIntervalSince1970;
-        if (now - PXURLRouterLastRefresh >= PXURLRouterRefreshThrottle) {
-            PXURLRouterLastRefresh = now;
-            [PXCloneCrane refreshCatalogWithCompletion:^(NSArray<NSDictionary *> *catalog,
-                                                         NSError *error) {
-                (void)catalog; (void)error;
-            }];
-        }
-        return NO;
+    if (containers.count >= 2) {
+        void (^present)(void) = ^{
+            [self presentChooserForBundle:bundle containers:containers proceed:once];
+        };
+        if (NSThread.isMainThread) present();
+        else dispatch_async(dispatch_get_main_queue(), present);
+        return YES;
     }
 
-    void (^once)(void) = PXURLRouterOnce(proceed);
-    void (^present)(void) = ^{
-        [self presentChooserForBundle:bundle containers:containers proceed:once];
-    };
-    if (NSThread.isMainThread) present();
-    else dispatch_async(dispatch_get_main_queue(), present);
+    NSTimeInterval now = NSDate.date.timeIntervalSince1970;
+    if (!PXURLRouterCatalogReady || now - PXURLRouterLastRefresh >= PXURLRouterRefreshThrottle)
+        PXURLRouterRefreshCatalog();
+
+    // This is an external request, so owning it while the catalog is loading
+    // is essential. Falling through here launches the current account before
+    // the chooser has a chance to appear.
+    [self loadCatalogForRequest:request proceed:once bundle:bundle attempt:0];
     return YES;
+}
+
++ (void)loadCatalogForRequest:(id)request proceed:(void (^)(void))proceed
+                      bundle:(NSString *)bundle attempt:(NSUInteger)attempt {
+    NSArray<NSDictionary *> *containers = PXURLRouterContainers(bundle);
+    if (containers.count >= 2) {
+        void (^present)(void) = ^{
+            [self presentChooserForBundle:bundle containers:containers proceed:proceed];
+        };
+        if (NSThread.isMainThread) present();
+        else dispatch_async(dispatch_get_main_queue(), present);
+        return;
+    }
+    if (PXURLRouterCatalogReady && !PXURLRouterCatalogLoading) {
+        // A completed catalog with one container is a real negative result.
+        proceed();
+        return;
+    }
+    if (attempt >= PXURLRouterCatalogWaitLimit) {
+        [self showRoutingError:@"账号目录尚未就绪，付款链接未打开，请重试"];
+        return;
+    }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
+                                 (int64_t)(PXURLRouterCatalogWaitInterval * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        [self loadCatalogForRequest:request proceed:proceed bundle:bundle attempt:attempt + 1];
+    });
 }
 
 + (void)presentChooserForBundle:(NSString *)bundle
@@ -149,18 +215,28 @@ static void (^PXURLRouterOnce(void (^proceed)(void)))(void) {
 + (void)activateContainer:(NSString *)container
                    bundle:(NSString *)bundle
                   proceed:(void (^)(void))proceed {
+    if (!container.length) { [self showRoutingError:@"未取得目标账号，付款链接未打开"]; return; }
+
     NSString *active = [PXCloneCrane activeContainerForBundle:bundle];
-    if (!container.length || (active.length && [container isEqualToString:active])) {
-        proceed();
+    if (!active.length) {
+        // An empty read-back means we cannot prove which account is live.
+        // Before this change it was treated as "unknown, just open", which
+        // launched the CURRENT account even though the user picked another.
+        [self showRoutingError:@"无法读取当前账号，付款链接未打开，请重试"];
         return;
     }
+    if ([container isEqualToString:active]) { proceed(); return; }
 
     NSError *error = nil;
     BOOL started = [PXCloneCrane requestSwitchToContainer:container
                                                 forBundle:bundle
                                                     reply:^(__unused BOOL rawAuthenticationFlag) {}
                                                     error:&error];
-    if (!started) { proceed(); return; }
+    if (!started) {
+        NSString *reason = error.localizedDescription.length ? error.localizedDescription : @"账号切换未启动";
+        [self showRoutingError:reason];
+        return;
+    }
     [self waitForContainer:container bundle:bundle attempt:0 proceed:proceed];
 }
 
@@ -169,8 +245,11 @@ static void (^PXURLRouterOnce(void (^proceed)(void)))(void) {
                  attempt:(NSUInteger)attempt
                  proceed:(void (^)(void))proceed {
     NSString *active = [PXCloneCrane activeContainerForBundle:bundle];
-    if ([container isEqualToString:active] || attempt >= PXURLRouterPollLimit) {
-        proceed();
+    if ([container isEqualToString:active]) { proceed(); return; }
+    if (attempt >= PXURLRouterPollLimit) {
+        // Fail closed: forwarding a payment URL onto the wrong account is
+        // worse than asking the user to tap again.
+        [self showRoutingError:@"账号未切换完成，付款链接未打开，请重试"];
         return;
     }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
@@ -178,6 +257,34 @@ static void (^PXURLRouterOnce(void (^proceed)(void)))(void) {
                    dispatch_get_main_queue(), ^{
         [self waitForContainer:container bundle:bundle attempt:attempt + 1 proceed:proceed];
     });
+}
+
++ (void)showRoutingError:(NSString *)message {
+    void (^present)(void) = ^{
+        UIWindow *window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+        window.windowLevel = UIWindowLevelAlert + 1;
+        window.userInteractionEnabled = NO;
+        window.backgroundColor = UIColor.clearColor;
+        UIViewController *controller = [UIViewController new];
+        window.rootViewController = controller;
+        UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(20, 90, window.bounds.size.width - 40, 72)];
+        label.backgroundColor = [UIColor colorWithWhite:0.05 alpha:0.94];
+        label.textColor = UIColor.whiteColor;
+        label.textAlignment = NSTextAlignmentCenter;
+        label.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+        label.numberOfLines = 2;
+        label.layer.cornerRadius = 14;
+        label.clipsToBounds = YES;
+        label.text = [@"分身：" stringByAppendingString:message];
+        [controller.view addSubview:label];
+        window.hidden = NO;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+            window.hidden = YES;
+            window.rootViewController = nil;
+        });
+    };
+    if (NSThread.isMainThread) present();
+    else dispatch_async(dispatch_get_main_queue(), present);
 }
 
 @end

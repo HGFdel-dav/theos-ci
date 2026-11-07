@@ -15,6 +15,18 @@ int main(void) {
     CHECK(!PXCloneRootIsAppGroup("/var/mobile/Containers/Shared/AppGroup/.jbroot-"));
     CHECK(!PXCloneRootIsAppGroup("/var/mobile/Containers/Shared/AppGroup/.jbroot-A/subdir"));
     CHECK(!PXCloneRootIsAppGroup(NULL));
+    // The root-only predicate above must NOT be used for descendants; this is
+    // the bug that made trace/storage init fail after every respring.
+    CHECK(PXClonePathIsUnderAppGroup(root));
+    CHECK(PXClonePathIsUnderAppGroup("/rootfs/private/var/mobile/Containers/Shared/AppGroup/.jbroot-CURRENT/var/mobile/Library/Preferences"));
+    CHECK(PXClonePathIsUnderAppGroup("/var/mobile/Containers/Shared/AppGroup/.jbroot-OTHER/var"));
+    CHECK(!PXClonePathIsUnderAppGroup("/"));
+    CHECK(!PXClonePathIsUnderAppGroup("/var/mobile/Library/Preferences"));
+    CHECK(!PXClonePathIsUnderAppGroup("/var/containers/Bundle/Application/.jbroot-ALIAS"));
+    CHECK(!PXClonePathIsUnderAppGroup("/var/mobile/Containers/Shared/AppGroup/.jbroot-"));
+    CHECK(PXClonePathIsUnderAppGroup("/var/mobile/Containers/Shared/AppGroup/.jbroot-A-B"));
+    CHECK(!PXClonePathIsUnderAppGroup("/var/mobile/Containers/Shared/AppGroup/.jbroot-/x"));
+    CHECK(!PXClonePathIsUnderAppGroup(NULL));
     for (unsigned i = 0; i < 100; i++) {
         CHECK(PXCloneRootRank(true, false, false) == 3);
         CHECK(PXCloneRootRank(false, true, false) == 2);

@@ -16,6 +16,25 @@ static inline bool PXCloneRootIsAppGroup(const char *canonical) {
     return false;
 }
 
+// PXCloneRootIsAppGroup() above only accepts the root itself: the candidate
+// must END at ".jbroot-<uuid>". Judging a DIRECTORY BELOW that root (for
+// example "<root>/var/mobile/Library/Preferences") with it is always false,
+// which used to make storage and trace initialization fail on every respring.
+// This variant accepts the root and every descendant of it, and nothing less.
+static inline bool PXClonePathIsUnderAppGroup(const char *canonical) {
+    if (!canonical || canonical[0] != '/') return false;
+    const char *marker = "/Containers/Shared/AppGroup/.jbroot-";
+    const char *match = strstr(canonical, marker);
+    while (match) {
+        const char *tail = match + strlen(marker);
+        const char *scan = tail;
+        while (*scan && *scan != '/') ++scan;
+        if (scan > tail) return true;
+        match = strstr(match + 1, marker);
+    }
+    return false;
+}
+
 static inline int PXCloneRootRank(bool hasModule, bool hasSubstrate, bool hasLibraries) {
     return hasModule ? 3 : (hasSubstrate ? 2 : (hasLibraries ? 1 : 0));
 }

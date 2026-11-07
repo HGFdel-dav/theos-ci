@@ -231,7 +231,7 @@ class LaunchSourceGuards(unittest.TestCase):
         paths = (ROOT / 'Common/PXClonePaths.m').read_text()
         self.assertIn('_trace.count > 32', LAUNCH)
         self.assertIn('PXCloneTrace writeEvents:snapshot', LAUNCH)
-        self.assertIn('if (self->_reportedTraceState == state)', LAUNCH)
+        self.assertIn('self->_reportedTraceState = state;', LAUNCH)
         self.assertIn('PXCloneCurrentTracePath(&error)', writer)
         self.assertIn('PXCloneEnsureStorage(&error)', writer)
         self.assertIn('PXCloneWriteTraceAt(directory,', writer)

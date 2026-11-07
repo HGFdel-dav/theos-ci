@@ -81,10 +81,25 @@ class RootAndTraceTests(unittest.TestCase):
         self.assertIn('!PXCloneIsRootHide()', p)
         self.assertNotRegex(p, r'\.jbroot-[0-9a-fA-F-]{8,}')
 
+    def test_root_marker_accepts_roothide_inner_map(self):
+        # Device truth: the payload lives under <root>/.jbroot/... The old
+        # marker looked only at <root>/Library and <root>/usr/lib, so the only
+        # existing root scored 0 and discovery returned nothing -> stage 2.
+        p = (ROOT / 'Common/PXClonePaths.m').read_text()
+        marker = p.split('static int PXRootMarkerRank', 1)[1].split('static NSString *PXDiscoverRoot', 1)[0]
+        self.assertIn('@".jbroot/Library/MobileSubstrate/DynamicLibraries/ParallelXClone.dylib"', marker)
+        self.assertIn('@".jbroot/usr/lib/TweakInject/ParallelXClone.dylib"', marker)
+        self.assertIn('@".jbroot/Library/MobileSubstrate"', marker)
+        # Legacy layout must keep working.
+        self.assertIn('@"Library/MobileSubstrate/DynamicLibraries/ParallelXClone.dylib"', marker)
+
     def test_directory_creation_judges_the_resolved_directory(self):
         p = (ROOT / 'Common/PXClonePaths.m').read_text().split('BOOL PXCloneEnsureStorage', 1)[1]
-        self.assertIn('PXCloneRootIsAppGroup(canonicalDir.fileSystemRepresentation)', p)
-        self.assertLess(p.index('createDirectoryAtPath'), p.index('PXCloneRootIsAppGroup(canonicalDir'))
+        self.assertIn('PXClonePathIsUnderAppGroup(canonicalDir.fileSystemRepresentation)', p)
+        self.assertLess(p.index('createDirectoryAtPath'), p.index('PXClonePathIsUnderAppGroup(canonicalDir'))
+        # The Preferences directory is a descendant, not a root: using the
+        # root-only predicate here failed storage init on every respring.
+        self.assertIn('PXClonePathIsUnderAppGroup', (ROOT / 'Common/PXCloneRootPolicy.h').read_text())
         self.assertIn('O_NOFOLLOW', p)
         self.assertNotIn('prefs escaped active root', p)
 
@@ -112,7 +127,7 @@ class RootAndTraceTests(unittest.TestCase):
 
     def test_trace_directory_check_uses_appgroup_membership(self):
         p = (ROOT / 'Common/PXCloneTrace.m').read_text()
-        self.assertIn('return PXCloneRootIsAppGroup(canonical);', p)
+        self.assertIn('return PXClonePathIsUnderAppGroup(canonical);', p)
         self.assertNotIn('PXClonePathIsContained(root.fileSystemRepresentation, canonical)', p)
         p = (ROOT / 'Common/PXCloneTrace.m').read_text()
         view = (ROOT / 'Prefs/PXCloneAccountsController.m').read_text()
@@ -121,8 +136,12 @@ class RootAndTraceTests(unittest.TestCase):
         self.assertIn('notify_get_state', p)
         self.assertIn('PXCloneTraceNotification', view)
         self.assertIn('descriptionForState:traceState', view)
-        self.assertIn('_reportedTraceState == state', launch)
-        self.assertIn('[self showError:message]', launch)
+        self.assertIn('self->_reportedTraceState = state;', launch)
+        # A trace failure must not pop a toast on every respring.
+        record = launch.split('- (void)record:', 1)[1].split('- (void)showError:', 1)[0]
+        self.assertNotIn('[self showError:message]', record)
+        # ...but the switch flow still reports real failures.
+        self.assertGreaterEqual(launch.count('[self showError:'), 4)
         self.assertNotIn('CXStore', p)
         make = (ROOT / 'Makefile').read_text()
         self.assertEqual(make.count('Common/PXCloneTrace.m'), 2)

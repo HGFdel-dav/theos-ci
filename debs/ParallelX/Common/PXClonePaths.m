@@ -54,13 +54,29 @@ BOOL PXCloneValidateRoot(NSString *root, NSError **error) {
 static int PXRootMarkerRank(NSString *root) {
     NSFileManager *manager = NSFileManager.defaultManager;
     BOOL hasModule = [manager fileExistsAtPath:[root stringByAppendingPathComponent:
-                        @"Library/MobileSubstrate/DynamicLibraries/ParallelXClone.dylib"]];
+                        @".jbroot/Library/MobileSubstrate/DynamicLibraries/ParallelXClone.dylib"]] ||
+                     [manager fileExistsAtPath:[root stringByAppendingPathComponent:
+                        @".jbroot/usr/lib/TweakInject/ParallelXClone.dylib"]] ||
+                     [manager fileExistsAtPath:[root stringByAppendingPathComponent:
+                        @"Library/MobileSubstrate/DynamicLibraries/ParallelXClone.dylib"]] ||
+                     [manager fileExistsAtPath:[root stringByAppendingPathComponent:
+                        @"usr/lib/TweakInject/ParallelXClone.dylib"]];
     BOOL directory = NO;
-    BOOL hasSubstrate = [manager fileExistsAtPath:[root stringByAppendingPathComponent:@"Library/MobileSubstrate"]
+    BOOL hasSubstrate = [manager fileExistsAtPath:[root stringByAppendingPathComponent:@".jbroot/Library/MobileSubstrate"]
                                     isDirectory:&directory] && directory;
+    if (!hasSubstrate) {
+        directory = NO;
+        hasSubstrate = [manager fileExistsAtPath:[root stringByAppendingPathComponent:@"Library/MobileSubstrate"]
+                                    isDirectory:&directory] && directory;
+    }
     directory = NO;
-    BOOL hasLibraries = [manager fileExistsAtPath:[root stringByAppendingPathComponent:@"usr/lib"]
+    BOOL hasLibraries = [manager fileExistsAtPath:[root stringByAppendingPathComponent:@".jbroot/usr/lib"]
                                     isDirectory:&directory] && directory;
+    if (!hasLibraries) {
+        directory = NO;
+        hasLibraries = [manager fileExistsAtPath:[root stringByAppendingPathComponent:@"usr/lib"]
+                                    isDirectory:&directory] && directory;
+    }
     return PXCloneRootRank(hasModule, hasSubstrate, hasLibraries);
 }
 
@@ -194,7 +210,7 @@ BOOL PXCloneEnsureStorage(NSError **error) {
 
     NSString *canonicalDir = PXCanonical(dir, error);
     if (!canonicalDir) return NO;
-    if (!PXCloneRootIsAppGroup(canonicalDir.fileSystemRepresentation) &&
+    if (!PXClonePathIsUnderAppGroup(canonicalDir.fileSystemRepresentation) &&
         !(PXCloneIsRootHide() == NO && PXClonePathIsContained(root.fileSystemRepresentation,
                                                              canonicalDir.fileSystemRepresentation)))
         return PXSetError(error, PXClonePathsErrorInvalidRoot,

@@ -49,7 +49,9 @@ static BOOL PXTraceDirectoryIsCurrent(NSString *root, NSString *parent, int dire
     if (!realpath(parent.fileSystemRepresentation, canonical)) return NO;
     // Same rule as EnsureStorage: var/ may resolve back to the live domain, so
     // require AppGroup membership of the resolved directory, not a prefix.
-    return PXCloneRootIsAppGroup(canonical);
+    // The Preferences directory is a DESCENDANT of the root, so the root-only
+    // predicate would always be false here.
+    return PXClonePathIsUnderAppGroup(canonical);
 }
 
 @implementation PXCloneTrace

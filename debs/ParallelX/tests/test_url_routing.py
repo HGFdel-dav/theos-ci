@@ -32,11 +32,29 @@ class TestURLRouting(unittest.TestCase):
         self.assertIn('launchReady && routingReady', TWEAK)
 
     def test_only_multi_container_bundles_are_intercepted(self):
-        self.assertIn('if (containers.count < 2) {', ROUTER)
-        guard = ROUTER.split('if (containers.count < 2) {', 1)[1].split('return NO;', 1)
-        self.assertEqual(len(guard), 2)
+        self.assertIn('if (containers.count >= 2) {', ROUTER)
         # No chooser may be presented for a single-container bundle.
-        self.assertLess(ROUTER.index('containers.count < 2'), ROUTER.index('presentChooserForBundle'))
+        self.assertLess(ROUTER.index('containers.count >= 2'), ROUTER.index('presentChooserForBundle'))
+
+    def test_cold_catalog_is_awaited_instead_of_forwarded(self):
+        # A request can beat the first async catalog load. Forwarding there was
+        # why payment links still opened the CURRENT account.
+        self.assertIn('PXURLRouterCatalogReady', ROUTER)
+        self.assertIn('PXURLRouterCatalogWaitLimit', ROUTER)
+        self.assertIn('[self loadCatalogForRequest:request proceed:once bundle:bundle attempt:0]', ROUTER)
+        handler = ROUTER.split('+ (BOOL)handleOpenRequest', 1)[1].split('+ (void)loadCatalogForRequest', 1)[0]
+        # Only "no block" and "no bundle at all" may decline; the
+        # cold-catalog path must keep ownership and return YES.
+        self.assertEqual(handler.count('return NO;'), 2)
+        self.assertEqual(handler.count('return YES;'), 2)
+
+    def test_request_target_falls_back_to_nested_selectors(self):
+        self.assertIn('PXURLRouterBundleFromRequest', ROUTER)
+        self.assertIn('PXURLRouterValue', ROUTER)
+        for key in ('@"target"', '@"bundleID"', '@"bundleIdentifier"'):
+            self.assertIn(key, ROUTER)
+        # Still guarded against unknown objects.
+        self.assertIn('@catch (NSException *exception) { (void)exception; return nil;', ROUTER)
 
     def test_unknown_bundle_never_throws(self):
         # All request fields are read through respondsToSelector + @try.
@@ -61,13 +79,21 @@ class TestURLRouting(unittest.TestCase):
         self.assertNotIn('setActiveContainerIdentifier', ROUTER)
         self.assertNotIn('setActiveContainer', ROUTER)
 
-    def test_switch_failure_still_proceeds(self):
-        # A pending payment URL must not be swallowed when the switch fails.
-        activate = ROUTER.split('+ (void)activateContainer:', 1)[1]
-        self.assertGreaterEqual(activate.count('proceed();'), 3)
-        wait = ROUTER.split('+ (void)waitForContainer:', 1)[1]
+    def test_unconfirmed_switch_fails_closed(self):
+        # Opening the wrong account is worse than asking for a retry.
+        activate = ROUTER.rsplit('+ (void)activateContainer:', 1)[1].split('+ (void)waitForContainer:', 1)[0]
+        self.assertIn('无法读取当前账号', activate)
+        self.assertEqual(activate.count('proceed();'), 1)  # only the coincident case
+        self.assertIn('showRoutingError', activate)
+        wait = ROUTER.rsplit('+ (void)waitForContainer:', 1)[1].split('+ (void)showRoutingError:', 1)[0]
         self.assertIn('attempt >= PXURLRouterPollLimit', wait)
-        self.assertIn('proceed();', wait)
+        self.assertIn('账号未切换完成', wait)
+        timeout = wait.split('attempt >= PXURLRouterPollLimit', 1)[1]
+        self.assertNotIn('proceed();', timeout.split('dispatch_after', 1)[0])
+
+    def test_router_can_present_its_own_error(self):
+        self.assertIn('+ (void)showRoutingError:', ROUTER)
+        self.assertIn('stringByAppendingString:message', ROUTER)
 
     def test_chooser_uses_its_own_alert_window(self):
         self.assertIn('UIWindowLevelAlert + 1', ROUTER)
@@ -77,7 +103,7 @@ class TestURLRouting(unittest.TestCase):
 
     def test_header_contract(self):
         self.assertIn('+ (BOOL)handleOpenRequest:(nullable id)request', ROUTER_H)
-        self.assertIn('exactly once', ROUTER_H)
+        self.assertIn('at most once', ROUTER_H)
 
     def test_router_is_built_into_the_tweak(self):
         self.assertIn('Common/PXCloneURLRouter.m', MAKEFILE)
