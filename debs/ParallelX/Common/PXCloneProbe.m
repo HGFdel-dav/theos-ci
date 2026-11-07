@@ -7,22 +7,36 @@
 static NSString *const PXProbeRelative = @"/var/mobile/Library/Caches/parallelx-probe.log";
 static const off_t PXProbeLimit = 160 * 1024;
 
+// Sandboxed apps cannot write /var/mobile/Library/Caches (only SpringBoard and
+// daemons can). Fall back to the process's own tmp dir so app-side events are
+// still recorded; the file name carries no app content.
+static NSString *PXProbeChosenPath(void) {
+    static NSString *chosen;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        NSString *shared = nil;
+        NSError *error = nil;
+        NSString *root = PXCloneActiveRoot(&error);
+        if (root.length) shared = [root stringByAppendingString:PXProbeRelative];
+        NSFileManager *fm = NSFileManager.defaultManager;
+        if (shared.length) {
+            [fm createDirectoryAtPath:shared.stringByDeletingLastPathComponent
+                withIntermediateDirectories:YES attributes:nil error:NULL];
+            int fd = open(shared.fileSystemRepresentation, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0600);
+            if (fd >= 0) { close(fd); chosen = shared; }
+        }
+        if (!chosen.length) {
+            NSString *tmp = NSTemporaryDirectory();
+            if (tmp.length) chosen = [tmp stringByAppendingPathComponent:@"parallelx-probe.log"];
+        }
+    });
+    return chosen;
+}
+
 @implementation PXCloneProbe
 
 + (NSString *)path {
-    NSError *error = nil;
-    NSString *root = PXCloneActiveRoot(&error);
-    if (!root.length) {
-        // Fresh respring may not have a root yet; the logical path is a
-        // read-back-only fallback and still resolves through RootHide.
-        root = @"";
-    }
-    NSString *path = [root stringByAppendingString:PXProbeRelative];
-    NSFileManager *fm = NSFileManager.defaultManager;
-    NSString *dir = path.stringByDeletingLastPathComponent;
-    if (![fm fileExistsAtPath:dir])
-        [fm createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:NULL];
-    return path;
+    return PXProbeChosenPath() ?: @"";
 }
 
 + (void)log:(NSString *)format, ... {
