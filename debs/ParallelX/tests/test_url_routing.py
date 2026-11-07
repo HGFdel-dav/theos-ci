@@ -63,12 +63,9 @@ class TestURLRouting(unittest.TestCase):
         self.assertIn('APP-BOOT', TWEAK)
         # The filter must no longer be SpringBoard-only.
         plist = (ROOT / 'ParallelXClone.plist').read_text()
-        postinst = (ROOT / 'layout/DEBIAN/postinst.in').read_text()
-        self.assertIn('WebContent', plist)
-        self.assertIn('com.apple.springboard', plist)
-        # The final bundle list is generated from installed apps at install.
-        self.assertIn('WebContent', postinst)
-        self.assertIn('${name%.app}', postinst)
+        # SpringBoard only again: the workspace hook is the choke point.
+        self.assertIn('<string>com.apple.springboard</string>', plist)
+        self.assertIn('_handleOpenApplicationRequest:options:activationSettings:origin:withResult:', TWEAK)
         self.assertIn('PXInstallProbeHooks();', TWEAK)
         self.assertIn('PXInAppReentry', TWEAK)
 

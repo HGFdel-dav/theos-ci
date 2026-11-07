@@ -9,38 +9,4 @@ for name in ParallelXClone ParallelXPrefsUI; do
     if [ -f "$LIBDIR/$name.plist" ]; then chmod 644 "$LIBDIR/$name.plist"; fi
 done
 
-# The clone router has to run in EVERY app: a URL handoff is opened by the
-# source app (or its WebContent helper) and SpringBoard never sees it. There is
-# no plutil/python here, and Info.plist is usually binary, so authorise the
-# EXECUTABLE name of every installed app (the .app directory name) instead of a
-# class guess, which depended on UIKit load timing.
-PLIST="$LIBDIR/ParallelXClone.plist"
-if [ -f "$PLIST" ]; then
-    {
-        echo '<?xml version="1.0" encoding="UTF-8"?>'
-        echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
-        echo '<plist version="1.0">'
-        echo '<dict>'
-        echo '	<key>Filter</key>'
-        echo '	<dict>'
-        echo '		<key>Bundles</key>'
-        echo '		<array>'
-        echo '			<string>com.apple.springboard</string>'
-        echo '		</array>'
-        echo '		<key>Executables</key>'
-        echo '		<array>'
-        echo '			<string>WebContent</string>'
-        for app in /var/containers/Bundle/Application/*/*.app /var/mobile/Containers/Bundle/Application/*/*.app; do
-            [ -d "$app" ] || continue
-            name=${app##*/}
-            name=${name%.app}
-            case "$name" in ""|SpringBoard) continue ;; esac
-            echo "			<string>$name</string>"
-        done
-        echo '		</array>'
-        echo '	</dict>'
-        echo '</dict>'
-        echo '</plist>'
-    } > "$PLIST.tmp" && chmod 644 "$PLIST.tmp" && mv "$PLIST.tmp" "$PLIST"
-fi
 exit 0
