@@ -1967,7 +1967,7 @@ static void MiniSightPlaceBubble(CGFloat w, CGFloat h) {
 - (void)toggleBubbleSize:(UITapGestureRecognizer *)tap {
     if (tap.state != UIGestureRecognizerStateEnded) return;
     gMiniSightBubbleExpanded = !gMiniSightBubbleExpanded;
-    if (gMiniSightBubbleText.length) MiniSightShowBubbleWidth(gMiniSightBubbleText, 300.0, 600);
+    if (gMiniSightBubbleText.length) MiniSightShowBubbleWidth(gMiniSightBubbleText, 260.0, 600);
 }
 @end
 static MiniSightBubbleTapTarget *gMiniSightBubbleTapTarget = nil;
@@ -2039,10 +2039,10 @@ static void MiniSightShowBubbleWidth(NSString *raw, CGFloat maxW, NSUInteger cap
     CGFloat textWidth = MAX(1.0, effectiveW - 24.0);
     CGSize fit = [gMiniSightBubbleLabel sizeThatFits:CGSizeMake(textWidth, CGFLOAT_MAX)];
     gMiniSightBubbleContentHeight = ceil(MAX(fit.height, gMiniSightBubbleLabel.font.lineHeight));
-    CGFloat minWidth = gMiniSightConfirming ? 180.0 : 140.0;
+    CGFloat minWidth = gMiniSightConfirming ? 180.0 : 56.0;
     CGFloat wanted = ceil(fit.width) + 24.0;
     CGFloat w = MIN(effectiveW, MAX(minWidth, wanted));
-    CGFloat maxVisible = gMiniSightConfirming ? 180.0 : root.bounds.size.height * 0.42 * gMiniSightBubbleScale;
+    CGFloat maxVisible = gMiniSightConfirming ? 180.0 : root.bounds.size.height * 0.34 * gMiniSightBubbleScale;
     CGFloat visibleTextHeight = MIN(gMiniSightBubbleContentHeight, maxVisible);
     CGFloat h = visibleTextHeight + (gMiniSightConfirming ? 52.0 : 20.0);
     gMiniSightBubbleScroll.contentOffset = CGPointZero;
@@ -2063,7 +2063,7 @@ extern "C" void MiniSightFollowBubble(void) {
 
 static void MiniSightShowBubble(NSString *raw) {
     gMiniSightBubbleExpanded = NO;
-    MiniSightShowBubbleWidth(raw, 300.0, 600);
+    MiniSightShowBubbleWidth(raw, 260.0, 600);
 }
 
 /// 允许/拒绝两个按钮的宿主
@@ -2137,7 +2137,7 @@ static void MiniSightShowConfirm(void) {
         return;
     }
     NSString *text = action.length ? [NSString stringWithFormat:@"%@\n%@", action, command] : command;
-    MiniSightShowBubbleWidth(text, 300.0, 600);
+    MiniSightShowBubbleWidth(text, 260.0, 600);
 
     gMiniSightBubble.userInteractionEnabled = YES;
     if (!gMiniSightConfirmBar) {
@@ -2221,7 +2221,7 @@ static void MiniSightShowLine(NSString *line) {
 static void MiniSightShowStatusLine(NSString *text) {
     if (!text.length) return;
     if ((!gMiniSightWindow || gMiniSightWindow.hidden) && !gMiniSightBurst) return;
-    MiniSightShowBubbleWidth(text, 300.0, 600);
+    MiniSightShowBubbleWidth(text, 260.0, 600);
     if (gMiniSightBubbleHideWork) { dispatch_block_cancel(gMiniSightBubbleHideWork); gMiniSightBubbleHideWork = nil; }
     if (gMiniSightBurst) return;
     gMiniSightBubbleHideWork = dispatch_block_create(DISPATCH_BLOCK_DETACHED, ^{
