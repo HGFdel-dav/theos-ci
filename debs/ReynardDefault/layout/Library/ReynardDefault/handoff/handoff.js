@@ -20,6 +20,16 @@
     }
   }
 
+  // Pages like t.me advertise their app link in <meta property="al:ios:url">.
+  // Under the Android user agent their button is a plain https link, so fall back
+  // to the advertised app URL instead of letting the page reload itself.
+  function advertisedAppURL() {
+    var meta = document.querySelector('meta[property="al:ios:url"], meta[property="twitter:app:url:iphone"]');
+    var value = meta && meta.getAttribute('content');
+    if (!value) return null;
+    return INTERNAL[schemeOf(value)] ? null : value;
+  }
+
   function report(href) {
     try {
       browser.runtime.sendMessage({ rdHandoff: href });
@@ -33,6 +43,14 @@
     var href = node && node.getAttribute && node.getAttribute('href');
     if (!href) return;
     var scheme = schemeOf(href);
+    if (scheme === 'http' || scheme === 'https') {
+      var appURL = advertisedAppURL();
+      if (!appURL) return;
+      event.preventDefault();
+      event.stopPropagation();
+      report(appURL);
+      return;
+    }
     if (!scheme || INTERNAL[scheme]) return;
     event.preventDefault();
     event.stopPropagation();
