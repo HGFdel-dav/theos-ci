@@ -2,6 +2,7 @@
 #import <UIKit/UIKit.h>
 #import "Common/Common.h"
 #import <objc/runtime.h>
+#import <substrate.h>
 
 // Reynard-side half of the tweak.
 //
@@ -417,6 +418,7 @@ static BOOL rdEnsureDone;
 
 static NSHashTable *rdDispatchers;
 static id rdRuntimeBackend;
+static void (*rdOrigDispatch)(id, SEL, NSString *, id, id);
 static BOOL rdInstallTried;
 static BOOL rdInstallBroadcasted;
 static int rdInstallCounter;
@@ -580,6 +582,17 @@ static id RDRuntimeBackend(void) {
     return fallback;
 }
 
+static void RDGeckoDispatchHook(id self, SEL _cmd, NSString *type, id message, id callback) {
+    if ([type isEqualToString:kDefaultPrefsEvent] && [message isKindOfClass:[NSDictionary class]]) {
+        NSMutableDictionary *prefs = [NSMutableDictionary dictionaryWithDictionary:(NSDictionary *)message];
+        prefs[kSignaturePref] = @(NO);
+        RDLog(@"prefs injected (%lu keys)", (unsigned long)prefs.count);
+        if (rdOrigDispatch) rdOrigDispatch(self, _cmd, type, prefs, callback);
+        return;
+    }
+    if (rdOrigDispatch) rdOrigDispatch(self, _cmd, type, message, callback);
+}
+
 // The runtime dispatcher is the one that receives GeckoView:WebExtension:* events.
 // Capture its backend from such an event instead of guessing by class name.
 static void RDMaybeCaptureRuntime(id wrapper, NSString *type) {
@@ -588,6 +601,16 @@ static void RDMaybeCaptureRuntime(id wrapper, NSString *type) {
     if (!backend) return;
     rdRuntimeBackend = backend;
     RDLog(@"captured runtime backend %@", NSStringFromClass([backend class]));
+    // The backend implements dispatchToGecko:message:callback:; hook it directly
+    // (the wrapper's Swift convenience method is not exposed to the ObjC runtime).
+    static Class hookedClass;
+    Class backendClass = object_getClass(backend);
+    if (backendClass && backendClass != hookedClass) {
+        hookedClass = backendClass;
+        MSHookMessageEx(backendClass, @selector(dispatchToGecko:message:callback:),
+                        (IMP)RDGeckoDispatchHook, (IMP *)&rdOrigDispatch);
+        RDLog(@"backend dispatch hooked=%d", rdOrigDispatch != NULL);
+    }
     static BOOL prefSent;
     if (!prefSent) {
         prefSent = YES;
@@ -729,6 +752,21 @@ static void RDOpenExternally(NSURL *url) {
     id result = %orig;
     RDRememberDispatcher(result);
     return result;
+}
+%end
+
+// SetDefaultPrefs is sent *to* gecko (outbound), so it never reaches
+// dispatchToSwift:. Merge the signature pref into that first payload.
+%hook _TtC9GeckoView27GeckoEventDispatcherWrapper
+- (void)dispatch:(NSString *)type message:(id)message callback:(id<RDEventCallback>)callback {
+    if ([type isEqualToString:kDefaultPrefsEvent] && [message isKindOfClass:[NSDictionary class]]) {
+        NSMutableDictionary *prefs = [NSMutableDictionary dictionaryWithDictionary:(NSDictionary *)message];
+        prefs[kSignaturePref] = @(NO);
+        RDLog(@"prefs injected (%lu keys)", (unsigned long)prefs.count);
+        %orig(type, prefs, callback);
+        return;
+    }
+    %orig;
 }
 %end
 
