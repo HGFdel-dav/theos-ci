@@ -444,15 +444,15 @@ static void RDSeedExtensionsDatabase(void) {
         NSMutableArray *addons = db[@"addons"];
         if (![addons isKindOfClass:[NSMutableArray class]]) continue;
 
-        BOOL present = NO;
         NSDictionary *proto = nil;
+        NSMutableDictionary *existing = nil;
         for (NSDictionary *entry in addons) {
-            if ([entry[@"id"] isEqualToString:kHandoffAddonID]) present = YES;
+            if ([entry[@"id"] isEqualToString:kHandoffAddonID]) existing = [entry mutableCopy];
             if (!proto && [entry[@"location"] isEqualToString:@"app-profile"]) proto = entry;
         }
-        if (present || !proto) continue;
+        if (!proto) continue;
 
-        NSMutableDictionary *entry = [proto mutableCopy];
+        NSMutableDictionary *entry = existing ?: [proto mutableCopy];
         entry[@"id"] = kHandoffAddonID;
         entry[@"syncGUID"] = [[NSUUID UUID] UUIDString];
         entry[@"version"] = @"1.2";
@@ -463,10 +463,20 @@ static void RDSeedExtensionsDatabase(void) {
         entry[@"foreignInstall"] = @NO;
         entry[@"signedState"] = @(3);
         entry[@"installDate"] = @((long long)([NSDate date].timeIntervalSince1970 * 1000));
-        entry[@"rootURI"] = [NSString stringWithFormat:@"file://%@", xpiPath];
+        // Real entries use a jar: rootURI (jar:file://...xpi!/), a plain file://
+        // URI is not treated as a package.
+        NSString *encoded = [xpiPath stringByReplacingOccurrencesOfString:@" " withString:@"%20"];
+        entry[@"rootURI"] = [NSString stringWithFormat:@"jar:file://%@!/", encoded];
         entry[@"path"] = xpiPath;
         entry[@"defaultLocale"] = @{@"name": @"ReynardDefault Handoff"};
-        [addons addObject:entry];
+        if (existing) {
+            NSInteger index = [addons indexOfObjectPassingTest:^BOOL(NSDictionary *obj, NSUInteger i, BOOL *stop) {
+                return [obj[@"id"] isEqualToString:kHandoffAddonID];
+            }];
+            if (index != NSNotFound) [addons replaceObjectAtIndex:index withObject:entry];
+        } else {
+            [addons addObject:entry];
+        }
 
         NSData *out = [NSJSONSerialization dataWithJSONObject:db options:0 error:NULL];
         if (out) {
