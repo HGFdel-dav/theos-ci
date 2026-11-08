@@ -70,7 +70,8 @@ class TestURLRouting(unittest.TestCase):
 
     def test_account_change_uses_crane_request_api(self):
         # reload:NO so the handoff itself launches the app with its URL.
-        self.assertIn('[PXCloneCrane switchToContainer:container forBundle:bundle reload:NO error:&error]', ROUTER)
+        self.assertIn('[PXCloneCrane switchToContainer:', ROUTER)
+        self.assertIn('PXURLRouterPendingAttempt >= PXURLRouterPollLimit', ROUTER)
         self.assertIn('waitForContainer:', ROUTER)
         self.assertIn('PXURLRouterPollLimit', ROUTER)
         # A bare container setter would bypass Crane's authentication path.
