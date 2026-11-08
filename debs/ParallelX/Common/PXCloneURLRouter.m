@@ -138,31 +138,34 @@ static id PXURLRouterField(id object, NSString *key) {
     return PXURLRouterValue(object, key);
 }
 
+static NSURL *PXURLRouterURLValue(id value) {
+    NSURL *url = nil;
+    if ([value isKindOfClass:NSURL.class]) url = value;
+    else if ([value isKindOfClass:NSString.class] && [(NSString *)value length])
+        url = [NSURL URLWithString:value];
+    return url.scheme.length ? url : nil;
+}
+
+// Several keys may carry the same link in different encodings. Taking the
+// first hit in priority order beats comparing them: a mismatch between
+// __PayloadURL and a nested copy used to cancel both out.
 static NSURL *PXURLRouterTargetURL(id object, NSUInteger depth) {
     if (!object || depth > 3) return nil;
     if ([object isKindOfClass:NSURL.class]) return object;
-    // A plain bundle identifier/request description is not a target URL.
     if ([object isKindOfClass:NSString.class]) return nil;
-    NSURL *target = nil;
-    for (NSString *key in @[@"url", @"URL", @"targetURL", @"openURL", @"UIApplicationLaunchOptionsURLKey", @"__PayloadURL", @"__PayloadOpenURL", @"webpageURL"]) {
-        id value = PXURLRouterField(object, key);
-        NSURL *candidate = nil;
-        if ([value isKindOfClass:NSURL.class]) candidate = value;
-        else if ([value isKindOfClass:NSString.class] && [(NSString *)value length])
-            candidate = [NSURL URLWithString:value];
-        if (!candidate.scheme.length) continue;
-        if (target && ![target isEqual:candidate]) return nil;
-        target = candidate;
+    for (NSString *key in @[@"__PayloadURL", @"__PayloadOpenURL", @"UIApplicationLaunchOptionsURLKey",
+                            @"url", @"URL", @"targetURL", @"openURL", @"webpageURL"]) {
+        NSURL *url = PXURLRouterURLValue(PXURLRouterField(object, key));
+        if (url) return url;
     }
-    for (NSString *key in @[@"__Payload", @"payload", @"options", @"__PayloadOptions", @"__AppLink4LS", @"__UserActivity4LS"]) {
+    for (NSString *key in @[@"__PayloadOptions", @"__AppLink4LS", @"__UserActivity4LS",
+                            @"__Payload", @"payload", @"options"]) {
         id value = PXURLRouterField(object, key);
-        if (![value isKindOfClass:NSDictionary.class]) continue;
-        NSURL *candidate = PXURLRouterTargetURL(value, depth + 1);
-        if (!candidate) continue;
-        if (target && ![target isEqual:candidate]) return nil;
-        target = candidate;
+        if (![value isKindOfClass:NSDictionary.class] && ![value isKindOfClass:NSObject.class]) continue;
+        NSURL *url = PXURLRouterTargetURL(value, depth + 1);
+        if (url) return url;
     }
-    return target;
+    return nil;
 }
 
 static UIViewController *PXURLRouterPresenter(void) {
