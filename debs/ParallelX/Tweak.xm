@@ -5,6 +5,7 @@
 #import <notify.h>
 #import <dlfcn.h>
 #import <mach-o/dyld.h>
+#import <mach-o/loader.h>
 #import "Common/PXCloneCrane.h"
 #import "Common/PXCloneMenu.h"
 #import "Common/PXCloneLaunch.h"
@@ -532,6 +533,39 @@ static void PXForcePluginState(void) {
     [PXCloneProbe log:@"ORIG-STATE-FORCED now=%llu", (unsigned long long)PXPluginState()];
 }
 
+// The image's own constructors bail at dyld time, which is also why every
+// feature is dead and not only the panel. Their addresses are stable in this
+// binary (__TEXT,__init_offsets): call them again on the main queue, where the
+// classes and run loop they need already exist, then start the panel.
+static const uintptr_t PXOrigInitOffsets[] = { 0x40bc, 0xab04, 0x6aabc };
+
+static BOOL PXCallOriginalInits(void) {
+    uint32_t count = _dyld_image_count();
+    for (uint32_t index = 0; index < count; index++) {
+        const char *name = _dyld_get_image_name(index);
+        if (!name || !strstr(name, "ParallelX.dylib")) continue;
+        const struct mach_header *header = _dyld_get_image_header(index);
+        if (!header || header->magic != MH_MAGIC_64) return NO;
+        uintptr_t slide = (uintptr_t)header;
+        const struct segment_command_64 *segment =
+            (const struct segment_command_64 *)((const char *)header + sizeof(struct mach_header_64));
+        for (uint32_t command = 0; command < header->ncmds; command++) {
+            if (segment->cmd == LC_SEGMENT_64 && !strcmp(segment->segname, "__TEXT")) {
+                slide -= (uintptr_t)segment->vmaddr;
+                break;
+            }
+            segment = (const struct segment_command_64 *)((const char *)segment + segment->cmdsize);
+        }
+        for (size_t entry = 0; entry < sizeof(PXOrigInitOffsets) / sizeof(PXOrigInitOffsets[0]); entry++) {
+            void (*initializer)(void) = (void (*)(void))(slide + PXOrigInitOffsets[entry]);
+            initializer();
+        }
+        [PXCloneProbe log:@"ORIG-INITS ran image=%u slide=%d", index, (int)(slide != 0)];
+        return YES;
+    }
+    return NO;
+}
+
 static BOOL PXClassHasValue(Class cls, NSString *key) {
     if (!cls) return NO;
     @try { return [cls valueForKey:key] != nil; }
@@ -589,6 +623,7 @@ static void PXEnsureOriginalPanel(void) {
             return;
         }
     }
+    if (image) PXCallOriginalInits();
     PXStartOriginalPanel(0);
 }
 
