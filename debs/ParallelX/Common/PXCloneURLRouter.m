@@ -19,7 +19,6 @@ static NSTimeInterval const PXURLRouterPollInterval = 0.2;
 static NSUInteger const PXURLRouterPollLimit = 25;
 static NSTimeInterval const PXURLRouterCatalogWaitInterval = 0.1;
 static NSUInteger const PXURLRouterCatalogWaitLimit = 50;
-static NSTimeInterval const PXURLRouterRefreshThrottle = 1.0;
 static UIWindow *PXURLRouterWindow = nil;
 static NSTimeInterval PXURLRouterLastRefresh = 0;
 static BOOL PXURLRouterCatalogLoading = NO;
