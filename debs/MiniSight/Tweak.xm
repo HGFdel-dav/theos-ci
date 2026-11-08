@@ -51,6 +51,7 @@ static void MiniSightShowConfirm(void);
 static void MiniSightAnswerConfirm(BOOL allow);
 static void MiniSightSay(NSString *line);
 static void MiniSightShowBubble(NSString *raw);
+static void MiniSightShowBubbleWidth(NSString *raw, CGFloat maxW, NSUInteger cap);
 static void MiniSightShowStatusLine(NSString *text);
 static void MiniSightSetAnchor(CGPoint want, BOOL save);
 static void MiniSightFollowBubble(void);
@@ -507,6 +508,8 @@ static BOOL gMiniSightBubbleLayoutValid = NO;
 static CGFloat gMiniSightBubbleTailX = -1.0;
 static CAShapeLayer *gMiniSightBubbleTail = nil;
 static dispatch_block_t gMiniSightBubbleHideWork = nil;
+static BOOL gMiniSightBubbleExpanded = NO;
+static NSString *gMiniSightBubbleText = nil;
 static NSString *gMiniSightLastLine = nil;
 static CGPoint   gMiniSightAnchor = {0, 0};   // 身体中心（整屏窗口坐标，绝不是 window.center）
 static BOOL      gMiniSightAnchorValid = NO;
@@ -675,6 +678,7 @@ static void MiniSightApplyGravitySample(double gx, double gy,
         gMiniSightGravityShakeLatched = YES;
         gMiniSightGravityLastImpulseTime = now;
         MiniSightGravityDiagnostic(@"shake", [NSString stringWithFormat:@"g=%.2f", magnitude]);
+        [MiniSightBlip playIfEnabled:MiniSightRuntimeConfig.shared.sound];
     } else if (MSGravityShakeShouldReset(magnitude, gMiniSightGravityShakeLatched)) {
         gMiniSightGravityShakeLatched = NO;
     }
@@ -973,9 +977,14 @@ static CGPoint MiniSightDefaultAnchor(void) {
 static void MiniSightApplyRuntimeConfig(void) {
     MiniSightRuntimeConfig *c = MiniSightRuntimeConfig.shared;
     if (gMiniSightPet) {
+        CGFloat size = MiniSightPetSize();
+        if (fabs(gMiniSightPet.bounds.size.width - size) > 0.5) {
+            gMiniSightPet.bounds = CGRectMake(0, 0, size, size);
+        }
         gMiniSightPet.roamPace = c.activity == 0 ? 0.6 : (c.activity == 1 ? 3.0 : 0.0);
         gMiniSightPet.preferredFPS = c.frameLimit == 1 ? 30 : (c.frameLimit == 2 ? 60 : (c.frameLimit == 3 ? 120 : 0));
         gMiniSightPet.activityActive = YES;
+        gMiniSightPet.soundEnabled = c.sound;
     }
     gMiniSightBottomGap = MSClamp(c.bottomGap, 0, 40);
     if (c.costume.length) MiniSightLoadCostume(c.costume);
@@ -1150,13 +1159,17 @@ static void MiniSightRunGesture(NSString *action, BOOL allowSecondTap) {
             gMiniSightDragOrigin = origin;
             gMiniSightDragOriginValid = YES;
             gMiniSightDragging = YES;
+            gMiniSightPet.soundEnabled = MiniSightRuntimeConfig.shared.sound;
+            if (gMiniSightPet) [gMiniSightPet beginDraggingWithDirection:1];
             MSDiagEvent(@"drag", @"begin", @"ok", @{ @"source": @"plugin", @"x": @(origin.x), @"y": @(origin.y) });
             MiniSightInteractionBegin();
             break;
         }
         case UIGestureRecognizerStateChanged: {
             if (!gMiniSightDragOriginValid) break; // 防御异常的无 Began 回调
-            CGFloat gain = MiniSightRuntimeConfig.shared.dragResponse ? 1.0 : 0.40;
+            if (gMiniSightPet && fabs(translation.x) > 4)
+                [gMiniSightPet beginDraggingWithDirection:translation.x];
+            CGFloat gain = MiniSightRuntimeConfig.shared.dragResponse ? 1.0 : 0.20;
             CGPoint want = CGPointMake(gMiniSightDragOrigin.x + translation.x * gain,
                                        gMiniSightDragOrigin.y + translation.y * gain);
             MiniSightSetAnchor(want, NO);
@@ -1166,7 +1179,7 @@ static void MiniSightRunGesture(NSString *action, BOOL allowSecondTap) {
             if (gMiniSightDragOriginValid) {
                 // Ended 也可能带最后一段 translation。必须沿用与 Changed
                 // 相同的增益，否则关掉「增强拖动响应」后松手会突然跳到全速位置。
-                CGFloat gain = MiniSightRuntimeConfig.shared.dragResponse ? 1.0 : 0.40;
+                CGFloat gain = MiniSightRuntimeConfig.shared.dragResponse ? 1.0 : 0.20;
                 CGPoint want = CGPointMake(gMiniSightDragOrigin.x + translation.x * gain,
                                            gMiniSightDragOrigin.y + translation.y * gain);
                 // 保持 dragging 到 SetAnchor 完成，避免气泡让位把刚拖到的中心改掉。
@@ -1175,12 +1188,14 @@ static void MiniSightRunGesture(NSString *action, BOOL allowSecondTap) {
             }
             gMiniSightDragOriginValid = NO;
             gMiniSightDragging = NO;
+            [gMiniSightPet endDragging];
             MiniSightInteractionEnd();
             break;
         }
         default:   // Cancelled / Failed：当前位置保留，但本次不写盘
             gMiniSightDragOriginValid = NO;
             gMiniSightDragging = NO;
+            [gMiniSightPet endDragging];
             MiniSightInteractionEnd();
             break;
     }
@@ -1189,7 +1204,6 @@ static void MiniSightRunGesture(NSString *action, BOOL allowSecondTap) {
 /// 旋转：界面方向变化是异步的，稍等一下再重算并 clamp
 - (void)handleSingleTap:(UITapGestureRecognizer *)tap {
     (void)tap;
-    [MiniSightBlip playIfEnabled:MiniSightRuntimeConfig.shared.sound];
     if (!MiniSightGestureEnabled(@"singleTap")) {
         MSDiagEvent(@"gesture", @"single", @"skipped", @{ @"reason": @"disabled" });
         return;
@@ -1219,7 +1233,6 @@ static void MiniSightRunGesture(NSString *action, BOOL allowSecondTap) {
             // The current switch is checked asynchronously by the plugin entry.
             MiniSightInteractionBegin();
             [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium] impactOccurred];
-            [MiniSightBlip playIfEnabled:MiniSightRuntimeConfig.shared.sound];
             if (!MiniSightGestureEnabled(@"longPress")) {
                 MSDiagEvent(@"gesture", @"long", @"skipped", @{ @"reason": @"disabled" });
                 break;
@@ -1423,6 +1436,41 @@ static void MiniSightRequestResources(BOOL force, void (^completion)(void)) {
     }];
 }
 
+static NSTimer *gMiniSightSettingsWatch = nil;
+static NSString *gMiniSightWatchedRevision = nil;
+
+/// The Darwin notification can be missed while SpringBoard is busy. Watch the
+/// revision the App writes (and the shown file) so size/visibility still apply
+/// within half a second. Reads two small files, no atlas work.
+static void MiniSightStartSettingsWatch(void) {
+    [gMiniSightSettingsWatch invalidate];
+    gMiniSightSettingsWatch = [NSTimer timerWithTimeInterval:0.5 repeats:YES block:^(NSTimer *timer) {
+        if (!gMiniSightContainer.length) return;
+        NSString *prefsPath = [gMiniSightContainer stringByAppendingPathComponent:@"Library/Preferences/com.openminis.app.plist"];
+        NSDictionary *prefs = [NSDictionary dictionaryWithContentsOfFile:prefsPath];
+        NSString *revision = [prefs[@"minisight.settings.revision"] isKindOfClass:NSString.class]
+            ? prefs[@"minisight.settings.revision"] : nil;
+        NSString *shownPath = [gMiniSightContainer stringByAppendingPathComponent:@"Documents/MiniSight/shown"];
+        NSString *shownText = [NSString stringWithContentsOfFile:shownPath encoding:NSUTF8StringEncoding error:nil];
+        BOOL shown = ![shownText isEqualToString:@"0"];
+        if (!gMiniSightWatchedRevision.length) {
+            gMiniSightWatchedRevision = [revision copy];
+            return;
+        }
+        BOOL revisionChanged = revision && ![revision isEqualToString:gMiniSightWatchedRevision];
+        if (!revisionChanged && shown == gMiniSightShown) return;
+        gMiniSightWatchedRevision = [revision copy];
+        MiniSightReloadSettings();
+    }];
+    [NSRunLoop.mainRunLoop addTimer:gMiniSightSettingsWatch forMode:NSRunLoopCommonModes];
+}
+
+static void MiniSightStopSettingsWatch(void) {
+    [gMiniSightSettingsWatch invalidate];
+    gMiniSightSettingsWatch = nil;
+    gMiniSightWatchedRevision = nil;
+}
+
 static void MiniSightBuildUI(void) {
     NSCAssert([NSThread isMainThread], @"MiniSight UI must be built on main thread");
     if (!gMiniSightResourcesReady) {
@@ -1431,6 +1479,7 @@ static void MiniSightBuildUI(void) {
     }
     if (gMiniSightBuilt) return;
     gMiniSightBuilt = YES;
+    MiniSightStartSettingsWatch();
 
     CGRect screen = MiniSightScreenRect();
 
@@ -1713,6 +1762,7 @@ static void MiniSightHide(void) {
 
 /// 彻底拆掉浮窗（设置变更时重建用）
 static void MiniSightDestroyUI(void) {
+    MiniSightStopSettingsWatch();
     MiniSightStopGravity();
     [[MiniSightChatPanel existingPanel] hideWithoutKey];
     MiniSightChatPanel.existingPanel.anchorView = nil;
@@ -1809,6 +1859,7 @@ static void MiniSightHideBubble(void) {
     if (gMiniSightConfirming) return;
     gMiniSightBubble.hidden = YES;
     gMiniSightBubbleShown = NO;
+    gMiniSightBubbleExpanded = NO;
 }
 
 /// 纯文字气泡：动态深浅色、小尾巴指向指示器，最多 20 字。
@@ -1891,6 +1942,18 @@ static void MiniSightPlaceBubble(CGFloat w, CGFloat h) {
     placing = NO;
 }
 
+/// Tap the bubble itself to expand it to the screen width (and back).
+@interface MiniSightBubbleTapTarget : NSObject
+@end
+@implementation MiniSightBubbleTapTarget
+- (void)toggleBubbleSize:(UITapGestureRecognizer *)tap {
+    if (tap.state != UIGestureRecognizerStateEnded) return;
+    gMiniSightBubbleExpanded = !gMiniSightBubbleExpanded;
+    if (gMiniSightBubbleText.length) MiniSightShowBubbleWidth(gMiniSightBubbleText, 360.0, 600);
+}
+@end
+static MiniSightBubbleTapTarget *gMiniSightBubbleTapTarget = nil;
+
 static void MiniSightShowBubbleWidth(NSString *raw, CGFloat maxW, NSUInteger cap) {
     UIView *host = gMiniSightPet ?: gMiniSightPill;
     UIView *root = gMiniSightWindow.rootViewController.view;
@@ -1908,7 +1971,7 @@ static void MiniSightShowBubbleWidth(NSString *raw, CGFloat maxW, NSUInteger cap
         b.layer.cornerCurve = kCACornerCurveContinuous;
         b.layer.borderWidth = 0.5;
         b.layer.borderColor = [UIColor separatorColor].CGColor;
-        b.userInteractionEnabled = NO;
+        b.userInteractionEnabled = YES;
         b.hidden = YES;
 
         UIScrollView *scroll = [[UIScrollView alloc] init];
@@ -1918,7 +1981,7 @@ static void MiniSightShowBubbleWidth(NSString *raw, CGFloat maxW, NSUInteger cap
         scroll.alwaysBounceVertical = NO;
         scroll.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
         UILabel *l = [[UILabel alloc] init];
-        l.font = [UIFont systemFontOfSize:11];
+        l.font = [UIFont systemFontOfSize:14];
         l.textColor = [UIColor labelColor];
         l.numberOfLines = 0;
         l.userInteractionEnabled = NO;
@@ -1932,6 +1995,11 @@ static void MiniSightShowBubbleWidth(NSString *raw, CGFloat maxW, NSUInteger cap
         [b.layer addSublayer:tail];
         gMiniSightBubbleTail = tail;
 
+        if (!gMiniSightBubbleTapTarget) gMiniSightBubbleTapTarget = [MiniSightBubbleTapTarget new];
+        UITapGestureRecognizer *tap =
+            [[UITapGestureRecognizer alloc] initWithTarget:gMiniSightBubbleTapTarget
+                                                   action:@selector(toggleBubbleSize:)];
+        [b addGestureRecognizer:tap];
         [root addSubview:b];
         gMiniSightBubble = b;
     }
@@ -1941,15 +2009,23 @@ static void MiniSightShowBubbleWidth(NSString *raw, CGFloat maxW, NSUInteger cap
     gMiniSightBubble.backgroundColor = [UIColor systemBackgroundColor];
     gMiniSightBubbleLabel.textColor = [UIColor labelColor];
     gMiniSightBubbleTail.fillColor = [UIColor systemBackgroundColor].CGColor;
+    gMiniSightBubbleText = text;
     gMiniSightBubbleLabel.text = text;
 
-    CGFloat textWidth = MAX(1.0, maxW - 20.0);
+    CGFloat screenW = root.bounds.size.width;
+    // Panel, not a tooltip: short lines stay compact, long text grows wider
+    // and taller by itself; only past 42% of the screen does it scroll.
+    CGFloat effectiveW = gMiniSightBubbleExpanded
+        ? MAX(240.0, screenW - 32.0) : MIN(maxW, screenW - 32.0);
+    CGFloat textWidth = MAX(1.0, effectiveW - 24.0);
     CGSize fit = [gMiniSightBubbleLabel sizeThatFits:CGSizeMake(textWidth, CGFLOAT_MAX)];
     gMiniSightBubbleContentHeight = ceil(MAX(fit.height, gMiniSightBubbleLabel.font.lineHeight));
-    CGFloat minWidth = gMiniSightConfirming ? 180.0 : 44.0;
-    CGFloat w = MIN(maxW, MAX(minWidth, ceil(fit.width) + 20.0));
-    CGFloat visibleTextHeight = MIN(gMiniSightBubbleContentHeight, gMiniSightConfirming ? 180.0 : 96.0);
-    CGFloat h = visibleTextHeight + (gMiniSightConfirming ? 52.0 : 14.0);
+    CGFloat minWidth = gMiniSightConfirming ? 180.0 : 140.0;
+    CGFloat wanted = ceil(fit.width) + 24.0;
+    CGFloat w = MIN(effectiveW, MAX(minWidth, wanted));
+    CGFloat maxVisible = gMiniSightConfirming ? 180.0 : root.bounds.size.height * 0.42;
+    CGFloat visibleTextHeight = MIN(gMiniSightBubbleContentHeight, maxVisible);
+    CGFloat h = visibleTextHeight + (gMiniSightConfirming ? 52.0 : 20.0);
     gMiniSightBubbleScroll.contentOffset = CGPointZero;
     MiniSightPlaceBubble(w, h);
 }
@@ -1967,7 +2043,8 @@ extern "C" void MiniSightFollowBubble(void) {
 }
 
 static void MiniSightShowBubble(NSString *raw) {
-    MiniSightShowBubbleWidth(raw, 220.0, 20);
+    gMiniSightBubbleExpanded = NO;
+    MiniSightShowBubbleWidth(raw, 360.0, 600);
 }
 
 /// 允许/拒绝两个按钮的宿主
@@ -2006,6 +2083,7 @@ static void MiniSightAnswerConfirm(BOOL allow) {
     gMiniSightBubble.userInteractionEnabled = NO;
     gMiniSightBubble.hidden = YES;
     gMiniSightBubbleShown = NO;
+    gMiniSightBubbleExpanded = NO;
     // 确认态结束：把头顶空间收回普通值，桌宠可行范围也跟着还原
     MiniSightSetAnchor(gMiniSightAnchor, NO);
     if (!gMiniSightBurst && !MiniSightAlwaysShow()) MiniSightHide();
@@ -2040,7 +2118,7 @@ static void MiniSightShowConfirm(void) {
         return;
     }
     NSString *text = action.length ? [NSString stringWithFormat:@"%@\n%@", action, command] : command;
-    MiniSightShowBubbleWidth(text, 260.0, 0);
+    MiniSightShowBubbleWidth(text, 360.0, 600);
 
     gMiniSightBubble.userInteractionEnabled = YES;
     if (!gMiniSightConfirmBar) {
@@ -2124,7 +2202,7 @@ static void MiniSightShowLine(NSString *line) {
 static void MiniSightShowStatusLine(NSString *text) {
     if (!text.length) return;
     if ((!gMiniSightWindow || gMiniSightWindow.hidden) && !gMiniSightBurst) return;
-    MiniSightShowBubbleWidth(text, 280.0, 60.0);
+    MiniSightShowBubbleWidth(text, 360.0, 600);
     if (gMiniSightBubbleHideWork) { dispatch_block_cancel(gMiniSightBubbleHideWork); gMiniSightBubbleHideWork = nil; }
     if (gMiniSightBurst) return;
     gMiniSightBubbleHideWork = dispatch_block_create(DISPATCH_BLOCK_DETACHED, ^{
@@ -2136,7 +2214,6 @@ static void MiniSightShowStatusLine(NSString *text) {
 
 /// 预置句子（AI 失败时兜底）。
 static void MiniSightSayPresetLine(void) {
-    [MiniSightBlip playIfEnabled:MiniSightRuntimeConfig.shared.sound];
     static NSArray<NSString *> *lines = nil;
     static dispatch_once_t once;
     dispatch_once(&once, ^{

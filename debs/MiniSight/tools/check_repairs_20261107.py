@@ -25,7 +25,7 @@ pet=(ROOT/'MiniSightPet.m').read_text()
 need('_spriteLayout == 3' in pet and '(CGFloat)col / packCols' in pet and '(CGFloat)_state / packRows' in pet, 'single sheet plays row/column frames')
 need('_spriteLayout == 1' in pet and 'CGRectMake(0, 0, 1, 1)' in pet, 'single image is never sliced')
 need('MSLoadAtlas(petPath, single, key)' in (ROOT/'MiniSightResources.m').read_text(), 'single image loads at its own ratio')
-need(tweak.count('0.40') >= 2, 'drag gain is applied on change and on release')
+need(tweak.count('0.20') >= 2, 'drag gain is applied on change and on release')
 blip=(ROOT/'MiniSightBlip.m').read_text()
 need('fmtLen = 16' in blip and 'appendBytes:&fmtLen length:4' in blip, 'WAV fmt chunk is 16 bytes')
 need('appendBytes:&dataLen length:4' in blip, 'WAV data length is frames*2, not fmt')
@@ -33,6 +33,10 @@ need('initWithData:wav error:&error' in blip and '[gPlayer play]' in blip, 'blip
 need('setCategory' not in blip, 'blip never hijacks the audio session')
 need('"trash", @"清空"' in panel and '@[@"mic", @"听写"]' not in panel, 'menu is icon-only without duplicate mic')
 need('name = @"natural";' in tweak, 'colour removal keeps the source pixels')
+need('gMiniSightSettingsWatch' in tweak and 'MiniSightReloadSettings();' in tweak, 'settings revision and shown are polled live')
+need('CGFloat size = MiniSightPetSize()' in tweak, 'pet size applies without a respring')
+need('soundEnabled = c.sound' in tweak, 'sound switch is live')
+need('beginDraggingWithDirection' in pet and 'endDragging' in pet, 'drag keeps one clip until release')
 import re, struct, wave
 from io import BytesIO
 _frames_match = re.search(r'frames = (\d+)', blip)
@@ -51,6 +55,10 @@ else:
     except Exception as exc:  # noqa: BLE001
         fails.append('standard WAV parser rejects the blip header: %s' % exc)
 need('name = @"natural";' in tweak, 'colour removal keeps the source pixels')
+need('gMiniSightSettingsWatch' in tweak and 'MiniSightReloadSettings();' in tweak, 'settings revision and shown are polled live')
+need('CGFloat size = MiniSightPetSize()' in tweak, 'pet size applies without a respring')
+need('soundEnabled = c.sound' in tweak, 'sound switch is live')
+need('beginDraggingWithDirection' in pet and 'endDragging' in pet, 'drag keeps one clip until release')
 need('MSKeyOutBlackBackground' in (ROOT/'MiniSightResources.m').read_text(), 'black sheet background is keyed out')
 if fails:
     print('FAIL plugin repairs'); [print(' -',x) for x in fails]; sys.exit(1)
