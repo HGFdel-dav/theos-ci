@@ -24,7 +24,7 @@ class TestURLRouting(unittest.TestCase):
         # router's own proceed block is the only other caller.
         body = TWEAK.split('static void PXHandleOpenRequest', 1)[1].split('static BOOL PXInstallURLRoutingHook', 1)[0]
         self.assertEqual(body.count('PXOrigHandleOpenRequest(self'), 1)
-        self.assertIn('if ([PXCloneURLRouter handleOpenRequest:request proceed:proceed]) return;', body)
+        self.assertIn('if ([PXCloneURLRouter handleOpenRequest:request options:options proceed:proceed]) return;', body)
         self.assertIn('proceed();', body)
 
     def test_hook_is_part_of_the_bounded_bootstrap(self):
@@ -100,6 +100,7 @@ class TestURLRouting(unittest.TestCase):
 
     def test_header_contract(self):
         self.assertIn('+ (BOOL)handleOpenRequest:(nullable id)request', ROUTER_H)
+        self.assertIn('options:(nullable id)options', ROUTER_H)
         self.assertIn('at most once', ROUTER_H)
 
     def test_router_is_built_into_the_tweak(self):
