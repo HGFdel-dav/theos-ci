@@ -30,6 +30,12 @@
     return INTERNAL[schemeOf(value)] ? null : value;
   }
 
+  function report(href) {
+    try {
+      browser.runtime.sendMessage({ rdHandoff: href });
+    } catch (e) {}
+  }
+
   function debug(stage, extra) {
     try { browser.runtime.sendMessage({ rdDebug: stage, extra: extra || '' }); } catch (e) {}
   }
@@ -60,7 +66,7 @@
       if (!appURL) return;
       event.preventDefault();
       event.stopPropagation();
-      report(appURL, new URL(href, document.baseURI).href);
+      report(appURL);
       return;
     }
     if (!scheme || INTERNAL[scheme]) return;
