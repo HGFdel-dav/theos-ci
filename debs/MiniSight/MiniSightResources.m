@@ -24,7 +24,7 @@ static UIImage *MSAtlas;
         @"minisight.ai.persona": @"persona", @"minisight.ai.nickname": @"nickname",
         @"minisight.ai.adjust": @"aiAdjust", @"minisight.ai.permissions": @"aiPermissions",
         @"minisight.ai.adjustments": @"adjustments", @"minisight.proactive": @"proactive",
-        @"minisight.proactive.interval": @"proactiveInterval", @"minisight.dialogue.scale": @"bubbleScale",
+        @"minisight.proactive.interval": @"proactiveInterval", @"minisight.dialogue.scale": @"bubbleScale", @"minisight.chat.panelScale": @"panelScale",
         @"minisight.dialogue.textScale": @"textScale", @"minisight.dialogue.dwell": @"dwell",
         @"minisight.dialogue.return": @"returnKey", @"minisight.voice.reply": @"voiceReply",
         @"minisight.voice.input": @"voiceInput", @"minisight.voice.snore": @"snore",
