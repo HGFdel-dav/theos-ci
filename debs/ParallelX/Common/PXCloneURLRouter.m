@@ -98,7 +98,7 @@ static void (^PXURLRouterOnce(void (^proceed)(void)))(void) {
 @end
 
 @interface PXCloneURLRouter ()
-(void)loadCatalogForRequest:(id)request proceed:(void (^)(void))proceed
++ (void)loadCatalogForRequest:(id)request proceed:(void (^)(void))proceed
                       bundle:(NSString *)bundle attempt:(NSUInteger)attempt generation:(NSUInteger)generation;
 + (void)activateContainer:(NSString *)container bundle:(NSString *)bundle
                   proceed:(void (^)(void))proceed;
@@ -268,7 +268,6 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
 
     if (!PXURLRouterLooksLikePayment(url)) return NO;
 
-    NSUInteger generation = ++PXURLRouterGeneration;
     NSString *remembered = [self rememberedChoiceForBundle:bundle];
     if (remembered.length) {
         [PXCloneProbe log:@"REMEMBERED %@ -> %@", bundle, remembered];
