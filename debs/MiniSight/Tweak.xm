@@ -532,10 +532,10 @@ static void MiniSightRefreshRecorderSettingsThenReadActivity(void) {
     _box.frame = CGRectInset(self.rootViewController.view.bounds, 60, 120);
     _dragArea.frame = CGRectInset(_box.bounds, 30, 30);
 }
-- (void)cancelTap { MSDiag(@"region cancel"); self.hidden = YES; }
+- (void)cancelTap { MSDiagEvent(@"recording", @"region", @"skipped", @{ @"source": @"plugin", @"reason": @"cancel" }); self.hidden = YES; }
 - (void)confirmTap {
     CGRect b = self.rootViewController.view.bounds, f = _box.frame;
-    MSDiag(@"region confirm x=%.2f y=%.2f w=%.2f h=%.2f", f.origin.x / b.size.width, f.origin.y / b.size.height, f.size.width / b.size.width, f.size.height / b.size.height);
+    MSDiagEvent(@"recording", @"region", @"ok", @{ @"source": @"plugin", @"x": @(f.origin.x / b.size.width), @"y": @(f.origin.y / b.size.height), @"w": @(f.size.width / b.size.width), @"h": @(f.size.height / b.size.height) });
     if (self.onConfirm) self.onConfirm(CGRectMake(f.origin.x / b.size.width, f.origin.y / b.size.height,
                                                   f.size.width / b.size.width, f.size.height / b.size.height));
     self.hidden = YES;
@@ -1576,7 +1576,6 @@ static void MiniSightRequestResources(BOOL force, void (^completion)(void)) {
         gMiniSightTintBase = atlas;
         NSInteger spriteLayout = MiniSightSpriteLayoutForContainer(container);
         MSDiagEvent(@"assets", @"layout", @"ok", @{ @"source": @"plugin", @"layout": @(spriteLayout), @"container": @(container.length > 0) });
-        MSDiag(@"assets layout=%ld container=%d", (long)spriteLayout, container.length > 0);
         if (gMiniSightPet) {
             gMiniSightPet.spriteLayout = spriteLayout;
             if (atlas) {
@@ -1626,7 +1625,7 @@ static void MiniSightStartSettingsWatch(void) {
         }
         BOOL revisionChanged = revision && ![revision isEqualToString:gMiniSightWatchedRevision];
         if (!revisionChanged && shown == gMiniSightShown) return;
-        MSDiag(@"settings change rev=%@ shown=%d", revision ?: @"none", shown);
+        MSDiagEvent(@"settings", @"change", @"pending", @{ @"source": @"plugin", @"revision": revision ?: @"none", @"shown": @(shown) });
         gMiniSightWatchedRevision = [revision copy];
         MiniSightReloadSettings();
     }];
@@ -1757,7 +1756,6 @@ static void MiniSightBuildUI(void) {
         NSInteger builtLayout = MiniSightSpriteLayoutForContainer(gMiniSightContainer);
         gMiniSightPet.spriteLayout = builtLayout;
         MSDiagEvent(@"assets", @"layout", @"ok", @{ @"source": @"plugin", @"layout": @(builtLayout), @"reason": @"build" });
-        MSDiag(@"assets build layout=%ld", (long)builtLayout);
         NSString *variantPath = [gMiniSightContainer stringByAppendingPathComponent:@"Documents/MiniSight/variant"];
         gMiniSightPet.variantIndex = [[NSString stringWithContentsOfFile:variantPath encoding:NSUTF8StringEncoding error:nil] integerValue];
         gMiniSightPet.reducedWork = [NSProcessInfo processInfo].lowPowerModeEnabled;
@@ -1884,7 +1882,7 @@ static void MiniSightShowAfterOwnershipCheck(void) {
 
     // 先透明再取消 hidden，然后 0.18s 淡入
     gMiniSightWindow.alpha = 0.0;
-    MSDiag(@"ui show size=%.0f layout=%ld", MiniSightPetSize(), (long)(gMiniSightPet.spriteLayout));
+    MSDiagEvent(@"runtime", @"show", @"ok", @{ @"source": @"plugin", @"size": @(MiniSightPetSize()), @"layout": @(gMiniSightPet.spriteLayout) });
     gMiniSightWindow.hidden = NO;
     MiniSightStartGravity();
     MSDiagEvent(@"runtime", @"show", @"ok", @{ @"source": @"plugin", @"visible": @YES, @"style": @(MiniSightStyle()) });
@@ -1950,7 +1948,7 @@ static void MiniSightDestroyUI(void) {
     gMiniSightAnchorValid = NO;
     gMiniSightDragOriginValid = NO;
     gMiniSightDragging = NO;
-    MSDiag(@"ui hide");
+    MSDiagEvent(@"runtime", @"hide", @"ok", @{ @"source": @"plugin" });
     gMiniSightWindow.hidden = YES;
     gMiniSightWindow.rootViewController = nil;
     gMiniSightWindow = nil;
@@ -1994,7 +1992,6 @@ static void MiniSightApplySettingsLive(void) {
         gMiniSightPet.reducedWork = [NSProcessInfo processInfo].lowPowerModeEnabled;
     }
     MiniSightApplyRuntimeConfig();
-    MSDiag(@"settings apply size=%.0f interval=%.0f bubble=%.2f text=%.2f gravity=%.2f sound=%d shown=%d", MiniSightPetSize(), MiniSightRuntimeConfig.shared.activityInterval, MiniSightRuntimeConfig.shared.bubbleScale, MiniSightRuntimeConfig.shared.textScale, MiniSightRuntimeConfig.shared.gravityStrength, MiniSightRuntimeConfig.shared.sound, MiniSightShown());
     MSDiagEvent(@"settings", @"apply", @"ok", @{ @"source": @"plugin",
         @"size": @(MiniSightPetSize()), @"interval": @(MiniSightRuntimeConfig.shared.activityInterval),
         @"bubble": @(MiniSightRuntimeConfig.shared.bubbleScale),
