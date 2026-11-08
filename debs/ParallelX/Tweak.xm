@@ -508,6 +508,30 @@ static BOOL PXDylibImageLoaded(const char *needle) {
     return NO;
 }
 
+// pluginEnabled lives in the Darwin notify state of this name, not only in the
+// plist: PXPluginIsEnabled returns a cached copy of it and start() bails while
+// it is 0. A restart of the jailbreak leaves the state at 0, so force it and
+// post so the tweak's own observer refreshes the cache before start runs.
+static const char *PXPluginStateName = "com.moxuan.parallelx.plugin-state";
+
+static uint64_t PXPluginState(void) {
+    int token = -1;
+    uint64_t value = 0;
+    if (notify_register_check(PXPluginStateName, &token) != NOTIFY_STATUS_OK) return 0;
+    notify_get_state(token, &value);
+    notify_cancel(token);
+    return value;
+}
+
+static void PXForcePluginState(void) {
+    int token = -1;
+    if (notify_register_check(PXPluginStateName, &token) != NOTIFY_STATUS_OK) return;
+    notify_set_state(token, 1);
+    notify_cancel(token);
+    notify_post(PXPluginStateName);
+    [PXCloneProbe log:@"ORIG-STATE-FORCED now=%llu", (unsigned long long)PXPluginState()];
+}
+
 static BOOL PXClassHasValue(Class cls, NSString *key) {
     if (!cls) return NO;
     @try { return [cls valueForKey:key] != nil; }
@@ -533,7 +557,9 @@ static void PXStartOriginalPanel(NSUInteger step) {
     }
     SEL refresh = NSSelectorFromString(@"refreshHandleSettings");
     SEL update = NSSelectorFromString(@"updatePluginEnabled");
-    [PXCloneProbe log:@"ORIG-STATE step=%lu panel=%d handle=%d", (unsigned long)step,
+    if (step == 0) PXForcePluginState();
+    [PXCloneProbe log:@"ORIG-STATE step=%lu enable=%llu panel=%d handle=%d", (unsigned long)step,
+        (unsigned long long)PXPluginState(),
         (int)PXClassHasValue(panel, @"panelWindow"), (int)PXClassHasValue(panel, @"handleWindow")];
     if ([panel respondsToSelector:update]) ((void (*)(id, SEL))objc_msgSend)((id)panel, update);
     if ([panel respondsToSelector:refresh]) ((void (*)(id, SEL))objc_msgSend)((id)panel, refresh);
