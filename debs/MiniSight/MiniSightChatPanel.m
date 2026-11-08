@@ -1198,7 +1198,7 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
         self.messagesDirty = NO;
         CGFloat widest = 0;
         for (NSUInteger i = 0; i < self.rows.count && i < self.bubbleWidths.count; i++) {
-            MiniSightChatBubble *row = self.rows[i];
+            MiniSightChatBubble *row = (MiniSightChatBubble *)self.rows[i];
             row.label.preferredMaxLayoutWidth = MAX(1, maxWidth - 24);
             CGFloat w = [row widthForMax:maxWidth];
             self.bubbleWidths[i].constant = w;
@@ -1207,7 +1207,7 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
         if (self.rows.count) panelW = MIN(maxWidth, MAX(200., widest + 24.));
         CGFloat content = 0;
         for (NSUInteger i = 0; i < self.rows.count; i++) {
-            MiniSightChatBubble *row = self.rows[i];
+            MiniSightChatBubble *row = (MiniSightChatBubble *)self.rows[i];
             CGFloat w = i < self.bubbleWidths.count ? self.bubbleWidths[i].constant : panelW;
             CGFloat rowHeight = [row systemLayoutSizeFittingSize:CGSizeMake(w, UILayoutFittingCompressedSize.height) withHorizontalFittingPriority:UILayoutPriorityRequired verticalFittingPriority:UILayoutPriorityFittingSizeLevel].height;
             content += MAX(20, rowHeight);
