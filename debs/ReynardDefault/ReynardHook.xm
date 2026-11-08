@@ -24,6 +24,8 @@ static NSString *const kEnsureEvent = @"GeckoView:WebExtension:EnsureBuiltIn";
 static NSString *const kHandoffAddonID = @"reynarddefault@local";
 static NSString *const kInstallEvent = @"GeckoView:WebExtension:Install";
 static NSString *const kInstallPromptEvent = @"GeckoView:WebExtension:InstallPrompt";
+static NSString *const kDefaultPrefsEvent = @"GeckoView:SetDefaultPrefs";
+static NSString *const kSignaturePref = @"xpinstall.signatures.required";
 
 static const unsigned char kHandoffXpi[] = {
     0x50,0x4b,0x03,0x04,0x14,0x00,0x00,0x00,0x00,0x00,0x67,0xa2,0x68,0x5d,0xb0,0x85,
@@ -735,6 +737,16 @@ static void RDOpenExternally(NSURL *url) {
 - (void)dispatchToSwift:(NSString *)type message:(id)message callback:(id<RDEventCallback>)callback {
     RDMaybeCaptureRuntime(self, type);
     if (!rdEnsureDone) RDEnsureExtension(self);
+
+    if ([type isEqualToString:kDefaultPrefsEvent]) {
+        // Inject the pref into the very first payload so the profile scan and the
+        // install validation both run with signature checks off.
+        NSMutableDictionary *prefs = [NSMutableDictionary dictionaryWithDictionary:(NSDictionary *)message];
+        prefs[kSignaturePref] = @(NO);
+        RDLog(@"prefs injected (%lu keys)", (unsigned long)prefs.count);
+        %orig(prefs);
+        return;
+    }
 
     if ([type isEqualToString:kInstallPromptEvent]) {
         NSString *dump = [NSString stringWithFormat:@"%@", message];
