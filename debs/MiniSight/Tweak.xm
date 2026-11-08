@@ -2297,6 +2297,33 @@ static void MiniSightAnswerConfirm(BOOL allow) {
     if (!gMiniSightBurst && !MiniSightAlwaysShow()) MiniSightHide();
 }
 
+/// Turn a tool call into a short human action. Order matters: the most
+/// specific verb wins, so a log grep is "查看日志", not "执行命令".
+static NSString *MiniSightDescribeCommand(NSString *action, NSString *command) {
+    NSString *a = action.lowercaseString ?: @"", *c = command.lowercaseString ?: @"";
+    if (![a isEqualToString:@"shell_execute"])
+        return @{@"read_file": @"读取文件", @"write_file": @"写入文件", @"edit_file": @"修改文件",
+                 @"list_dir": @"查看目录", @"browser_use": @"浏览网页", @"subagent_task": @"派发子任务"}[a] ?: @"执行操作";
+    if ([c containsString:@"tap_screen"] || [c containsString:@"tap_element"]) return @"点击屏幕";
+    if ([c containsString:@"swipe_screen"]) return @"滑动屏幕";
+    if ([c containsString:@"screenshot"]) return @"截屏";
+    if ([c containsString:@"launch_app"]) return @"打开应用";
+    if ([c containsString:@"install_app"]) return @"安装应用";
+    if ([c containsString:@"toggle_mute"]) return @"切换静音";
+    if ([c containsString:@"press_home"] || [c containsString:@"press_power"]) return @"按键操作";
+    if ([c containsString:@"get_syslog"]) return @"读取系统日志";
+    if ([c containsString:@"record"]) return @"录屏";
+    if ([c containsString:@"list_dir"]) return @"查看目录";
+    if ([c containsString:@"grep "] || [c containsString:@"tail "] || [c containsString:@"cat "] ||
+        [c containsString:@"read_file"] || [c containsString:@".log"]) return @"查看日志";
+    if ([c containsString:@"write_file"] || [c containsString:@"edit_file"]) return @"写入文件";
+    if ([c containsString:@"curl "] || [c containsString:@"wget "]) return @"网络请求";
+    if ([c containsString:@"git "] || [c hasPrefix:@"git"]) return @"Git 操作";
+    if ([c containsString:@"python"] || [c containsString:@"node "]) return @"运行脚本";
+    if ([c containsString:@"minis-mcp-cli"]) return @"操作手机";
+    return @"执行终端命令";
+}
+
 /// 读 confirm.json，把问题+命令塞进气泡，底下挂两个按钮。
 static void MiniSightShowConfirm(void) {
     [[MiniSightChatPanel existingPanel] hideWithoutKey];
@@ -2325,12 +2352,10 @@ static void MiniSightShowConfirm(void) {
         MiniSightAnswerConfirm(NO);
         return;
     }
-    NSString *label = @{@"shell_execute": @"执行命令", @"read_file": @"读取文件",
-        @"write_file": @"写入文件", @"edit_file": @"修改文件", @"list_dir": @"查看目录",
-        @"browser_use": @"浏览网页", @"subagent_task": @"派发子任务"}[action] ?: (action.length ? action : @"操作");
+    NSString *label = MiniSightDescribeCommand(action, command);
     NSString *preview = [command stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (preview.length > 220) preview = [[preview substringToIndex:220] stringByAppendingString:@"…"];
-    NSString *text = [NSString stringWithFormat:@"允许「%@」？\n%@", label, preview];
+    NSString *text = [NSString stringWithFormat:@"允许%@？\n%@", label, preview];
     MiniSightShowBubbleWidth(text, 260.0, 600);
 
     gMiniSightBubble.userInteractionEnabled = YES;
