@@ -394,6 +394,7 @@ static BOOL rdEnsureDone;
 static NSHashTable *rdDispatchers;
 static id rdRuntimeBackend;
 static BOOL rdInstallTried;
+static BOOL rdInstallBroadcasted;
 static BOOL rdAddonConfirmed;
 
 static NSString *RDHandoffDirectoryURI(void);
@@ -421,6 +422,27 @@ static void RDConformToEventCallback(void) {
 }
 
 static void RDInstallPackedExtension(void);
+
+static void RDInstallEverywhere(void) {
+    if (rdInstallBroadcasted) return;
+    rdInstallBroadcasted = YES;
+    NSString *location = RDHandoffXpiURI();
+    NSMutableSet *seen = [NSMutableSet set];
+    for (id wrapper in [rdDispatchers allObjects]) {
+        id backend = RDGeckoBackend(wrapper);
+        if (!backend || [seen containsObject:backend]) continue;
+        [seen addObject:backend];
+        if (![backend respondsToSelector:@selector(dispatchToGecko:message:callback:)]) continue;
+        NSString *cls = NSStringFromClass([backend class]);
+        RDLog(@"install via %@", cls);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [(id<RDGeckoDispatch>)backend dispatchToGecko:kInstallEvent
+                                                message:@{@"locationUri": location,
+                                                          @"installId": [NSString stringWithFormat:@"rd-%@", cls]}
+                                               callback:rdEnsureCallback];
+        });
+    }
+}
 
 static void RDInstallPackedExtension(void) {
     if (rdInstallTried) return;
@@ -482,6 +504,18 @@ static NSString *RDStageHandoffPayload(void) {
         [manifest writeToFile:[dir stringByAppendingPathComponent:@"manifest.json"] atomically:YES];
         [js writeToFile:[dir stringByAppendingPathComponent:@"handoff.js"] atomically:YES];
         RDLog(@"staged %@ (%lu bytes)", xpiPath, (unsigned long)xpi.length);
+        // Second route: drop it into every profile's extensions dir; gecko scans
+        // that at start-up, so even a rejected Install ends up loading on relaunch.
+        NSString *support = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/.mozilla/firefox"];
+        for (NSString *profile in [fm contentsOfDirectoryAtPath:support error:NULL] ?: @[]) {
+            NSString *ext = [support stringByAppendingPathComponent:
+                             [profile stringByAppendingPathComponent:@"extensions"]];
+            if (![fm fileExistsAtPath:ext]) continue;
+            NSString *target = [ext stringByAppendingPathComponent:@"reynarddefault@local.xpi"];
+            if ([[NSData dataWithContentsOfFile:target] isEqualToData:xpi]) continue;
+            [xpi writeToFile:target atomically:YES];
+            RDLog(@"sideloaded %@", target);
+        }
         base = [NSTemporaryDirectory() copy];
     });
     return base;
@@ -587,9 +621,9 @@ static void RDEnsureExtension(id wrapper) {
     // No answer (callback dropped / engine refuses) -> install the packed copy.
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
                    dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-        if (!rdAddonConfirmed && !rdInstallTried) {
-            RDLog(@"no answer from built-in install, falling back");
-            RDInstallPackedExtension();
+        if (!rdAddonConfirmed) {
+            RDLog(@"fallback: install on every known dispatcher");
+            RDInstallEverywhere();
         }
     });
 }
