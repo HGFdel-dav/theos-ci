@@ -241,7 +241,7 @@ static void PXHandleOpenRequest(id self, SEL command, id service, id request, id
     void (^proceed)(void) = ^{
         if (PXOrigHandleOpenRequest) PXOrigHandleOpenRequest(self, command, service, request, completion);
     };
-    if ([PXCloneURLRouter handleOpenRequest:request options:nil proceed:proceed]) return;
+    if ([PXCloneURLRouter handleOpenRequest:request options:options proceed:proceed]) return;
     proceed();
 }
 
