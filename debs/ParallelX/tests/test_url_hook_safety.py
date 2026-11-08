@@ -30,7 +30,7 @@ def body(name):
 class URLHookSourceSafety(unittest.TestCase):
     def test_every_entry_filters_before_async_ownership(self):
         entries = {
-            "PXHandleOpenRequest": "hasTargetURL:request options:nil",
+            "PXHandleOpenRequest": "paymentURLForRequest:request options:nil",
             "PXHandleWorkspaceRequest": "handleOpenRequest:request options:options",
             "PXHandleOpenURLCore": "scheme.length",
             "PXProbeOpenURL": "isPaymentURL:url",

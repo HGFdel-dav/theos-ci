@@ -226,6 +226,31 @@ static UIViewController *PXURLRouterPresenter(void) {
     return NO;
 }
 
+// A share may name the share extension (com.tencent.xin.sharetimeline) or the
+// hosting app instead of the target app. Walk both, and the extension's parent,
+// and keep the first that really has more than one container.
++ (NSString *)shareBundleForRequest:(id)request options:(id)options {
+    NSMutableArray<NSString *> *candidates = [NSMutableArray array];
+    if ([request isKindOfClass:NSString.class] && [(NSString *)request length])
+        [candidates addObject:request];
+    if ([options isKindOfClass:NSDictionary.class]) {
+        for (NSString *key in @[@"__AppBasedViewService", @"__AppLink4LS", @"__UserActivity4LS"]) {
+            id value = ((NSDictionary *)options)[key];
+            if ([value isKindOfClass:NSString.class] && [(NSString *)value length])
+                [candidates addObject:value];
+        }
+    }
+    for (NSString *candidate in [candidates copy]) {
+        NSRange dot = [candidate rangeOfString:@"." options:NSBackwardsSearch];
+        if (dot.location != NSNotFound && dot.location > 0)
+            [candidates addObject:[candidate substringToIndex:dot.location]];
+    }
+    for (NSString *candidate in candidates) {
+        if ([PXCloneCrane containersForBundle:candidate].count >= 2) return candidate;
+    }
+    return candidates.firstObject;
+}
+
 + (BOOL)hasTargetURL:(id)request options:(id)options {
     return [self paymentURLForRequest:request options:options] != nil ||
         PXURLRouterTargetURL(request, 0) != nil || PXURLRouterTargetURL(options, 0) != nil;
@@ -264,7 +289,8 @@ static UIViewController *PXURLRouterPresenter(void) {
     // count decides whether it is worth a chooser, and single-account apps
     // still pass through immediately.
     if (!url && ![self isShareRequest:request options:options]) return NO;
-    NSString *bundle = PXURLRouterBundleFromRequest(request);
+    NSString *bundle = payment ? PXURLRouterBundleFromRequest(request)
+                               : [self shareBundleForRequest:request options:options];
     [PXCloneProbe log:@"%@ open url=%@ bundle=%@", payment ? @"PAY" : @"SHARE",
         raw ?: @"(none)", bundle ?: @"(nil)"];
     if (!bundle.length) return NO;
@@ -273,10 +299,10 @@ static UIViewController *PXURLRouterPresenter(void) {
         bundle, (unsigned long)containers.count];
     if (containers.count >= 2) return [self beginBundle:bundle containers:containers proceed:proceed];
     if (!payment) {
-        // A share into a single-account app must not stall on the catalog.
+        // Single-account share: let the caller's normal forward run, exactly
+        // as if we had not been involved (no callback fired from inside).
         [PXCloneProbe log:@"SHARE pass"];
-        proceed();
-        return YES;
+        return NO;
     }
     // Catalog still cold: hold the request (falling through launches the
     // current account before the chooser can appear) and poll briefly.

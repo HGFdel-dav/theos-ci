@@ -260,8 +260,7 @@ static void PXHandleOpenRequest(id self, SEL command, id service, id request, id
     if (!PXOrigHandleOpenRequest) return;
     [PXCloneProbe log:@"FBREQ hit class=%@", NSStringFromClass([request class])];
     if (!NSThread.isMainThread || PXURLForwardDepth ||
-        (![PXCloneURLRouter hasTargetURL:request options:nil] &&
-         ![PXCloneURLRouter isShareRequest:request options:nil])) {
+        ![PXCloneURLRouter paymentURLForRequest:request options:nil]) {
         PX_FORWARD_URL(PXOrigHandleOpenRequest(self, command, service, request, completion));
         return;
     }
