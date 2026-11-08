@@ -213,6 +213,8 @@ static UIViewController *PXURLRouterPresenter(void) {
 
 + (BOOL)handleOpenURL:(NSURL *)url proceed:(void (^)(void))proceed {
     // Do not resolve a target, touch Crane or create state for plain URLs.
+    [PXCloneProbe log:@"PAY url=%@", url.absoluteString.length > 70 ?
+        [url.absoluteString substringToIndex:70] : url.absoluteString];
     if (!NSThread.isMainThread || !proceed || ![self isPaymentURL:url]) return NO;
     NSString *bundle = PXURLRouterBundleForURL(url);
     if (!bundle.length) return NO;
@@ -224,11 +226,15 @@ static UIViewController *PXURLRouterPresenter(void) {
 + (BOOL)handleOpenRequest:(id)request options:(id)options proceed:(void (^)(void))proceed {
     if (!NSThread.isMainThread || !proceed) return NO;
     NSURL *url = [self paymentURLForRequest:request options:options];
+    NSString *raw = url.absoluteString.length > 70 ?
+        [url.absoluteString substringToIndex:70] : url.absoluteString;
+    [PXCloneProbe log:@"PAY open url=%@", raw ?: @"(none)"];
     if (!url) return NO; // Includes notification taps and source/return URL only.
     NSString *bundle = PXURLRouterBundleFromRequest(request);
     if (!bundle.length) return NO;
     // The target is the exact bundle from SpringBoard, not a URL-owner guess.
     NSArray<NSDictionary *> *containers = [PXCloneCrane containersForBundle:bundle];
+    [PXCloneProbe log:@"PAY gate bundle=%@ n=%lu", bundle, (unsigned long)containers.count];
     if (containers.count < 2) return NO;
     return [self beginBundle:bundle containers:containers proceed:proceed];
 }
