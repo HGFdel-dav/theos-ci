@@ -231,15 +231,52 @@ static UIViewController *PXURLRouterPresenter(void) {
     NSURL *url = [self paymentURLForRequest:request options:options];
     NSString *raw = url.absoluteString.length > 70 ?
         [url.absoluteString substringToIndex:70] : url.absoluteString;
-    [PXCloneProbe log:@"PAY open url=%@", raw ?: @"(none)"];
-    if (!url) return NO; // Includes notification taps and source/return URL only.
+    // bundle-only requests carry no URL at all. 0.33 answered them by bundle
+    // and that is the only shape that worked on device; only a URL that is
+    // present and clearly not a payment is skipped here.
+    if (url && ![self isPaymentURL:url]) return NO;
     NSString *bundle = PXURLRouterBundleFromRequest(request);
+    [PXCloneProbe log:@"PAY open url=%@ bundle=%@", raw ?: @"(none)", bundle ?: @"(nil)"];
     if (!bundle.length) return NO;
-    // The target is the exact bundle from SpringBoard, not a URL-owner guess.
     NSArray<NSDictionary *> *containers = [PXCloneCrane containersForBundle:bundle];
     [PXCloneProbe log:@"PAY gate bundle=%@ n=%lu", bundle, (unsigned long)containers.count];
-    if (containers.count < 2) return NO;
-    return [self beginBundle:bundle containers:containers proceed:proceed];
+    if (containers.count >= 2) return [self beginBundle:bundle containers:containers proceed:proceed];
+    // Catalog still cold: hold the request (falling through launches the
+    // current account before the chooser can appear) and poll briefly.
+    PXURLRoutingTransaction *transaction = [PXURLRoutingTransaction new];
+    transaction->route = (PXURLRouteState){ PXURLRouterNextToken++, PXURLRouteNew };
+    transaction.bundle = bundle;
+    transaction.proceed = [proceed copy];
+    transaction.containers = @[];
+    PXURLRouterActive = transaction;
+    [PXCloneCrane refreshCatalogWithCompletion:^(NSArray<NSDictionary *> *catalog, NSError *error) {
+        (void)catalog; (void)error;
+    }];
+    [self awaitContainers:transaction attempt:0];
+    return YES;
+}
+
++ (void)awaitContainers:(PXURLRoutingTransaction *)transaction attempt:(NSUInteger)attempt {
+    if (PXURLRouterActive != transaction) return;
+    NSArray<NSDictionary *> *containers = [PXCloneCrane containersForBundle:transaction.bundle];
+    void (^forward)(void) = [transaction.proceed copy];
+    if (containers.count >= 2) {
+        transaction.proceed = nil;
+        transaction.containers = containers;
+        PXURLRouterActive = nil;
+        if (![self beginBundle:transaction.bundle containers:containers proceed:forward ?: ^{}])
+            if (forward) forward();
+        return;
+    }
+    if (attempt >= 15) { // ~1.5s
+        PXURLRouterActive = nil;
+        transaction.proceed = nil;
+        [PXCloneProbe log:@"PAY wait timeout"];
+        if (forward) forward();
+        return;
+    }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)),
+        dispatch_get_main_queue(), ^{ [self awaitContainers:transaction attempt:attempt + 1]; });
 }
 
 + (BOOL)hasActivePayment {
@@ -412,9 +449,24 @@ static UIViewController *PXURLRouterPresenter(void) {
             transaction.selected, matches, processKnown, exited)) {
         void (^forward)(void) = [transaction.proceed copy];
         transaction.proceed = nil;
+        NSString *bundle = transaction.bundle;
         [self endTransaction:transaction cancelled:NO error:nil];
         [PXCloneProbe log:@"payment.forward.verified"];
-        if (forward) forward();
+        if (!forward) return;
+        // A hosted split-screen canvas keeps pointing at the killed process, so
+        // the relaunch paints black. Let the panel drop that context first and
+        // give it one turn of the run loop before the request goes out.
+        Class panel = NSClassFromString(@"ParallelX.PXPanelEntry");
+        SEL drop = NSSelectorFromString(@"switcherRemovedApplication:");
+        if (panel && [panel respondsToSelector:drop]) {
+            @try { ((void (*)(id, SEL, id))objc_msgSend)((id)panel, drop, bundle); }
+            @catch (__unused NSException *exception) { }
+            [PXCloneProbe log:@"payment.forward.teardown"];
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(200 * NSEC_PER_MSEC)),
+                dispatch_get_main_queue(), forward);
+            return;
+        }
+        forward();
         return;
     }
     if (attempt >= PXURLRouterPollLimit) {

@@ -31,7 +31,7 @@ class URLHookSourceSafety(unittest.TestCase):
     def test_every_entry_filters_before_async_ownership(self):
         entries = {
             "PXHandleOpenRequest": "paymentURLForRequest:request options:nil",
-            "PXHandleWorkspaceRequest": "paymentURLForRequest:request options:options",
+            "PXHandleWorkspaceRequest": "handleOpenRequest:request options:options",
             "PXHandleOpenURLCore": "isPaymentURL:(NSURL *)url",
             "PXProbeOpenURL": "isPaymentURL:url",
             "PXProbeOpenURLOptions": "isPaymentURL:url",
@@ -40,13 +40,17 @@ class URLHookSourceSafety(unittest.TestCase):
         for name, predicate in entries.items():
             with self.subTest(entry=name):
                 source = body(name)
-                gate = source.index("if (!NSThread.isMainThread || PXURLForwardDepth ||")
+                gate = source.index("if (!NSThread.isMainThread || PXURLForwardDepth")
                 payment = source.index(predicate)
-                forward = source.index("PX_FORWARD_URL(", payment)
+                forward = source.index("PX_FORWARD_URL(")
                 proceed = source.index("void (^proceed)(void)")
                 self.assertLess(gate, payment)
-                self.assertLess(payment, forward)
                 self.assertLess(forward, proceed)
+                if "handleOpenRequest:" in predicate:
+                    # The delegate needs the proceed block, so it is built first.
+                    self.assertLess(proceed, payment)
+                else:
+                    self.assertLess(payment, forward)
                 self.assertNotIn("dispatch_async", source)
                 self.assertNotIn("PXCloneCrane", source)
                 if " copy]" in source:

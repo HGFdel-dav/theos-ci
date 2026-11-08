@@ -281,8 +281,7 @@ static void PXHandleWorkspaceRequest(id self, SEL command, id request, id option
             ? [[(NSDictionary *)options allKeys] componentsJoinedByString:@","] : @"(nodict)"];
     // Notification/bundle-only requests have no actual target payment URL.
     // This test precedes block copy, proceed creation and all catalog work.
-    if (!NSThread.isMainThread || PXURLForwardDepth ||
-        ![PXCloneURLRouter paymentURLForRequest:request options:options]) {
+    if (!NSThread.isMainThread || PXURLForwardDepth) {
         PX_FORWARD_URL(PXOrigWorkspaceRequest(self, command, request, options, settings, origin, result));
         return;
     }
