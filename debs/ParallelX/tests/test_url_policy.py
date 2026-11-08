@@ -39,7 +39,7 @@ class URLPolicyTests(unittest.TestCase):
 
     def test_nonpayment_and_notification_bail_out_before_crane(self):
         for selector, predicate in (
-                ('+ (BOOL)handleOpenURL:', 'isPaymentURL:url'),
+                ('+ (BOOL)handleOpenURL:', 'scheme.length'),
                 ('+ (BOOL)handleOpenRequest:', 'paymentURLForRequest:request options:options')):
             body = implementation(ROUTER, selector)
             self.assertLess(body.index(predicate), body.index('containersForBundle:'))

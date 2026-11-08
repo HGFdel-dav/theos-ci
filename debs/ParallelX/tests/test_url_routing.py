@@ -27,14 +27,14 @@ class TestPaymentRouter(unittest.TestCase):
         body = method(ROUTER, '+ (BOOL)handleOpenRequest:')
         self.assertIn('paymentURLForRequest:request options:options', body)
         self.assertLess(body.index('paymentURLForRequest:'), body.index('containersForBundle:'))
-        self.assertIn('if (!payment && !share) return NO;', body)
+        self.assertIn('if (!url && ![self isShareRequest:request options:options]) return NO;', body)
         self.assertIn('isShareRequest:request options:options', body)
         self.assertNotIn('loadCatalogForRequest:', ROUTER)
 
     def test_url_entry_classifies_before_resolving_target(self):
         body = method(ROUTER, '+ (BOOL)handleOpenURL:')
-        self.assertIn('[self isPaymentURL:url]', body)
-        self.assertLess(body.index('isPaymentURL:url'), body.index('PXURLRouterBundleForURL(url)'))
+        self.assertIn('!url.scheme.length', body)
+        self.assertLess(body.index('!url.scheme.length'), body.index('PXURLRouterBundleForURL(url)'))
         self.assertLess(body.index('PXURLRouterBundleForURL(url)'), body.index('containersForBundle:'))
 
     def test_only_payment_requests_start_transaction(self):

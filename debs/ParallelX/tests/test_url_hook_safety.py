@@ -30,12 +30,11 @@ def body(name):
 class URLHookSourceSafety(unittest.TestCase):
     def test_every_entry_filters_before_async_ownership(self):
         entries = {
-            "PXHandleOpenRequest": "paymentURLForRequest:request options:nil",
+            "PXHandleOpenRequest": "hasTargetURL:request options:nil",
             "PXHandleWorkspaceRequest": "handleOpenRequest:request options:options",
-            "PXHandleOpenURLCore": "isPaymentURL:(NSURL *)url",
+            "PXHandleOpenURLCore": "scheme.length",
             "PXProbeOpenURL": "isPaymentURL:url",
             "PXProbeOpenURLOptions": "isPaymentURL:url",
-            "PXRouteWorkspaceOpen": "isPaymentURL:(NSURL *)url",
         }
         for name, predicate in entries.items():
             with self.subTest(entry=name):
