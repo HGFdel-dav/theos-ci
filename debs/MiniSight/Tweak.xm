@@ -65,7 +65,7 @@ static BOOL MiniSightMinisIsFrontmost(void);
 static NSString *gMiniSightContainer;
 static NSDictionary *gMiniSightPreferences;
 static UIImage *gMiniSightAtlas;
-static BOOL gMiniSightShown = YES, gMiniSightResourcesReady = NO;
+static BOOL gMiniSightShown = NO, gMiniSightResourcesReady = NO;
 static BOOL gMiniSightResourceLoading = NO;
 static BOOL gMiniSightResourceRefreshAgain = NO;
 static NSMutableArray *gMiniSightResourceCompletions;
