@@ -422,10 +422,12 @@ static void RDInstallPackedExtension(void) {
     static int counter;
     NSString *location = RDHandoffXpiURI();
     RDLog(@"install packed addon %@", location);
-    [(id<RDGeckoDispatch>)rdGeckoBackend dispatchToGecko:kInstallEvent
-                                                message:@{@"locationUri": location,
-                                                          @"installId": [NSString stringWithFormat:@"reynarddefault-%d", ++counter]}
-                                               callback:rdEnsureCallback];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [(id<RDGeckoDispatch>)rdGeckoBackend dispatchToGecko:kInstallEvent
+                                                    message:@{@"locationUri": location,
+                                                              @"installId": [NSString stringWithFormat:@"reynarddefault-%d", ++counter]}
+                                                   callback:rdEnsureCallback];
+    });
 }
 
 @implementation RDEnsureCallback
@@ -533,10 +535,12 @@ static void RDEnsureExtension(id wrapper) {
     rdGeckoBackend = backend;
     if (!rdEnsureCallback) rdEnsureCallback = [RDEnsureCallback new];
     NSString *location = RDHandoffDirectoryURI();
-    [(id<RDGeckoDispatch>)backend dispatchToGecko:kEnsureEvent
-                                          message:@{@"locationUri": location,
-                                                    @"webExtensionId": kHandoffAddonID}
-                                         callback:rdEnsureCallback];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [(id<RDGeckoDispatch>)backend dispatchToGecko:kEnsureEvent
+                                              message:@{@"locationUri": location,
+                                                        @"webExtensionId": kHandoffAddonID}
+                                             callback:rdEnsureCallback];
+    });
 
     // No answer (callback dropped / engine refuses) -> install the packed copy.
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(4.0 * NSEC_PER_SEC)),
