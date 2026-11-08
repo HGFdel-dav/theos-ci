@@ -33,6 +33,7 @@
 #import "MiniSightLog.h"
 #import "MiniSightRuntimeConfig.h"
 #import "MiniSightBlip.h"
+#import <Photos/Photos.h>
 #import <notify.h>
 #import <signal.h>
 #include <unistd.h>
@@ -459,7 +460,7 @@ static void MiniSightRefreshRecorderSettingsThenReadActivity(void) {
     UIPanGestureRecognizer *body = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(pan:)];
     [_dragArea addGestureRecognizer:body];
     for (NSInteger i = 0; i < 4; i++) {
-        UIView *h = [[UIView alloc] initWithFrame:CGRectMake(i % 2 ? r.size.width - 30 : -6, i / 2 ? r.size.height - 30 : -6, 30, 30)];
+        UIView *h = [[UIView alloc] initWithFrame:CGRectMake(i % 2 ? r.size.width - 30 : 0, i / 2 ? r.size.height - 30 : 0, 30, 30)];
         h.backgroundColor = UIColor.whiteColor;
         h.layer.cornerRadius = 15;
         h.tag = i + 1;
@@ -491,19 +492,20 @@ static void MiniSightRefreshRecorderSettingsThenReadActivity(void) {
 - (void)pan:(UIPanGestureRecognizer *)g {
     UIView *v = g.view;
     CGPoint t = [g translationInView:self.rootViewController.view];
-    if (g.state == UIGestureRecognizerStateBegan) { _start = _box.frame.origin; _startFrame = _box.frame; _corner = v.tag; }
+    if (g.state == UIGestureRecognizerStateBegan) _corner = v.tag;
     if (g.state == UIGestureRecognizerStateChanged) {
-        CGRect f = _startFrame;
+        [g setTranslation:CGPointZero inView:self.rootViewController.view];
+        CGRect f = _box.frame;
         CGRect bounds = self.rootViewController.view.bounds;
         if (_corner == 0) {
-            f.origin.x = _start.x + t.x; f.origin.y = _start.y + t.y;
+            f.origin.x += t.x; f.origin.y += t.y;
         } else {
             BOOL left = (_corner == 1 || _corner == 3);
             BOOL top = (_corner == 1 || _corner == 2);
             BOOL right = (_corner == 2 || _corner == 4);
             BOOL bottom = (_corner == 3 || _corner == 4);
-            if (left) { f.origin.x += t.x; f.size.width -= t.x; }
-            if (top) { f.origin.y += t.y; f.size.height -= t.y; }
+            if (left) { f.size.width -= t.x; f.origin.x += t.x; }
+            if (top) { f.size.height -= t.y; f.origin.y += t.y; }
             if (right) { f.size.width += t.x; }
             if (bottom) { f.size.height += t.y; }
         }
@@ -2384,6 +2386,18 @@ static void MiniSightShowLine(NSString *line) {
 }
 
 /// 诊断/状态行：比撒娇话长（最多 60 字），多留两秒才收
+static void MiniSightSaveToPhotos(NSURL *url) {
+    if (!url.isFileURL) return;
+    [PHPhotoLibrary requestAuthorizationForAccessLevel:PHAccessLevelAddOnly handler:^(PHAuthorizationStatus st) {
+        if (st != PHAuthorizationStatusAuthorized && st != PHAuthorizationStatusLimited) return;
+        [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+            [PHAssetChangeRequest creationRequestForAssetFromVideoAtFileURL:url];
+        } completionHandler:^(BOOL ok, NSError *e) {
+            MSDiagEvent(@"recording", @"photos", ok ? @"ok" : @"failed", @{ @"source": @"plugin", @"code": @(e.code) });
+        }];
+    }];
+}
+
 static void MiniSightShowStatusLine(NSString *text) {
     if (!text.length) return;
     if ((!gMiniSightWindow || gMiniSightWindow.hidden) && !gMiniSightBurst) return;
