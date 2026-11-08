@@ -445,14 +445,14 @@ static void RDSeedExtensionsDatabase(void) {
         if (![addons isKindOfClass:[NSMutableArray class]]) continue;
 
         BOOL present = NO;
-        NSDictionary *template = nil;
+        NSDictionary *proto = nil;
         for (NSDictionary *entry in addons) {
             if ([entry[@"id"] isEqualToString:kHandoffAddonID]) present = YES;
-            if (!template && [entry[@"location"] isEqualToString:@"app-profile"]) template = entry;
+            if (!proto && [entry[@"location"] isEqualToString:@"app-profile"]) proto = entry;
         }
-        if (present || !template) continue;
+        if (present || !proto) continue;
 
-        NSMutableDictionary *entry = [template mutableCopy];
+        NSMutableDictionary *entry = [proto mutableCopy];
         entry[@"id"] = kHandoffAddonID;
         entry[@"syncGUID"] = [[NSUUID UUID] UUIDString];
         entry[@"version"] = @"1.2";
