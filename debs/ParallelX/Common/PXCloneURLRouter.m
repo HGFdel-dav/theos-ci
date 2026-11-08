@@ -303,7 +303,7 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
     PXURLRouterCancelled = NO;
     NSUInteger generation = ++PXURLRouterGeneration;
     void (^once)(void) = PXURLRouterOnce(proceed);
-    PXURLRouterPending = once;
+    PXURLRouterPending = [once copy];
     NSArray<NSDictionary *> *containers = PXURLRouterContainers(bundle);
     if (containers.count >= 2) {
         void (^present)(void) = ^{
@@ -454,13 +454,15 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
     }];
 
     // Never hold the original request forever.
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 8 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 4 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
         if (PXURLRouterCancelled) {
             [PXCloneProbe log:@"WATCHDOG skipped (cancelled)"];
             return;
         }
         [PXCloneProbe log:@"WATCHDOG release"];
-        if (PXURLRouterPending) PXURLRouterPending();
+        void (^release)(void) = PXURLRouterPending;
+        PXURLRouterPending = nil;
+        if (release) release();
         else proceed();
     });
 }
