@@ -23,6 +23,7 @@ static NSString *const kPortMessageEvent = @"GeckoView:WebExtension:PortMessage"
 static NSString *const kEnsureEvent = @"GeckoView:WebExtension:EnsureBuiltIn";
 static NSString *const kHandoffAddonID = @"reynarddefault@local";
 static NSString *const kInstallEvent = @"GeckoView:WebExtension:Install";
+static NSString *const kInstallPromptEvent = @"GeckoView:WebExtension:InstallPrompt";
 
 static const unsigned char kHandoffXpi[] = {
     0x50,0x4b,0x03,0x04,0x14,0x00,0x00,0x00,0x00,0x00,0xa3,0x12,0x68,0x5d,0x90,0x93,
@@ -481,12 +482,12 @@ static NSString *RDStageHandoffPayload(void) {
 
 static NSString *RDHandoffDirectoryURI(void) {
     RDStageHandoffPayload();
-    return [NSString stringWithFormat:@"file://%@/ReynardDefault-handoff/", NSTemporaryDirectory()];
+    return [NSString stringWithFormat:@"file://%@/", [NSTemporaryDirectory() stringByAppendingPathComponent:@"ReynardDefault-handoff"]];
 }
 
 static NSString *RDHandoffXpiURI(void) {
     RDStageHandoffPayload();
-    return [NSString stringWithFormat:@"file://%@/ReynardDefault-handoff.xpi", NSTemporaryDirectory()];
+    return [NSString stringWithFormat:@"file://%@", [NSTemporaryDirectory() stringByAppendingPathComponent:@"ReynardDefault-handoff.xpi"]];
 }
 
 static id RDGeckoBackend(id wrapper) {
@@ -543,7 +544,7 @@ static void RDEnsureExtension(id wrapper) {
     });
 
     // No answer (callback dropped / engine refuses) -> install the packed copy.
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(4.0 * NSEC_PER_SEC)),
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
                    dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
         if (!rdAddonConfirmed && !rdInstallTried) {
             RDLog(@"no answer from built-in install, falling back");
@@ -616,6 +617,19 @@ static void RDOpenExternally(NSURL *url) {
 
 - (void)dispatchToSwift:(NSString *)type message:(id)message callback:(id<RDEventCallback>)callback {
     if (!rdEnsureDone) RDEnsureExtension(self);
+
+    if ([type isEqualToString:kInstallPromptEvent]) {
+        NSString *dump = [NSString stringWithFormat:@"%@", message];
+        if ([dump containsString:kHandoffAddonID]) {
+            RDLog(@"auto-confirming install prompt");
+            [callback sendSuccess:@{@"allow": @YES,
+                                    @"privateBrowsingAllowed": @YES,
+                                    @"isTechnicalAndInteractionDataGranted": @YES}];
+            return;
+        }
+        %orig;
+        return;
+    }
 
     if ([type isEqualToString:kMessageEvent] || [type isEqualToString:kPortMessageEvent] ||
         [type hasSuffix:@"WebExtension:Message"] || [type hasSuffix:@"WebExtension:PortMessage"]) {
