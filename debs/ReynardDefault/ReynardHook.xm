@@ -391,10 +391,13 @@ static RDEnsureCallback *rdEnsureCallback;
 static id rdGeckoBackend;
 static BOOL rdEnsureDone;
 
+static NSHashTable *rdDispatchers;
 static BOOL rdInstallTried;
 static BOOL rdAddonConfirmed;
 
 static NSString *RDHandoffDirectoryURI(void);
+static id RDGeckoBackend(id wrapper);
+static id RDRuntimeBackend(void);
 static NSString *RDHandoffXpiURI(void);
 
 // Our callback object must really conform to GeckoView's EventCallback, otherwise
@@ -418,8 +421,10 @@ static void RDConformToEventCallback(void) {
 static void RDInstallPackedExtension(void);
 
 static void RDInstallPackedExtension(void) {
-    if (rdInstallTried || !rdGeckoBackend) return;
+    if (rdInstallTried) return;
     rdInstallTried = YES;
+    if (!rdGeckoBackend) rdGeckoBackend = RDRuntimeBackend();
+    if (!rdGeckoBackend) return;
     static int counter;
     NSString *location = RDHandoffXpiURI();
     RDLog(@"install packed addon %@", location);
@@ -490,6 +495,29 @@ static NSString *RDHandoffXpiURI(void) {
     return [NSString stringWithFormat:@"file://%@", [NSTemporaryDirectory() stringByAppendingPathComponent:@"ReynardDefault-handoff.xpi"]];
 }
 
+static void RDRememberDispatcher(id wrapper) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ rdDispatchers = [NSHashTable weakObjectsHashTable]; });
+    if (wrapper) [rdDispatchers addObject:wrapper];
+}
+
+// WebExtension:* commands belong to the runtime dispatcher, not the session one;
+// sending them to a session dispatcher is silently ignored (no reply at all).
+static id RDRuntimeBackend(void) {
+    id fallback = nil;
+    for (id wrapper in [rdDispatchers allObjects]) {
+        id backend = RDGeckoBackend(wrapper);
+        if (!backend) continue;
+        NSString *cls = NSStringFromClass([backend class]);
+        if (!fallback) fallback = backend;
+        if ([cls.lowercaseString containsString:@"runtime"]) {
+            RDLog(@"runtime backend %@", cls);
+            return backend;
+        }
+    }
+    return fallback;
+}
+
 static id RDGeckoBackend(id wrapper) {
     Class cls = [wrapper class];
     unsigned int count = 0;
@@ -522,7 +550,7 @@ static void RDEnsureExtension(id wrapper) {
     static BOOL logged;
     if (rdEnsureDone || !wrapper) return;
 
-    id backend = RDGeckoBackend(wrapper);
+    id backend = RDRuntimeBackend();
     if (!backend || ![backend respondsToSelector:@selector(dispatchToGecko:message:callback:)]) {
         if (!logged) {
             logged = YES;
@@ -612,6 +640,14 @@ static void RDOpenExternally(NSURL *url) {
 }
 
 %group ReynardGroup
+
+%hook _TtC9GeckoView27GeckoEventDispatcherWrapper
+- (instancetype)init {
+    id result = %orig;
+    RDRememberDispatcher(result);
+    return result;
+}
+%end
 
 %hook _TtC9GeckoView27GeckoEventDispatcherWrapper
 
