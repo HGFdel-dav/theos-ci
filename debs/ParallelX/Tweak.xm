@@ -276,7 +276,9 @@ static void PXHandleOpenRequest(id self, SEL command, id service, id request, id
 static void PXHandleWorkspaceRequest(id self, SEL command, id request, id options,
                                      id settings, id origin, id result) {
     if (!PXOrigWorkspaceRequest) return;
-    [PXCloneProbe log:@"SBREQ hit class=%@", NSStringFromClass([request class])];
+    [PXCloneProbe log:@"SBREQ hit class=%@ keys=%@", NSStringFromClass([request class]),
+        [options isKindOfClass:NSDictionary.class]
+            ? [[(NSDictionary *)options allKeys] componentsJoinedByString:@","] : @"(nodict)"];
     // Notification/bundle-only requests have no actual target payment URL.
     // This test precedes block copy, proceed creation and all catalog work.
     if (!NSThread.isMainThread || PXURLForwardDepth ||
