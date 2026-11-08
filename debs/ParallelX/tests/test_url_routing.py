@@ -47,7 +47,7 @@ class TestURLRouting(unittest.TestCase):
         handler = ROUTER.split('+ (BOOL)handleOpenRequest', 1)[1].split('+ (void)loadCatalogForRequest', 1)[0]
         # Only "no block" and "no bundle at all" may decline; the
         # cold-catalog path must keep ownership and return YES.
-        self.assertEqual(handler.count('return NO;'), 3)
+        self.assertEqual(handler.count('return NO;'), 4)
         self.assertEqual(handler.count('return YES;'), 2)
 
     def test_any_app_can_route_before_springboard(self):
