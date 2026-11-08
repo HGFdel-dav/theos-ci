@@ -3,6 +3,8 @@
 #import <objc/message.h>
 #import <objc/runtime.h>
 #import <notify.h>
+#import <dlfcn.h>
+#import <mach-o/dyld.h>
 #import "Common/PXCloneCrane.h"
 #import "Common/PXCloneMenu.h"
 #import "Common/PXCloneLaunch.h"
@@ -495,6 +497,48 @@ static BOOL PXInstallRefreshHooks(void) {
     return PXOrigDragHandle && PXOrigContainersChanged && PXOrigContainerSettingsChanged;
 }
 
+static BOOL PXDylibImageLoaded(const char *needle) {
+    uint32_t count = _dyld_image_count();
+    for (uint32_t index = 0; index < count; index++) {
+        const char *name = _dyld_get_image_name(index);
+        if (name && strstr(name, needle)) return YES;
+    }
+    return NO;
+}
+
+// The hosted panel normally starts from its own SpringBoard constructor. When
+// that image is present but never built its UI (no handle, no panel, no
+// split-screen), re-open it here and call the documented class entry instead
+// of guessing: the class registration is the only reliable "already running"
+// signal, and dlopen of a loaded image is a no-op.
+static void PXEnsureOriginalPanel(void) {
+    static BOOL done = NO;
+    if (done) return;
+    done = YES;
+    if (NSClassFromString(@"ParallelX.PXPanelEntry") || NSClassFromString(@"PXPanelEntry")) {
+        [PXCloneProbe log:@"ORIG-PRESENT image=%d", (int)PXDylibImageLoaded("ParallelX.dylib")];
+        return;
+    }
+    BOOL image = PXDylibImageLoaded("ParallelX.dylib");
+    [PXCloneProbe log:@"ORIG-MISSING image=%d", (int)image];
+    if (image) return; // present but classless: a real load fault, not a skip
+    void *handle = dlopen("/usr/lib/TweakInject/ParallelX.dylib", RTLD_NOW);
+    if (!handle) handle = dlopen("/Library/MobileSubstrate/DynamicLibraries/ParallelX.dylib", RTLD_NOW);
+    if (!handle) {
+        const char *why = dlerror();
+        [PXCloneProbe log:@"ORIG-DLOPEN-FAIL %s", why ?: "(nil)"];
+        return;
+    }
+    Class panel = NSClassFromString(@"ParallelX.PXPanelEntry");
+    SEL start = NSSelectorFromString(@"start");
+    if (panel && [panel respondsToSelector:start]) {
+        [PXCloneProbe log:@"ORIG-START-CALL"];
+        ((void (*)(id, SEL))objc_msgSend)((id)panel, start);
+    } else {
+        [PXCloneProbe log:@"ORIG-START-MISSING class=%d", (int)(panel != nil)];
+    }
+}
+
 // Run only after dyld returned to the main run loop. In particular, do not
 // dlopen Crane or create its shared manager from the dylib initializer.
 // A named bounded retry avoids scheduling a nil, weak self-referencing block.
@@ -516,6 +560,7 @@ static void PXBootstrap(NSUInteger attempt) {
             if (status != NOTIFY_STATUS_OK) PXNotifyToken = -1;
         }
         PXRefreshAndSync();
+        PXEnsureOriginalPanel();
     }
 
     BOOL actionReady = PXInstallActionHook();
