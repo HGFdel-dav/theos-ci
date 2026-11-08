@@ -144,7 +144,7 @@ static NSURL *PXURLRouterTargetURL(id object, NSUInteger depth) {
     // A plain bundle identifier/request description is not a target URL.
     if ([object isKindOfClass:NSString.class]) return nil;
     NSURL *target = nil;
-    for (NSString *key in @[@"url", @"URL", @"targetURL", @"openURL", @"UIApplicationLaunchOptionsURLKey", @"__PayloadURL", @"__PayloadOpenURL"]) {
+    for (NSString *key in @[@"url", @"URL", @"targetURL", @"openURL", @"UIApplicationLaunchOptionsURLKey", @"__PayloadURL", @"__PayloadOpenURL", @"webpageURL"]) {
         id value = PXURLRouterField(object, key);
         NSURL *candidate = nil;
         if ([value isKindOfClass:NSURL.class]) candidate = value;
@@ -154,7 +154,7 @@ static NSURL *PXURLRouterTargetURL(id object, NSUInteger depth) {
         if (target && ![target isEqual:candidate]) return nil;
         target = candidate;
     }
-    for (NSString *key in @[@"__Payload", @"payload", @"options"]) {
+    for (NSString *key in @[@"__Payload", @"payload", @"options", @"__PayloadOptions", @"__AppLink4LS", @"__UserActivity4LS"]) {
         id value = PXURLRouterField(object, key);
         if (![value isKindOfClass:NSDictionary.class]) continue;
         NSURL *candidate = PXURLRouterTargetURL(value, depth + 1);
