@@ -2325,7 +2325,12 @@ static void MiniSightShowConfirm(void) {
         MiniSightAnswerConfirm(NO);
         return;
     }
-    NSString *text = action.length ? [NSString stringWithFormat:@"%@\n%@", action, command] : command;
+    NSString *label = @{@"shell_execute": @"执行命令", @"read_file": @"读取文件",
+        @"write_file": @"写入文件", @"edit_file": @"修改文件", @"list_dir": @"查看目录",
+        @"browser_use": @"浏览网页", @"subagent_task": @"派发子任务"}[action] ?: (action.length ? action : @"操作");
+    NSString *preview = [command stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (preview.length > 220) preview = [[preview substringToIndex:220] stringByAppendingString:@"…"];
+    NSString *text = [NSString stringWithFormat:@"允许「%@」？\n%@", label, preview];
     MiniSightShowBubbleWidth(text, 260.0, 600);
 
     gMiniSightBubble.userInteractionEnabled = YES;
