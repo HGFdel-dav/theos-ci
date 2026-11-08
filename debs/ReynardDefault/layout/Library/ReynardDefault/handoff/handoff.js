@@ -30,28 +30,17 @@
     return INTERNAL[schemeOf(value)] ? null : value;
   }
 
+  function debug(stage, extra) {
+    try { browser.runtime.sendMessage({ rdDebug: stage, extra: extra || '' }); } catch (e) {}
+  }
+
   function report(href) {
     try {
       browser.runtime.sendMessage({ rdHandoff: href });
     } catch (e) {}
   }
 
-  function debug(stage, extra) {
-    try { browser.runtime.sendMessage({ rdDebug: stage, extra: extra || '' }); } catch (e) {}
-  }
-
-  // No messaging: navigate to a sentinel https URL, the host recognises it in
-  // OnPreNavigation, opens the real URL and denies this navigation.
-  // Carry both the clicked https URL (for the site's universal link) and the
-  // app URL the page advertises, so the host can behave like Safari.
-  function report(appURL, httpURL) {
-    var hash = '#a=' + encodeURIComponent(appURL);
-    if (httpURL) hash = '#h=' + encodeURIComponent(httpURL) + hash;
-    try { location.href = 'https://reynarddefault.open/' + hash; } catch (e) {}
-  }
-
   debug('boot', location.href);
-  try { document.title = 'RD:' + document.title; } catch (e) {}
 
   document.addEventListener('click', function (event) {
     if (event.rdHandled) return;
