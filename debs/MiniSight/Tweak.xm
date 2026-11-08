@@ -1632,7 +1632,7 @@ static void MiniSightStartSettingsWatch(void) {
     [NSRunLoop.mainRunLoop addTimer:gMiniSightSettingsWatch forMode:NSRunLoopCommonModes];
 }
 
-static void MiniSightStopSettingsWatch(void) {
+__attribute__((unused)) static void MiniSightStopSettingsWatch(void) {
     [gMiniSightSettingsWatch invalidate];
     gMiniSightSettingsWatch = nil;
     gMiniSightWatchedRevision = nil;
