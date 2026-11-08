@@ -34,6 +34,9 @@ typedef NS_ENUM(NSInteger, PXCloneCraneError) {
 + (NSArray<NSDictionary *> *)containersForBundle:(NSString *)bundleID;
 + (NSArray<NSDictionary *> *)prefsContainersForBundle:(NSString *)bundleID;
 + (BOOL)isApplicationRunning:(NSString *)bundleID;
+// Return NO for an unavailable/invalid query; never confuse unknown with exited.
++ (BOOL)queryApplicationRunning:(NSString *)bundleID running:(BOOL *)running
+                          error:(NSError **)error;
 + (BOOL)terminateApplication:(NSString *)bundleID;
 + (NSString *)activeContainerForBundle:(NSString *)bundleID;
 + (BOOL)containerExists:(NSString *)containerID forBundle:(NSString *)bundleID;

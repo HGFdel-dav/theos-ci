@@ -28,7 +28,6 @@ static void (*PXOrigContainersChanged)(id, SEL, id);
 static void (*PXOrigContainerSettingsChanged)(id, SEL, id, id);
 static BOOL PXRefreshInFlight;
 static BOOL PXRefreshPending;
-static void (*PXOrigHandleOpenRequest)(id, SEL, id, id, id);
 
 // Bounded retry window for the tap hook. The menu rows and the settings
 // notification are installed on the first pass and stay installed even if the
@@ -230,147 +229,242 @@ static void PXContainerSettingsChanged(id self, SEL command, id container, id bu
     PXRefreshAndSync();
 }
 
-// SpringBoard asks FBSystemService to open an app for an incoming URL (an app
-// handoff, a payment app jumping into WeChat, ...). Intercepting here is the
-// only place where the clone account can still be chosen before the target app
-// is launched. A request without a second container is forwarded immediately.
+// Only synchronous original-IMP forwarding owns this main-thread stack depth.
+// It expires on return (including exceptions), never on a timer or another process.
+static NSUInteger PXURLForwardDepth;
+#define PX_FORWARD_URL(expression) do { \
+    BOOL pxMainForward = NSThread.isMainThread; \
+    if (pxMainForward) ++PXURLForwardDepth; \
+    @try { expression; } \
+    @finally { if (pxMainForward) --PXURLForwardDepth; } \
+} while (0)
+
+typedef void (*PXOpenRequestIMP)(id, SEL, id, id, id);
+typedef void (*PXWorkspaceRequestIMP)(id, SEL, id, id, id, id, id);
+typedef void (*PXOpenURLCoreIMP)(id, SEL, id, BOOL, BOOL, id, id, id);
+static PXOpenRequestIMP PXOrigHandleOpenRequest;
+static PXWorkspaceRequestIMP PXOrigWorkspaceRequest;
+static PXOpenURLCoreIMP PXOrigOpenURLCore;
+static BOOL PXServiceRequestInstalled;
+static BOOL PXWorkspaceRequestInstalled;
+static BOOL PXOpenURLCoreInstalled;
+
+// Private callback argument signatures are unknown. A confirmed @? is copied
+// as an object and passed only to its original IMP; it is never invoked here.
 static void PXHandleOpenRequest(id self, SEL command, id service, id request, id completion) {
-    [PXCloneProbe log:@"HOOK self=%@ req=%@ desc=%@",
-        NSStringFromClass([self class]), NSStringFromClass([request class]),
-        [[request description] substringToIndex:MIN(300u, [request description].length)]];
+    if (!PXOrigHandleOpenRequest) return;
+    if (!NSThread.isMainThread || PXURLForwardDepth ||
+        ![PXCloneURLRouter paymentURLForRequest:request options:nil]) {
+        PX_FORWARD_URL(PXOrigHandleOpenRequest(self, command, service, request, completion));
+        return;
+    }
+    id ownedCompletion = [completion copy];
     void (^proceed)(void) = ^{
-        if (PXOrigHandleOpenRequest) PXOrigHandleOpenRequest(self, command, service, request, completion);
+        PX_FORWARD_URL(PXOrigHandleOpenRequest(self, command, service, request, ownedCompletion));
     };
+    [PXCloneProbe log:@"FBREQ payment=1"];
     if ([PXCloneURLRouter handleOpenRequest:request options:nil proceed:proceed]) return;
     proceed();
 }
 
-// The real choke point, the one ScreenCore uses: SBWorkspace handles EVERY
-// application open (URL scheme, universal link, notification) inside
-// SpringBoard. FBSystemService is asked later and misses universal links.
-static void (*PXOrigWorkspaceRequest)(id, SEL, id, id, id, id, id);
-
 static void PXHandleWorkspaceRequest(id self, SEL command, id request, id options,
                                      id settings, id origin, id result) {
-    [PXCloneProbe log:@"SBREQ req=%@", NSStringFromClass([request class])];
+    if (!PXOrigWorkspaceRequest) return;
+    // Notification/bundle-only requests have no actual target payment URL.
+    // This test precedes block copy, proceed creation and all catalog work.
+    if (!NSThread.isMainThread || PXURLForwardDepth ||
+        ![PXCloneURLRouter paymentURLForRequest:request options:options]) {
+        PX_FORWARD_URL(PXOrigWorkspaceRequest(self, command, request, options, settings, origin, result));
+        return;
+    }
+    id ownedResult = [result copy];
     void (^proceed)(void) = ^{
-        if (PXOrigWorkspaceRequest)
-            PXOrigWorkspaceRequest(self, command, request, options, settings, origin, result);
+        PX_FORWARD_URL(PXOrigWorkspaceRequest(self, command, request, options, settings, origin, ownedResult));
     };
-    // On iOS 15 this entry passes the BUNDLE IDENTIFIER as a plain string.
-    // Do NOT wrap it in a dictionary: the router probes keys with
-    // respondsToSelector:, which NSDictionary does not answer.
-    if ([request isKindOfClass:NSString.class])
-        [PXCloneProbe log:@"SBREQ bundle=%@", request];
+    [PXCloneProbe log:@"SBREQ payment=1"];
     if ([PXCloneURLRouter handleOpenRequest:request options:options proceed:proceed]) return;
     proceed();
 }
 
-static BOOL PXInstallURLRoutingHook(void) {
-    if (!PXOrigWorkspaceRequest) {
-        // withResult: is a completion block on this build, not an object; try
-        // both shapes and log which one matched.
-        SEL selector = NSSelectorFromString(@"_handleOpenApplicationRequest:options:activationSettings:origin:withResult:");
-        NSArray<NSArray<NSString *> *> *shapes = @[
-            @[@"@", @"@", @"@", @"@", @"@?"],
-            @[@"@", @"@", @"@", @"@", @"@"],
-        ];
-        for (NSArray<NSString *> *shape in shapes) {
-            Class cls = PXClassDeclaringSelector(selector, @encode(void), shape);
-            if (!cls) continue;
-            IMP original = NULL;
-            if (PXCloneHookMessage(cls, selector, (IMP)PXHandleWorkspaceRequest, &original)) {
-                PXOrigWorkspaceRequest = (void (*)(id, SEL, id, id, id, id, id))original;
-                [PXCloneProbe log:@"SBHOOK %@ shape=%lu", NSStringFromClass(cls),
-                    (unsigned long)shape.count];
-                break;
-            }
-        }
-    }
-    if (PXOrigHandleOpenRequest) return YES;
-    Class service = NSClassFromString(@"FBSystemService");
-    SEL selector = NSSelectorFromString(@"systemService:handleOpenApplicationRequest:withCompletion:");
-    if (!service || !class_getInstanceMethod(service, selector)) return NO;
-    IMP original = NULL;
-    if (!PXCloneHookMessage(service, selector, (IMP)PXHandleOpenRequest, &original)) return NO;
-    PXOrigHandleOpenRequest = (void (*)(id, SEL, id, id, id))original;
-    return YES;
-}
-
-// Log-only probes: which lower-level entry points actually see an app->app URL
-// open. They never change behavior; the routing decision stays in one place.
-static BOOL (*PXOrigOpenURL)(id, SEL, id);
-static void (*PXOrigOpenURLOptions)(id, SEL, id, id, id);
-static BOOL (*PXOrigWorkspaceOpen)(id, SEL, id, id);
-
-static BOOL PXInAppReentry;
-
-static BOOL PXProbeOpenURL(id self, SEL command, id url) {
-    void (^proceed)(void) = ^{
-        if (!PXOrigOpenURL) return;
-        PXInAppReentry = YES;
-        PXOrigOpenURL(self, command, url);
-        PXInAppReentry = NO;
-    };
-    if ([url isKindOfClass:NSURL.class] &&
-        [PXCloneURLRouter handleOpenURL:(NSURL *)url proceed:proceed]) return YES;
-    [PXCloneProbe log:@"UIApp.openURL passthru url=%@", url];
-    if (PXOrigOpenURL) return PXOrigOpenURL(self, command, url);
-    return NO;
-}
-
-static void PXProbeOpenURLOptions(id self, SEL command, id url, id options, id completion) {
-    if (PXInAppReentry) {
-        if (PXOrigOpenURLOptions) PXOrigOpenURLOptions(self, command, url, options, completion);
+// The URL-bearing SpringBoard entry predates the bundle-only workspace entry.
+// Runtime @? confirms block ownership, not the block's internal call signature.
+static void PXHandleOpenURLCore(id self, SEL command, id url, BOOL display,
+                                BOOL animating, id settings, id origin, id result) {
+    if (!PXOrigOpenURLCore) return;
+    if (!NSThread.isMainThread || PXURLForwardDepth ||
+        ![url isKindOfClass:NSURL.class] || ![PXCloneURLRouter isPaymentURL:(NSURL *)url]) {
+        PX_FORWARD_URL(PXOrigOpenURLCore(self, command, url, display, animating, settings, origin, result));
         return;
     }
+    id ownedResult = [result copy];
     void (^proceed)(void) = ^{
-        if (PXOrigOpenURLOptions) PXOrigOpenURLOptions(self, command, url, options, completion);
+        PX_FORWARD_URL(PXOrigOpenURLCore(self, command, url, display, animating, settings, origin, ownedResult));
     };
-    if ([url isKindOfClass:NSURL.class] &&
-        [PXCloneURLRouter handleOpenURL:(NSURL *)url proceed:proceed]) return;
-    [PXCloneProbe log:@"UIApp.openURL:options: passthru url=%@", url];
+    [PXCloneProbe log:@"SBCORE payment=1"];
+    if ([PXCloneURLRouter handleOpenURL:(NSURL *)url proceed:proceed]) return;
     proceed();
 }
 
-// This is the real choke point for web views: a WebContent process performs
-// the open, and it has no UIApplication. Route here as well.
-static BOOL PXProbeWorkspaceOpen(id self, SEL command, id url, id options) {
-    [PXCloneProbe log:@"WS %@ url=%@", NSStringFromSelector(command), url];
+static BOOL PXInstallURLRoutingHook(void) {
+    if (!PXWorkspaceRequestInstalled) {
+        SEL selector = NSSelectorFromString(@"_handleOpenApplicationRequest:options:activationSettings:origin:withResult:");
+        Class cls = PXClassDeclaringSelector(selector, @encode(void), @[@"@", @"@", @"@", @"@", @"@?"]);
+        IMP original = NULL;
+        if (cls && PXCloneHookMessage(cls, selector, (IMP)PXHandleWorkspaceRequest, &original)) {
+            PXOrigWorkspaceRequest = (PXWorkspaceRequestIMP)original;
+            PXWorkspaceRequestInstalled = YES;
+            [PXCloneProbe log:@"SBHOOK installed"];
+        }
+    }
+    if (!PXOpenURLCoreInstalled) {
+        SEL selector = NSSelectorFromString(@"_openURLCore:display:animating:activationSettings:origin:withResult:");
+        NSString *boolType = [NSString stringWithUTF8String:@encode(BOOL)];
+        Class cls = PXClassDeclaringSelector(selector, @encode(void),
+            @[@"@", boolType, boolType, @"@", @"@", @"@?"]);
+        IMP original = NULL;
+        if (cls && PXCloneHookMessage(cls, selector, (IMP)PXHandleOpenURLCore, &original)) {
+            PXOrigOpenURLCore = (PXOpenURLCoreIMP)original;
+            PXOpenURLCoreInstalled = YES;
+            [PXCloneProbe log:@"SBCOREHOOK installed"];
+        }
+    }
+    // Optional: absence or any ABI mismatch must never keep bootstrap alive.
+    if (!PXServiceRequestInstalled) {
+        Class service = NSClassFromString(@"FBSystemService");
+        SEL selector = NSSelectorFromString(@"systemService:handleOpenApplicationRequest:withCompletion:");
+        IMP original = NULL;
+        if (PXCloneClassInstanceMethodMatches(service, selector, @encode(void), @[@"@", @"@", @"@?"]) &&
+            PXCloneHookMessage(service, selector, (IMP)PXHandleOpenRequest, &original)) {
+            PXOrigHandleOpenRequest = (PXOpenRequestIMP)original;
+            PXServiceRequestInstalled = YES;
+            [PXCloneProbe log:@"FBHOOK installed"];
+        }
+    }
+    return PXWorkspaceRequestInstalled || PXOpenURLCoreInstalled;
+}
+
+// UIKit's public completion signature is known; private callbacks above are
+// deliberately opaque. Every original has one selector and one install guard.
+typedef void (^PXOpenURLCompletion)(BOOL success);
+typedef BOOL (*PXOpenURLIMP)(id, SEL, NSURL *);
+typedef void (*PXOpenURLOptionsIMP)(id, SEL, NSURL *, NSDictionary *, PXOpenURLCompletion);
+typedef BOOL (*PXWorkspaceOpenIMP)(id, SEL, id, id);
+static PXOpenURLIMP PXOrigOpenURL;
+static PXOpenURLOptionsIMP PXOrigOpenURLOptions;
+static PXWorkspaceOpenIMP PXOrigWorkspaceSensitiveOpen;
+static PXWorkspaceOpenIMP PXOrigWorkspacePublicOpen;
+static BOOL PXOpenURLInstalled;
+static BOOL PXOpenURLOptionsInstalled;
+static BOOL PXWorkspaceSensitiveOpenInstalled;
+static BOOL PXWorkspacePublicOpenInstalled;
+
+static BOOL PXProbeOpenURL(id self, SEL command, NSURL *url) {
+    if (!PXOrigOpenURL) return NO;
+    if (!NSThread.isMainThread || PXURLForwardDepth ||
+        ![url isKindOfClass:NSURL.class] || ![PXCloneURLRouter isPaymentURL:url]) {
+        PX_FORWARD_URL(return PXOrigOpenURL(self, command, url));
+    }
+    // Preserve the synchronous BOOL if the router declines or forwards now.
+    __block BOOL forwarded = NO;
+    __block BOOL originalResult = NO;
     void (^proceed)(void) = ^{
-        if (PXOrigWorkspaceOpen) PXOrigWorkspaceOpen(self, command, url, options);
+        PX_FORWARD_URL(originalResult = PXOrigOpenURL(self, command, url));
+        forwarded = YES;
     };
-    if ([url isKindOfClass:NSURL.class] &&
-        [PXCloneURLRouter handleOpenURL:(NSURL *)url proceed:proceed]) return YES;
-    if (PXOrigWorkspaceOpen) return PXOrigWorkspaceOpen(self, command, url, options);
-    return NO;
+    [PXCloneProbe log:@"UIOPEN payment=1"];
+    if ([PXCloneURLRouter handleOpenURL:url proceed:proceed])
+        return forwarded ? originalResult : YES;
+    proceed();
+    return originalResult;
+}
+
+static void PXProbeOpenURLOptions(id self, SEL command, NSURL *url,
+                                  NSDictionary *options, PXOpenURLCompletion completion) {
+    if (!PXOrigOpenURLOptions) return;
+    if (!NSThread.isMainThread || PXURLForwardDepth ||
+        ![url isKindOfClass:NSURL.class] || ![PXCloneURLRouter isPaymentURL:url]) {
+        PX_FORWARD_URL(PXOrigOpenURLOptions(self, command, url, options, completion));
+        return;
+    }
+    PXOpenURLCompletion ownedCompletion = [completion copy];
+    void (^proceed)(void) = ^{
+        PX_FORWARD_URL(PXOrigOpenURLOptions(self, command, url, options, ownedCompletion));
+    };
+    [PXCloneProbe log:@"UIOPEN-OPTIONS payment=1"];
+    if ([PXCloneURLRouter handleOpenURL:url proceed:proceed]) return;
+    proceed();
+}
+
+// Each entry supplies its own original; the saved IMP always matches _cmd.
+static BOOL PXRouteWorkspaceOpen(id self, SEL command, id url, id options, PXWorkspaceOpenIMP original) {
+    if (!original) return NO;
+    if (!NSThread.isMainThread || PXURLForwardDepth ||
+        ![url isKindOfClass:NSURL.class] || ![PXCloneURLRouter isPaymentURL:(NSURL *)url]) {
+        PX_FORWARD_URL(return original(self, command, url, options));
+    }
+    __block BOOL forwarded = NO;
+    __block BOOL originalResult = NO;
+    void (^proceed)(void) = ^{
+        PX_FORWARD_URL(originalResult = original(self, command, url, options));
+        forwarded = YES;
+    };
+    [PXCloneProbe log:@"LSOPEN payment=1"];
+    if ([PXCloneURLRouter handleOpenURL:(NSURL *)url proceed:proceed])
+        return forwarded ? originalResult : YES;
+    proceed();
+    return originalResult;
+}
+
+static BOOL PXProbeWorkspaceSensitiveOpen(id self, SEL command, id url, id options) {
+    return PXRouteWorkspaceOpen(self, command, url, options, PXOrigWorkspaceSensitiveOpen);
+}
+
+static BOOL PXProbeWorkspacePublicOpen(id self, SEL command, id url, id options) {
+    return PXRouteWorkspaceOpen(self, command, url, options, PXOrigWorkspacePublicOpen);
 }
 
 static BOOL PXInstallProbeHooks(void) {
     Class app = NSClassFromString(@"UIApplication");
     SEL plain = NSSelectorFromString(@"openURL:");
-    if (!PXOrigOpenURL && PXCloneClassInstanceMethodMatches(app, plain, @encode(BOOL), @[@"@"])) {
+    if (!PXOpenURLInstalled && PXCloneClassInstanceMethodMatches(app, plain, @encode(BOOL), @[@"@"])) {
         IMP original = NULL;
-        if (PXCloneHookMessage(app, plain, (IMP)PXProbeOpenURL, &original))
-            PXOrigOpenURL = (BOOL (*)(id, SEL, id))original;
+        if (PXCloneHookMessage(app, plain, (IMP)PXProbeOpenURL, &original)) {
+            PXOrigOpenURL = (PXOpenURLIMP)original;
+            PXOpenURLInstalled = YES;
+        }
     }
     SEL options = NSSelectorFromString(@"openURL:options:completionHandler:");
-    if (!PXOrigOpenURLOptions &&
+    if (!PXOpenURLOptionsInstalled &&
         PXCloneClassInstanceMethodMatches(app, options, @encode(void), @[@"@", @"@", @"@?"])) {
         IMP original = NULL;
-        if (PXCloneHookMessage(app, options, (IMP)PXProbeOpenURLOptions, &original))
-            PXOrigOpenURLOptions = (void (*)(id, SEL, id, id, id))original;
+        if (PXCloneHookMessage(app, options, (IMP)PXProbeOpenURLOptions, &original)) {
+            PXOrigOpenURLOptions = (PXOpenURLOptionsIMP)original;
+            PXOpenURLOptionsInstalled = YES;
+        }
     }
     Class workspace = NSClassFromString(@"LSApplicationWorkspace");
-    for (NSString *name in @[@"openSensitiveURL:withOptions:", @"openURL:withOptions:"]) {
-        SEL selector = NSSelectorFromString(name);
-        if (!PXCloneClassInstanceMethodMatches(workspace, selector, @encode(BOOL), @[@"@", @"@"])) continue;
+    SEL sensitive = NSSelectorFromString(@"openSensitiveURL:withOptions:");
+    if (!PXWorkspaceSensitiveOpenInstalled &&
+        PXCloneClassInstanceMethodMatches(workspace, sensitive, @encode(BOOL), @[@"@", @"@"])) {
         IMP original = NULL;
-        if (PXCloneHookMessage(workspace, selector, (IMP)PXProbeWorkspaceOpen, &original))
-            PXOrigWorkspaceOpen = (BOOL (*)(id, SEL, id, id))original;
+        if (PXCloneHookMessage(workspace, sensitive, (IMP)PXProbeWorkspaceSensitiveOpen, &original)) {
+            PXOrigWorkspaceSensitiveOpen = (PXWorkspaceOpenIMP)original;
+            PXWorkspaceSensitiveOpenInstalled = YES;
+        }
+    }
+    SEL publicOpen = NSSelectorFromString(@"openURL:withOptions:");
+    if (!PXWorkspacePublicOpenInstalled &&
+        PXCloneClassInstanceMethodMatches(workspace, publicOpen, @encode(BOOL), @[@"@", @"@"])) {
+        IMP original = NULL;
+        if (PXCloneHookMessage(workspace, publicOpen, (IMP)PXProbeWorkspacePublicOpen, &original)) {
+            PXOrigWorkspacePublicOpen = (PXWorkspaceOpenIMP)original;
+            PXWorkspacePublicOpenInstalled = YES;
+        }
     }
     return YES;
 }
+
+#undef PX_FORWARD_URL
 
 static BOOL PXInstallRefreshHooks(void) {
     // Current alpha391 metadata and the device libcrane both confirm these
@@ -408,19 +502,8 @@ static void PXBootstrap(NSUInteger attempt) {
     NSString *bundleID = NSBundle.mainBundle.bundleIdentifier;
     if (attempt == 0) [PXCloneProbe log:@"BOOT-LOADED bid=%@", bundleID ?: @"(nil)"];
     BOOL springboard = [bundleID isEqualToString:@"com.apple.springboard"];
-    if (!springboard) {
-        // Injected into every process now; daemons get one line and nothing else.
-        if (attempt == 0 && bundleID.length) {
-            [PXCloneProbe log:@"APP-BOOT %@", bundleID];
-            PXInstallProbeHooks();
-        }
-        if (!bundleID.length) return;
-        BOOL ready = PXOrigOpenURL || PXOrigOpenURLOptions;
-        if (ready || attempt >= PXHookAttemptLimit) return;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, PXHookRetryDelayNS),
-                       dispatch_get_main_queue(), ^{ PXBootstrap(attempt + 1); });
-        return;
-    }
+    // Match the SpringBoard-only image filter; never install in app/extensions.
+    if (!springboard) return;
     if (attempt == 0) {
         (void)PXClonePrefs.shared;
         if (PXNotifyToken < 0) {

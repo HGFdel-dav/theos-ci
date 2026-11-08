@@ -235,21 +235,51 @@ static NSArray<NSDictionary *> *PXCatalog;
 }
 
 + (BOOL)isApplicationRunning:(NSString *)bundleID {
+    BOOL running = NO;
+    return [self queryApplicationRunning:bundleID running:&running error:NULL] && running;
+}
+
++ (BOOL)queryApplicationRunning:(NSString *)bundleID running:(BOOL *)running error:(NSError **)error {
+    if (running) *running = NO;
     Class cls = NSClassFromString(@"FBProcessManager");
     SEL shared = NSSelectorFromString(@"sharedInstance");
-    if (!PXCloneClassMethodMatches(cls, shared, @encode(id), @[], NULL)) return NO;
-    id manager = PXCloneSendId((id)cls, shared);
-    SEL list = NSSelectorFromString(@"applicationProcessesForBundleIdentifier:");
-    if (!PXCloneInstanceMethodMatches(manager, list, @encode(id), @[@"@"])) return NO;
-    id processes = nil;
-    @try { processes = PXCloneSendId1(manager, list, bundleID); }
-    @catch (__unused NSException *exception) { return NO; }
-    for (id process in processes) {
-        SEL running = NSSelectorFromString(@"isRunning");
-        if (PXCloneInstanceMethodMatches(process, running, @encode(BOOL), @[]) &&
-            PXCloneSendBool(process, running)) return YES;
+    if (!bundleID.length || !running || !PXCloneClassMethodMatches(cls, shared, @encode(id), @[], NULL)) {
+        if (error) *error = PXCraneError(PXCloneCraneErrorABI, @"进程查询接口不可用");
+        return NO;
     }
-    return NO;
+    id manager = PXCloneSendId((id)cls, shared);
+    if (!manager) {
+        if (error) *error = PXCraneError(PXCloneCraneErrorUnavailable, @"进程管理器不可用");
+        return NO;
+    }
+    SEL list = NSSelectorFromString(@"applicationProcessesForBundleIdentifier:");
+    if (!PXCloneInstanceMethodMatches(manager, list, @encode(id), @[@"@"]))
+        list = NSSelectorFromString(@"processesForBundleIdentifier:");
+    if (!PXCloneInstanceMethodMatches(manager, list, @encode(id), @[@"@"])) {
+        if (error) *error = PXCraneError(PXCloneCraneErrorABI, @"进程列表接口不可用");
+        return NO;
+    }
+    @try {
+        // Do not use PXCloneSendId1 here: that helper swallows exceptions and
+        // would turn an unavailable query into a false 'old process exited'.
+        id processes = ((id (*)(id, SEL, id))objc_msgSend)(manager, list, bundleID);
+        if (!processes || (![processes isKindOfClass:NSArray.class] && ![processes isKindOfClass:NSSet.class])) {
+            if (error) *error = PXCraneError(PXCloneCraneErrorABI, @"进程列表格式不可用");
+            return NO;
+        }
+        for (id process in processes) {
+            SEL alive = NSSelectorFromString(@"isRunning");
+            if (!PXCloneInstanceMethodMatches(process, alive, @encode(BOOL), @[])) {
+                if (error) *error = PXCraneError(PXCloneCraneErrorABI, @"进程存活接口不可用");
+                return NO;
+            }
+            if (((BOOL (*)(id, SEL))objc_msgSend)(process, alive)) *running = YES;
+        }
+    } @catch (__unused NSException *exception) {
+        if (error) *error = PXCraneError(PXCloneCraneErrorUnavailable, @"进程列表查询异常");
+        return NO;
+    }
+    return YES;
 }
 
 + (BOOL)terminateApplication:(NSString *)bundleID {
@@ -283,6 +313,9 @@ static NSArray<NSDictionary *> *PXCatalog;
     id manager = PXSharedManager();
     if (!manager || !PXSupported(manager, bundleID)) return NO;
     if ([containerID isEqualToString:@"DEFAULT"]) return YES;
+    NSArray *fromPrefs = [self prefsContainersForBundle:bundleID];
+    for (NSDictionary *entry in fromPrefs)
+        if ([entry[@"container"] isEqual:containerID]) return YES;
     NSArray *identifiers = PXStringArrayResult(manager,
         NSSelectorFromString(@"containerIdentifiersOfApplicationWithIdentifier:"), bundleID);
     return [identifiers containsObject:containerID];
@@ -307,13 +340,10 @@ static NSArray<NSDictionary *> *PXCatalog;
         if (error) *error = PXCraneError(PXCloneCraneErrorSwitchFailed, exception.reason ?: @"Crane 切换异常");
         return NO;
     }
-    if (reload) {
-        SEL reloadSelector = NSSelectorFromString(@"reloadApplicationWithIdentifier:");
-        if (PXCloneInstanceMethodMatches(manager, reloadSelector, @encode(void), @[@"@"])) {
-            @try { ((void (*)(id, SEL, id))objc_msgSend)(manager, reloadSelector, bundleID); }
-            @catch (__unused NSException *exception) { }
-        }
-    }
+    // This API owns only the active-container write. The caller must prove
+    // process exit and launch through ParallelX's native host builder; invoking
+    // reloadApplicationWithIdentifier here would discard the external URL.
+    (void)reload;
     return YES;
 }
 
@@ -324,22 +354,10 @@ static NSArray<NSDictionary *> *PXCatalog;
         if (error) *error = PXCraneError(PXCloneCraneErrorInvalidArgument, @"账号不存在或 Crane 不可用");
         return NO;
     }
-    // Twin/ScreenCore both use the plain reload API first: it never prompts
-    // for biometrics and returns immediately.
-    SEL plain = NSSelectorFromString(@"setActiveContainerIdentifier:forApplicationWithIdentifier:reloadApplication:");
-    if (PXCloneInstanceMethodMatches(manager, plain, @encode(void),
-            @[@"@", @"@", [NSString stringWithUTF8String:@encode(BOOL)]])) {
-        SEL reload = NSSelectorFromString(@"reloadApplicationWithIdentifier:");
-        @try {
-            ((void (*)(id, SEL, id, id, BOOL))objc_msgSend)(manager, plain, containerID, bundleID, NO);
-            if (reload && PXCloneInstanceMethodMatches(manager, reload, @encode(void), @[@"@"]) && reply) {
-                ((void (*)(id, SEL, id))objc_msgSend)(manager, reload, bundleID);
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)),
-                               dispatch_get_main_queue(), ^{ reply(YES); });
-            }
-            return YES;
-        } @catch (__unused NSException *exception) { }
-    }
+    // Use the verified reload:NO authentication API. The former plain branch
+    // called reloadApplicationWithIdentifier:, which restarted the target before
+    // the payment URL/native split builder could launch it. Do not synthesize
+    // a success callback or bypass Crane's biometric preference here.
     // libcrane arm64e @0x84d4: v44@0:8@16@24B32@?36. The shorter
     // usingBiometrics selector defaults reload to YES; do not use it here.
     SEL selector = NSSelectorFromString(@"setActiveContainerIdentifier:forApplicationWithIdentifier:reloadApplication:usingBiometricsIfNeededWithSuccessHandler:");

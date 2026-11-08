@@ -4,6 +4,7 @@
 #import "PXCloneRuntime.h"
 #import "PXClonePaths.h"
 #import "PXCloneTrace.h"
+#import "PXCloneURLRouter.h"
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 #import <objc/message.h>
@@ -268,12 +269,20 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     return NSThread.isMainThread && _flow.phase == PXCloneFlowOpening && [_bundle isEqual:bundle];
 }
 
+- (BOOL)isBusy {
+    return _flow.phase != PXCloneFlowIdle || _pending != nil;
+}
+
 - (void)requestBundle:(NSString *)bundle container:(NSString *)container {
     if (!NSThread.isMainThread) {
         dispatch_async(dispatch_get_main_queue(), ^{ [self requestBundle:bundle container:container]; });
         return;
     }
     if (!bundle.length || !container.length) return;
+    if ([PXCloneURLRouter hasActivePayment]) {
+        [self showError:@"请先完成当前付款账号操作，再打开其他分身"];
+        return;
+    }
     // Do not cancel Crane while it may still apply an authenticated change.
     // A→B→A during an A transaction simply supersedes pending B with A.
     if (_flow.phase != PXCloneFlowIdle && [_bundle isEqual:bundle] && [_container isEqual:container]) {
@@ -534,7 +543,7 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     // A bounded, content-free event ring survives a missed live log capture.
     // No account display names, credentials, messages or app content.
     NSDictionary *event = @{ @"time": @(NSDate.date.timeIntervalSince1970),
-                             @"build": @"clone0.54", @"token": @(_flow.token),
+                             @"build": @"clone0.55", @"token": @(_flow.token),
                              @"stage": stage, @"code": @(code),
                              @"bundle": _bundle ?: @"", @"targetHash": @(_container.hash) };
     [_trace addObject:event];

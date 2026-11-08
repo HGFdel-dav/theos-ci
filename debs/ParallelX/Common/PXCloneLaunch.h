@@ -8,6 +8,7 @@ NS_ASSUME_NONNULL_BEGIN
 @interface PXCloneLaunchController : NSObject
 + (instancetype)shared;
 + (BOOL)installNativeHooks;
+@property(nonatomic, readonly, getter=isBusy) BOOL busy;
 - (void)requestBundle:(NSString *)bundle container:(NSString *)container;
 @end
 

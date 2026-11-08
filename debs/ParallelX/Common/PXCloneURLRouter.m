@@ -2,32 +2,36 @@
 #import "PXCloneCrane.h"
 #import "PXCloneRuntime.h"
 #import "PXCloneProbe.h"
+#import "PXCloneURLPolicy.h"
+#import "PXCloneLaunch.h"
 #import <UIKit/UIKit.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
 
-// SpringBoard hands an external "open this app with this URL" request to
-// FBSystemService before the app is launched. When the target bundle has more
-// than one Crane container we show an account chooser, make the chosen account
-// the active container, and only then let the original request run - so the app
-// the system launches for the URL is the account the user picked.
-//
-// The catalog is refreshed on demand, but a request can arrive before the
-// first asynchronous refresh has completed. Never fall through to the
-// current account in that window: the URL must wait for a complete catalog.
+// Only confirmed payment requests are owned. Plain opens/notifications never
+// wait for a catalog and never create a timer. All state belongs to one request.
 static NSTimeInterval const PXURLRouterPollInterval = 0.2;
 static NSUInteger const PXURLRouterPollLimit = 25;
-static NSTimeInterval const PXURLRouterCatalogWaitInterval = 0.1;
-static NSUInteger const PXURLRouterCatalogWaitLimit = 50;
-static NSTimeInterval const PXURLRouterRefreshThrottle = 1.0;
-static UIWindow *PXURLRouterWindow = nil;
-static NSTimeInterval PXURLRouterLastRefresh = 0;
-static BOOL PXURLRouterCatalogLoading = NO;
-static BOOL PXURLRouterCatalogReady = NO;
-// Last account per bundle: repeat jumps of the same app must not ask again.
-static NSMutableDictionary<NSString *, NSString *> *PXURLRouterLastChoice;
-static NSMutableDictionary<NSString *, NSNumber *> *PXURLRouterLastChoiceAt;
-static NSTimeInterval const PXURLRouterChoiceTTL = 600.0;
+
+@interface PXURLRoutingTransaction : NSObject {
+@public
+    PXURLRouteState route;
+}
+@property(nonatomic, copy) NSString *bundle;
+@property(nonatomic, copy) NSString *container;
+@property(nonatomic, copy) void (^proceed)(void);
+@property(nonatomic, strong) UIAlertController *alert;
+@property(nonatomic) BOOL selected;
+@property(nonatomic) BOOL stopRequested;
+@property(nonatomic) BOOL requiresExit;
+@property(nonatomic) BOOL authenticationOutstanding;
+@property(nonatomic, copy) NSArray<NSDictionary *> *containers;
+@end
+@implementation PXURLRoutingTransaction
+@end
+
+static PXURLRoutingTransaction *PXURLRouterActive;
+static uint64_t PXURLRouterNextToken = 1;
 
 static NSString *PXURLRouterString(id object, NSArray<NSString *> *keys) {
     if (!object) return nil;
@@ -50,53 +54,21 @@ static id PXURLRouterValue(id object, NSString *key) {
     @catch (NSException *exception) { (void)exception; return nil; }
 }
 
-static NSArray<NSDictionary *> *PXURLRouterContainers(NSString *bundle) {
-    for (NSDictionary *entry in PXCloneCrane.cachedCatalog) {
-        if (![entry[@"bundle"] isKindOfClass:NSString.class]) continue;
-        if (![(NSString *)entry[@"bundle"] isEqualToString:bundle]) continue;
-        id containers = entry[@"containers"];
-        return [containers isKindOfClass:NSArray.class] ? containers : @[];
-    }
-    return @[];
-}
-
-// A request may be observed more than once; the original call must happen
-// exactly once no matter which path finishes first. Blocks are not objects
-// Clang accepts in @synchronized, so a dedicated NSObject is the lock.
-static void (^PXURLRouterOnce(void (^proceed)(void)))(void) {
-    __block BOOL done = NO;
-    NSObject *lock = [NSObject new];
-    // A block RETURNED from a function is on the stack unless copied; the
-    // alert keeps it past this frame (crash: objc_retain at 0x20).
-    return [^{
-        @synchronized (lock) {
-            if (done) return;
-            done = YES;
-        }
-        if (proceed) proceed();
-    } copy];
-}
-
 @interface PXCloneURLRouter ()
-+ (void)loadCatalogForRequest:(id)request proceed:(void (^)(void))proceed
-                      bundle:(NSString *)bundle attempt:(NSUInteger)attempt;
-+ (void)activateContainer:(NSString *)container bundle:(NSString *)bundle
-                  proceed:(void (^)(void))proceed;
-+ (void)waitForContainer:(NSString *)container bundle:(NSString *)bundle
-                 attempt:(NSUInteger)attempt proceed:(void (^)(void))proceed;
-+ (void)waitForTermination:(NSString *)bundle attempt:(NSUInteger)attempt
-                  proceed:(void (^)(void))proceed container:(NSString *)container;
++ (BOOL)beginBundle:(NSString *)bundle containers:(NSArray<NSDictionary *> *)containers
+            proceed:(void (^)(void))proceed;
++ (void)presentTransaction:(PXURLRoutingTransaction *)transaction;
++ (void)stopOldProcess:(PXURLRoutingTransaction *)transaction attempt:(NSUInteger)attempt;
++ (void)switchTransaction:(PXURLRoutingTransaction *)transaction;
++ (void)verifyTransaction:(PXURLRoutingTransaction *)transaction attempt:(NSUInteger)attempt;
++ (void)endTransaction:(PXURLRoutingTransaction *)transaction cancelled:(BOOL)cancelled
+                 error:(nullable NSString *)message;
 + (void)showRoutingError:(NSString *)message;
 @end
 
-static void PXURLRouterRefreshCatalog(void) {
-    if (PXURLRouterCatalogLoading) return;
-    PXURLRouterCatalogLoading = YES;
-    PXURLRouterLastRefresh = NSDate.date.timeIntervalSince1970;
-    [PXCloneCrane refreshCatalogWithCompletion:^(NSArray<NSDictionary *> *catalog, NSError *error) {
-        PXURLRouterCatalogLoading = NO;
-        PXURLRouterCatalogReady = (catalog != nil && error == nil);
-    }];
+static BOOL PXURLRouterCurrent(PXURLRoutingTransaction *transaction) {
+    return transaction && PXURLRouterActive == transaction &&
+           PXURLRouteCurrent(&transaction->route, transaction->route.token);
 }
 
 static NSString *PXURLRouterBundleFromRequest(id request) {
@@ -114,12 +86,6 @@ static NSString *PXURLRouterBundleFromRequest(id request) {
     if (!target) return nil;
     return PXURLRouterString(target, @[@"bundleIdentifier", @"bundleID", @"applicationIdentifier"]);
 }
-// An app-originated open (the normal payment flow) already picked an account
-// and forwarded; SpringBoard will see the same URL a moment later and must not
-// prompt a second time.
-static NSTimeInterval PXURLRouterLastAppHandoff = 0;
-static NSTimeInterval const PXURLRouterHandoffWindow = 8.0;
-
 static id PXURLRouterWorkspace(void) {
     Class workspace = NSClassFromString(@"LSApplicationWorkspace");
     SEL shared = NSSelectorFromString(@"defaultWorkspace");
@@ -167,386 +133,323 @@ static NSString *PXURLRouterBundleForURL(NSURL *url) {
     return nil;
 }
 
-// Only payment handoffs should ask. Everything else (plain links, app-to-app
-// browsing) keeps the current account silently.
-static BOOL PXURLRouterLooksLikePayment(NSURL *url) {
-    NSString *scheme = url.scheme.lowercaseString;
-    for (NSString *pay in @[@"weixin", @"wechat", @"wxpay", @"tenpay",
-                            @"alipay", @"alipays", @"alipayqr", @"alipayobject",
-                            @"mqqapi", @"mqqwallet", @"upwallet", @"uppay",
-                            @"unionpay", @"wallet", @"bank"]) {
-        if ([scheme isEqualToString:pay]) return YES;
-    }
-    NSString *text = url.absoluteString.lowercaseString;
-    for (NSString *hint in @[@"pay", @"cashier", @"trade", @"wxpay", @"tenpay",
-                             @"alipay", @"alipays", @"unionpay", @"uppay",
-                             @"收银台", @"支付", @"付款", @"收款", @"转账", @"prepay"]) {
-        if ([text containsString:hint]) return YES;
-    }
-    return NO;
+static id PXURLRouterField(id object, NSString *key) {
+    if ([object isKindOfClass:NSDictionary.class]) return ((NSDictionary *)object)[key];
+    return PXURLRouterValue(object, key);
 }
 
-static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
-    NSString *scheme = url.scheme.lowercaseString;
-    if (!scheme.length) return YES;
-    for (NSString *web in @[@"http", @"https", @"about", @"file", @"data", @"javascript"]) {
-        if ([scheme isEqualToString:web]) return YES;
+static NSURL *PXURLRouterTargetURL(id object, NSUInteger depth) {
+    if (!object || depth > 3) return nil;
+    if ([object isKindOfClass:NSURL.class]) return object;
+    // A plain bundle identifier/request description is not a target URL.
+    if ([object isKindOfClass:NSString.class]) return nil;
+    NSURL *target = nil;
+    for (NSString *key in @[@"url", @"URL", @"targetURL", @"openURL", @"UIApplicationLaunchOptionsURLKey"]) {
+        id value = PXURLRouterField(object, key);
+        NSURL *candidate = nil;
+        if ([value isKindOfClass:NSURL.class]) candidate = value;
+        else if ([value isKindOfClass:NSString.class] && [(NSString *)value length])
+            candidate = [NSURL URLWithString:value];
+        if (!candidate.scheme.length) continue;
+        if (target && ![target isEqual:candidate]) return nil;
+        target = candidate;
     }
-    return NO;
+    for (NSString *key in @[@"__Payload", @"payload", @"options"]) {
+        id value = PXURLRouterField(object, key);
+        if (![value isKindOfClass:NSDictionary.class]) continue;
+        NSURL *candidate = PXURLRouterTargetURL(value, depth + 1);
+        if (!candidate) continue;
+        if (target && ![target isEqual:candidate]) return nil;
+        target = candidate;
+    }
+    return target;
+}
+
+static UIViewController *PXURLRouterPresenter(void) {
+    UIApplication *application = UIApplication.sharedApplication;
+    if (!application) return nil;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    for (UIWindow *window in application.windows.reverseObjectEnumerator) {
+        if (window.hidden || window.alpha <= 0.1 || !window.rootViewController) continue;
+        UIViewController *presenter = window.rootViewController;
+        while (presenter.presentedViewController) presenter = presenter.presentedViewController;
+        if ([presenter isKindOfClass:UIAlertController.class] || presenter.isBeingDismissed) continue;
+        if (presenter.viewIfLoaded.window) return presenter;
+    }
+#pragma clang diagnostic pop
+    return nil; // Never create a scene-less key window that steals PX's handle.
 }
 
 @implementation PXCloneURLRouter
 
-+ (NSString *)rememberedChoiceForBundle:(NSString *)bundle {
-    if (!bundle.length) return nil;
-    NSNumber *when = PXURLRouterLastChoiceAt[bundle];
-    if (!when || NSDate.date.timeIntervalSince1970 - when.doubleValue > PXURLRouterChoiceTTL) return nil;
-    return PXURLRouterLastChoice[bundle];
-}
-
-+ (void)rememberChoice:(NSString *)container forBundle:(NSString *)bundle {
-    if (!bundle.length || !container.length) return;
-    if (!PXURLRouterLastChoice) PXURLRouterLastChoice = [NSMutableDictionary dictionary];
-    if (!PXURLRouterLastChoiceAt) PXURLRouterLastChoiceAt = [NSMutableDictionary dictionary];
-    PXURLRouterLastChoice[bundle] = container;
-    PXURLRouterLastChoiceAt[bundle] = @(NSDate.date.timeIntervalSince1970);
-}
-
-+ (BOOL)recentAppHandoff {
-    return PXURLRouterLastAppHandoff > 0 &&
-           NSDate.date.timeIntervalSince1970 - PXURLRouterLastAppHandoff < PXURLRouterHandoffWindow;
-}
-
-+ (void)noteAppHandoff {
-    PXURLRouterLastAppHandoff = NSDate.date.timeIntervalSince1970;
-}
-
-// Called from every app process for -[UIApplication openURL:options:...].
-// Returns YES when the router owns the request and will run `proceed` later.
-static BOOL PXURLRouterOptionsCarryURL(id options) {
-    if (![options isKindOfClass:NSDictionary.class]) return NO;
-    for (id key in (NSDictionary *)options) {
-        if (![key isKindOfClass:NSString.class]) continue;
-        if (![((NSString *)key).lowercaseString containsString:@"url"]) continue;
-        if ([options[key] isKindOfClass:NSURL.class]) return YES;
-        if ([options[key] isKindOfClass:NSString.class] && [options[key] length]) return YES;
++ (BOOL)isPaymentURL:(NSURL *)url {
+    if (![url isKindOfClass:NSURL.class] || !url.scheme.length) return NO;
+    NSURLComponents *parts = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
+    if (!parts || parts.user.length || parts.password.length) return NO;
+    NSString *scheme = parts.scheme.lowercaseString ?: @"";
+    NSString *host = parts.host.lowercaseString ?: @"";
+    NSString *path = parts.path.lowercaseString ?: @"";
+    NSString *action = @"";
+    for (NSURLQueryItem *item in parts.queryItems) {
+        NSString *name = item.name.lowercaseString;
+        if ([name isEqualToString:@"action"] || [name isEqualToString:@"service"] ||
+            [name isEqualToString:@"method"]) {
+            NSString *value = item.value.lowercaseString ?: @"";
+            if (action.length && ![action isEqualToString:value]) return NO;
+            action = value;
+        }
     }
-    id payload = ((NSDictionary *)options)[@"__Payload"];
-    if ([payload isKindOfClass:NSDictionary.class]) return PXURLRouterOptionsCarryURL(payload);
-    return NO;
+    return PXURLRoutePayment(scheme.UTF8String, host.UTF8String, path.UTF8String, action.UTF8String);
+}
+
++ (NSURL *)paymentURLForRequest:(id)request options:(id)options {
+    NSURL *direct = PXURLRouterTargetURL(options, 0);
+    NSURL *nested = PXURLRouterTargetURL(request, 0);
+    if (direct && nested && ![direct isEqual:nested]) return nil;
+    NSURL *url = direct ?: nested;
+    return [self isPaymentURL:url] ? url : nil;
 }
 
 + (BOOL)handleOpenURL:(NSURL *)url proceed:(void (^)(void))proceed {
-    if (!proceed || !url.absoluteString.length) return NO;
-
-    // Web URLs matter too: a WeChat/Alipay payment handoff is an https
-    // universal link, not a scheme. Resolve the owner; only a bundle with
-    // several containers is intercepted, everything else keeps normal handling.
-    if (PXURLRouterSchemeIsWeb(url) && ![url.scheme.lowercaseString isEqualToString:@"https"]
-        && ![url.scheme.lowercaseString isEqualToString:@"http"]) return NO;
+    // Do not resolve a target, touch Crane or create state for plain URLs.
+    if (!NSThread.isMainThread || !proceed || ![self isPaymentURL:url]) return NO;
     NSString *bundle = PXURLRouterBundleForURL(url);
-    [PXCloneProbe log:@"APP-OPEN url=%@ bundle=%@", url.absoluteString, bundle ?: @"(nil)"];
     if (!bundle.length) return NO;
-    // WebContent and other helpers have their own bundle; only skip when the
-    // open would target this very app AND the scheme is ours.
-    NSString *own = NSBundle.mainBundle.bundleIdentifier;
-    if ([bundle isEqualToString:own] && ![[NSFileManager defaultManager] fileExistsAtPath:@"/tmp/.px-allow-self"]) return NO;
-
     NSArray<NSDictionary *> *containers = [PXCloneCrane containersForBundle:bundle];
-    [PXCloneProbe log:@"APP-CONTAINERS bundle=%@ n=%lu", bundle, (unsigned long)containers.count];
     if (containers.count < 2) return NO;
-
-    if (!PXURLRouterLooksLikePayment(url)) return NO;
-
-    NSString *remembered = [self rememberedChoiceForBundle:bundle];
-    if (remembered.length) {
-        [PXCloneProbe log:@"REMEMBERED %@ -> %@", bundle, remembered];
-        [self activateContainer:remembered bundle:bundle proceed:proceed];
-        return YES;
-    }
-
-    void (^once)(void) = PXURLRouterOnce(proceed);
-    void (^owned)(void) = ^{
-        [self noteAppHandoff];
-        once();
-    };
-    void (^present)(void) = ^{
-        [self presentChooserForBundle:bundle containers:containers proceed:owned];
-    };
-    if (NSThread.isMainThread) present();
-    else dispatch_async(dispatch_get_main_queue(), present);
-    return YES;
+    return [self beginBundle:bundle containers:containers proceed:proceed];
 }
 
 + (BOOL)handleOpenRequest:(id)request options:(id)options proceed:(void (^)(void))proceed {
-    if (!proceed) return NO;
-    if ([self recentAppHandoff]) {
-        [PXCloneProbe log:@"SB-SKIP (app already handled)"];
-        return NO;
-    }
+    if (!NSThread.isMainThread || !proceed) return NO;
+    NSURL *url = [self paymentURLForRequest:request options:options];
+    if (!url) return NO; // Includes notification taps and source/return URL only.
     NSString *bundle = PXURLRouterBundleFromRequest(request);
-    [PXCloneProbe log:@"ROUTE bundle=%@ catalog=%lu ready=%d loading=%d", bundle ?: @"(nil)",
-        (unsigned long)PXCloneCrane.cachedCatalog.count, (int)PXURLRouterCatalogReady,
-        (int)PXURLRouterCatalogLoading];
     if (!bundle.length) return NO;
-    // Notification taps carry no URL: behave exactly like the stock panel.
-    if (!PXURLRouterOptionsCarryURL(options)) return NO;
+    // The target is the exact bundle from SpringBoard, not a URL-owner guess.
+    NSArray<NSDictionary *> *containers = [PXCloneCrane containersForBundle:bundle];
+    if (containers.count < 2) return NO;
+    return [self beginBundle:bundle containers:containers proceed:proceed];
+}
 
-    void (^once)(void) = PXURLRouterOnce(proceed);
-    PXURLRouterPending = [once copy];
-    NSArray<NSDictionary *> *containers = PXURLRouterContainers(bundle);
-    if (containers.count >= 2) {
-        void (^present)(void) = ^{
-            [self presentChooserForBundle:bundle containers:containers proceed:once];
-        };
-        if (NSThread.isMainThread) present();
-        else dispatch_async(dispatch_get_main_queue(), present);
-        return YES;
++ (BOOL)hasActivePayment {
+    return PXURLRouterActive != nil;
+}
+
++ (BOOL)beginBundle:(NSString *)bundle containers:(NSArray<NSDictionary *> *)containers
+            proceed:(void (^)(void))proceed {
+    if (!NSThread.isMainThread || !bundle.length || !proceed || containers.count < 2) return NO;
+    if (PXURLRouterActive || PXCloneLaunchController.shared.busy) {
+        [self showRoutingError:@"正在切换账号，请完成当前操作后再打开付款链接"];
+        return YES; // Never launch a concurrent payment into whichever account wins.
     }
-
-    NSTimeInterval now = NSDate.date.timeIntervalSince1970;
-    if (!PXURLRouterCatalogReady || now - PXURLRouterLastRefresh >= PXURLRouterRefreshThrottle)
-        PXURLRouterRefreshCatalog();
-
-    // This is an external request, so owning it while the catalog is loading
-    // is essential. Falling through here launches the current account before
-    // the chooser has a chance to appear.
-    [self loadCatalogForRequest:request proceed:once bundle:bundle attempt:0];
+    PXURLRoutingTransaction *transaction = [PXURLRoutingTransaction new];
+    transaction->route = (PXURLRouteState){ PXURLRouterNextToken++, PXURLRouteNew };
+    if (!transaction->route.token) transaction->route.token = PXURLRouterNextToken++;
+    transaction.bundle = bundle;
+    transaction.proceed = [proceed copy];
+    transaction.containers = [containers copy];
+    if (!PXURLRouteAdvance(&transaction->route, transaction->route.token,
+                            PXURLRouteNew, PXURLRouteChoosing)) return YES;
+    PXURLRouterActive = transaction;
+    [PXCloneProbe log:@"payment.choose.begin"];
+    [self presentTransaction:transaction];
+    __weak PXURLRoutingTransaction *weakTransaction = transaction;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 45 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        PXURLRoutingTransaction *current = weakTransaction;
+        if (PXURLRouterCurrent(current) && current->route.phase == PXURLRouteChoosing)
+            [self endTransaction:current cancelled:NO error:@"账号选择已超时，付款链接未打开"];
+    });
     return YES;
 }
 
-+ (void)loadCatalogForRequest:(id)request proceed:(void (^)(void))proceed
-                      bundle:(NSString *)bundle attempt:(NSUInteger)attempt {
-    NSArray<NSDictionary *> *containers = PXURLRouterContainers(bundle);
-    if (containers.count >= 2) {
-        void (^present)(void) = ^{
-            [self presentChooserForBundle:bundle containers:containers proceed:proceed];
-        };
-        if (NSThread.isMainThread) present();
-        else dispatch_async(dispatch_get_main_queue(), present);
-        return;
-    }
-    if (PXURLRouterCatalogReady && !PXURLRouterCatalogLoading) {
-        // A completed catalog with one container is a real negative result.
-        [PXCloneProbe log:@"PASS-1CONTAINER bundle=%@ n=%lu", bundle, (unsigned long)containers.count];
-        proceed();
-        return;
-    }
-    if (attempt >= PXURLRouterCatalogWaitLimit) {
-        [PXCloneProbe log:@"WAIT-TIMEOUT bundle=%@", bundle];
-        [self showRoutingError:@"账号目录尚未就绪，付款链接未打开，请重试"];
-        return;
-    }
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
-                                 (int64_t)(PXURLRouterCatalogWaitInterval * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        [self loadCatalogForRequest:request proceed:proceed bundle:bundle attempt:attempt + 1];
-    });
-}
-
-+ (void)presentChooserForBundle:(NSString *)bundle
-                     containers:(NSArray<NSDictionary *> *)containers
-                        proceed:(void (^)(void))proceed {
-    UIApplication *application = UIApplication.sharedApplication;
-    if (!application) { proceed(); return; }
-
-    // Attach to whatever is on screen when possible; a bare key window can be
-    // swallowed by the app that is mid-transition.
-    // Twin (own repo) does exactly this: walk the existing windows backwards
-    // and present on the top controller. A fresh scene-less window stays
-    // invisible in SpringBoard and looks like a freeze.
-    UIViewController *presenter = nil;
-    UIViewController *host = nil;
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    for (UIWindow *candidate in application.windows.reverseObjectEnumerator) {
-        if (candidate.hidden || !candidate.rootViewController) continue;
-        presenter = candidate.rootViewController;
-        while (presenter.presentedViewController) presenter = presenter.presentedViewController;
-        break;
-    }
-#pragma clang diagnostic pop
-    if (presenter && [presenter isKindOfClass:UIAlertController.class]) { presenter = nil; }
-
-    UIWindow *window = nil;
++ (void)presentTransaction:(PXURLRoutingTransaction *)transaction {
+    if (!PXURLRouterCurrent(transaction)) return;
+    UIViewController *presenter = PXURLRouterPresenter();
     if (!presenter) {
-        window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
-        window.windowLevel = UIWindowLevelAlert + 1;
-        host = [UIViewController new];
-        host.view.backgroundColor = UIColor.clearColor;
-        window.rootViewController = host;
-        PXURLRouterWindow = window;
-        [window makeKeyAndVisible];
-        presenter = host;
+        [self endTransaction:transaction cancelled:NO error:@"当前无法显示账号选择，付款链接未打开"];
+        return;
     }
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    NSUInteger windowCount = application.windows.count;
-#pragma clang diagnostic pop
-    [PXCloneProbe log:@"PRESENT via=%@ windows=%lu", window ? @"window" : @"vc",
-        (unsigned long)windowCount];
-
-    NSString *active = [PXCloneCrane activeContainerForBundle:bundle];
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"选择打开的账号"
-                                                                  message:nil
-                                                           preferredStyle:UIAlertControllerStyleActionSheet];
-    void (^finish)(NSString *, NSString *) = ^(NSString *container, NSString *title) {
-        (void)title;
-        [alert dismissViewControllerAnimated:YES completion:^{
-            window.hidden = YES;
-            if (PXURLRouterWindow == window) PXURLRouterWindow = nil;
-        }];
-        [self activateContainer:container bundle:bundle proceed:proceed];
-    };
-
-    for (NSDictionary *entry in containers) {
+    NSString *active = [PXCloneCrane activeContainerForBundle:transaction.bundle];
+    if (!active.length) {
+        [self endTransaction:transaction cancelled:NO error:@"无法读取当前账号，付款链接未打开"];
+        return;
+    }
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"选择付款账号"
+        message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+    transaction.alert = alert;
+    __weak PXURLRoutingTransaction *weakTransaction = transaction;
+    for (NSDictionary *entry in transaction.containers) {
         NSString *container = entry[@"container"];
         if (![container isKindOfClass:NSString.class] || !container.length) continue;
-        NSString *name = [entry[@"name"] isKindOfClass:NSString.class] ? entry[@"name"] : container;
-        BOOL isDefault = [entry[@"isDefault"] isKindOfClass:NSNumber.class] && [entry[@"isDefault"] boolValue];
-        NSString *title = isDefault ? [NSString stringWithFormat:@"%@（默认）", name] : name;
+        NSString *title = [entry[@"name"] isKindOfClass:NSString.class] ? entry[@"name"] : container;
         if ([container isEqualToString:active]) title = [title stringByAppendingString:@" ✓"];
-        UIAlertAction *action = [UIAlertAction actionWithTitle:title
-                                                        style:UIAlertActionStyleDefault
-                                                      handler:^(__unused UIAlertAction *selected) {
-            [self rememberChoice:container forBundle:bundle];
-            finish(container, title);
-        }];
-        [alert addAction:action];
+        [alert addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault
+            handler:^(__unused UIAlertAction *action) {
+                PXURLRoutingTransaction *current = weakTransaction;
+                if (!PXURLRouterCurrent(current) || current->route.phase != PXURLRouteChoosing) return;
+                current.container = container;
+                current.selected = YES;
+                NSString *now = [PXCloneCrane activeContainerForBundle:current.bundle];
+                if (!now.length) {
+                    [self endTransaction:current cancelled:NO error:@"无法读取当前账号，付款链接未打开"];
+                    return;
+                }
+                current.requiresExit = ![container isEqualToString:now];
+                if (!PXURLRouteAdvance(&current->route, current->route.token,
+                        PXURLRouteChoosing, PXURLRouteStopping)) return;
+                [self stopOldProcess:current attempt:0];
+            }]];
     }
     [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel
-                                           handler:^(__unused UIAlertAction *selected) {
-        // Cancelling means "do not open it at all"; the original request is
-        // intentionally not forwarded.
-        [alert dismissViewControllerAnimated:YES completion:^{
-            window.hidden = YES;
-            if (PXURLRouterWindow == window) PXURLRouterWindow = nil;
-        }];
-    }]];
-
-    // An action sheet needs an anchor in SpringBoard.
+        handler:^(__unused UIAlertAction *action) {
+            PXURLRoutingTransaction *current = weakTransaction;
+            if (PXURLRouterCurrent(current)) [self endTransaction:current cancelled:YES error:nil];
+        }]];
     if (alert.popoverPresentationController) {
         alert.popoverPresentationController.sourceView = presenter.view;
-        alert.popoverPresentationController.sourceRect =
-            CGRectMake(CGRectGetMidX(presenter.view.bounds), CGRectGetMidY(presenter.view.bounds), 1, 1);
+        alert.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(presenter.view.bounds),
+            CGRectGetMidY(presenter.view.bounds), 1, 1);
         alert.popoverPresentationController.permittedArrowDirections = 0;
     }
-    [presenter presentViewController:alert animated:YES completion:^{
-        if (alert.presentingViewController == nil) {
-            [host presentViewController:alert animated:YES completion:nil];
-        }
-    }];
-
-    // Never hold the original request forever.
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 8 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-        [PXCloneProbe log:@"WATCHDOG release"];
-        if (PXURLRouterPending) PXURLRouterPending();
-    });
+    @try {
+        [presenter presentViewController:alert animated:YES completion:^{
+            PXURLRoutingTransaction *current = weakTransaction;
+            if (PXURLRouterCurrent(current) && current->route.phase == PXURLRouteChoosing &&
+                !current.alert.presentingViewController)
+                [self endTransaction:current cancelled:NO error:@"账号选择未显示，付款链接未打开"];
+        }];
+    } @catch (__unused NSException *exception) {
+        [self endTransaction:transaction cancelled:NO error:@"账号选择未显示，付款链接未打开"];
+    }
 }
 
-+ (void)activateContainer:(NSString *)container
-                   bundle:(NSString *)bundle
-                  proceed:(void (^)(void))proceed {
-    if (!container.length) { [self showRoutingError:@"未取得目标账号，付款链接未打开"]; return; }
-
-    NSString *active = [PXCloneCrane activeContainerForBundle:bundle];
-    if (!active.length) {
-        // An empty read-back means we cannot prove which account is live.
-        // Before this change it was treated as "unknown, just open", which
-        // launched the CURRENT account even though the user picked another.
-        [self showRoutingError:@"无法读取当前账号，付款链接未打开，请重试"];
-        return;
-    }
-    if ([container isEqualToString:active]) {
-        [PXCloneProbe log:@"PASS-SAME active=%@", active];
-        proceed();
-        return;
-    }
-
++ (void)stopOldProcess:(PXURLRoutingTransaction *)transaction attempt:(NSUInteger)attempt {
+    if (!PXURLRouterCurrent(transaction) || transaction->route.phase != PXURLRouteStopping) return;
+    BOOL running = NO;
     NSError *error = nil;
-    // Do not reload here: the app must stay stopped so the original handoff
-    // launches it WITH the payment URL. Reloading first opened an empty app
-    // and the URL was lost ("未完成支付").
-    BOOL started = [PXCloneCrane switchToContainer:container forBundle:bundle reload:NO error:&error];
-    if (!started) {
-        NSString *reason = error.localizedDescription.length ? error.localizedDescription : @"账号切换未启动";
-        [self showRoutingError:reason];
+    if (![PXCloneCrane queryApplicationRunning:transaction.bundle running:&running error:&error]) {
+        [self endTransaction:transaction cancelled:NO error:@"无法确认旧账号进程状态，付款链接未打开"];
         return;
     }
-    [PXCloneProbe log:@"SWITCH-STARTED target=%@ active=%@", container, active];
-
-    if ([PXCloneCrane isApplicationRunning:bundle] && [PXCloneCrane terminateApplication:bundle]) {
-        [PXCloneProbe log:@"TERMINATE sent"];
-        [self waitForTermination:bundle attempt:0 proceed:proceed container:container];
+    if (!transaction.requiresExit || !running) {
+        if (PXURLRouteAdvance(&transaction->route, transaction->route.token,
+                PXURLRouteStopping, PXURLRouteSwitching)) [self switchTransaction:transaction];
         return;
     }
-    [self waitForContainer:container bundle:bundle attempt:0 proceed:proceed];
+    if (!transaction.stopRequested) {
+        transaction.stopRequested = YES;
+        if (![PXCloneCrane terminateApplication:transaction.bundle]) {
+            [self endTransaction:transaction cancelled:NO error:@"无法请求旧账号退出，付款链接未打开"];
+            return;
+        }
+    }
+    if (attempt >= 30) {
+        [self endTransaction:transaction cancelled:NO error:@"旧账号进程未退出，未切换或打开其他账号"];
+        return;
+    }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(PXURLRouterPollInterval * NSEC_PER_SEC)),
+        dispatch_get_main_queue(), ^{ [self stopOldProcess:transaction attempt:attempt + 1]; });
 }
 
-+ (void)waitForTermination:(NSString *)bundle attempt:(NSUInteger)attempt
-                  proceed:(void (^)(void))proceed container:(NSString *)container {
-    BOOL running = [PXCloneCrane isApplicationRunning:bundle];
-    if (!running || attempt >= 15) {
-        [PXCloneProbe log:@"TERMINATE running=%d attempts=%lu", (int)running, (unsigned long)attempt];
-        [self waitForContainer:container bundle:bundle attempt:0 proceed:proceed];
++ (void)switchTransaction:(PXURLRoutingTransaction *)transaction {
+    if (!PXURLRouterCurrent(transaction) || transaction->route.phase != PXURLRouteSwitching) return;
+    NSString *active = [PXCloneCrane activeContainerForBundle:transaction.bundle];
+    if ([active isEqualToString:transaction.container]) {
+        if (PXURLRouteAdvance(&transaction->route, transaction->route.token,
+                PXURLRouteSwitching, PXURLRouteVerifying)) [self verifyTransaction:transaction attempt:0];
         return;
     }
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        [self waitForTermination:bundle attempt:attempt + 1 proceed:proceed container:container];
+    transaction.authenticationOutstanding = YES;
+    NSError *error = nil;
+    BOOL started = [PXCloneCrane requestSwitchToContainer:transaction.container
+        forBundle:transaction.bundle reply:^(BOOL rawAuthenticationFlag) {
+            (void)rawAuthenticationFlag; // Crane NO/YES is not the switch result.
+            if (PXURLRouterActive != transaction || !transaction.authenticationOutstanding) return;
+            transaction.authenticationOutstanding = NO;
+            if (PXURLRouteTerminal(transaction->route.phase)) {
+                [self endTransaction:transaction cancelled:NO error:nil];
+                return;
+            }
+            if (PXURLRouteAdvance(&transaction->route, transaction->route.token,
+                    PXURLRouteSwitching, PXURLRouteVerifying))
+                [self verifyTransaction:transaction attempt:0];
+        } error:&error];
+    if (!started) {
+        transaction.authenticationOutstanding = NO;
+        [self endTransaction:transaction cancelled:NO error:error.localizedDescription ?: @"账号切换未启动"];
+        return;
+    }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 45 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        if (PXURLRouterCurrent(transaction) && transaction.authenticationOutstanding)
+            [self endTransaction:transaction cancelled:NO error:@"Crane 验证超时，付款未打开；等待原验证返回"];
     });
 }
 
-+ (void)waitForContainer:(NSString *)container
-                  bundle:(NSString *)bundle
-                 attempt:(NSUInteger)attempt
-                 proceed:(void (^)(void))proceed {
-    NSString *active = [PXCloneCrane activeContainerForBundle:bundle];
-    if ([container isEqualToString:active]) {
-        [PXCloneProbe log:@"SWITCH-VERIFIED target=%@ attempts=%lu", container, (unsigned long)attempt];
-        proceed();
++ (void)verifyTransaction:(PXURLRoutingTransaction *)transaction attempt:(NSUInteger)attempt {
+    if (!PXURLRouterCurrent(transaction) || transaction->route.phase != PXURLRouteVerifying) return;
+    BOOL running = NO;
+    NSError *error = nil;
+    BOOL processKnown = [PXCloneCrane queryApplicationRunning:transaction.bundle running:&running error:&error];
+    NSString *active = [PXCloneCrane activeContainerForBundle:transaction.bundle];
+    BOOL matches = [active isEqualToString:transaction.container];
+    BOOL exited = !transaction.requiresExit || !running;
+    if (!processKnown || !exited) {
+        [self endTransaction:transaction cancelled:NO error:@"无法确认目标账号进程，付款链接未打开"];
+        return;
+    }
+    if (PXURLRouteMayForward(&transaction->route, transaction->route.token,
+            transaction.selected, matches, processKnown, exited)) {
+        void (^forward)(void) = [transaction.proceed copy];
+        transaction.proceed = nil;
+        [self endTransaction:transaction cancelled:NO error:nil];
+        [PXCloneProbe log:@"payment.forward.verified"];
+        if (forward) forward();
         return;
     }
     if (attempt >= PXURLRouterPollLimit) {
-        [PXCloneProbe log:@"SWITCH-TIMEOUT target=%@ active=%@", container, active];
-        // Fail closed: forwarding a payment URL onto the wrong account is
-        // worse than asking the user to tap again.
-        [self showRoutingError:@"账号未切换完成，付款链接未打开，请重试"];
+        [self endTransaction:transaction cancelled:NO error:@"账号未切换完成，付款链接未打开"];
         return;
     }
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
-                                 (int64_t)(PXURLRouterPollInterval * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        [self waitForContainer:container bundle:bundle attempt:attempt + 1 proceed:proceed];
-    });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(PXURLRouterPollInterval * NSEC_PER_SEC)),
+        dispatch_get_main_queue(), ^{ [self verifyTransaction:transaction attempt:attempt + 1]; });
+}
+
++ (void)endTransaction:(PXURLRoutingTransaction *)transaction cancelled:(BOOL)cancelled
+                 error:(NSString *)message {
+    if (!transaction || PXURLRouterActive != transaction) return;
+    if (!PXURLRouteTerminal(transaction->route.phase))
+        PXURLRouteAbort(&transaction->route, transaction->route.token, cancelled);
+    transaction.proceed = nil;
+    UIAlertController *alert = transaction.alert;
+    transaction.alert = nil;
+    transaction.containers = nil;
+    if (alert.presentingViewController) [alert dismissViewControllerAnimated:YES completion:nil];
+    // A late real authentication callback may still switch Crane. Keep a
+    // quarantined slot, without the opener, until that callback actually ends.
+    if (!transaction.authenticationOutstanding) PXURLRouterActive = nil;
+    [PXCloneProbe log:cancelled ? @"payment.cancelled" : @"payment.finished"];
+    if (message.length) [self showRoutingError:message];
 }
 
 + (void)showRoutingError:(NSString *)message {
-    void (^present)(void) = ^{
-        UIWindow *window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
-        window.windowLevel = UIWindowLevelAlert + 1;
-        window.userInteractionEnabled = NO;
-        window.backgroundColor = UIColor.clearColor;
-        UIViewController *controller = [UIViewController new];
-        window.rootViewController = controller;
-        UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(20, 90, window.bounds.size.width - 40, 72)];
-        label.backgroundColor = [UIColor colorWithWhite:0.05 alpha:0.94];
-        label.textColor = UIColor.whiteColor;
-        label.textAlignment = NSTextAlignmentCenter;
-        label.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
-        label.numberOfLines = 2;
-        label.layer.cornerRadius = 14;
-        label.clipsToBounds = YES;
-        label.text = [@"分身：" stringByAppendingString:message];
-        [controller.view addSubview:label];
-        window.hidden = NO;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-            window.hidden = YES;
-            window.rootViewController = nil;
-        });
-    };
-    if (NSThread.isMainThread) present();
-    else dispatch_async(dispatch_get_main_queue(), present);
+    UIViewController *presenter = PXURLRouterPresenter();
+    if (!NSThread.isMainThread || !presenter.view.window || !message.length) return;
+    UILabel *label = [[UILabel alloc] initWithFrame:CGRectZero];
+    label.backgroundColor = [UIColor colorWithWhite:0.05 alpha:0.94];
+    label.textColor = UIColor.whiteColor;
+    label.textAlignment = NSTextAlignmentCenter;
+    label.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+    label.numberOfLines = 3;
+    label.layer.cornerRadius = 14;
+    label.clipsToBounds = YES;
+    label.text = [@"分身：" stringByAppendingString:message];
+    UIView *host = presenter.view.window;
+    label.frame = CGRectMake(20, 90, MAX(1, host.bounds.size.width - 40), 84);
+    label.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    [host addSubview:label];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC),
+        dispatch_get_main_queue(), ^{ [label removeFromSuperview]; });
 }
-
 @end

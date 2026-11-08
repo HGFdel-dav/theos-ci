@@ -1,145 +1,84 @@
 #!/usr/bin/env python3
-"""Static checks for the external-URL account chooser (SpringBoard handoff).
-
-The router must only own requests for bundles that really have several Crane
-containers, must let the original request run exactly once, and must change the
-active container through Crane's own request API rather than a bare setter.
-"""
+"""Source contracts for payment-only clone routing; not an iOS runtime test."""
 import re
 import unittest
 from pathlib import Path
-
 ROOT = Path(__file__).resolve().parents[1]
 TWEAK = (ROOT / 'Tweak.xm').read_text()
 ROUTER = (ROOT / 'Common/PXCloneURLRouter.m').read_text()
 ROUTER_H = (ROOT / 'Common/PXCloneURLRouter.h').read_text()
 MAKEFILE = (ROOT / 'Makefile').read_text()
 
+def method(text, marker):
+    start = text.rfind(marker)
+    if start < 0: raise AssertionError('method missing: ' + marker)
+    brace = text.find('{', start)
+    if brace < 0: raise AssertionError('body missing: ' + marker)
+    depth = 1
+    for i in range(brace + 1, len(text)):
+        if text[i] == '{': depth += 1
+        elif text[i] == '}':
+            depth -= 1
+            if not depth: return text[start:i + 1]
+    raise AssertionError('unclosed: ' + marker)
 
-class TestURLRouting(unittest.TestCase):
-    def test_hook_target_and_forwarding(self):
-        self.assertIn('systemService:handleOpenApplicationRequest:withCompletion:', TWEAK)
-        self.assertIn('NSClassFromString(@"FBSystemService")', TWEAK)
-        # The original implementation runs when the router declines, and the
-        # router's own proceed block is the only other caller.
-        body = TWEAK.split('static void PXHandleOpenRequest', 1)[1].split('static BOOL PXInstallURLRoutingHook', 1)[0]
-        self.assertEqual(body.count('PXOrigHandleOpenRequest(self'), 1)
-        self.assertIn('if ([PXCloneURLRouter handleOpenRequest:request options:options proceed:proceed]) return;', body)
-        self.assertIn('proceed();', body)
+class TestPaymentRouter(unittest.TestCase):
+    def test_bundle_entry_requires_actual_payment_url_before_crane(self):
+        body = method(ROUTER, '+ (BOOL)handleOpenRequest:')
+        self.assertIn('paymentURLForRequest:request options:options', body)
+        self.assertLess(body.index('paymentURLForRequest:'), body.index('containersForBundle:'))
+        self.assertIn('if (!url) return NO;', body)
+        self.assertNotIn('loadCatalogForRequest:', ROUTER)
 
-    def test_hook_is_part_of_the_bounded_bootstrap(self):
-        self.assertIn('BOOL routingReady = PXInstallURLRoutingHook();', TWEAK)
-        self.assertIn('launchReady && routingReady', TWEAK)
+    def test_url_entry_classifies_before_resolving_target(self):
+        body = method(ROUTER, '+ (BOOL)handleOpenURL:')
+        self.assertIn('[self isPaymentURL:url]', body)
+        self.assertLess(body.index('isPaymentURL:url'), body.index('PXURLRouterBundleForURL(url)'))
+        self.assertLess(body.index('PXURLRouterBundleForURL(url)'), body.index('containersForBundle:'))
 
-    def test_only_multi_container_bundles_are_intercepted(self):
-        self.assertIn('if (containers.count >= 2) {', ROUTER)
-        self.assertIn('if (containers.count < 2) return NO;', ROUTER)
-        handler = ROUTER.split('+ (BOOL)handleOpenRequest', 1)[1]
-        # No chooser may be presented for a single-container bundle.
-        self.assertLess(handler.index('containers.count >= 2'), handler.index('presentChooserForBundle'))
+    def test_only_payment_requests_start_transaction(self):
+        body = method(ROUTER, '+ (BOOL)beginBundle:')
+        self.assertIn('containers.count < 2', body)
+        self.assertIn('PXURLRouterActive', body)
+        self.assertIn('PXURLRouterNextToken', body)
+        self.assertNotIn('PXURLRouterPending', ROUTER)
+        self.assertNotIn('PXURLRouterLastAppHandoff', ROUTER)
+        self.assertNotIn('WATCHDOG', ROUTER)
+        self.assertNotIn('CatalogWait', ROUTER)
 
-    def test_cold_catalog_is_awaited_instead_of_forwarded(self):
-        # A request can beat the first async catalog load. Forwarding there was
-        # why payment links still opened the CURRENT account.
-        self.assertIn('PXURLRouterCatalogReady', ROUTER)
-        self.assertIn('PXURLRouterCatalogWaitLimit', ROUTER)
-        self.assertIn('PXURLRouterOptionsCarryURL', ROUTER)
-        handler = ROUTER.split('+ (BOOL)handleOpenRequest', 1)[1].split('+ (void)loadCatalogForRequest', 1)[0]
-        # Only "no block" and "no bundle at all" may decline; the
-        # cold-catalog path must keep ownership and return YES.
-        self.assertEqual(handler.count('return NO;'), 4)
-        self.assertEqual(handler.count('return YES;'), 2)
+    def test_cancel_failure_and_forward_are_request_scoped(self):
+        body = method(ROUTER, '+ (void)endTransaction:')
+        self.assertIn('transaction.proceed = nil;', body)
+        self.assertIn('PXURLRouteAbort', body)
+        self.assertNotRegex(body, r'\bproceed\s*\(')
+        verify = method(ROUTER, '+ (void)verifyTransaction:')
+        self.assertIn('activeContainerForBundle:', verify)
+        self.assertIn('PXURLRouteMayForward', verify)
+        self.assertIn('forward()', verify)
+        self.assertLess(verify.index('PXURLRouteMayForward'), verify.index('forward()'))
 
-    def test_any_app_can_route_before_springboard(self):
-        # The payment page lives in the SOURCE app (Unicom/Mobile/Taobao...).
-        # SpringBoard never sees those opens, so every app hooks openURL.
-        self.assertIn('+ (BOOL)handleOpenURL:(nullable NSURL *)url', ROUTER_H)
-        self.assertIn('applicationsForOpeningURL:', ROUTER)
-        self.assertIn('applicationForURL:', ROUTER)
-        self.assertIn('NSBundle.mainBundle.bundleIdentifier', ROUTER)
-        self.assertIn('recentAppHandoff', ROUTER)
-        # https universal links must be resolved, not blanket-passed.
-        self.assertNotIn('if (PXURLRouterSchemeIsWeb(url)) return NO;', ROUTER)
-        self.assertIn('APP-BOOT', TWEAK)
-        # The filter must no longer be SpringBoard-only.
-        plist = (ROOT / 'ParallelXClone.plist').read_text()
-        # SpringBoard only again: the workspace hook is the choke point.
-        self.assertIn('<string>com.apple.springboard</string>', plist)
-        self.assertIn('_handleOpenApplicationRequest:options:activationSettings:origin:withResult:', TWEAK)
-        # This entry hands over the bundle id STRING, not a request object.
-        self.assertIn('isKindOfClass:NSString.class', TWEAK)
-        self.assertIn('if ([request isKindOfClass:NSString.class]', ROUTER)
-        # The hook must pass the string through, not wrap it.
-        self.assertNotIn('@{ @"applicationIdentifier": request }', TWEAK)
-        self.assertIn('PXInstallProbeHooks();', TWEAK)
-        self.assertIn('PXInAppReentry', TWEAK)
+    def test_account_switch_waits_for_old_process_and_crane_readback(self):
+        stop = method(ROUTER, '+ (void)stopOldProcess:')
+        switch = method(ROUTER, '+ (void)switchTransaction:')
+        self.assertIn('queryApplicationRunning:', stop)
+        self.assertIn('terminateApplication:', stop)
+        self.assertIn('requestSwitchToContainer:', switch)
+        self.assertNotIn('reloadApplicationWithIdentifier:', switch)
+        self.assertIn('rawAuthenticationFlag', switch)
 
-    def test_request_target_falls_back_to_nested_selectors(self):
-        self.assertIn('PXURLRouterBundleFromRequest', ROUTER)
-        self.assertIn('PXURLRouterValue', ROUTER)
-        for key in ('@"target"', '@"bundleID"', '@"bundleIdentifier"'):
-            self.assertIn(key, ROUTER)
-        # Still guarded against unknown objects.
-        self.assertIn('@catch (NSException *exception) { (void)exception; return nil;', ROUTER)
-
-    def test_unknown_bundle_never_throws(self):
-        # All request fields are read through respondsToSelector + @try.
-        self.assertIn('respondsToSelector:selector', ROUTER)
-        self.assertIn('@catch (NSException *exception) { (void)exception;', ROUTER)
-        for key in ('applicationIdentifier', 'bundleIdentifier', 'targetApplicationIdentifier'):
-            self.assertIn(key, ROUTER)
-
-    def test_original_request_runs_exactly_once(self):
-        self.assertIn('PXURLRouterOnce', ROUTER)
-        self.assertIn('if (done) return;', ROUTER)
-        self.assertIn('done = YES;', ROUTER)
-        # The cancel action deliberately does not forward the request.
-        cancel = ROUTER.split('style:UIAlertActionStyleCancel', 1)[1]
-        self.assertNotIn('proceed()', cancel.split('}]];', 1)[0])
-
-    def test_account_change_uses_crane_request_api(self):
-        # reload:NO so the handoff itself launches the app with its URL.
-        self.assertIn('[PXCloneCrane switchToContainer:container forBundle:bundle reload:NO error:&error]', ROUTER)
-        self.assertIn('waitForContainer:', ROUTER)
-        self.assertIn('PXURLRouterPollLimit', ROUTER)
-        # A bare container setter would bypass Crane's authentication path.
-        self.assertNotIn('setActiveContainerIdentifier', ROUTER)
-        self.assertNotIn('setActiveContainer', ROUTER)
-
-    def test_unconfirmed_switch_fails_closed(self):
-        # Opening the wrong account is worse than asking for a retry.
-        activate = ROUTER.rsplit('+ (void)activateContainer:', 1)[1].split('+ (void)waitForContainer:', 1)[0]
-        self.assertIn('无法读取当前账号', activate)
-        self.assertEqual(activate.count('proceed();'), 1)  # only the coincident case
-        self.assertIn('showRoutingError', activate)
-        wait = ROUTER.rsplit('+ (void)waitForContainer:', 1)[1].split('+ (void)showRoutingError:', 1)[0]
-        self.assertIn('attempt >= PXURLRouterPollLimit', wait)
-        self.assertIn('账号未切换完成', wait)
-        timeout = wait.split('attempt >= PXURLRouterPollLimit', 1)[1]
-        self.assertNotIn('proceed();', timeout.split('dispatch_after', 1)[0])
-
-    def test_router_can_present_its_own_error(self):
-        self.assertIn('+ (void)showRoutingError:', ROUTER)
-        self.assertIn('stringByAppendingString:message', ROUTER)
-
-    def test_chooser_uses_its_own_alert_window(self):
-        # Reuse an existing window when possible; own window only as fallback.
-        self.assertIn('application.windows.reverseObjectEnumerator', ROUTER)
-        self.assertIn('UIWindowLevelAlert + 1', ROUTER)
+    def test_window_fallback_never_steals_parallelx_handle(self):
+        self.assertNotIn('makeKeyAndVisible', ROUTER)
+        self.assertNotIn('[[UIWindow alloc]', ROUTER)
+        self.assertIn('Never create a scene-less key window', ROUTER)
         self.assertIn('UIAlertControllerStyleActionSheet', ROUTER)
-        self.assertIn('makeKeyAndVisible', ROUTER)
         self.assertIn('style:UIAlertActionStyleCancel', ROUTER)
 
-    def test_header_contract(self):
-        self.assertIn('+ (BOOL)handleOpenRequest:(nullable id)request', ROUTER_H)
-        self.assertIn('at most once', ROUTER_H)
+    def test_runtime_is_springboard_only_and_settings_dylib_does_not_route(self):
+        plist = (ROOT / 'ParallelXClone.plist').read_text()
+        self.assertIn('<string>com.apple.springboard</string>', plist)
+        self.assertNotIn('APP-BOOT', TWEAK)
+        self.assertIn('PXCloneURLRouter.m', MAKEFILE)
+        prefs = MAKEFILE.split('ParallelXPrefsUI_FILES', 1)[1].split('include', 1)[0]
+        self.assertNotIn('PXCloneURLRouter.m', prefs)
 
-    def test_router_is_built_into_the_tweak(self):
-        self.assertIn('Common/PXCloneURLRouter.m', MAKEFILE)
-        # The settings bundle compiles a narrower file list and never routes.
-        prefs_section = MAKEFILE.split('ParallelXPrefsUI_FILES', 1)[1]
-        self.assertNotIn('PXCloneURLRouter.m', prefs_section.split('include', 1)[0])
-
-
-if __name__ == '__main__':
-    unittest.main(verbosity=2)
+if __name__ == '__main__': unittest.main(verbosity=2)
