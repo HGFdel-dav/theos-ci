@@ -1159,7 +1159,7 @@ static void MiniSightRunGesture(NSString *action, BOOL allowSecondTap) {
             gMiniSightDragOrigin = origin;
             gMiniSightDragOriginValid = YES;
             gMiniSightDragging = YES;
-            gMiniSightPet.soundEnabled = MiniSightRuntimeConfig.shared.sound;
+            [MiniSightBlip playIfEnabled:MiniSightRuntimeConfig.shared.sound];
             if (gMiniSightPet) [gMiniSightPet beginDraggingWithDirection:1];
             MSDiagEvent(@"drag", @"begin", @"ok", @{ @"source": @"plugin", @"x": @(origin.x), @"y": @(origin.y) });
             MiniSightInteractionBegin();
@@ -1204,6 +1204,7 @@ static void MiniSightRunGesture(NSString *action, BOOL allowSecondTap) {
 /// 旋转：界面方向变化是异步的，稍等一下再重算并 clamp
 - (void)handleSingleTap:(UITapGestureRecognizer *)tap {
     (void)tap;
+    [MiniSightBlip playIfEnabled:MiniSightRuntimeConfig.shared.sound];
     if (!MiniSightGestureEnabled(@"singleTap")) {
         MSDiagEvent(@"gesture", @"single", @"skipped", @{ @"reason": @"disabled" });
         return;
@@ -1214,6 +1215,7 @@ static void MiniSightRunGesture(NSString *action, BOOL allowSecondTap) {
 
 - (void)handleDoubleTap:(UITapGestureRecognizer *)tap {
     (void)tap;
+    [MiniSightBlip playIfEnabled:MiniSightRuntimeConfig.shared.sound];
     if (!MiniSightGestureEnabled(@"doubleTap")) {
         MSDiagEvent(@"gesture", @"double", @"skipped", @{ @"reason": @"disabled" });
         return;
@@ -1233,6 +1235,7 @@ static void MiniSightRunGesture(NSString *action, BOOL allowSecondTap) {
             // The current switch is checked asynchronously by the plugin entry.
             MiniSightInteractionBegin();
             [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium] impactOccurred];
+            [MiniSightBlip playIfEnabled:MiniSightRuntimeConfig.shared.sound];
             if (!MiniSightGestureEnabled(@"longPress")) {
                 MSDiagEvent(@"gesture", @"long", @"skipped", @{ @"reason": @"disabled" });
                 break;
