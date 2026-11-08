@@ -38,6 +38,9 @@ need('CGFloat size = MiniSightPetSize()' in tweak, 'pet size applies without a r
 need('soundEnabled = c.sound' in tweak, 'sound switch is live')
 need('beginDraggingWithDirection' in pet and 'endDragging' in pet, 'drag keeps one clip until release')
 need('MSFlipVertical' in (ROOT/'MiniSightResources.m').read_text(), 'loaded sprite is flipped upright for display')
+need('CGImageCreateWithImageInRect' in pet, 'renderer crops the current frame explicitly')
+need('roamInterval' in tweak and 'gravityStrength' in tweak, 'activity interval and gravity strength are live')
+need('gMiniSightBubbleScale' in tweak and 'gMiniSightDwell' in tweak, 'bubble/text/dwell settings reach the panel')
 import re, struct, wave
 from io import BytesIO
 _frames_match = re.search(r'frames = (\d+)', blip)
@@ -61,6 +64,9 @@ need('CGFloat size = MiniSightPetSize()' in tweak, 'pet size applies without a r
 need('soundEnabled = c.sound' in tweak, 'sound switch is live')
 need('beginDraggingWithDirection' in pet and 'endDragging' in pet, 'drag keeps one clip until release')
 need('MSFlipVertical' in (ROOT/'MiniSightResources.m').read_text(), 'loaded sprite is flipped upright for display')
+need('CGImageCreateWithImageInRect' in pet, 'renderer crops the current frame explicitly')
+need('roamInterval' in tweak and 'gravityStrength' in tweak, 'activity interval and gravity strength are live')
+need('gMiniSightBubbleScale' in tweak and 'gMiniSightDwell' in tweak, 'bubble/text/dwell settings reach the panel')
 need('MSKeyOutBlackBackground' in (ROOT/'MiniSightResources.m').read_text(), 'black sheet background is keyed out')
 if fails:
     print('FAIL plugin repairs'); [print(' -',x) for x in fails]; sys.exit(1)

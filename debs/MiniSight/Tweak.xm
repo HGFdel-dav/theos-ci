@@ -510,6 +510,7 @@ static CAShapeLayer *gMiniSightBubbleTail = nil;
 static dispatch_block_t gMiniSightBubbleHideWork = nil;
 static BOOL gMiniSightBubbleExpanded = NO;
 static NSString *gMiniSightBubbleText = nil;
+static CGFloat gMiniSightBubbleScale = 1., gMiniSightTextScale = 1., gMiniSightDwell = 1.;
 static NSString *gMiniSightLastLine = nil;
 static CGPoint   gMiniSightAnchor = {0, 0};   // 身体中心（整屏窗口坐标，绝不是 window.center）
 static BOOL      gMiniSightAnchorValid = NO;
@@ -982,10 +983,15 @@ static void MiniSightApplyRuntimeConfig(void) {
             gMiniSightPet.bounds = CGRectMake(0, 0, size, size);
         }
         gMiniSightPet.roamPace = c.activity == 0 ? 0.6 : (c.activity == 1 ? 3.0 : 0.0);
+        gMiniSightPet.roamInterval = c.activity == 2 ? 0 : c.activityInterval;
+        gMiniSightPet.gravityStrength = MSClamp(c.gravityStrength, 0.4, 1.6);
         gMiniSightPet.preferredFPS = c.frameLimit == 1 ? 30 : (c.frameLimit == 2 ? 60 : (c.frameLimit == 3 ? 120 : 0));
         gMiniSightPet.activityActive = YES;
         gMiniSightPet.soundEnabled = c.sound;
     }
+    gMiniSightBubbleScale = MSClamp(c.bubbleScale, 0.8, 1.6);
+    gMiniSightTextScale = MSClamp(c.textScale, 0.8, 1.6);
+    gMiniSightDwell = MSClamp(c.dwell, 0.5, 3.0);
     gMiniSightBottomGap = MSClamp(c.bottomGap, 0, 40);
     if (c.costume.length) MiniSightLoadCostume(c.costume);
     MiniSightApplyTint(c.tint);
@@ -1413,6 +1419,7 @@ static void MiniSightRequestResources(BOOL force, void (^completion)(void)) {
         gMiniSightAtlas = atlas;
         gMiniSightTintBase = atlas;
         NSInteger spriteLayout = MiniSightSpriteLayoutForContainer(container);
+        MSDiagEvent(@"assets", @"layout", @"ok", @{ @"source": @"plugin", @"layout": @(spriteLayout), @"container": @(container.length > 0) });
         if (gMiniSightPet) {
             gMiniSightPet.spriteLayout = spriteLayout;
             if (atlas) {
@@ -1589,7 +1596,9 @@ static void MiniSightBuildUI(void) {
             MiniSightRefreshChatAnchor();
         };
         gMiniSightPet.longPressEnabled = MiniSightLongPressEnabled();
-        gMiniSightPet.spriteLayout = MiniSightSpriteLayoutForContainer(gMiniSightContainer);
+        NSInteger builtLayout = MiniSightSpriteLayoutForContainer(gMiniSightContainer);
+        gMiniSightPet.spriteLayout = builtLayout;
+        MSDiagEvent(@"assets", @"layout", @"ok", @{ @"source": @"plugin", @"layout": @(builtLayout), @"reason": @"build" });
         NSString *variantPath = [gMiniSightContainer stringByAppendingPathComponent:@"Documents/MiniSight/variant"];
         gMiniSightPet.variantIndex = [[NSString stringWithContentsOfFile:variantPath encoding:NSUTF8StringEncoding error:nil] integerValue];
         gMiniSightPet.reducedWork = [NSProcessInfo processInfo].lowPowerModeEnabled;
@@ -1817,6 +1826,12 @@ static void MiniSightApplySettingsLive(void) {
         gMiniSightPet.reducedWork = [NSProcessInfo processInfo].lowPowerModeEnabled;
     }
     MiniSightApplyRuntimeConfig();
+    MSDiagEvent(@"settings", @"apply", @"ok", @{ @"source": @"plugin",
+        @"size": @(MiniSightPetSize()), @"interval": @(MiniSightRuntimeConfig.shared.activityInterval),
+        @"bubble": @(MiniSightRuntimeConfig.shared.bubbleScale),
+        @"text": @(MiniSightRuntimeConfig.shared.textScale),
+        @"gravity": @(MiniSightRuntimeConfig.shared.gravityStrength),
+        @"sound": @(MiniSightRuntimeConfig.shared.sound), @"shown": @(MiniSightShown()) });
     MiniSightRefreshChatAnchor();
 }
 
@@ -1984,7 +1999,7 @@ static void MiniSightShowBubbleWidth(NSString *raw, CGFloat maxW, NSUInteger cap
         scroll.alwaysBounceVertical = NO;
         scroll.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
         UILabel *l = [[UILabel alloc] init];
-        l.font = [UIFont systemFontOfSize:14];
+        l.font = [UIFont systemFontOfSize:14. * gMiniSightTextScale];
         l.textColor = [UIColor labelColor];
         l.numberOfLines = 0;
         l.userInteractionEnabled = NO;
@@ -2018,15 +2033,16 @@ static void MiniSightShowBubbleWidth(NSString *raw, CGFloat maxW, NSUInteger cap
     CGFloat screenW = root.bounds.size.width;
     // Panel, not a tooltip: short lines stay compact, long text grows wider
     // and taller by itself; only past 42% of the screen does it scroll.
+    CGFloat scaledMax = maxW * gMiniSightBubbleScale;
     CGFloat effectiveW = gMiniSightBubbleExpanded
-        ? MAX(240.0, screenW - 32.0) : MIN(maxW, screenW - 32.0);
+        ? MAX(240.0, screenW - 32.0) : MIN(scaledMax, screenW - 32.0);
     CGFloat textWidth = MAX(1.0, effectiveW - 24.0);
     CGSize fit = [gMiniSightBubbleLabel sizeThatFits:CGSizeMake(textWidth, CGFLOAT_MAX)];
     gMiniSightBubbleContentHeight = ceil(MAX(fit.height, gMiniSightBubbleLabel.font.lineHeight));
     CGFloat minWidth = gMiniSightConfirming ? 180.0 : 140.0;
     CGFloat wanted = ceil(fit.width) + 24.0;
     CGFloat w = MIN(effectiveW, MAX(minWidth, wanted));
-    CGFloat maxVisible = gMiniSightConfirming ? 180.0 : root.bounds.size.height * 0.42;
+    CGFloat maxVisible = gMiniSightConfirming ? 180.0 : root.bounds.size.height * 0.42 * gMiniSightBubbleScale;
     CGFloat visibleTextHeight = MIN(gMiniSightBubbleContentHeight, maxVisible);
     CGFloat h = visibleTextHeight + (gMiniSightConfirming ? 52.0 : 20.0);
     gMiniSightBubbleScroll.contentOffset = CGPointZero;
@@ -2197,7 +2213,7 @@ static void MiniSightShowLine(NSString *line) {
     gMiniSightBubbleHideWork = dispatch_block_create(DISPATCH_BLOCK_DETACHED, ^{
         MiniSightHideBubble();
     });
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)),
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * gMiniSightDwell * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), gMiniSightBubbleHideWork);
 }
 
@@ -2211,7 +2227,7 @@ static void MiniSightShowStatusLine(NSString *text) {
     gMiniSightBubbleHideWork = dispatch_block_create(DISPATCH_BLOCK_DETACHED, ^{
         MiniSightHideBubble();
     });
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)),
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * gMiniSightDwell * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), gMiniSightBubbleHideWork);
 }
 
