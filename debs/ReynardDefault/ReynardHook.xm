@@ -392,12 +392,14 @@ static id rdGeckoBackend;
 static BOOL rdEnsureDone;
 
 static NSHashTable *rdDispatchers;
+static id rdRuntimeBackend;
 static BOOL rdInstallTried;
 static BOOL rdAddonConfirmed;
 
 static NSString *RDHandoffDirectoryURI(void);
 static id RDGeckoBackend(id wrapper);
 static id RDRuntimeBackend(void);
+static void RDEnsureExtension(id wrapper);
 static NSString *RDHandoffXpiURI(void);
 
 // Our callback object must really conform to GeckoView's EventCallback, otherwise
@@ -423,7 +425,7 @@ static void RDInstallPackedExtension(void);
 static void RDInstallPackedExtension(void) {
     if (rdInstallTried) return;
     rdInstallTried = YES;
-    if (!rdGeckoBackend) rdGeckoBackend = RDRuntimeBackend();
+    if (!rdGeckoBackend) rdGeckoBackend = rdRuntimeBackend ?: RDRuntimeBackend();
     if (!rdGeckoBackend) return;
     static int counter;
     NSString *location = RDHandoffXpiURI();
@@ -518,6 +520,17 @@ static id RDRuntimeBackend(void) {
     return fallback;
 }
 
+// The runtime dispatcher is the one that receives GeckoView:WebExtension:* events.
+// Capture its backend from such an event instead of guessing by class name.
+static void RDMaybeCaptureRuntime(id wrapper, NSString *type) {
+    if (rdRuntimeBackend || ![type hasPrefix:@"GeckoView:WebExtension:"]) return;
+    id backend = RDGeckoBackend(wrapper);
+    if (!backend) return;
+    rdRuntimeBackend = backend;
+    RDLog(@"captured runtime backend %@", NSStringFromClass([backend class]));
+    RDEnsureExtension(wrapper);
+}
+
 static id RDGeckoBackend(id wrapper) {
     Class cls = [wrapper class];
     unsigned int count = 0;
@@ -550,7 +563,7 @@ static void RDEnsureExtension(id wrapper) {
     static BOOL logged;
     if (rdEnsureDone || !wrapper) return;
 
-    id backend = RDRuntimeBackend();
+    id backend = rdRuntimeBackend ?: RDRuntimeBackend();
     if (!backend || ![backend respondsToSelector:@selector(dispatchToGecko:message:callback:)]) {
         if (!logged) {
             logged = YES;
@@ -652,6 +665,7 @@ static void RDOpenExternally(NSURL *url) {
 %hook _TtC9GeckoView27GeckoEventDispatcherWrapper
 
 - (void)dispatchToSwift:(NSString *)type message:(id)message callback:(id<RDEventCallback>)callback {
+    RDMaybeCaptureRuntime(self, type);
     if (!rdEnsureDone) RDEnsureExtension(self);
 
     if ([type isEqualToString:kInstallPromptEvent]) {
