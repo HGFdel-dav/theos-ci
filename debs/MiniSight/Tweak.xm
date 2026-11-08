@@ -296,6 +296,7 @@ static void MiniSightInstallRecorderCallbacks(void) {
             dispatch_async(MiniSightRecorderSetupQueue(), ^{
                 if (container.length) MSBridgeWrite(container, @"recording-last.json", entry);
             });
+            MiniSightSaveToPhotos(result.fileURL);
             MiniSightShowStatusLine([NSString stringWithFormat:@"录屏已保存：%@（%.0f秒）", name, result.duration]);
         } else if (result.issue != MiniSightRecorderIssueNone) {
             MiniSightSay(MiniSightRecorderIssueText(result.issue, result.systemErrorCode, result.saveStage));
