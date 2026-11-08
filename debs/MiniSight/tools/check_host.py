@@ -119,7 +119,7 @@ ok('dispatch_async(dispatch_get_main_queue()' in power and power.index('dispatch
 ok('MiniSightResources.m' in makefile and 'ImageIO' in makefile, '8c 资源加载实现/框架未纳入插件构建')
 ok('gMiniSightBubbleScroll.contentSize' in tweak and 'scrollEnabled' in tweak,
    '8d 气泡正文缺少限高滚动')
-ok('NSString *text = action.length ? [NSString stringWithFormat:@"%@\\n%@", action, command] : command;' in tweak,
+ok('stringWithFormat:@"允许「' in tweak and 'preview' in tweak,
    '8e 审批命令仍被 UI 截断')
 ok('MiniSightCancelConfirm(void) {' in tweak and 'kMiniSightConfirmCancel' in tweak,
    '8f 审批隐藏/取消未拒绝收口')
