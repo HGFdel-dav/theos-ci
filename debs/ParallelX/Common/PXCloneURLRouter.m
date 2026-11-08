@@ -264,6 +264,12 @@ static UIViewController *PXURLRouterPresenter(void) {
     [PXCloneProbe log:@"%@ gate bundle=%@ n=%lu", payment ? @"PAY" : @"SHARE",
         bundle, (unsigned long)containers.count];
     if (containers.count >= 2) return [self beginBundle:bundle containers:containers proceed:proceed];
+    if (!payment) {
+        // A share into a single-account app must not stall on the catalog.
+        [PXCloneProbe log:@"SHARE pass"];
+        proceed();
+        return YES;
+    }
     // Catalog still cold: hold the request (falling through launches the
     // current account before the chooser can appear) and poll briefly.
     PXURLRoutingTransaction *transaction = [PXURLRoutingTransaction new];
