@@ -163,7 +163,8 @@ typedef void (^MSRFileCompletion)(BOOL, NSURL *, uint64_t, double, MiniSightReco
         dispatch_async(self->_queue, ^{
             if (self->_done) return;
             if (ex.status != AVAssetExportSessionStatusCompleted) {
-                [self finish:NO duration:seconds stage:MiniSightRecorderSaveStageInspect]; return;
+                // Never lose the take because cropping failed: keep the full file.
+                [self finish:YES duration:seconds stage:MiniSightRecorderSaveStageNone]; return;
             }
             [NSFileManager.defaultManager removeItemAtURL:self->_temporaryURL error:nil];
             self->_temporaryURL = out;

@@ -424,7 +424,7 @@ static void MiniSightRefreshRecorderSettingsThenReadActivity(void) {
 @end
 
 @implementation MiniSightRegionPicker {
-    UIView *_dim, *_box;
+    UIView *_dim, *_box, *_dragArea;
     CGPoint _start;
     CGRect _startFrame;
     NSInteger _corner;
@@ -450,12 +450,15 @@ static void MiniSightRefreshRecorderSettingsThenReadActivity(void) {
     _box.layer.borderWidth = 2;
     _box.layer.cornerRadius = 10;
     [vc.view addSubview:_box];
+    _dragArea = [[UIView alloc] initWithFrame:CGRectInset(_box.bounds, 30, 30)];
+    _dragArea.backgroundColor = UIColor.clearColor;
+    [_box addSubview:_dragArea];
     UIPanGestureRecognizer *body = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(pan:)];
-    [_box addGestureRecognizer:body];
+    [_dragArea addGestureRecognizer:body];
     for (NSInteger i = 0; i < 4; i++) {
-        UIView *h = [[UIView alloc] initWithFrame:CGRectMake(i % 2 ? r.size.width - 22 : 0, i / 2 ? r.size.height - 22 : 0, 22, 22)];
+        UIView *h = [[UIView alloc] initWithFrame:CGRectMake(i % 2 ? r.size.width - 30 : -6, i / 2 ? r.size.height - 30 : -6, 30, 30)];
         h.backgroundColor = UIColor.whiteColor;
-        h.layer.cornerRadius = 11;
+        h.layer.cornerRadius = 15;
         h.tag = i + 1;
         [_box addSubview:h];
         UIPanGestureRecognizer *g = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(pan:)];
@@ -500,6 +503,7 @@ static void MiniSightRefreshRecorderSettingsThenReadActivity(void) {
         f.origin.x = MSClamp(f.origin.x, 0, bounds.size.width - f.size.width);
         f.origin.y = MSClamp(f.origin.y, 40, bounds.size.height - f.size.height);
         _box.frame = f;
+        _dragArea.frame = CGRectInset(_box.bounds, 30, 30);
     }
 }
 - (void)cancelTap { self.hidden = YES; }
@@ -1916,6 +1920,11 @@ static void MiniSightDestroyUI(void) {
 /// 设置变了：按新设置重建（样式/常驻立即生效，不用注销）
 static void MiniSightApplySettingsLive(void) {
     if (!gMiniSightWindow) return;
+    if (gMiniSightContainer.length) {
+        NSString *shownPath = [gMiniSightContainer stringByAppendingPathComponent:@"Documents/MiniSight/shown"];
+        NSString *t = [NSString stringWithContentsOfFile:shownPath encoding:NSUTF8StringEncoding error:nil];
+        gMiniSightShown = ![t isEqualToString:@"0"];
+    }
     NSInteger appearanceMode = MiniSightRuntimeConfig.shared.darkMode;
     gMiniSightWindow.overrideUserInterfaceStyle =
         appearanceMode == 1 ? UIUserInterfaceStyleLight
