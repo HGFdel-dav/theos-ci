@@ -428,6 +428,7 @@ static void MiniSightRefreshRecorderSettingsThenReadActivity(void) {
 
 @implementation MiniSightRegionPicker {
     UIView *_dim, *_box, *_dragArea;
+    NSMutableArray<UIView *> *_handles;
     CGPoint _start;
     CGRect _startFrame;
     NSInteger _corner;
@@ -462,6 +463,7 @@ static void MiniSightRefreshRecorderSettingsThenReadActivity(void) {
     _box.layer.borderWidth = 2;
     _box.layer.cornerRadius = 10;
     [vc.view addSubview:_box];
+    _handles = [NSMutableArray array];
     _dragArea = [[UIView alloc] initWithFrame:CGRectInset(_box.bounds, 30, 30)];
     _dragArea.backgroundColor = UIColor.clearColor;
     [_box addSubview:_dragArea];
@@ -472,6 +474,7 @@ static void MiniSightRefreshRecorderSettingsThenReadActivity(void) {
         h.backgroundColor = UIColor.whiteColor;
         h.layer.cornerRadius = 15;
         h.tag = i + 1;
+        [_handles addObject:h];
         [_box addSubview:h];
         UIPanGestureRecognizer *g = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(pan:)];
         [h addGestureRecognizer:g];
@@ -496,7 +499,15 @@ static void MiniSightRefreshRecorderSettingsThenReadActivity(void) {
     [vc.view addSubview:go];
     return self;
 }
-- (void)present { self.hidden = NO; [self makeKeyAndVisible]; }
+- (void)layoutHandles {
+    CGFloat w = _box.bounds.size.width, h = _box.bounds.size.height;
+    for (UIView *v in _handles) {
+        NSInteger i = v.tag - 1;
+        v.frame = CGRectMake(i % 2 ? w - 30 : 0, i / 2 ? h - 30 : 0, 30, 30);
+    }
+    _dragArea.frame = CGRectInset(_box.bounds, 30, 30);
+}
+- (void)present { self.hidden = NO; [self makeKeyAndVisible]; [self layoutHandles]; }
 - (void)pan:(UIPanGestureRecognizer *)g {
     UIView *v = g.view;
     CGPoint t = [g translationInView:self.rootViewController.view];
@@ -534,13 +545,13 @@ static void MiniSightRefreshRecorderSettingsThenReadActivity(void) {
     } else if (g.state == UIGestureRecognizerStateEnded) {
         if (_box.frame.size.width < 40 || _box.frame.size.height < 40)
             _box.frame = CGRectInset(self.rootViewController.view.bounds, 60, 120);
-        _dragArea.frame = CGRectInset(_box.bounds, 30, 30);
+        [self layoutHandles];
     }
     if (g.state == UIGestureRecognizerStateBegan) _start = p;
 }
 - (void)reselectTap {
     _box.frame = CGRectInset(self.rootViewController.view.bounds, 60, 120);
-    _dragArea.frame = CGRectInset(_box.bounds, 30, 30);
+    [self layoutHandles];
 }
 - (void)cancelTap { MSDiagEvent(@"recording", @"region", @"skipped", @{ @"source": @"plugin", @"reason": @"cancel" }); self.hidden = YES; }
 - (void)confirmTap {
