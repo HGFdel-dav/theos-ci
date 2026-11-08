@@ -557,8 +557,15 @@ static BOOL PXCallOriginalInits(void) {
             segment = (const struct segment_command_64 *)((const char *)segment + segment->cmdsize);
         }
         for (size_t entry = 0; entry < sizeof(PXOrigInitOffsets) / sizeof(PXOrigInitOffsets[0]); entry++) {
-            void (*initializer)(void) = (void (*)(void))(slide + PXOrigInitOffsets[entry]);
-            initializer();
+            // dyld keeps these as signed arm64e pointers; a raw branch to the
+            // untagged offset dies with a PAC failure (EXC_BAD_ACCESS on the
+            // 0x2000_0001... form), so strip the tag before calling.
+            uintptr_t address = slide + PXOrigInitOffsets[entry];
+            void *pointer = (void *)address;
+#if __has_feature(ptrauth_calls)
+            pointer = __builtin_ptrauth_strip(pointer, ptrauth_key_function_pointer);
+#endif
+            ((void (*)(void))pointer)();
         }
         [PXCloneProbe log:@"ORIG-INITS ran image=%u slide=%d", index, (int)(slide != 0)];
         return YES;
