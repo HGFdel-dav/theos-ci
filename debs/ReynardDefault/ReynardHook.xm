@@ -448,7 +448,7 @@ static void RDSeedExtensionsDatabase(void) {
         NSDictionary *proto = nil;
         for (NSDictionary *entry in addons) {
             if ([entry[@"id"] isEqualToString:kHandoffAddonID]) present = YES;
-            if (!template && [entry[@"location"] isEqualToString:@"app-profile"]) template = entry;
+            if (!proto && [entry[@"location"] isEqualToString:@"app-profile"]) proto = entry;
         }
         if (present || !proto) continue;
 
