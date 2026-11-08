@@ -212,7 +212,7 @@ static UIViewController *PXURLRouterPresenter(void) {
     for (id object in @[request ?: NSNull.null, options ?: NSNull.null]) {
         if ([object isKindOfClass:NSDictionary.class]) {
             NSDictionary *dictionary = object;
-            for (NSString *key in @[@"__DocumentOpen4LS", @"__AppBasedViewService"]) {
+            for (NSString *key in @[@"__DocumentOpen4LS"]) {
                 if (dictionary[key] && ![dictionary[key] isKindOfClass:NSNull.class]) return YES;
             }
         }
