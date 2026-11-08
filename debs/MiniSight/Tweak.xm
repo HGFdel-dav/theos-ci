@@ -442,6 +442,9 @@ static void MiniSightRefreshRecorderSettingsThenReadActivity(void) {
     self.rootViewController = vc;
     _dim = [[UIView alloc] initWithFrame:scene.coordinateSpace.bounds];
     _dim.backgroundColor = [UIColor colorWithWhite:0 alpha:0.35];
+    _dim.userInteractionEnabled = YES;
+    UIPanGestureRecognizer *draw = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(draw:)];
+    [_dim addGestureRecognizer:draw];
     [vc.view addSubview:_dim];
     CGRect r = CGRectInset(scene.coordinateSpace.bounds, 60, scene.coordinateSpace.bounds.size.height * 0.22);
     _box = [[UIView alloc] initWithFrame:r];
@@ -464,8 +467,13 @@ static void MiniSightRefreshRecorderSettingsThenReadActivity(void) {
         UIPanGestureRecognizer *g = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(pan:)];
         [h addGestureRecognizer:g];
     }
+    UIButton *reselect = [UIButton buttonWithType:UIButtonTypeSystem];
+    reselect.frame = CGRectMake(20, scene.coordinateSpace.bounds.size.height - 110, 90, 44);
+    [reselect setTitle:@"重画" forState:UIControlStateNormal];
+    [reselect addTarget:self action:@selector(reselectTap) forControlEvents:UIControlEventTouchUpInside];
+    [vc.view addSubview:reselect];
     UIButton *cancel = [UIButton buttonWithType:UIButtonTypeSystem];
-    cancel.frame = CGRectMake(20, scene.coordinateSpace.bounds.size.height - 110, 120, 44);
+    cancel.frame = CGRectMake(115, scene.coordinateSpace.bounds.size.height - 110, 90, 44);
     [cancel setTitle:@"取消" forState:UIControlStateNormal];
     [cancel addTarget:self action:@selector(cancelTap) forControlEvents:UIControlEventTouchUpInside];
     [vc.view addSubview:cancel];
@@ -506,6 +514,24 @@ static void MiniSightRefreshRecorderSettingsThenReadActivity(void) {
         _dragArea.frame = CGRectInset(_box.bounds, 30, 30);
     }
 }
+- (void)draw:(UIPanGestureRecognizer *)g {
+    CGPoint p = [g locationInView:self.rootViewController.view];
+    if (g.state == UIGestureRecognizerStateBegan) {
+        _box.hidden = NO;
+        _box.frame = CGRectMake(p.x, p.y, 2, 2);
+    } else if (g.state == UIGestureRecognizerStateChanged) {
+        _box.frame = CGRectMake(MIN(_start.x, p.x), MIN(_start.y, p.y), fabs(p.x - _start.x), fabs(p.y - _start.y));
+    } else if (g.state == UIGestureRecognizerStateEnded) {
+        if (_box.frame.size.width < 40 || _box.frame.size.height < 40)
+            _box.frame = CGRectInset(self.rootViewController.view.bounds, 60, 120);
+        _dragArea.frame = CGRectInset(_box.bounds, 30, 30);
+    }
+    if (g.state == UIGestureRecognizerStateBegan) _start = p;
+}
+- (void)reselectTap {
+    _box.frame = CGRectInset(self.rootViewController.view.bounds, 60, 120);
+    _dragArea.frame = CGRectInset(_box.bounds, 30, 30);
+}
 - (void)cancelTap { self.hidden = YES; }
 - (void)confirmTap {
     CGRect b = self.rootViewController.view.bounds, f = _box.frame;
@@ -517,9 +543,8 @@ static void MiniSightRefreshRecorderSettingsThenReadActivity(void) {
 
 static MiniSightRegionPicker *gMiniSightRegionPicker;
 
-static void MiniSightStartManualRecording(void) {
+static void MiniSightPresentRegionPicker(void) {
     MiniSightRecorder *rec = MiniSightRecorder.sharedRecorder;
-    if (rec.state != MiniSightRecorderIdle) { [rec toggle]; return; }
     gMiniSightRegionPicker = [[MiniSightRegionPicker alloc] init];
     __weak MiniSightRegionPicker *weakPicker = gMiniSightRegionPicker;
     gMiniSightRegionPicker.onConfirm = ^(CGRect region) {
@@ -527,6 +552,22 @@ static void MiniSightStartManualRecording(void) {
         weakPicker.hidden = YES;
     };
     [gMiniSightRegionPicker present];
+}
+
+static void MiniSightStartManualRecording(void) {
+    MiniSightRecorder *rec = MiniSightRecorder.sharedRecorder;
+    if (rec.state != MiniSightRecorderIdle) { [rec toggle]; return; }
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"录屏"
+        message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"区域录屏（可画框移动）" style:UIAlertActionStyleDefault
+        handler:^(UIAlertAction *a) { MiniSightPresentRegionPicker(); }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"全屏录屏" style:UIAlertActionStyleDefault
+        handler:^(UIAlertAction *a) { [rec startWithSource:MiniSightRecorderSourceManual region:CGRectNull]; }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    UIViewController *host = gMiniSightWindow.rootViewController;
+    sheet.popoverPresentationController.sourceView = host.view;
+    sheet.popoverPresentationController.sourceRect = CGRectMake(host.view.bounds.size.width / 2, host.view.bounds.size.height - 80, 1, 1);
+    [host presentViewController:sheet animated:YES completion:nil];
 }
 
 static void MiniSightToggleRecording(void) {
