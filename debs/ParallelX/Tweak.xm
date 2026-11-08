@@ -539,6 +539,13 @@ static void PXForcePluginState(void) {
 // classes and run loop they need already exist, then start the panel.
 static const uintptr_t PXOrigInitOffsets[] = { 0x40bc, 0xab04, 0x6aabc };
 
+static void PXCallAddress(uintptr_t address) {
+    register uintptr_t target __asm("x8") = address & 0x0000FFFFFFFFFFFFULL;
+    __asm volatile("blr x8" : "+r"(target) : :
+        "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x9", "x10", "x11",
+        "x12", "x13", "x14", "x15", "x16", "x17", "x18", "x30", "cc", "memory");
+}
+
 static BOOL PXCallOriginalInits(void) {
     uint32_t count = _dyld_image_count();
     for (uint32_t index = 0; index < count; index++) {
@@ -557,15 +564,11 @@ static BOOL PXCallOriginalInits(void) {
             segment = (const struct segment_command_64 *)((const char *)segment + segment->cmdsize);
         }
         for (size_t entry = 0; entry < sizeof(PXOrigInitOffsets) / sizeof(PXOrigInitOffsets[0]); entry++) {
-            // dyld keeps these as signed arm64e pointers; a raw branch to the
-            // untagged offset dies with a PAC failure (EXC_BAD_ACCESS on the
-            // 0x2000_0001... form), so strip the tag before calling.
-            uintptr_t address = slide + PXOrigInitOffsets[entry];
-            void *pointer = (void *)address;
-#if __has_feature(ptrauth_calls)
-            pointer = __builtin_ptrauth_strip(pointer, ptrauth_key_function_pointer);
-#endif
-            ((void (*)(void))pointer)();
+            // blraaz signs with modifier 0 and authenticates; dyld signed these
+            // entries with address diversity, so a compiled call still faults
+            // (EXC_BAD_ACCESS on the 0x2000_0001... form). A plain blr on the
+            // masked address performs no authentication at all.
+            PXCallAddress(slide + PXOrigInitOffsets[entry]);
         }
         [PXCloneProbe log:@"ORIG-INITS ran image=%u slide=%d", index, (int)(slide != 0)];
         return YES;
