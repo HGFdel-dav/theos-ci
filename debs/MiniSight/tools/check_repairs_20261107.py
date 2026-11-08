@@ -37,6 +37,7 @@ need('gMiniSightSettingsWatch' in tweak and 'MiniSightReloadSettings();' in twea
 need('CGFloat size = MiniSightPetSize()' in tweak, 'pet size applies without a respring')
 need('soundEnabled = c.sound' in tweak, 'sound switch is live')
 need('beginDraggingWithDirection' in pet and 'endDragging' in pet, 'drag keeps one clip until release')
+need('MSFlipVertical' in (ROOT/'MiniSightResources.m').read_text(), 'loaded sprite is flipped upright for display')
 import re, struct, wave
 from io import BytesIO
 _frames_match = re.search(r'frames = (\d+)', blip)
@@ -59,6 +60,7 @@ need('gMiniSightSettingsWatch' in tweak and 'MiniSightReloadSettings();' in twea
 need('CGFloat size = MiniSightPetSize()' in tweak, 'pet size applies without a respring')
 need('soundEnabled = c.sound' in tweak, 'sound switch is live')
 need('beginDraggingWithDirection' in pet and 'endDragging' in pet, 'drag keeps one clip until release')
+need('MSFlipVertical' in (ROOT/'MiniSightResources.m').read_text(), 'loaded sprite is flipped upright for display')
 need('MSKeyOutBlackBackground' in (ROOT/'MiniSightResources.m').read_text(), 'black sheet background is keyed out')
 if fails:
     print('FAIL plugin repairs'); [print(' -',x) for x in fails]; sys.exit(1)

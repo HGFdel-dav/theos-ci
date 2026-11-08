@@ -115,6 +115,19 @@ static void MSKeyOutBlackBackground(uint8_t *pixels, size_t w, size_t h) {
     free(seen); free(queue);
 }
 
+static CGImageRef MSFlipVertical(CGImageRef source) {
+    size_t w = CGImageGetWidth(source), h = CGImageGetHeight(source);
+    CGContextRef ctx = CGBitmapContextCreate(NULL, w, h, 8, w * 4, CGColorSpaceCreateDeviceRGB(),
+        kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+    if (!ctx) return NULL;
+    CGContextTranslateCTM(ctx, 0, h);
+    CGContextScaleCTM(ctx, 1, -1);
+    CGContextDrawImage(ctx, CGRectMake(0, 0, w, h), source);
+    CGImageRef out = CGBitmapContextCreateImage(ctx);
+    CGContextRelease(ctx);
+    return out;
+}
+
 static UIImage *MSLoadAtlas(NSString *path, BOOL single, BOOL key) {
     NSDictionary *attrs = [NSFileManager.defaultManager attributesOfItemAtPath:path error:nil];
     if (!attrs || ![attrs[NSFileType] isEqual:NSFileTypeRegular] ||
@@ -153,8 +166,10 @@ static UIImage *MSLoadAtlas(NSString *path, BOOL single, BOOL key) {
     if (!context) { CGImageRelease(thumb); return nil; }
     CGContextDrawImage(context, CGRectMake(0, 0, targetW, targetH), thumb);
     if (key) MSKeyOutBlackBackground(CGBitmapContextGetData(context), targetW, targetH);
-    CGImageRef decoded = CGBitmapContextCreateImage(context);
+    CGImageRef raw = CGBitmapContextCreateImage(context);
     CGContextRelease(context); CGImageRelease(thumb);
+    CGImageRef decoded = raw ? MSFlipVertical(raw) : NULL;
+    if (raw) CGImageRelease(raw);
     UIImage *image = decoded ? [UIImage imageWithCGImage:decoded scale:1. orientation:UIImageOrientationUp] : nil;
     if (decoded) CGImageRelease(decoded);
     MSAtlasIdentity = identity; MSAtlas = image;
