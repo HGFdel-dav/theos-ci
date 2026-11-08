@@ -206,6 +206,24 @@ static UIViewController *PXURLRouterPresenter(void) {
     return PXURLRoutePayment(scheme.UTF8String, host.UTF8String, path.UTF8String, action.UTF8String);
 }
 
+// A cross-app share arrives as a document payload, not as a payment URL. Only
+// these unambiguous markers count; everything else keeps passing through.
++ (BOOL)isShareRequest:(id)request options:(id)options {
+    for (id object in @[request ?: NSNull.null, options ?: NSNull.null]) {
+        if ([object isKindOfClass:NSDictionary.class]) {
+            NSDictionary *dictionary = object;
+            for (NSString *key in @[@"__DocumentOpen4LS", @"__AppBasedViewService"]) {
+                if (dictionary[key] && ![dictionary[key] isKindOfClass:NSNull.class]) return YES;
+            }
+        }
+    }
+    for (id object in @[request ?: NSNull.null, options ?: NSNull.null]) {
+        NSURL *url = PXURLRouterTargetURL(object, 0);
+        if ([url.scheme.lowercaseString isEqualToString:@"file"]) return YES;
+    }
+    return NO;
+}
+
 + (NSURL *)paymentURLForRequest:(id)request options:(id)options {
     NSURL *direct = PXURLRouterTargetURL(options, 0);
     NSURL *nested = PXURLRouterTargetURL(request, 0);
@@ -218,7 +236,8 @@ static UIViewController *PXURLRouterPresenter(void) {
     // Do not resolve a target, touch Crane or create state for plain URLs.
     [PXCloneProbe log:@"PAY url=%@", url.absoluteString.length > 70 ?
         [url.absoluteString substringToIndex:70] : url.absoluteString];
-    if (!NSThread.isMainThread || !proceed || ![self isPaymentURL:url]) return NO;
+    BOOL file = [url.scheme.lowercaseString isEqualToString:@"file"];
+    if (!NSThread.isMainThread || !proceed || (!file && ![self isPaymentURL:url])) return NO;
     NSString *bundle = PXURLRouterBundleForURL(url);
     if (!bundle.length) return NO;
     NSArray<NSDictionary *> *containers = [PXCloneCrane containersForBundle:bundle];
@@ -234,12 +253,16 @@ static UIViewController *PXURLRouterPresenter(void) {
     // bundle-only requests carry no URL at all. 0.33 answered them by bundle
     // and that is the only shape that worked on device; only a URL that is
     // present and clearly not a payment is skipped here.
-    if (url && ![self isPaymentURL:url]) return NO;
+    BOOL payment = url && [self isPaymentURL:url];
+    BOOL share = [self isShareRequest:request options:options];
+    if (!payment && !share) return NO;
     NSString *bundle = PXURLRouterBundleFromRequest(request);
-    [PXCloneProbe log:@"PAY open url=%@ bundle=%@", raw ?: @"(none)", bundle ?: @"(nil)"];
+    [PXCloneProbe log:@"%@ open url=%@ bundle=%@", payment ? @"PAY" : @"SHARE",
+        raw ?: @"(none)", bundle ?: @"(nil)"];
     if (!bundle.length) return NO;
     NSArray<NSDictionary *> *containers = [PXCloneCrane containersForBundle:bundle];
-    [PXCloneProbe log:@"PAY gate bundle=%@ n=%lu", bundle, (unsigned long)containers.count];
+    [PXCloneProbe log:@"%@ gate bundle=%@ n=%lu", payment ? @"PAY" : @"SHARE",
+        bundle, (unsigned long)containers.count];
     if (containers.count >= 2) return [self beginBundle:bundle containers:containers proceed:proceed];
     // Catalog still cold: hold the request (falling through launches the
     // current account before the chooser can appear) and poll briefly.

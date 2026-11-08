@@ -27,7 +27,8 @@ class TestPaymentRouter(unittest.TestCase):
         body = method(ROUTER, '+ (BOOL)handleOpenRequest:')
         self.assertIn('paymentURLForRequest:request options:options', body)
         self.assertLess(body.index('paymentURLForRequest:'), body.index('containersForBundle:'))
-        self.assertIn('if (url && ![self isPaymentURL:url]) return NO;', body)
+        self.assertIn('if (!payment && !share) return NO;', body)
+        self.assertIn('isShareRequest:request options:options', body)
         self.assertNotIn('loadCatalogForRequest:', ROUTER)
 
     def test_url_entry_classifies_before_resolving_target(self):
