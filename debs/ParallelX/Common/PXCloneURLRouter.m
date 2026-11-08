@@ -212,7 +212,9 @@ static UIViewController *PXURLRouterPresenter(void) {
     for (id object in @[request ?: NSNull.null, options ?: NSNull.null]) {
         if ([object isKindOfClass:NSDictionary.class]) {
             NSDictionary *dictionary = object;
-            for (NSString *key in @[@"__DocumentOpen4LS"]) {
+            // __LaunchIntent is how a WeChat-style share arrives; a bare
+            // __PayloadOptions means a payload dictionary is attached.
+            for (NSString *key in @[@"__DocumentOpen4LS", @"__LaunchIntent", @"__PayloadOptions"]) {
                 if (dictionary[key] && ![dictionary[key] isKindOfClass:NSNull.class]) return YES;
             }
         }
