@@ -69,7 +69,7 @@ class TestPaymentRouter(unittest.TestCase):
 
     def test_window_fallback_never_steals_parallelx_handle(self):
         self.assertNotIn('makeKeyAndVisible', ROUTER)
-        self.assertNotIn('[[UIWindow alloc]', ROUTER)
+        self.assertIn('initWithWindowScene:scene', ROUTER)
         self.assertIn('Never create a scene-less key window', ROUTER)
         self.assertIn('UIAlertControllerStyleActionSheet', ROUTER)
         self.assertIn('style:UIAlertActionStyleCancel', ROUTER)

@@ -21,6 +21,7 @@ static NSUInteger const PXURLRouterPollLimit = 25;
 @property(nonatomic, copy) NSString *container;
 @property(nonatomic, copy) void (^proceed)(void);
 @property(nonatomic, strong) UIAlertController *alert;
+@property(nonatomic, strong) UIWindow *chooserWindow;
 @property(nonatomic) BOOL selected;
 @property(nonatomic) BOOL stopRequested;
 @property(nonatomic) BOOL requiresExit;
@@ -422,6 +423,18 @@ static UIViewController *PXURLRouterPresenter(void) {
             CGRectGetMidY(presenter.view.bounds), 1, 1);
         alert.popoverPresentationController.permittedArrowDirections = 0;
     }
+    // A share runs as a remote extension sheet that sits above SpringBoard's
+    // own windows: an alert presented from the base controller renders behind
+    // it. Host the chooser in its own high-level window of the same scene.
+    UIWindowScene *scene = presenter.view.window.windowScene;
+    if (scene) {
+        UIWindow *overlay = [[UIWindow alloc] initWithWindowScene:scene];
+        overlay.windowLevel = UIWindowLevelAlert + 5;
+        overlay.rootViewController = [UIViewController new];
+        overlay.hidden = NO;
+        transaction.chooserWindow = overlay;
+        presenter = overlay.rootViewController;
+    }
     @try {
         [presenter presentViewController:alert animated:YES completion:^{
             PXURLRoutingTransaction *current = weakTransaction;
@@ -549,7 +562,13 @@ static UIViewController *PXURLRouterPresenter(void) {
     UIAlertController *alert = transaction.alert;
     transaction.alert = nil;
     transaction.containers = nil;
+    UIWindow *overlay = transaction.chooserWindow;
+    transaction.chooserWindow = nil;
     if (alert.presentingViewController) [alert dismissViewControllerAnimated:YES completion:nil];
+    if (overlay) {
+        overlay.hidden = YES;
+        overlay.rootViewController = nil;
+    }
     // A late real authentication callback may still switch Crane. Keep a
     // quarantined slot, without the opener, until that callback actually ends.
     if (!transaction.authenticationOutstanding) PXURLRouterActive = nil;
