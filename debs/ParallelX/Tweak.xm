@@ -508,11 +508,16 @@ static BOOL PXDylibImageLoaded(const char *needle) {
     return NO;
 }
 
-// The hosted panel builds its UI from +[PXPanelEntry start]. The class is
-// registered at boot (probe: ORIG-PRESENT image=1) but nothing invokes start,
-// so the handle, panel and split-screen never appear. Calling start is safe to
-// repeat: it re-reads pluginEnabled first and then just refreshes the handle
-// settings when the panel already exists.
+static BOOL PXClassHasValue(Class cls, NSString *key) {
+    if (!cls) return NO;
+    @try { return [cls valueForKey:key] != nil; }
+    @catch (__unused NSException *exception) { return NO; }
+}
+
+// The hosted panel builds its UI from +[PXPanelEntry start], but start returns
+// early while pluginEnabled is unset and only refreshes when a panel window
+// already exists. probe state before/after so the next round is a fact, not a
+// guess; updatePluginEnabled is the same entry the settings notification uses.
 static void PXStartOriginalPanel(NSUInteger step) {
     Class panel = NSClassFromString(@"ParallelX.PXPanelEntry");
     if (!panel) panel = NSClassFromString(@"PXPanelEntry");
@@ -526,15 +531,16 @@ static void PXStartOriginalPanel(NSUInteger step) {
         [PXCloneProbe log:@"ORIG-START-UNRESPONSIVE step=%lu", (unsigned long)step];
         return;
     }
+    SEL refresh = NSSelectorFromString(@"refreshHandleSettings");
+    SEL update = NSSelectorFromString(@"updatePluginEnabled");
+    [PXCloneProbe log:@"ORIG-STATE step=%lu panel=%d handle=%d", (unsigned long)step,
+        (int)PXClassHasValue(panel, @"panelWindow"), (int)PXClassHasValue(panel, @"handleWindow")];
+    if ([panel respondsToSelector:update]) ((void (*)(id, SEL))objc_msgSend)((id)panel, update);
+    if ([panel respondsToSelector:refresh]) ((void (*)(id, SEL))objc_msgSend)((id)panel, refresh);
     ((void (*)(id, SEL))objc_msgSend)((id)panel, start);
-    [PXCloneProbe log:@"ORIG-START-CALL step=%lu", (unsigned long)step];
-    if (step >= 3) {
-        id handle = nil;
-        @try { handle = [panel valueForKey:@"handleWindow"]; }
-        @catch (__unused NSException *exception) { }
-        [PXCloneProbe log:@"ORIG-START-DONE handle=%d", (int)(handle != nil)];
-        return;
-    }
+    [PXCloneProbe log:@"ORIG-START-CALL step=%lu after handle=%d", (unsigned long)step,
+        (int)PXClassHasValue(panel, @"handleWindow")];
+    if (step >= 2) return;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)),
         dispatch_get_main_queue(), ^{ PXStartOriginalPanel(step + 1); });
 }
