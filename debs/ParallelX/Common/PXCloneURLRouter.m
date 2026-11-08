@@ -234,6 +234,8 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
     NSString *bundle = PXURLRouterBundleForURL(url);
     [PXCloneProbe log:@"APP-OPEN url=%@ bundle=%@", url.absoluteString, bundle ?: @"(nil)"];
     if (!bundle.length) return NO;
+    // Notification taps carry no URL: behave exactly like the stock panel.
+    if (!PXURLRouterOptionsCarryURL(options)) return NO;
     [PXCloneProbe log:@"APP-OPEN url=%@ bundle=%@", url.absoluteString, bundle ?: @"(nil)"];
     // WebContent and other helpers have their own bundle; only skip when the
     // open would target this very app AND the scheme is ours.
@@ -266,7 +268,20 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
     return YES;
 }
 
-+ (BOOL)handleOpenRequest:(id)request proceed:(void (^)(void))proceed {
+static BOOL PXURLRouterOptionsCarryURL(id options) {
+    if (![options isKindOfClass:NSDictionary.class]) return NO;
+    for (id key in (NSDictionary *)options) {
+        if (![key isKindOfClass:NSString.class]) continue;
+        if (![((NSString *)key).lowercaseString containsString:@"url"]) continue;
+        if ([options[key] isKindOfClass:NSURL.class]) return YES;
+        if ([options[key] isKindOfClass:NSString.class] && [options[key] length]) return YES;
+    }
+    id payload = ((NSDictionary *)options)[@"__Payload"];
+    if ([payload isKindOfClass:NSDictionary.class]) return PXURLRouterOptionsCarryURL(payload);
+    return NO;
+}
+
++ (BOOL)handleOpenRequest:(id)request options:(id)options proceed:(void (^)(void))proceed {
     if (!proceed) return NO;
     if ([self recentAppHandoff]) {
         [PXCloneProbe log:@"SB-SKIP (app already handled)"];
@@ -277,8 +292,11 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
         (unsigned long)PXCloneCrane.cachedCatalog.count, (int)PXURLRouterCatalogReady,
         (int)PXURLRouterCatalogLoading];
     if (!bundle.length) return NO;
+    // Notification taps carry no URL: behave exactly like the stock panel.
+    if (!PXURLRouterOptionsCarryURL(options)) return NO;
 
     void (^once)(void) = PXURLRouterOnce(proceed);
+    PXURLRouterPending = [once copy];
     NSArray<NSDictionary *> *containers = PXURLRouterContainers(bundle);
     if (containers.count >= 2) {
         void (^present)(void) = ^{

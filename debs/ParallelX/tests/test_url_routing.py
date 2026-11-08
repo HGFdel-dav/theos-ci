@@ -24,7 +24,7 @@ class TestURLRouting(unittest.TestCase):
         # router's own proceed block is the only other caller.
         body = TWEAK.split('static void PXHandleOpenRequest', 1)[1].split('static BOOL PXInstallURLRoutingHook', 1)[0]
         self.assertEqual(body.count('PXOrigHandleOpenRequest(self'), 1)
-        self.assertIn('if ([PXCloneURLRouter handleOpenRequest:request proceed:proceed]) return;', body)
+        self.assertIn('if ([PXCloneURLRouter handleOpenRequest:request options:options proceed:proceed]) return;', body)
         self.assertIn('proceed();', body)
 
     def test_hook_is_part_of_the_bounded_bootstrap(self):
@@ -43,7 +43,7 @@ class TestURLRouting(unittest.TestCase):
         # why payment links still opened the CURRENT account.
         self.assertIn('PXURLRouterCatalogReady', ROUTER)
         self.assertIn('PXURLRouterCatalogWaitLimit', ROUTER)
-        self.assertIn('[self loadCatalogForRequest:request proceed:once bundle:bundle attempt:0]', ROUTER)
+        self.assertIn('PXURLRouterOptionsCarryURL', ROUTER)
         handler = ROUTER.split('+ (BOOL)handleOpenRequest', 1)[1].split('+ (void)loadCatalogForRequest', 1)[0]
         # Only "no block" and "no bundle at all" may decline; the
         # cold-catalog path must keep ownership and return YES.

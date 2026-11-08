@@ -241,7 +241,7 @@ static void PXHandleOpenRequest(id self, SEL command, id service, id request, id
     void (^proceed)(void) = ^{
         if (PXOrigHandleOpenRequest) PXOrigHandleOpenRequest(self, command, service, request, completion);
     };
-    if ([PXCloneURLRouter handleOpenRequest:request proceed:proceed]) return;
+    if (PXCloneURLRouter_AVAILABLE_OPTIONS) return;
     proceed();
 }
 
@@ -262,7 +262,7 @@ static void PXHandleWorkspaceRequest(id self, SEL command, id request, id option
     // respondsToSelector:, which NSDictionary does not answer.
     if ([request isKindOfClass:NSString.class])
         [PXCloneProbe log:@"SBREQ bundle=%@", request];
-    if ([PXCloneURLRouter handleOpenRequest:request proceed:proceed]) return;
+    if ([PXCloneURLRouter handleOpenRequest:request options:options proceed:proceed]) return;
     proceed();
 }
 
