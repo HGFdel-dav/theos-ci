@@ -537,44 +537,7 @@ static void PXForcePluginState(void) {
 // feature is dead and not only the panel. Their addresses are stable in this
 // binary (__TEXT,__init_offsets): call them again on the main queue, where the
 // classes and run loop they need already exist, then start the panel.
-static const uintptr_t PXOrigInitOffsets[] = { 0x40bc, 0xab04, 0x6aabc };
-
-static void PXCallAddress(uintptr_t address) {
-    register uintptr_t target __asm("x8") = address & 0x0000FFFFFFFFFFFFULL;
-    __asm volatile("blr x8" : "+r"(target) : :
-        "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x9", "x10", "x11",
-        "x12", "x13", "x14", "x15", "x16", "x17", "x30", "cc", "memory");
-}
-
-static BOOL PXCallOriginalInits(void) {
-    uint32_t count = _dyld_image_count();
-    for (uint32_t index = 0; index < count; index++) {
-        const char *name = _dyld_get_image_name(index);
-        if (!name || !strstr(name, "ParallelX.dylib")) continue;
-        const struct mach_header *header = _dyld_get_image_header(index);
-        if (!header || header->magic != MH_MAGIC_64) return NO;
-        uintptr_t slide = (uintptr_t)header;
-        const struct segment_command_64 *segment =
-            (const struct segment_command_64 *)((const char *)header + sizeof(struct mach_header_64));
-        for (uint32_t command = 0; command < header->ncmds; command++) {
-            if (segment->cmd == LC_SEGMENT_64 && !strcmp(segment->segname, "__TEXT")) {
-                slide -= (uintptr_t)segment->vmaddr;
-                break;
-            }
-            segment = (const struct segment_command_64 *)((const char *)segment + segment->cmdsize);
-        }
-        for (size_t entry = 0; entry < sizeof(PXOrigInitOffsets) / sizeof(PXOrigInitOffsets[0]); entry++) {
-            // blraaz signs with modifier 0 and authenticates; dyld signed these
-            // entries with address diversity, so a compiled call still faults
-            // (EXC_BAD_ACCESS on the 0x2000_0001... form). A plain blr on the
-            // masked address performs no authentication at all.
-            PXCallAddress(slide + PXOrigInitOffsets[entry]);
-        }
-        [PXCloneProbe log:@"ORIG-INITS ran image=%u slide=%d", index, (int)(slide != 0)];
-        return YES;
-    }
-    return NO;
-}
+__attribute__((unused)) static const uintptr_t PXOrigInitOffsets[] = { 0x40bc, 0xab04, 0x6aabc };
 
 static BOOL PXClassHasValue(Class cls, NSString *key) {
     if (!cls) return NO;
@@ -633,7 +596,6 @@ static void PXEnsureOriginalPanel(void) {
             return;
         }
     }
-    if (image) PXCallOriginalInits();
     PXStartOriginalPanel(0);
 }
 
@@ -673,6 +635,10 @@ static void PXBootstrap(NSUInteger attempt) {
 }
 
 %ctor {
+    // Runs before any queued work: the next SpringBoard start then sees the
+    // switch already on, so the hosted image initialises natively instead of
+    // being re-run (double Swift metadata registration caused respring loops).
+    PXForcePluginState();
     // ParallelXClone.plist limits this image to SpringBoard; avoid querying
     // Foundation from dyld's initializer while its Objective-C state is busy.
     dispatch_async(dispatch_get_main_queue(), ^{ PXBootstrap(0); });
