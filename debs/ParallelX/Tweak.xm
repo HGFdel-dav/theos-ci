@@ -277,7 +277,9 @@ static void PXHandleOpenRequest(id self, SEL command, id service, id request, id
 static void PXHandleWorkspaceRequest(id self, SEL command, id request, id options,
                                      id settings, id origin, id result) {
     if (!PXOrigWorkspaceRequest) return;
-    [PXCloneProbe log:@"SBREQ hit class=%@ keys=%@", NSStringFromClass([request class]),
+    [PXCloneProbe log:@"SBREQ hit class=%@ req=%@ keys=%@", NSStringFromClass([request class]),
+        [request isKindOfClass:NSString.class]
+            ? (((NSString *)request).length > 60 ? [(NSString *)request substringToIndex:60] : request) : @"(nonstr)",
         [options isKindOfClass:NSDictionary.class]
             ? [[(NSDictionary *)options allKeys] componentsJoinedByString:@","] : @"(nodict)"];
     // Notification/bundle-only requests have no actual target payment URL.
