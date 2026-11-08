@@ -199,6 +199,20 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
 
 @implementation PXCloneURLRouter
 
++ (void)openSplitForBundle:(NSString *)bundle then:(void (^)(void))then {
+    Class panel = NSClassFromString(@"PXPanelEntry");
+    SEL selector = NSSelectorFromString(@"externalOpenApplication:");
+    if (panel && class_getClassMethod(panel, selector)) {
+        @try { ((void (*)(id, SEL, id))objc_msgSend)((id)panel, selector, bundle); }
+        @catch (__unused NSException *exception) { }
+        // Let the hosted scene exist before the URL targets it.
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{ if (then) then(); });
+        return;
+    }
+    if (then) then();
+}
+
 + (NSString *)rememberedChoiceForBundle:(NSString *)bundle {
     if (!bundle.length) return nil;
     NSNumber *when = PXURLRouterLastChoiceAt[bundle];
@@ -494,7 +508,7 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
     NSString *active = [PXCloneCrane activeContainerForBundle:bundle];
     if ([container isEqualToString:active]) {
         [PXCloneProbe log:@"SWITCH-VERIFIED target=%@ attempts=%lu", container, (unsigned long)attempt];
-        proceed();
+        [self openSplitForBundle:bundle then:proceed];
         return;
     }
     if (attempt >= PXURLRouterPollLimit) {
