@@ -532,9 +532,10 @@ static void MiniSightRefreshRecorderSettingsThenReadActivity(void) {
     _box.frame = CGRectInset(self.rootViewController.view.bounds, 60, 120);
     _dragArea.frame = CGRectInset(_box.bounds, 30, 30);
 }
-- (void)cancelTap { self.hidden = YES; }
+- (void)cancelTap { MSDiag(@"region cancel"); self.hidden = YES; }
 - (void)confirmTap {
     CGRect b = self.rootViewController.view.bounds, f = _box.frame;
+    MSDiag(@"region confirm x=%.2f y=%.2f w=%.2f h=%.2f", f.origin.x / b.size.width, f.origin.y / b.size.height, f.size.width / b.size.width, f.size.height / b.size.height);
     if (self.onConfirm) self.onConfirm(CGRectMake(f.origin.x / b.size.width, f.origin.y / b.size.height,
                                                   f.size.width / b.size.width, f.size.height / b.size.height));
     self.hidden = YES;
@@ -1625,6 +1626,7 @@ static void MiniSightStartSettingsWatch(void) {
         }
         BOOL revisionChanged = revision && ![revision isEqualToString:gMiniSightWatchedRevision];
         if (!revisionChanged && shown == gMiniSightShown) return;
+        MSDiag(@"settings change rev=%@ shown=%d", revision ?: @"none", shown);
         gMiniSightWatchedRevision = [revision copy];
         MiniSightReloadSettings();
     }];
@@ -1882,6 +1884,7 @@ static void MiniSightShowAfterOwnershipCheck(void) {
 
     // 先透明再取消 hidden，然后 0.18s 淡入
     gMiniSightWindow.alpha = 0.0;
+    MSDiag(@"ui show size=%.0f layout=%ld", MiniSightPetSize(), (long)(gMiniSightPet.spriteLayout));
     gMiniSightWindow.hidden = NO;
     MiniSightStartGravity();
     MSDiagEvent(@"runtime", @"show", @"ok", @{ @"source": @"plugin", @"visible": @YES, @"style": @(MiniSightStyle()) });
@@ -1931,7 +1934,6 @@ static void MiniSightHide(void) {
 
 /// 彻底拆掉浮窗（设置变更时重建用）
 static void MiniSightDestroyUI(void) {
-    MiniSightStopSettingsWatch();
     MiniSightStopGravity();
     [[MiniSightChatPanel existingPanel] hideWithoutKey];
     MiniSightChatPanel.existingPanel.anchorView = nil;
@@ -1948,6 +1950,7 @@ static void MiniSightDestroyUI(void) {
     gMiniSightAnchorValid = NO;
     gMiniSightDragOriginValid = NO;
     gMiniSightDragging = NO;
+    MSDiag(@"ui hide");
     gMiniSightWindow.hidden = YES;
     gMiniSightWindow.rootViewController = nil;
     gMiniSightWindow = nil;
@@ -1960,7 +1963,10 @@ static void MiniSightDestroyUI(void) {
 
 /// 设置变了：按新设置重建（样式/常驻立即生效，不用注销）
 static void MiniSightApplySettingsLive(void) {
-    if (!gMiniSightWindow) return;
+    if (!gMiniSightWindow) {
+        if (MiniSightShown() && !MiniSightAppOwnsPresentation()) MiniSightShow();
+        return;
+    }
     if (gMiniSightContainer.length) {
         NSString *shownPath = [gMiniSightContainer stringByAppendingPathComponent:@"Documents/MiniSight/shown"];
         NSString *t = [NSString stringWithContentsOfFile:shownPath encoding:NSUTF8StringEncoding error:nil];
