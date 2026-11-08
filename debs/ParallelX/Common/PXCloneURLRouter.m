@@ -266,20 +266,7 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
     return YES;
 }
 
-static BOOL PXURLRouterOptionsCarryURL(id options) {
-    if (![options isKindOfClass:NSDictionary.class]) return NO;
-    for (id key in (NSDictionary *)options) {
-        if (![key isKindOfClass:NSString.class]) continue;
-        if (![((NSString *)key).lowercaseString containsString:@"url"]) continue;
-        if ([options[key] isKindOfClass:NSURL.class]) return YES;
-        if ([options[key] isKindOfClass:NSString.class] && [options[key] length]) return YES;
-    }
-    id payload = ((NSDictionary *)options)[@"__Payload"];
-    if ([payload isKindOfClass:NSDictionary.class]) return PXURLRouterOptionsCarryURL(payload);
-    return NO;
-}
-
-+ (BOOL)handleOpenRequest:(id)request options:(id)options proceed:(void (^)(void))proceed {
++ (BOOL)handleOpenRequest:(id)request proceed:(void (^)(void))proceed {
     if (!proceed) return NO;
     if ([self recentAppHandoff]) {
         [PXCloneProbe log:@"SB-SKIP (app already handled)"];
@@ -290,7 +277,6 @@ static BOOL PXURLRouterOptionsCarryURL(id options) {
         (unsigned long)PXCloneCrane.cachedCatalog.count, (int)PXURLRouterCatalogReady,
         (int)PXURLRouterCatalogLoading];
     if (!bundle.length) return NO;
-    if (!PXURLRouterOptionsCarryURL(options)) return NO;
 
     void (^once)(void) = PXURLRouterOnce(proceed);
     NSArray<NSDictionary *> *containers = PXURLRouterContainers(bundle);

@@ -25,7 +25,6 @@ NS_ASSUME_NONNULL_BEGIN
 // `proceed` is invoked at most once, on the main thread, and may be deferred;
 // the caller must not run the original implementation before that.
 + (BOOL)handleOpenRequest:(nullable id)request
-                  options:(nullable id)options
                   proceed:(void (^)(void))proceed;
 
 // In-app path: every app process hooks -[UIApplication openURL:...] so a
