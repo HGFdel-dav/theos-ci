@@ -46,7 +46,7 @@ recorder = read('MiniSightRecorder.m')
 recorder_header = read('MiniSightRecorder.h')
 recorder_core = read('tools/recorder/MiniSightRecorderCore.h')
 ok('MiniSightRecorder.m' in makefile and 'MiniSightRecorder.h' in tweak, '3a recorder implementation is not built/imported')
-ok('MiniSightRecorder.sharedRecorder toggle' in tweak and 'gMiniSightRecorderConfigured' in tweak,
+ok(('MiniSightRecorder.sharedRecorder toggle' in tweak or 'MiniSightStartManualRecording' in tweak) and 'gMiniSightRecorderConfigured' in tweak,
    '3b manual long-press is not routed behind configuration readiness')
 ok('configureAutomaticEnabled:automatic' in tweak and 'setAutomaticActive:(active && gMiniSightRecorderAutomaticEnabled)' in tweak,
    '3c automatic source is not independently gated')
