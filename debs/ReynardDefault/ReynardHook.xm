@@ -744,7 +744,7 @@ static void RDOpenExternally(NSURL *url) {
         NSMutableDictionary *prefs = [NSMutableDictionary dictionaryWithDictionary:(NSDictionary *)message];
         prefs[kSignaturePref] = @(NO);
         RDLog(@"prefs injected (%lu keys)", (unsigned long)prefs.count);
-        %orig(prefs);
+        %orig(type, prefs, callback);
         return;
     }
 
