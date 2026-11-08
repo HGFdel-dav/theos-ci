@@ -2301,9 +2301,9 @@ static void MiniSightAnswerConfirm(BOOL allow) {
 /// specific verb wins, so a log grep is "查看日志", not "执行命令".
 static NSString *MiniSightDescribeCommand(NSString *action, NSString *command) {
     NSString *a = action.lowercaseString ?: @"", *c = command.lowercaseString ?: @"";
-    if (![a isEqualToString:@"shell_execute"])
-        return @{@"read_file": @"读取文件", @"write_file": @"写入文件", @"edit_file": @"修改文件",
-                 @"list_dir": @"查看目录", @"browser_use": @"浏览网页", @"subagent_task": @"派发子任务"}[a] ?: @"执行操作";
+    // Classify by the command first: relays vary the tool name.
+    if ([c containsString:@"sed -i"] || [c containsString:@"plutil"] || [c containsString:@"cp /"] ||
+        [c containsString:@"mv "]) return @"修改文件";
     if ([c containsString:@"tap_screen"] || [c containsString:@"tap_element"]) return @"点击屏幕";
     if ([c containsString:@"swipe_screen"]) return @"滑动屏幕";
     if ([c containsString:@"screenshot"]) return @"截屏";
@@ -2353,9 +2353,13 @@ static void MiniSightShowConfirm(void) {
         return;
     }
     NSString *label = MiniSightDescribeCommand(action, command);
-    NSString *preview = [command stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    if (preview.length > 220) preview = [[preview substringToIndex:220] stringByAppendingString:@"…"];
-    NSString *text = [NSString stringWithFormat:@"允许%@？\n%@", label, preview];
+    BOOL generic = [label isEqualToString:@"执行终端命令"] || [label isEqualToString:@"执行操作"];
+    if (generic) {
+        NSString *preview = [command stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if (preview.length > 80) preview = [[preview substringToIndex:80] stringByAppendingString:@"…"];
+        label = [NSString stringWithFormat:@"%@\n%@", label, preview];
+    }
+    NSString *text = [NSString stringWithFormat:@"允许%@？", label];
     MiniSightShowBubbleWidth(text, 260.0, 600);
 
     gMiniSightBubble.userInteractionEnabled = YES;
