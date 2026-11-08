@@ -147,13 +147,16 @@ class URLHookSourceSafety(unittest.TestCase):
         for stale in ("PXInAppReentry", "recentAppHandoff", "noteAppHandoff", "timeIntervalSince", "systemUptime"):
             self.assertNotIn(stale, routing)
 
-    def test_hook_probe_logs_never_include_url_or_request_payload(self):
+    def test_hook_probe_reports_every_entry_without_payload(self):
         routing = TWEAK.split("static NSUInteger PXURLForwardDepth;", 1)[1].split("#undef PX_FORWARD_URL", 1)[0]
         logs = re.findall(r'\[PXCloneProbe log:@"([^"\n]*)"\];', routing)
         self.assertGreaterEqual(len(logs), 6)
-        self.assertTrue(all("%" not in log for log in logs))
-        self.assertNotIn("absoluteString", routing)
-        self.assertNotIn(" description]", routing)
+        # Every entry must be observable: silence is what hid the wrong door.
+        for marker in ("FBREQ hit", "SBREQ hit", "SBURL hit", "SBREQ payment=1", "FBREQ payment=1"):
+            self.assertIn(marker, routing)
+        # Only a class name or the URL itself; never the whole request object.
+        self.assertIn("NSStringFromClass([request class])", routing)
+        self.assertNotIn("[request description]", routing)
 
     def test_bootstrap_remains_springboard_only(self):
         source = body("PXBootstrap")

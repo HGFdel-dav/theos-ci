@@ -258,6 +258,7 @@ static BOOL PXOpenURLCoreInstalled;
 // as an object and passed only to its original IMP; it is never invoked here.
 static void PXHandleOpenRequest(id self, SEL command, id service, id request, id completion) {
     if (!PXOrigHandleOpenRequest) return;
+    [PXCloneProbe log:@"FBREQ hit class=%@", NSStringFromClass([request class])];
     if (!NSThread.isMainThread || PXURLForwardDepth ||
         ![PXCloneURLRouter paymentURLForRequest:request options:nil]) {
         PX_FORWARD_URL(PXOrigHandleOpenRequest(self, command, service, request, completion));
@@ -275,6 +276,7 @@ static void PXHandleOpenRequest(id self, SEL command, id service, id request, id
 static void PXHandleWorkspaceRequest(id self, SEL command, id request, id options,
                                      id settings, id origin, id result) {
     if (!PXOrigWorkspaceRequest) return;
+    [PXCloneProbe log:@"SBREQ hit class=%@", NSStringFromClass([request class])];
     // Notification/bundle-only requests have no actual target payment URL.
     // This test precedes block copy, proceed creation and all catalog work.
     if (!NSThread.isMainThread || PXURLForwardDepth ||
@@ -296,6 +298,7 @@ static void PXHandleWorkspaceRequest(id self, SEL command, id request, id option
 static void PXHandleOpenURLCore(id self, SEL command, id url, BOOL display,
                                 BOOL animating, id settings, id origin, id result) {
     if (!PXOrigOpenURLCore) return;
+    [PXCloneProbe log:@"SBURL hit %@", [url isKindOfClass:NSURL.class] ? ((NSURL *)url).absoluteString : [url description]];
     if (!NSThread.isMainThread || PXURLForwardDepth ||
         ![url isKindOfClass:NSURL.class] || ![PXCloneURLRouter isPaymentURL:(NSURL *)url]) {
         PX_FORWARD_URL(PXOrigOpenURLCore(self, command, url, display, animating, settings, origin, result));
