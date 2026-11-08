@@ -182,6 +182,7 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
 }
 
 @implementation MiniSightPetView
+@dynamic image;
 // UIImageView's normal image paints the WHOLE atlas behind the sprite child.
 // Treat image as the atlas source and keep the host backing layer empty.
 @synthesize centerBounds = _centerBounds, onGeometryChanged = _onGeometryChanged;
