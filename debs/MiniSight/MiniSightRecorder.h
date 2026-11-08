@@ -3,6 +3,7 @@
 #include "tools/recorder/MiniSightRecorderCore.h"
 #ifdef __OBJC__
 #import <Foundation/Foundation.h>
+#import <CoreGraphics/CoreGraphics.h>
 NS_ASSUME_NONNULL_BEGIN
 
 /* Stage attached only to SaveFailed; identifies where artifact handling stopped. */

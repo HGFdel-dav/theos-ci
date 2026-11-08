@@ -148,7 +148,7 @@ typedef void (^MSRFileCompletion)(BOOL, NSURL *, uint64_t, double, MiniSightReco
     AVMutableVideoComposition *vc = [AVMutableVideoComposition videoComposition];
     vc.renderSize = CGSizeMake(floor(px.size.width), floor(px.size.height));
     vc.frameDuration = CMTimeMake(1, 30);
-    AVMutableVideoCompositionInstruction *ins = [AVMutableVideoCompositionInstruction videoInstruction];
+    AVMutableVideoCompositionInstruction *ins = [[AVMutableVideoCompositionInstruction alloc] init];
     ins.timeRange = CMTimeRangeMake(kCMTimeZero, _asset.duration);
     AVMutableVideoCompositionLayerInstruction *li = [AVMutableVideoCompositionLayerInstruction videoCompositionLayerInstructionWithAssetTrack:ct];
     [li setTransform:CGAffineTransformTranslate(pref, -px.origin.x, -px.origin.y) atTime:kCMTimeZero];
@@ -162,7 +162,7 @@ typedef void (^MSRFileCompletion)(BOOL, NSURL *, uint64_t, double, MiniSightReco
     [ex exportAsynchronouslyWithCompletionHandler:^{
         dispatch_async(self->_queue, ^{
             if (self->_done) return;
-            if (ex.status != AVAssetExportStatusCompleted) {
+            if (ex.status != AVAssetExportSessionStatusCompleted) {
                 [self finish:NO duration:seconds stage:MiniSightRecorderSaveStageInspect]; return;
             }
             [NSFileManager.defaultManager removeItemAtURL:self->_temporaryURL error:nil];
@@ -566,9 +566,8 @@ static char MSRRecordingObservation;
         _crop = CGRectNull;
     }
     _sessionCrop = _crop;
-- (void)startWithSource:(MiniSightRecorderSource)source {
     if (![NSThread isMainThread]) {
-        dispatch_async(dispatch_get_main_queue(), ^{ [self startWithSource:source]; }); return;
+        dispatch_async(dispatch_get_main_queue(), ^{ [self startWithSource:source region:region]; }); return;
     }
     [self msrApply:MSRBegin(&_machine, source, MSRNow(), [self msrSnapshot]) file:nil bytes:0 duration:0];
 }
