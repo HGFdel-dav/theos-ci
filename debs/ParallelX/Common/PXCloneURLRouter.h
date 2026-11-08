@@ -11,6 +11,7 @@ NS_ASSUME_NONNULL_BEGIN
 // Plain links and notifications decline synchronously. No global opener,
 // catalog retry chain, cross-process time window or scene-less key window.
 @interface PXCloneURLRouter : NSObject
++ (BOOL)isShareRequest:(nullable id)request options:(nullable id)options;
 
 // Pure classification: no Crane, writes, timers or UI.
 + (BOOL)isPaymentURL:(nullable NSURL *)url;
