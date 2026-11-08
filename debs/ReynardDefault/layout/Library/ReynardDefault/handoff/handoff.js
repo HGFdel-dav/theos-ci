@@ -30,24 +30,17 @@
     return INTERNAL[schemeOf(value)] ? null : value;
   }
 
+  function debug(stage, extra) {
+    try { browser.runtime.sendMessage({ rdDebug: stage, extra: extra || '' }); } catch (e) {}
+  }
+
   function report(href) {
     try {
       browser.runtime.sendMessage({ rdHandoff: href });
     } catch (e) {}
   }
 
-  function debug(stage, extra) {
-    try { browser.runtime.sendMessage({ rdDebug: stage, extra: extra || '' }); } catch (e) {}
-  }
-
-  // No messaging: navigate to a sentinel https URL, the host recognises it in
-  // OnPreNavigation, opens the real URL and denies this navigation.
-  function report(href) {
-    try { location.href = 'https://reynarddefault.open/#u=' + encodeURIComponent(href); } catch (e) {}
-  }
-
   debug('boot', location.href);
-  try { document.title = 'RD:' + document.title; } catch (e) {}
 
   document.addEventListener('click', function (event) {
     if (event.rdHandled) return;
