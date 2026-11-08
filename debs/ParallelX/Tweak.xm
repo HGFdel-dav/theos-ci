@@ -471,6 +471,48 @@ static BOOL PXInstallProbeHooks(void) {
 
 #undef PX_FORWARD_URL
 
+// The hosted panel opens apps through its own entry, not only through the
+// workspace: hook both so a payment jump is visible instead of guessed.
+static void (*PXOrigExternalOpen)(id, SEL, id);
+static void (*PXOrigCompleteURLReturn)(id, SEL, id, id);
+static BOOL PXExternalOpenInstalled;
+static BOOL PXCompleteURLReturnInstalled;
+
+static void PXExternalOpen(id self, SEL _cmd, id bundle) {
+    [PXCloneProbe log:@"PXEXT bundle=%@", [bundle isKindOfClass:NSString.class] ? bundle : @"(nonstring)"];
+    if (PXOrigExternalOpen) PXOrigExternalOpen(self, _cmd, bundle);
+}
+
+static void PXCompleteURL(id self, SEL _cmd, id source, id window) {
+    [PXCloneProbe log:@"PXURLRET source=%@", source ?: @"(nil)"];
+    if (PXOrigCompleteURLReturn) PXOrigCompleteURLReturn(self, _cmd, source, window);
+}
+
+static void PXInstallExternalHooks(void) {
+    Class panel = PXResolveClass(@"PXPanelEntry");
+    if (!panel) return;
+    if (!PXExternalOpenInstalled) {
+        SEL selector = NSSelectorFromString(@"externalOpenApplication:");
+        IMP original = NULL;
+        if (PXCloneClassInstanceMethodMatches(panel, selector, @encode(void), @[@"@"]) &&
+            PXCloneHookMessage(panel, selector, (IMP)PXExternalOpen, &original)) {
+            PXOrigExternalOpen = (void (*)(id, SEL, id))original;
+            PXExternalOpenInstalled = YES;
+            [PXCloneProbe log:@"PXEXT hooked"];
+        }
+    }
+    if (!PXCompleteURLReturnInstalled) {
+        SEL selector = NSSelectorFromString(@"completeURLReturnFromSource:window:");
+        IMP original = NULL;
+        if (PXCloneClassInstanceMethodMatches(panel, selector, @encode(void), @[@"@", @"@"]) &&
+            PXCloneHookMessage(panel, selector, (IMP)PXCompleteURL, &original)) {
+            PXOrigCompleteURLReturn = (void (*)(id, SEL, id, id))original;
+            PXCompleteURLReturnInstalled = YES;
+            [PXCloneProbe log:@"PXURLRET hooked"];
+        }
+    }
+}
+
 static BOOL PXInstallRefreshHooks(void) {
     // Current alpha391 metadata and the device libcrane both confirm these
     // selectors. No timer loop or Settings-only refresh is required.
@@ -629,6 +671,7 @@ static void PXBootstrap(NSUInteger attempt) {
     BOOL launchReady = [PXCloneLaunchController installNativeHooks];
     BOOL routingReady = PXInstallURLRoutingHook();
     PXInstallProbeHooks();
+    PXInstallExternalHooks();
     if ((actionReady && refreshReady && launchReady && routingReady) || attempt >= PXHookAttemptLimit) return;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, PXHookRetryDelayNS),
                    dispatch_get_main_queue(), ^{ PXBootstrap(attempt + 1); });
