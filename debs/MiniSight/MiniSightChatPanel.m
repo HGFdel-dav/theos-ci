@@ -276,6 +276,7 @@ static CGRect MSChatScreenRect(UIWindowScene *scene) {
 @property (nonatomic, strong, nullable) UITapGestureRecognizer *editorTap;
 @property (nonatomic, strong, nullable) NSLayoutConstraint *messageWidthConstraint;
 @property (nonatomic, strong) NSMutableArray<NSLayoutConstraint *> *bubbleWidths;
+@property (nonatomic) CGFloat panelBoost;
 @property (nonatomic, strong, nullable) MiniSightChatBubble *pendingBubble;
 @property (nonatomic, assign) BOOL layingOut;
 @property (nonatomic, assign) BOOL composerVisible;
@@ -472,6 +473,9 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
     scroll.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
     [controller.view addSubview:scroll];
     self.scrollView = scroll;
+    self.panelBoost = 1.;
+    UITapGestureRecognizer *boostTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(togglePanelBoost)];
+    [scroll addGestureRecognizer:boostTap];
     UITapGestureRecognizer *reveal = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(revealComposer)];
     reveal.cancelsTouchesInView = NO;
     [scroll addGestureRecognizer:reveal];
@@ -1154,6 +1158,12 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
     [self layoutForCurrentScreen];
 }
 
+- (void)togglePanelBoost {
+    self.panelBoost = self.panelBoost > 1. ? 1. : 1.35;
+    self.messagesDirty = YES;
+    [self layoutForCurrentScreen];
+}
+
 - (void)layoutForCurrentScreen {
     if (!self.visible || !self.window || self.layingOut) return;
     UIView *anchor = self.anchorView;
@@ -1182,7 +1192,7 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
     safe.size.width = MAX(0., safe.size.width);
     safe.size.height = MAX(0., safe.size.height);
     CGFloat panelScale = MSClamp([self scaleFor:@"panelScale" fallback:1], 0.6, 1.5);
-    CGFloat maxWidth = MIN(280. * panelScale, MAX(0., safe.size.width * 0.80));
+    CGFloat maxWidth = MIN(280. * panelScale * self.panelBoost, MAX(0., safe.size.width * 0.86));
     CGFloat panelW = MIN(216. * panelScale, maxWidth);
     if (fabs(self.measuredWidth - maxWidth) > 0.5 || self.messagesDirty) {
         self.messagesDirty = NO;
@@ -1203,7 +1213,7 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
             content += MAX(20, rowHeight);
         }
         content += MAX(0, self.rows.count - 1) * 6 + 8;
-        CGFloat cap = MIN(safe.size.height * 0.50, MAX(160., [self configuredHeight] * panelScale * 2.));
+        CGFloat cap = MIN(safe.size.height * 0.55, MAX(160., [self configuredHeight] * panelScale * 2.)) * MIN(self.panelBoost, 1.2);
         self.measuredMessageHeight = MIN(content, cap);
     }
     self.messageWidthConstraint.constant = panelW;
