@@ -469,7 +469,6 @@ static BOOL PXURLRouterOptionsCarryURL(id options) {
         }
         [PXCloneProbe log:@"WATCHDOG release"];
         void (^release)(void) = PXURLRouterPending;
-        PXURLRouterPending = nil;
         if (release) release();
         else proceed();
     });
@@ -550,7 +549,6 @@ static BOOL PXURLRouterOptionsCarryURL(id options) {
         NSError *switchError = nil;
         if (![PXCloneCrane switchToContainer:container forBundle:bundle reload:NO error:&switchError]) {
             [PXCloneProbe log:@"SWITCH-FAILED"];
-            PXURLRouterPending = nil;
             [self showRoutingError:switchError.localizedDescription ?: @"账号切换未启动"];
             return;
         }
@@ -564,13 +562,11 @@ static BOOL PXURLRouterOptionsCarryURL(id options) {
     if ([container isEqualToString:active]) {
         [PXCloneProbe log:@"SWITCH-VERIFIED target=%@ attempts=%lu", container,
             (unsigned long)PXURLRouterPendingAttempt];
-        PXURLRouterPending = nil;
         proceed();
         return;
     }
     if (PXURLRouterPendingAttempt >= PXURLRouterPollLimit) {
         [PXCloneProbe log:@"SWITCH-TIMEOUT target=%@ active=%@", container, active];
-        PXURLRouterPending = nil;
         [self showRoutingError:@"账号未切换完成，付款链接未打开，请重试"];
         return;
     }
