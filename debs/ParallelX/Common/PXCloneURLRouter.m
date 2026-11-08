@@ -32,6 +32,8 @@ static NSString *PXURLRouterPendingBundle = nil;
 static NSString *PXURLRouterPendingContainer = nil;
 static NSUInteger PXURLRouterPendingAttempt = 0;
 static BOOL PXURLRouterPendingTerminating = NO;
+// Every request gets a generation; late retries of an older one die quietly.
+static NSUInteger PXURLRouterGeneration = 0;
 // Last account per bundle: repeat jumps of the same app must not ask again.
 static NSMutableDictionary<NSString *, NSString *> *PXURLRouterLastChoice;
 static NSMutableDictionary<NSString *, NSNumber *> *PXURLRouterLastChoiceAt;
@@ -96,8 +98,8 @@ static void (^PXURLRouterOnce(void (^proceed)(void)))(void) {
 @end
 
 @interface PXCloneURLRouter ()
-+ (void)loadCatalogForRequest:(id)request proceed:(void (^)(void))proceed
-                      bundle:(NSString *)bundle attempt:(NSUInteger)attempt;
+(void)loadCatalogForRequest:(id)request proceed:(void (^)(void))proceed
+                      bundle:(NSString *)bundle attempt:(NSUInteger)attempt generation:(NSUInteger)generation;
 + (void)activateContainer:(NSString *)container bundle:(NSString *)bundle
                   proceed:(void (^)(void))proceed;
 + (void)waitForContainer:(NSString *)container bundle:(NSString *)bundle
@@ -265,6 +267,7 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
 
     if (!PXURLRouterLooksLikePayment(url)) return NO;
 
+    NSUInteger generation = ++PXURLRouterGeneration;
     NSString *remembered = [self rememberedChoiceForBundle:bundle];
     if (remembered.length) {
         [PXCloneProbe log:@"REMEMBERED %@ -> %@", bundle, remembered];
@@ -298,6 +301,7 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
     if (!bundle.length) return NO;
 
     PXURLRouterCancelled = NO;
+    NSUInteger generation = ++PXURLRouterGeneration;
     void (^once)(void) = PXURLRouterOnce(proceed);
     PXURLRouterPending = once;
     NSArray<NSDictionary *> *containers = PXURLRouterContainers(bundle);
@@ -317,12 +321,14 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
     // This is an external request, so owning it while the catalog is loading
     // is essential. Falling through here launches the current account before
     // the chooser has a chance to appear.
-    [self loadCatalogForRequest:request proceed:once bundle:bundle attempt:0];
+    [self loadCatalogForRequest:request proceed:once bundle:bundle attempt:0 generation:generation];
     return YES;
 }
 
 + (void)loadCatalogForRequest:(id)request proceed:(void (^)(void))proceed
-                      bundle:(NSString *)bundle attempt:(NSUInteger)attempt {
+                      bundle:(NSString *)bundle attempt:(NSUInteger)attempt
+                   generation:(NSUInteger)generation {
+    if (generation != PXURLRouterGeneration) return;
     NSArray<NSDictionary *> *containers = PXURLRouterContainers(bundle);
     if (containers.count >= 2) {
         void (^present)(void) = ^{
@@ -346,7 +352,8 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
                                  (int64_t)(PXURLRouterCatalogWaitInterval * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        [self loadCatalogForRequest:request proceed:proceed bundle:bundle attempt:attempt + 1];
+        [self loadCatalogForRequest:request proceed:proceed bundle:bundle
+                            attempt:attempt + 1 generation:generation];
     });
 }
 
