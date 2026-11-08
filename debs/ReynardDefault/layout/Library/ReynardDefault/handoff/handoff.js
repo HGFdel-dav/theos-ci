@@ -36,8 +36,12 @@
 
   // No messaging: navigate to a sentinel https URL, the host recognises it in
   // OnPreNavigation, opens the real URL and denies this navigation.
-  function report(href) {
-    try { location.href = 'https://reynarddefault.open/#u=' + encodeURIComponent(href); } catch (e) {}
+  // Carry both the clicked https URL (for the site's universal link) and the
+  // app URL the page advertises, so the host can behave like Safari.
+  function report(appURL, httpURL) {
+    var hash = '#a=' + encodeURIComponent(appURL);
+    if (httpURL) hash = '#h=' + encodeURIComponent(httpURL) + hash;
+    try { location.href = 'https://reynarddefault.open/' + hash; } catch (e) {}
   }
 
   debug('boot', location.href);
@@ -56,7 +60,7 @@
       if (!appURL) return;
       event.preventDefault();
       event.stopPropagation();
-      report(appURL);
+      report(appURL, new URL(href, document.baseURI).href);
       return;
     }
     if (!scheme || INTERNAL[scheme]) return;
