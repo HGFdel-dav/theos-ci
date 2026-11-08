@@ -115,7 +115,7 @@ class TestURLRouting(unittest.TestCase):
         wait = ROUTER.split('+ (void)stepPending {', 1)[1].split('+ (void)showRoutingError:', 1)[0]
         self.assertIn('PXURLRouterPendingAttempt >= PXURLRouterPollLimit', wait)
         self.assertIn('账号未切换完成', wait)
-        timeout = wait.split('attempt >= PXURLRouterPollLimit', 1)[1]
+        timeout = wait.split('PXURLRouterPendingAttempt >= PXURLRouterPollLimit', 1)[1]
         self.assertNotIn('proceed();', timeout.split('dispatch_after', 1)[0])
 
     def test_router_can_present_its_own_error(self):
