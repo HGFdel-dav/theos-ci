@@ -1967,7 +1967,7 @@ static void MiniSightPlaceBubble(CGFloat w, CGFloat h) {
 - (void)toggleBubbleSize:(UITapGestureRecognizer *)tap {
     if (tap.state != UIGestureRecognizerStateEnded) return;
     gMiniSightBubbleExpanded = !gMiniSightBubbleExpanded;
-    if (gMiniSightBubbleText.length) MiniSightShowBubbleWidth(gMiniSightBubbleText, 360.0, 600);
+    if (gMiniSightBubbleText.length) MiniSightShowBubbleWidth(gMiniSightBubbleText, 300.0, 600);
 }
 @end
 static MiniSightBubbleTapTarget *gMiniSightBubbleTapTarget = nil;
@@ -2063,7 +2063,7 @@ extern "C" void MiniSightFollowBubble(void) {
 
 static void MiniSightShowBubble(NSString *raw) {
     gMiniSightBubbleExpanded = NO;
-    MiniSightShowBubbleWidth(raw, 360.0, 600);
+    MiniSightShowBubbleWidth(raw, 300.0, 600);
 }
 
 /// 允许/拒绝两个按钮的宿主
@@ -2137,7 +2137,7 @@ static void MiniSightShowConfirm(void) {
         return;
     }
     NSString *text = action.length ? [NSString stringWithFormat:@"%@\n%@", action, command] : command;
-    MiniSightShowBubbleWidth(text, 360.0, 600);
+    MiniSightShowBubbleWidth(text, 300.0, 600);
 
     gMiniSightBubble.userInteractionEnabled = YES;
     if (!gMiniSightConfirmBar) {
@@ -2221,7 +2221,7 @@ static void MiniSightShowLine(NSString *line) {
 static void MiniSightShowStatusLine(NSString *text) {
     if (!text.length) return;
     if ((!gMiniSightWindow || gMiniSightWindow.hidden) && !gMiniSightBurst) return;
-    MiniSightShowBubbleWidth(text, 360.0, 600);
+    MiniSightShowBubbleWidth(text, 300.0, 600);
     if (gMiniSightBubbleHideWork) { dispatch_block_cancel(gMiniSightBubbleHideWork); gMiniSightBubbleHideWork = nil; }
     if (gMiniSightBurst) return;
     gMiniSightBubbleHideWork = dispatch_block_create(DISPATCH_BLOCK_DETACHED, ^{
