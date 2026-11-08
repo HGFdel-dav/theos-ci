@@ -40,9 +40,6 @@ static NSString *PXProbeChosenPath(void) {
 }
 
 + (void)log:(NSString *)format, ... {
-#ifdef PXCLONE_PROBE_OFF
-    return;
-#endif
     va_list arguments;
     va_start(arguments, format);
     NSString *body = [[NSString alloc] initWithFormat:format arguments:arguments];

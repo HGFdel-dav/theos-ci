@@ -266,40 +266,6 @@ static void PXHandleWorkspaceRequest(id self, SEL command, id request, id option
     proceed();
 }
 
-// Share handoffs (share sheet / extension) can bypass the application-request
-// entry and go straight to the URL funnel.
-static void (*PXOrigOpenURLCore)(id, SEL, id, BOOL, BOOL, id, id, id);
-
-static void PXHandleOpenURLCore(id self, SEL command, id url, BOOL display, BOOL animating,
-                                id settings, id origin, id result) {
-    void (^proceed)(void) = ^{
-        if (PXOrigOpenURLCore)
-            PXOrigOpenURLCore(self, command, url, display, animating, settings, origin, result);
-    };
-    if ([url isKindOfClass:NSURL.class] &&
-        [PXCloneURLRouter handleOpenURL:(NSURL *)url proceed:proceed]) return;
-    proceed();
-}
-
-static BOOL PXInstallOpenURLCoreHook(void) {
-    if (PXOrigOpenURLCore) return YES;
-    SEL selector = NSSelectorFromString(@"_openURLCore:display:animating:activationSettings:origin:withResult:");
-    NSArray<NSArray<NSString *> *> *shapes = @[
-        @[@"@", [NSString stringWithUTF8String:@encode(BOOL)], [NSString stringWithUTF8String:@encode(BOOL)], @"@", @"@", @"@?"],
-        @[@"@", [NSString stringWithUTF8String:@encode(BOOL)], [NSString stringWithUTF8String:@encode(BOOL)], @"@", @"@", @"@"],
-    ];
-    for (NSArray<NSString *> *shape in shapes) {
-        Class cls = PXClassDeclaringSelector(selector, @encode(void), shape);
-        if (!cls) continue;
-        IMP original = NULL;
-        if (PXCloneHookMessage(cls, selector, (IMP)PXHandleOpenURLCore, &original)) {
-            PXOrigOpenURLCore = (void (*)(id, SEL, id, BOOL, BOOL, id, id, id))original;
-            return YES;
-        }
-    }
-    return NO;
-}
-
 static BOOL PXInstallURLRoutingHook(void) {
     if (!PXOrigWorkspaceRequest) {
         // withResult: is a completion block on this build, not an object; try
@@ -473,7 +439,6 @@ static void PXBootstrap(NSUInteger attempt) {
     BOOL refreshReady = PXInstallRefreshHooks();
     BOOL launchReady = [PXCloneLaunchController installNativeHooks];
     BOOL routingReady = PXInstallURLRoutingHook();
-    PXInstallOpenURLCoreHook();
     PXInstallProbeHooks();
     if ((actionReady && refreshReady && launchReady && routingReady) || attempt >= PXHookAttemptLimit) return;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, PXHookRetryDelayNS),
