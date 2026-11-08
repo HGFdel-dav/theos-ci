@@ -574,6 +574,7 @@ static void MiniSightStartManualRecording(void) {
     [host presentViewController:sheet animated:YES completion:nil];
 }
 
+static void MiniSightSaveToPhotos(NSURL *url);
 static void MiniSightToggleRecording(void) {
     // Read the actual manual switch for every long-press. The App need not post
     // a new notification, and the automatic switch never gates manual capture.
