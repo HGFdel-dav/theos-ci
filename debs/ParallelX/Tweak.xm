@@ -36,6 +36,8 @@ static BOOL PXRefreshPending;
 // hook never appears, so a missing hook cannot hide the whole feature.
 static const NSUInteger PXHookAttemptLimit = 120;
 static const int64_t PXHookRetryDelayNS = 250 * NSEC_PER_MSEC;
+// Preference load needs a turn of the run loop before start() sees the switch.
+static const int64_t PXStartDelayNS = 800 * NSEC_PER_MSEC;
 
 #pragma mark - Class resolution
 
@@ -506,37 +508,56 @@ static BOOL PXDylibImageLoaded(const char *needle) {
     return NO;
 }
 
-// The hosted panel normally starts from its own SpringBoard constructor. When
-// that image is present but never built its UI (no handle, no panel, no
-// split-screen), re-open it here and call the documented class entry instead
-// of guessing: the class registration is the only reliable "already running"
-// signal, and dlopen of a loaded image is a no-op.
+// The hosted panel builds its UI from +[PXPanelEntry start]. The class is
+// registered at boot (probe: ORIG-PRESENT image=1) but nothing invokes start,
+// so the handle, panel and split-screen never appear. Calling start is safe to
+// repeat: it re-reads pluginEnabled first and then just refreshes the handle
+// settings when the panel already exists.
+static void PXStartOriginalPanel(NSUInteger step) {
+    Class panel = NSClassFromString(@"ParallelX.PXPanelEntry");
+    if (!panel) panel = NSClassFromString(@"PXPanelEntry");
+    if (!panel) {
+        [PXCloneProbe log:@"ORIG-START-MISSING step=%lu image=%d",
+            (unsigned long)step, (int)PXDylibImageLoaded("ParallelX.dylib")];
+        return;
+    }
+    SEL start = NSSelectorFromString(@"start");
+    if (![panel respondsToSelector:start]) {
+        [PXCloneProbe log:@"ORIG-START-UNRESPONSIVE step=%lu", (unsigned long)step];
+        return;
+    }
+    ((void (*)(id, SEL))objc_msgSend)((id)panel, start);
+    [PXCloneProbe log:@"ORIG-START-CALL step=%lu", (unsigned long)step];
+    if (step >= 3) {
+        id handle = nil;
+        @try { handle = [panel valueForKey:@"handleWindow"]; }
+        @catch (__unused NSException *exception) { }
+        [PXCloneProbe log:@"ORIG-START-DONE handle=%d", (int)(handle != nil)];
+        return;
+    }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)),
+        dispatch_get_main_queue(), ^{ PXStartOriginalPanel(step + 1); });
+}
+
+// Keeps the image loaded even if its own constructor bailed before the class
+// was registered, then runs the start sequence above.
 static void PXEnsureOriginalPanel(void) {
     static BOOL done = NO;
     if (done) return;
     done = YES;
-    if (NSClassFromString(@"ParallelX.PXPanelEntry") || NSClassFromString(@"PXPanelEntry")) {
-        [PXCloneProbe log:@"ORIG-PRESENT image=%d", (int)PXDylibImageLoaded("ParallelX.dylib")];
-        return;
-    }
     BOOL image = PXDylibImageLoaded("ParallelX.dylib");
-    [PXCloneProbe log:@"ORIG-MISSING image=%d", (int)image];
-    if (image) return; // present but classless: a real load fault, not a skip
-    void *handle = dlopen("/usr/lib/TweakInject/ParallelX.dylib", RTLD_NOW);
-    if (!handle) handle = dlopen("/Library/MobileSubstrate/DynamicLibraries/ParallelX.dylib", RTLD_NOW);
-    if (!handle) {
-        const char *why = dlerror();
-        [PXCloneProbe log:@"ORIG-DLOPEN-FAIL %s", why ?: "(nil)"];
-        return;
+    [PXCloneProbe log:@"ORIG-PRESENT image=%d class=%d", (int)image,
+        (int)(NSClassFromString(@"ParallelX.PXPanelEntry") != nil)];
+    if (!image) {
+        void *handle = dlopen("/usr/lib/TweakInject/ParallelX.dylib", RTLD_NOW);
+        if (!handle) handle = dlopen("/Library/MobileSubstrate/DynamicLibraries/ParallelX.dylib", RTLD_NOW);
+        if (!handle) {
+            const char *why = dlerror();
+            [PXCloneProbe log:@"ORIG-DLOPEN-FAIL %s", why ?: "(nil)"];
+            return;
+        }
     }
-    Class panel = NSClassFromString(@"ParallelX.PXPanelEntry");
-    SEL start = NSSelectorFromString(@"start");
-    if (panel && [panel respondsToSelector:start]) {
-        [PXCloneProbe log:@"ORIG-START-CALL"];
-        ((void (*)(id, SEL))objc_msgSend)((id)panel, start);
-    } else {
-        [PXCloneProbe log:@"ORIG-START-MISSING class=%d", (int)(panel != nil)];
-    }
+    PXStartOriginalPanel(0);
 }
 
 // Run only after dyld returned to the main run loop. In particular, do not
@@ -560,7 +581,8 @@ static void PXBootstrap(NSUInteger attempt) {
             if (status != NOTIFY_STATUS_OK) PXNotifyToken = -1;
         }
         PXRefreshAndSync();
-        PXEnsureOriginalPanel();
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, PXStartDelayNS),
+            dispatch_get_main_queue(), ^{ PXEnsureOriginalPanel(); });
     }
 
     BOOL actionReady = PXInstallActionHook();
