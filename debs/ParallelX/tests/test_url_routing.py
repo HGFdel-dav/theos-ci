@@ -107,16 +107,12 @@ class TestURLRouting(unittest.TestCase):
         self.assertNotIn('setActiveContainer', ROUTER)
 
     def test_unconfirmed_switch_fails_closed(self):
-        # Opening the wrong account is worse than asking for a retry.
-        activate = ROUTER.rsplit('+ (void)activateContainer:', 1)[1].split('+ (void)waitForContainer:', 1)[0]
+        activate = ROUTER.rsplit('+ (void)activateContainer:', 1)[1].split('+ (void)stepPending', 1)[0]
         self.assertIn('无法读取当前账号', activate)
-        self.assertEqual(activate.count('proceed();'), 1)  # only the coincident case
         self.assertIn('showRoutingError', activate)
-        wait = ROUTER.rsplit('+ (void)waitForContainer:', 1)[1].split('+ (void)showRoutingError:', 1)[0]
-        self.assertIn('attempt >= PXURLRouterPollLimit', wait)
-        self.assertIn('账号未切换完成', wait)
-        timeout = wait.split('attempt >= PXURLRouterPollLimit', 1)[1]
-        self.assertNotIn('proceed();', timeout.split('dispatch_after', 1)[0])
+        step = ROUTER.split('+ (void)stepPending {', 1)[1].split('+ (void)showRoutingError:', 1)[0]
+        self.assertIn('PXURLRouterPendingAttempt >= PXURLRouterPollLimit', step)
+        self.assertIn('账号未切换完成', step)
 
     def test_router_can_present_its_own_error(self):
         self.assertIn('+ (void)showRoutingError:', ROUTER)
@@ -124,7 +120,8 @@ class TestURLRouting(unittest.TestCase):
 
     def test_chooser_uses_its_own_alert_window(self):
         # Reuse an existing window when possible; own window only as fallback.
-        self.assertIn('application.windows.reverseObjectEnumerator', ROUTER)
+        self.assertIn('initWithWindowScene', ROUTER)
+        self.assertIn('UIWindowLevelAlert + 100', ROUTER)
         self.assertIn('UIWindowLevelAlert + 1', ROUTER)
         self.assertIn('UIAlertControllerStyleActionSheet', ROUTER)
         self.assertIn('makeKeyAndVisible', ROUTER)

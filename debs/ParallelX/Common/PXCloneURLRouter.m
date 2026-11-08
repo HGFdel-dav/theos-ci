@@ -25,6 +25,13 @@ static NSTimeInterval PXURLRouterLastRefresh = 0;
 static BOOL PXURLRouterCatalogLoading = NO;
 static BOOL PXURLRouterCatalogReady = NO;
 static BOOL PXURLRouterCancelled = NO;
+// Pending handoff kept in statics: dispatched blocks that capture a chain of
+// blocks went stale (repeated EXC_BAD_ACCESS in objc_retain).
+static void (^PXURLRouterPending)(void) = nil;
+static NSString *PXURLRouterPendingBundle = nil;
+static NSString *PXURLRouterPendingContainer = nil;
+static NSUInteger PXURLRouterPendingAttempt = 0;
+static BOOL PXURLRouterPendingTerminating = NO;
 // Last account per bundle: repeat jumps of the same app must not ask again.
 static NSMutableDictionary<NSString *, NSString *> *PXURLRouterLastChoice;
 static NSMutableDictionary<NSString *, NSNumber *> *PXURLRouterLastChoiceAt;
@@ -78,6 +85,16 @@ static void (^PXURLRouterOnce(void (^proceed)(void)))(void) {
     } copy];
 }
 
+@interface PXURLRouterDismisser : NSObject <UIAdaptivePresentationControllerDelegate>
+@end
+
+@implementation PXURLRouterDismisser
+- (void)presentationControllerDidDismiss:(UIPresentationController *)controller {
+    (void)controller;
+    PXURLRouterCancelled = YES;
+}
+@end
+
 @interface PXCloneURLRouter ()
 + (void)loadCatalogForRequest:(id)request proceed:(void (^)(void))proceed
                       bundle:(NSString *)bundle attempt:(NSUInteger)attempt;
@@ -85,8 +102,7 @@ static void (^PXURLRouterOnce(void (^proceed)(void)))(void) {
                   proceed:(void (^)(void))proceed;
 + (void)waitForContainer:(NSString *)container bundle:(NSString *)bundle
                  attempt:(NSUInteger)attempt proceed:(void (^)(void))proceed;
-+ (void)waitForTermination:(NSString *)bundle attempt:(NSUInteger)attempt
-                  proceed:(void (^)(void))proceed container:(NSString *)container;
++ (void)stepPending;
 + (void)showRoutingError:(NSString *)message;
 @end
 
@@ -168,8 +184,8 @@ static NSString *PXURLRouterBundleForURL(NSURL *url) {
     return nil;
 }
 
-// Only payment handoffs should ask. Everything else (plain links, app-to-app
-// browsing) keeps the current account silently.
+// Payment AND share handoffs should ask (both are "move my content into
+// another app"); plain browsing links keep the current account silently.
 static BOOL PXURLRouterLooksLikePayment(NSURL *url) {
     NSString *scheme = url.scheme.lowercaseString;
     for (NSString *pay in @[@"weixin", @"wechat", @"wxpay", @"tenpay",
@@ -182,7 +198,8 @@ static BOOL PXURLRouterLooksLikePayment(NSURL *url) {
     for (NSString *hint in @[@"pay", @"cashier", @"trade", @"wxpay", @"tenpay",
                              @"alipay", @"alipays", @"unionpay", @"uppay",
                              @"收银台", @"支付", @"付款", @"收款", @"转账", @"prepay",
-                             @"sharetimeline", @"share", @"sendfile", @"分享", @"发送给"]) {
+                             @"sharetimeline", @"share", @"sendfile", @"分享",
+                             @"发送给", @"upload", @"dl/send"]) {
         if ([text containsString:hint]) return YES;
     }
     return NO;
@@ -198,20 +215,6 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
 }
 
 @implementation PXCloneURLRouter
-
-+ (void)openSplitForBundle:(NSString *)bundle then:(void (^)(void))then {
-    Class panel = NSClassFromString(@"PXPanelEntry");
-    SEL selector = NSSelectorFromString(@"externalOpenApplication:");
-    if (panel && class_getClassMethod(panel, selector)) {
-        @try { ((void (*)(id, SEL, id))objc_msgSend)((id)panel, selector, bundle); }
-        @catch (__unused NSException *exception) { }
-        // Let the hosted scene exist before the URL targets it.
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{ if (then) then(); });
-        return;
-    }
-    if (then) then();
-}
 
 + (NSString *)rememberedChoiceForBundle:(NSString *)bundle {
     if (!bundle.length) return nil;
@@ -296,6 +299,7 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
 
     PXURLRouterCancelled = NO;
     void (^once)(void) = PXURLRouterOnce(proceed);
+    PXURLRouterPending = once;
     NSArray<NSDictionary *> *containers = PXURLRouterContainers(bundle);
     if (containers.count >= 2) {
         void (^present)(void) = ^{
@@ -357,36 +361,32 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
     // Twin (own repo) does exactly this: walk the existing windows backwards
     // and present on the top controller. A fresh scene-less window stays
     // invisible in SpringBoard and looks like a freeze.
-    UIViewController *presenter = nil;
-    UIViewController *host = nil;
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    for (UIWindow *candidate in application.windows.reverseObjectEnumerator) {
-        if (candidate.hidden || !candidate.rootViewController) continue;
-        presenter = candidate.rootViewController;
-        while (presenter.presentedViewController) presenter = presenter.presentedViewController;
+    UIWindow *window = nil;
+    for (UIScene *scene in application.connectedScenes) {
+        if (![scene isKindOfClass:UIWindowScene.class]) continue;
+        if (scene.activationState != UISceneActivationStateForegroundActive) continue;
+        window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene *)scene];
         break;
     }
-#pragma clang diagnostic pop
-    if (presenter && [presenter isKindOfClass:UIAlertController.class]) { presenter = nil; }
-
-    UIWindow *window = nil;
-    if (!presenter) {
-        window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
-        window.windowLevel = UIWindowLevelAlert + 1;
-        host = [UIViewController new];
-        host.view.backgroundColor = UIColor.clearColor;
-        window.rootViewController = host;
-        PXURLRouterWindow = window;
-        [window makeKeyAndVisible];
-        presenter = host;
+    if (!window) {
+        for (UIScene *scene in application.connectedScenes) {
+            if (![scene isKindOfClass:UIWindowScene.class]) continue;
+            window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene *)scene];
+            break;
+        }
     }
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    NSUInteger windowCount = application.windows.count;
-#pragma clang diagnostic pop
-    [PXCloneProbe log:@"PRESENT via=%@ windows=%lu", window ? @"window" : @"vc",
-        (unsigned long)windowCount];
+    if (!window) window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+    window.frame = UIScreen.mainScreen.bounds;
+    // Above the share sheet, which lives in its own high-level window.
+    window.windowLevel = UIWindowLevelAlert + 100;
+    UIViewController *host = [UIViewController new];
+    host.view.backgroundColor = UIColor.clearColor;
+    window.rootViewController = host;
+    PXURLRouterWindow = window;
+    [window makeKeyAndVisible];
+    UIViewController *presenter = host;
+    [PXCloneProbe log:@"PRESENT level=%.0f scenes=%lu", window.windowLevel,
+        (unsigned long)application.connectedScenes.count];
 
     NSString *active = [PXCloneCrane activeContainerForBundle:bundle];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"选择打开的账号"
@@ -427,6 +427,12 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
         }];
     }]];
 
+    // Dismissing by swipe/outside counts as Cancel as well.
+    static PXURLRouterDismisser *dismisser;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{ dismisser = [PXURLRouterDismisser new]; });
+    alert.presentationController.delegate = dismisser;
+
     // An action sheet needs an anchor in SpringBoard.
     if (alert.popoverPresentationController) {
         alert.popoverPresentationController.sourceView = presenter.view;
@@ -442,9 +448,13 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
 
     // Never hold the original request forever.
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 8 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-        if (PXURLRouterCancelled) return;
+        if (PXURLRouterCancelled) {
+            [PXCloneProbe log:@"WATCHDOG skipped (cancelled)"];
+            return;
+        }
         [PXCloneProbe log:@"WATCHDOG release"];
-        proceed();
+        if (PXURLRouterPending) PXURLRouterPending();
+        else proceed();
     });
 }
 
@@ -467,6 +477,15 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
         return;
     }
 
+    if ([PXCloneCrane isApplicationRunning:bundle] && [PXCloneCrane terminateApplication:bundle]) {
+        [PXCloneProbe log:@"TERMINATE sent"];
+        PXURLRouterPendingTerminating = YES;
+        PXURLRouterPendingAttempt = 0;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{ [self stepPending]; });
+        return;
+    }
+
     NSError *error = nil;
     // Do not reload here: the app must stay stopped so the original handoff
     // launches it WITH the payment URL. Reloading first opened an empty app
@@ -478,51 +497,69 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
         return;
     }
     [PXCloneProbe log:@"SWITCH-STARTED target=%@ active=%@", container, active];
+    PXURLRouterPending = proceed;
+    PXURLRouterPendingBundle = bundle;
+    PXURLRouterPendingContainer = container;
+    PXURLRouterPendingAttempt = 0;
 
     if ([PXCloneCrane isApplicationRunning:bundle] && [PXCloneCrane terminateApplication:bundle]) {
         [PXCloneProbe log:@"TERMINATE sent"];
-        [self waitForTermination:bundle attempt:0 proceed:proceed container:container];
+        PXURLRouterPendingTerminating = YES;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{ [self stepPending]; });
         return;
     }
-    [self waitForContainer:container bundle:bundle attempt:0 proceed:proceed];
+    dispatch_async(dispatch_get_main_queue(), ^{ [self stepPending]; });
 }
 
-+ (void)waitForTermination:(NSString *)bundle attempt:(NSUInteger)attempt
-                  proceed:(void (^)(void))proceed container:(NSString *)container {
-    BOOL running = [PXCloneCrane isApplicationRunning:bundle];
-    if (!running || attempt >= 15) {
-        [PXCloneProbe log:@"TERMINATE running=%d attempts=%lu", (int)running, (unsigned long)attempt];
-        [self waitForContainer:container bundle:bundle attempt:0 proceed:proceed];
++ (void)stepPending {
+    NSString *bundle = PXURLRouterPendingBundle;
+    NSString *container = PXURLRouterPendingContainer;
+    void (^proceed)(void) = PXURLRouterPending;
+    if (!proceed || !bundle.length || !container.length) return;
+    PXURLRouterPendingAttempt++;
+
+    if (PXURLRouterPendingTerminating) {
+        BOOL running = [PXCloneCrane isApplicationRunning:bundle];
+        if (running && PXURLRouterPendingAttempt < 15) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{ [self stepPending]; });
+            return;
+        }
+        [PXCloneProbe log:@"TERMINATE running=%d attempts=%lu", (int)running,
+            (unsigned long)PXURLRouterPendingAttempt];
+        PXURLRouterPendingTerminating = NO;
+        PXURLRouterPendingAttempt = 0;
+        NSError *switchError = nil;
+        if (![PXCloneCrane switchToContainer:container forBundle:bundle reload:NO error:&switchError]) {
+            [PXCloneProbe log:@"SWITCH-FAILED"];
+            PXURLRouterPending = nil;
+            [self showRoutingError:switchError.localizedDescription ?: @"账号切换未启动"];
+            return;
+        }
+        [PXCloneProbe log:@"SWITCH-STARTED target=%@", container];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{ [self stepPending]; });
         return;
     }
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        [self waitForTermination:bundle attempt:attempt + 1 proceed:proceed container:container];
-    });
-}
 
-+ (void)waitForContainer:(NSString *)container
-                  bundle:(NSString *)bundle
-                 attempt:(NSUInteger)attempt
-                 proceed:(void (^)(void))proceed {
     NSString *active = [PXCloneCrane activeContainerForBundle:bundle];
     if ([container isEqualToString:active]) {
-        [PXCloneProbe log:@"SWITCH-VERIFIED target=%@ attempts=%lu", container, (unsigned long)attempt];
-        [self openSplitForBundle:bundle then:proceed];
+        [PXCloneProbe log:@"SWITCH-VERIFIED target=%@ attempts=%lu", container,
+            (unsigned long)PXURLRouterPendingAttempt];
+        PXURLRouterPending = nil;
+        proceed();
         return;
     }
-    if (attempt >= PXURLRouterPollLimit) {
+    if (PXURLRouterPendingAttempt >= PXURLRouterPollLimit) {
         [PXCloneProbe log:@"SWITCH-TIMEOUT target=%@ active=%@", container, active];
-        // Fail closed: forwarding a payment URL onto the wrong account is
-        // worse than asking the user to tap again.
+        PXURLRouterPending = nil;
         [self showRoutingError:@"账号未切换完成，付款链接未打开，请重试"];
         return;
     }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
                                  (int64_t)(PXURLRouterPollInterval * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        [self waitForContainer:container bundle:bundle attempt:attempt + 1 proceed:proceed];
-    });
+                   dispatch_get_main_queue(), ^{ [self stepPending]; });
 }
 
 + (void)showRoutingError:(NSString *)message {
