@@ -260,8 +260,7 @@ static void PXHandleOpenRequest(id self, SEL command, id service, id request, id
     if (!PXOrigHandleOpenRequest) return;
     [PXCloneProbe log:@"FBREQ hit class=%@", NSStringFromClass([request class])];
     if (!NSThread.isMainThread || PXURLForwardDepth ||
-        (![PXCloneURLRouter paymentURLForRequest:request options:nil] &&
-         ![PXCloneURLRouter isShareRequest:request options:nil])) {
+        ![PXCloneURLRouter hasTargetURL:request options:nil]) {
         PX_FORWARD_URL(PXOrigHandleOpenRequest(self, command, service, request, completion));
         return;
     }
@@ -302,8 +301,7 @@ static void PXHandleOpenURLCore(id self, SEL command, id url, BOOL display,
     if (!PXOrigOpenURLCore) return;
     [PXCloneProbe log:@"SBURL hit %@", [url isKindOfClass:NSURL.class] ? ((NSURL *)url).absoluteString : [url description]];
     if (!NSThread.isMainThread || PXURLForwardDepth || ![url isKindOfClass:NSURL.class] ||
-        (![PXCloneURLRouter isPaymentURL:(NSURL *)url] &&
-         ![((NSURL *)url).scheme.lowercaseString isEqualToString:@"file"])) {
+        !((NSURL *)url).scheme.length) {
         PX_FORWARD_URL(PXOrigOpenURLCore(self, command, url, display, animating, settings, origin, result));
         return;
     }
@@ -410,8 +408,7 @@ static void PXProbeOpenURLOptions(id self, SEL command, NSURL *url,
 static BOOL PXRouteWorkspaceOpen(id self, SEL command, id url, id options, PXWorkspaceOpenIMP original) {
     if (!original) return NO;
     if (!NSThread.isMainThread || PXURLForwardDepth || ![url isKindOfClass:NSURL.class] ||
-        (![PXCloneURLRouter isPaymentURL:(NSURL *)url] &&
-         ![((NSURL *)url).scheme.lowercaseString isEqualToString:@"file"])) {
+        !((NSURL *)url).scheme.length) {
         PX_FORWARD_URL(return original(self, command, url, options));
     }
     __block BOOL forwarded = NO;

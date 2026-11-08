@@ -224,6 +224,11 @@ static UIViewController *PXURLRouterPresenter(void) {
     return NO;
 }
 
++ (BOOL)hasTargetURL:(id)request options:(id)options {
+    return [self paymentURLForRequest:request options:options] != nil ||
+        PXURLRouterTargetURL(request, 0) != nil || PXURLRouterTargetURL(options, 0) != nil;
+}
+
 + (NSURL *)paymentURLForRequest:(id)request options:(id)options {
     NSURL *direct = PXURLRouterTargetURL(options, 0);
     NSURL *nested = PXURLRouterTargetURL(request, 0);
@@ -236,8 +241,7 @@ static UIViewController *PXURLRouterPresenter(void) {
     // Do not resolve a target, touch Crane or create state for plain URLs.
     [PXCloneProbe log:@"PAY url=%@", url.absoluteString.length > 70 ?
         [url.absoluteString substringToIndex:70] : url.absoluteString];
-    BOOL file = [url.scheme.lowercaseString isEqualToString:@"file"];
-    if (!NSThread.isMainThread || !proceed || (!file && ![self isPaymentURL:url])) return NO;
+    if (!NSThread.isMainThread || !proceed || !url.scheme.length) return NO;
     NSString *bundle = PXURLRouterBundleForURL(url);
     if (!bundle.length) return NO;
     NSArray<NSDictionary *> *containers = [PXCloneCrane containersForBundle:bundle];
@@ -254,8 +258,10 @@ static UIViewController *PXURLRouterPresenter(void) {
     // and that is the only shape that worked on device; only a URL that is
     // present and clearly not a payment is skipped here.
     BOOL payment = url && [self isPaymentURL:url];
-    BOOL share = [self isShareRequest:request options:options];
-    if (!payment && !share) return NO;
+    // Everything that carries a real URL is treated as a share: the container
+    // count decides whether it is worth a chooser, and single-account apps
+    // still pass through immediately.
+    if (!url && ![self isShareRequest:request options:options]) return NO;
     NSString *bundle = PXURLRouterBundleFromRequest(request);
     [PXCloneProbe log:@"%@ open url=%@ bundle=%@", payment ? @"PAY" : @"SHARE",
         raw ?: @"(none)", bundle ?: @"(nil)"];
