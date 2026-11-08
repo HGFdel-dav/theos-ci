@@ -426,14 +426,23 @@ static UIViewController *PXURLRouterPresenter(void) {
     // A share runs as a remote extension sheet that sits above SpringBoard's
     // own windows: an alert presented from the base controller renders behind
     // it. Host the chooser in its own high-level window of the same scene.
-    UIWindowScene *scene = presenter.view.window.windowScene;
-    if (scene) {
-        UIWindow *overlay = [[UIWindow alloc] initWithWindowScene:scene];
-        overlay.windowLevel = UIWindowLevelAlert + 5;
-        overlay.rootViewController = [UIViewController new];
-        overlay.hidden = NO;
-        transaction.chooserWindow = overlay;
-        presenter = overlay.rootViewController;
+    UIViewController *base = presenter;
+    @try {
+        UIWindowScene *scene = presenter.view.window.windowScene;
+        if (scene) {
+            UIWindow *overlay = [[UIWindow alloc] initWithWindowScene:scene];
+            overlay.windowLevel = UIWindowLevelAlert + 5;
+            overlay.rootViewController = [UIViewController new];
+            overlay.hidden = NO;
+            // The controller must be in the hierarchy before presenting, or
+            // iOS warns and the alert can stay invisible.
+            [overlay layoutIfNeeded];
+            transaction.chooserWindow = overlay;
+            presenter = overlay.rootViewController;
+        }
+    } @catch (__unused NSException *exception) {
+        transaction.chooserWindow = nil;
+        presenter = base;
     }
     @try {
         [presenter presentViewController:alert animated:YES completion:^{
