@@ -41,6 +41,7 @@
   }
 
   debug('boot', location.href);
+  try { document.title = 'RD:' + document.title; } catch (e) {}
 
   document.addEventListener('click', function (event) {
     if (event.rdHandled) return;
