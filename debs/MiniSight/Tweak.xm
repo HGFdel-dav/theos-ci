@@ -2036,15 +2036,15 @@ static void MiniSightShowBubbleWidth(NSString *raw, CGFloat maxW, NSUInteger cap
     CGFloat scaledMax = maxW * gMiniSightBubbleScale;
     CGFloat effectiveW = gMiniSightBubbleExpanded
         ? MAX(240.0, screenW - 32.0) : MIN(scaledMax, screenW - 32.0);
-    CGFloat textWidth = MAX(1.0, effectiveW - 24.0);
+    CGFloat textWidth = MAX(1.0, effectiveW - 16.0);
     CGSize fit = [gMiniSightBubbleLabel sizeThatFits:CGSizeMake(textWidth, CGFLOAT_MAX)];
     gMiniSightBubbleContentHeight = ceil(MAX(fit.height, gMiniSightBubbleLabel.font.lineHeight));
-    CGFloat minWidth = gMiniSightConfirming ? 180.0 : 56.0;
-    CGFloat wanted = ceil(fit.width) + 24.0;
+    CGFloat minWidth = gMiniSightConfirming ? 180.0 : 44.0;
+    CGFloat wanted = ceil(fit.width) + 16.0;
     CGFloat w = MIN(effectiveW, MAX(minWidth, wanted));
     CGFloat maxVisible = gMiniSightConfirming ? 180.0 : root.bounds.size.height * 0.34 * gMiniSightBubbleScale;
     CGFloat visibleTextHeight = MIN(gMiniSightBubbleContentHeight, maxVisible);
-    CGFloat h = visibleTextHeight + (gMiniSightConfirming ? 52.0 : 20.0);
+    CGFloat h = visibleTextHeight + (gMiniSightConfirming ? 52.0 : 10.0);
     gMiniSightBubbleScroll.contentOffset = CGPointZero;
     MiniSightPlaceBubble(w, h);
 }
