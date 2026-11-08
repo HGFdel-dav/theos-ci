@@ -9,4 +9,12 @@ for name in ParallelXClone ParallelXPrefsUI; do
     if [ -f "$LIBDIR/$name.plist" ]; then chmod 644 "$LIBDIR/$name.plist"; fi
 done
 
+# Share extensions are started by pkd, which RootHide only injects when the
+# daemon is listed. Re-jailbreaking resets this file, so add the entry on every
+# install; pkd must restart (device reboot) before it takes effect.
+CONF="$PREFIX/var/mobile/Library/RootHide/cn.zqbb.inject.system.plist"
+if [ -f "$CONF" ] && ! grep -q "<key>/pkd</key>" "$CONF"; then
+    sed -i 's#</dict>#\t<key>/pkd</key>\n\t<true/>\n</dict>#' "$CONF"
+fi
+
 exit 0
