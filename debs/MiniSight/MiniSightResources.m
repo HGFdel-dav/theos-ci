@@ -115,11 +115,11 @@ static void MSKeyOutBlackBackground(uint8_t *pixels, size_t w, size_t h) {
     free(seen); free(queue);
 }
 
-static UIImage *MSLoadAtlas(NSString *path, BOOL single) {
+static UIImage *MSLoadAtlas(NSString *path, BOOL single, BOOL key) {
     NSDictionary *attrs = [NSFileManager.defaultManager attributesOfItemAtPath:path error:nil];
     if (!attrs || ![attrs[NSFileType] isEqual:NSFileTypeRegular] ||
         [attrs[NSFileSize] unsignedLongLongValue] > 16 * 1024 * 1024) return nil;
-    NSString *identity = [NSString stringWithFormat:@"%@|%@|%@|%@", path, attrs[NSFileSize], attrs[NSFileModificationDate], single ? @"s" : @"p"];
+    NSString *identity = [NSString stringWithFormat:@"%@|%@|%@|%@|%@", path, attrs[NSFileSize], attrs[NSFileModificationDate], single ? @"s" : @"p", key ? @"k" : @"n"];
     if ([identity isEqual:MSAtlasIdentity]) return MSAtlas;
     CGImageSourceRef source = CGImageSourceCreateWithURL((__bridge CFURLRef)[NSURL fileURLWithPath:path], NULL);
     if (!source) return nil;
@@ -152,7 +152,7 @@ static UIImage *MSLoadAtlas(NSString *path, BOOL single) {
     CGColorSpaceRelease(cs);
     if (!context) { CGImageRelease(thumb); return nil; }
     CGContextDrawImage(context, CGRectMake(0, 0, targetW, targetH), thumb);
-    if (!single) MSKeyOutBlackBackground(CGBitmapContextGetData(context), targetW, targetH);
+    if (key) MSKeyOutBlackBackground(CGBitmapContextGetData(context), targetW, targetH);
     CGImageRef decoded = CGBitmapContextCreateImage(context);
     CGContextRelease(context); CGImageRelease(thumb);
     UIImage *image = decoded ? [UIImage imageWithCGImage:decoded scale:1. orientation:UIImageOrientationUp] : nil;
@@ -194,7 +194,10 @@ static UIImage *MSLoadAtlas(NSString *path, BOOL single) {
             NSDictionary *petMeta = metaData ? [NSJSONSerialization JSONObjectWithData:metaData options:0 error:nil] : nil;
             BOOL single = [petMeta isKindOfClass:NSDictionary.class] &&
                 [petMeta[@"sourceKind"] isEqual:@"singleImage"];
-            UIImage *atlas = petPath ? MSLoadAtlas(petPath, single) : nil;
+            // Layout 1 is an ordinary photo and keeps its colours. A sheet
+            // (3/4) and a pack (0) are keyed; 245 stored photos as layout 3.
+            BOOL key = !(single && [petMeta[@"layoutVersion"] integerValue] < 3);
+            UIImage *atlas = petPath ? MSLoadAtlas(petPath, single, key) : nil;
             NSDictionary *snapshot = [self mergedPreferencesWithContainer:container preferences:filtered];
             dispatch_async(dispatch_get_main_queue(), ^{ if (completion) completion(container, snapshot, ![shown isEqual:@"0"], atlas); });
         }

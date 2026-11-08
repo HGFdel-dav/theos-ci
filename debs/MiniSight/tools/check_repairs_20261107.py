@@ -22,12 +22,35 @@ need('setMotionLocked' in panel, 'editor/approval freeze pet without fighting ho
 need('preferredFramesPerSecond = 30' in panel, 'anchor follower limited to 30fps')
 need('currentAnchorRect' in panel, 'follower uses tilt-safe anchor')
 pet=(ROOT/'MiniSightPet.m').read_text()
-need('packCols * innerCols' in pet and 'variantIndex' in pet, 'outer pet + inner frame slicing')
+need('_spriteLayout == 3' in pet and '(CGFloat)col / packCols' in pet and '(CGFloat)_state / packRows' in pet, 'single sheet plays row/column frames')
 need('_spriteLayout == 1' in pet and 'CGRectMake(0, 0, 1, 1)' in pet, 'single image is never sliced')
-need('MSLoadAtlas(petPath, single)' in (ROOT/'MiniSightResources.m').read_text(), 'single image loads at its own ratio')
+need('MSLoadAtlas(petPath, single, key)' in (ROOT/'MiniSightResources.m').read_text(), 'single image loads at its own ratio')
 need(tweak.count('0.40') >= 2, 'drag gain is applied on change and on release')
-need('setCategory' not in open(ROOT/'MiniSightBlip.m').read(), 'blip never hijacks the audio session')
+blip=(ROOT/'MiniSightBlip.m').read_text()
+need('fmtLen = 16' in blip and 'appendBytes:&fmtLen length:4' in blip, 'WAV fmt chunk is 16 bytes')
+need('appendBytes:&dataLen length:4' in blip, 'WAV data length is frames*2, not fmt')
+need('initWithData:wav error:&error' in blip and '[gPlayer play]' in blip, 'blip checks init/play')
+need('setCategory' not in blip, 'blip never hijacks the audio session')
 need('"trash", @"清空"' in panel and '@[@"mic", @"听写"]' not in panel, 'menu is icon-only without duplicate mic')
+need('name = @"natural";' in tweak, 'colour removal keeps the source pixels')
+import re, struct, wave
+from io import BytesIO
+_frames_match = re.search(r'frames = (\d+)', blip)
+if not _frames_match:
+    fails.append('blip frame count missing')
+else:
+    _frames = int(_frames_match.group(1)); _rate = 22050
+    _pcm = b'\0\0' * _frames; _data = _frames * 2
+    _header = (b'RIFF' + struct.pack('<I', 36 + _data) + b'WAVEfmt '
+               + struct.pack('<I', 16) + struct.pack('<HHIIHH', 1, 1, _rate,
+                                                     _rate * 2, 2, 16)
+               + b'data' + struct.pack('<I', _data))
+    try:
+        with wave.open(BytesIO(_header + _pcm), 'rb') as _w:
+            if _w.getnframes() != _frames: fails.append('WAV frame count differs')
+    except Exception as exc:  # noqa: BLE001
+        fails.append('standard WAV parser rejects the blip header: %s' % exc)
+need('name = @"natural";' in tweak, 'colour removal keeps the source pixels')
 need('MSKeyOutBlackBackground' in (ROOT/'MiniSightResources.m').read_text(), 'black sheet background is keyed out')
 if fails:
     print('FAIL plugin repairs'); [print(' -',x) for x in fails]; sys.exit(1)

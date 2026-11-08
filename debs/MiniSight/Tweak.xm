@@ -70,7 +70,8 @@ static BOOL gMiniSightResourceRefreshAgain = NO;
 static NSMutableArray *gMiniSightResourceCompletions;
 static void MiniSightReloadSettings(void);
 
-// 0 pack, 1 whole single image, 2 legacy outer cell, 3 old tiled inner cell.
+// 0 pack, 1 whole static image, 2 legacy outer cell,
+// 3 8x9 single animation sheet, 4 static 72-pose sheet.
 static NSInteger MiniSightSpriteLayoutForContainer(NSString *container) {
     if (container.length == 0) return 0;
     NSString *path = [container stringByAppendingPathComponent:@"Documents/MiniSight/pet.json"];
@@ -78,9 +79,10 @@ static NSInteger MiniSightSpriteLayoutForContainer(NSString *container) {
     NSDictionary *meta = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
     if (![meta isKindOfClass:NSDictionary.class] || ![meta[@"sourceKind"] isEqual:@"singleImage"]) return 0;
     NSInteger layout = [meta[@"layoutVersion"] integerValue];
-    if (layout >= 3) return 1;
-    if (layout == 2) return 3;
-    return 2;
+    if (layout >= 4) return 4;
+    if (layout == 3) return 3;
+    if (layout == 2) return 2;
+    return 1;
 }
 static void MiniSightShow(void);
 static void MiniSightShowAfterOwnershipCheck(void);
@@ -538,6 +540,8 @@ static BOOL gMiniSightDiagnosticsEnabled = NO;
 static void MiniSightApplyTint(NSString *name) {
     UIImage *base = gMiniSightTintBase ?: gMiniSightAtlas;
     if (!gMiniSightPet || !base) return;
+    // The colour page was removed; always show the source pixels.
+    name = @"natural";
     if (!name.length || [name isEqualToString:@"natural"]) { gMiniSightPet.image = base; return; }
     UIColor *tint = @{@"warm": [UIColor colorWithRed:1 green:0.62 blue:0.38 alpha:1],
                       @"cool": [UIColor colorWithRed:0.45 green:0.66 blue:1 alpha:1],
