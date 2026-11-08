@@ -167,6 +167,7 @@ typedef void (^MSRFileCompletion)(BOOL, NSURL *, uint64_t, double, MiniSightReco
             }
             [NSFileManager.defaultManager removeItemAtURL:self->_temporaryURL error:nil];
             self->_temporaryURL = out;
+            self->_temporaryName = out.lastPathComponent;
             NSDictionary *a = [NSFileManager.defaultManager attributesOfItemAtPath:out.path error:nil];
             self->_bytes = [a[NSFileSize] unsignedLongLongValue];
             [self finish:YES duration:seconds stage:MiniSightRecorderSaveStageNone];
