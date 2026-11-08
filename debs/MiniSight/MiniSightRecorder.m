@@ -561,11 +561,11 @@ static char MSRRecordingObservation;
         region.origin.y = MSClamp(region.origin.y, 0, 1);
         region.size.width = MSClamp(region.size.width, 0.05, 1 - region.origin.x);
         region.size.height = MSClamp(region.size.height, 0.05, 1 - region.origin.y);
-        _crop = region;
+        _sessionCrop = region;
     } else {
-        _crop = CGRectNull;
+        _sessionCrop = CGRectNull;
     }
-    _sessionCrop = _crop;
+    
     if (![NSThread isMainThread]) {
         dispatch_async(dispatch_get_main_queue(), ^{ [self startWithSource:source region:region]; }); return;
     }
