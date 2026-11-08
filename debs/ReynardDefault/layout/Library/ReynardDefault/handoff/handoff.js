@@ -30,17 +30,24 @@
     return INTERNAL[schemeOf(value)] ? null : value;
   }
 
+  function debug(stage, extra) {
+    try { browser.runtime.sendMessage({ rdDebug: stage, extra: extra || '' }); } catch (e) {}
+  }
+
   function report(href) {
     try {
       browser.runtime.sendMessage({ rdHandoff: href });
     } catch (e) {}
   }
 
+  debug('boot', location.href);
+
   document.addEventListener('click', function (event) {
     if (event.rdHandled) return;
     var node = event.target;
     while (node && node.nodeName !== 'A') node = node.parentNode;
     var href = node && node.getAttribute && node.getAttribute('href');
+    debug('click', (node ? node.nodeName : '-') + ' ' + (href || ''));
     if (!href) return;
     var scheme = schemeOf(href);
     if (scheme === 'http' || scheme === 'https') {
