@@ -102,8 +102,6 @@ static void (^PXURLRouterOnce(void (^proceed)(void)))(void) {
                       bundle:(NSString *)bundle attempt:(NSUInteger)attempt generation:(NSUInteger)generation;
 + (void)activateContainer:(NSString *)container bundle:(NSString *)bundle
                   proceed:(void (^)(void))proceed;
-+ (void)waitForContainer:(NSString *)container bundle:(NSString *)bundle
-                 attempt:(NSUInteger)attempt proceed:(void (^)(void))proceed;
 + (void)stepPending;
 + (void)showRoutingError:(NSString *)message;
 @end
@@ -293,7 +291,7 @@ static BOOL PXURLRouterOptionsCarryURL(id options) {
     if (![options isKindOfClass:NSDictionary.class]) return NO;
     for (id key in (NSDictionary *)options) {
         if (![key isKindOfClass:NSString.class]) continue;
-        if (![(NSString *)key.lowercaseString containsString:@"url"]) continue;
+        if (![((NSString *)key).lowercaseString containsString:@"url"]) continue;
         if ([options[key] isKindOfClass:NSURL.class]) return YES;
         if ([options[key] isKindOfClass:NSString.class] && [options[key] length]) return YES;
     }
@@ -319,7 +317,6 @@ static BOOL PXURLRouterOptionsCarryURL(id options) {
     }
 
     PXURLRouterCancelled = NO;
-    NSUInteger generation = ++PXURLRouterGeneration;
     void (^once)(void) = PXURLRouterOnce(proceed);
     PXURLRouterPending = [once copy];
     NSArray<NSDictionary *> *containers = PXURLRouterContainers(bundle);
