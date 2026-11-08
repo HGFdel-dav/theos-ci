@@ -25,6 +25,13 @@ static NSTimeInterval PXURLRouterLastRefresh = 0;
 static BOOL PXURLRouterCatalogLoading = NO;
 static BOOL PXURLRouterCatalogReady = NO;
 static BOOL PXURLRouterCancelled = NO;
+// Pending handoff kept in statics: dispatched blocks that capture a chain of
+// blocks went stale (repeated EXC_BAD_ACCESS in objc_retain).
+static void (^PXURLRouterPending)(void) = nil;
+static NSString *PXURLRouterPendingBundle = nil;
+static NSString *PXURLRouterPendingContainer = nil;
+static NSUInteger PXURLRouterPendingAttempt = 0;
+static BOOL PXURLRouterPendingTerminating = NO;
 // Last account per bundle: repeat jumps of the same app must not ask again.
 static NSMutableDictionary<NSString *, NSString *> *PXURLRouterLastChoice;
 static NSMutableDictionary<NSString *, NSNumber *> *PXURLRouterLastChoiceAt;
@@ -95,8 +102,7 @@ static void (^PXURLRouterOnce(void (^proceed)(void)))(void) {
                   proceed:(void (^)(void))proceed;
 + (void)waitForContainer:(NSString *)container bundle:(NSString *)bundle
                  attempt:(NSUInteger)attempt proceed:(void (^)(void))proceed;
-+ (void)waitForTermination:(NSString *)bundle attempt:(NSUInteger)attempt
-                  proceed:(void (^)(void))proceed container:(NSString *)container;
++ (void)stepPending;
 + (void)showRoutingError:(NSString *)message;
 @end
 
@@ -293,6 +299,7 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
 
     PXURLRouterCancelled = NO;
     void (^once)(void) = PXURLRouterOnce(proceed);
+    PXURLRouterPending = once;
     NSArray<NSDictionary *> *containers = PXURLRouterContainers(bundle);
     if (containers.count >= 2) {
         void (^present)(void) = ^{
@@ -446,7 +453,8 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
             return;
         }
         [PXCloneProbe log:@"WATCHDOG release"];
-        proceed();
+        if (PXURLRouterPending) PXURLRouterPending();
+        else proceed();
     });
 }
 
@@ -480,51 +488,58 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
         return;
     }
     [PXCloneProbe log:@"SWITCH-STARTED target=%@ active=%@", container, active];
+    PXURLRouterPending = proceed;
+    PXURLRouterPendingBundle = bundle;
+    PXURLRouterPendingContainer = container;
+    PXURLRouterPendingAttempt = 0;
 
     if ([PXCloneCrane isApplicationRunning:bundle] && [PXCloneCrane terminateApplication:bundle]) {
         [PXCloneProbe log:@"TERMINATE sent"];
-        [self waitForTermination:bundle attempt:0 proceed:proceed container:container];
+        PXURLRouterPendingTerminating = YES;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{ [self stepPending]; });
         return;
     }
-    [self waitForContainer:container bundle:bundle attempt:0 proceed:proceed];
+    dispatch_async(dispatch_get_main_queue(), ^{ [self stepPending]; });
 }
 
-+ (void)waitForTermination:(NSString *)bundle attempt:(NSUInteger)attempt
-                  proceed:(void (^)(void))proceed container:(NSString *)container {
-    BOOL running = [PXCloneCrane isApplicationRunning:bundle];
-    if (!running || attempt >= 15) {
-        [PXCloneProbe log:@"TERMINATE running=%d attempts=%lu", (int)running, (unsigned long)attempt];
-        [self waitForContainer:container bundle:bundle attempt:0 proceed:proceed];
-        return;
++ (void)stepPending {
+    NSString *bundle = PXURLRouterPendingBundle;
+    NSString *container = PXURLRouterPendingContainer;
+    void (^proceed)(void) = PXURLRouterPending;
+    if (!proceed || !bundle.length || !container.length) return;
+    PXURLRouterPendingAttempt++;
+
+    if (PXURLRouterPendingTerminating) {
+        BOOL running = [PXCloneCrane isApplicationRunning:bundle];
+        if (running && PXURLRouterPendingAttempt < 15) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{ [self stepPending]; });
+            return;
+        }
+        [PXCloneProbe log:@"TERMINATE running=%d attempts=%lu", (int)running,
+            (unsigned long)PXURLRouterPendingAttempt];
+        PXURLRouterPendingTerminating = NO;
+        PXURLRouterPendingAttempt = 0;
     }
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        [self waitForTermination:bundle attempt:attempt + 1 proceed:proceed container:container];
-    });
-}
 
-+ (void)waitForContainer:(NSString *)container
-                  bundle:(NSString *)bundle
-                 attempt:(NSUInteger)attempt
-                 proceed:(void (^)(void))proceed {
     NSString *active = [PXCloneCrane activeContainerForBundle:bundle];
     if ([container isEqualToString:active]) {
-        [PXCloneProbe log:@"SWITCH-VERIFIED target=%@ attempts=%lu", container, (unsigned long)attempt];
+        [PXCloneProbe log:@"SWITCH-VERIFIED target=%@ attempts=%lu", container,
+            (unsigned long)PXURLRouterPendingAttempt];
+        PXURLRouterPending = nil;
         proceed();
         return;
     }
-    if (attempt >= PXURLRouterPollLimit) {
+    if (PXURLRouterPendingAttempt >= PXURLRouterPollLimit) {
         [PXCloneProbe log:@"SWITCH-TIMEOUT target=%@ active=%@", container, active];
-        // Fail closed: forwarding a payment URL onto the wrong account is
-        // worse than asking the user to tap again.
+        PXURLRouterPending = nil;
         [self showRoutingError:@"账号未切换完成，付款链接未打开，请重试"];
         return;
     }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
                                  (int64_t)(PXURLRouterPollInterval * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        [self waitForContainer:container bundle:bundle attempt:attempt + 1 proceed:proceed];
-    });
+                   dispatch_get_main_queue(), ^{ [self stepPending]; });
 }
 
 + (void)showRoutingError:(NSString *)message {

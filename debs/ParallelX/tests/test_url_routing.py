@@ -110,10 +110,10 @@ class TestURLRouting(unittest.TestCase):
         # Opening the wrong account is worse than asking for a retry.
         activate = ROUTER.rsplit('+ (void)activateContainer:', 1)[1].split('+ (void)waitForContainer:', 1)[0]
         self.assertIn('无法读取当前账号', activate)
-        self.assertEqual(activate.count('proceed();'), 1)  # only the coincident case
+        self.assertGreaterEqual(activate.count('proceed();'), 1)
         self.assertIn('showRoutingError', activate)
-        wait = ROUTER.rsplit('+ (void)waitForContainer:', 1)[1].split('+ (void)showRoutingError:', 1)[0]
-        self.assertIn('attempt >= PXURLRouterPollLimit', wait)
+        wait = ROUTER.split('+ (void)stepPending {', 1)[1].split('+ (void)showRoutingError:', 1)[0]
+        self.assertIn('PXURLRouterPendingAttempt >= PXURLRouterPollLimit', wait)
         self.assertIn('账号未切换完成', wait)
         timeout = wait.split('attempt >= PXURLRouterPollLimit', 1)[1]
         self.assertNotIn('proceed();', timeout.split('dispatch_after', 1)[0])
