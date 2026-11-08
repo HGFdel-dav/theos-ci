@@ -30,10 +30,6 @@
     return INTERNAL[schemeOf(value)] ? null : value;
   }
 
-  function debug(stage, extra) {
-    try { browser.runtime.sendMessage({ rdDebug: stage, extra: extra || '' }); } catch (e) {}
-  }
-
   function report(href) {
     try {
       browser.runtime.sendMessage({ rdHandoff: href });
