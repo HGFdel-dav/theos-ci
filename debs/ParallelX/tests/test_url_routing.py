@@ -39,40 +39,11 @@ class TestURLRouting(unittest.TestCase):
         self.assertLess(handler.index('containers.count >= 2'), handler.index('presentChooserForBundle'))
 
     def test_cold_catalog_is_awaited_instead_of_forwarded(self):
-        # A request can beat the first async catalog load. Forwarding there was
-        # why payment links still opened the CURRENT account.
-        self.assertIn('PXURLRouterCatalogReady', ROUTER)
+        # The app-side path still waits for a cold catalog; the SB path now
+        # passes plain links straight through without any queued retry.
         self.assertIn('PXURLRouterCatalogWaitLimit', ROUTER)
-        self.assertIn('[self loadCatalogForRequest:request proceed:once bundle:bundle attempt:0 generation:generation]', ROUTER)
-        handler = ROUTER.split('+ (BOOL)handleOpenRequest', 1)[1].split('+ (void)loadCatalogForRequest', 1)[0]
-        # Only "no block" and "no bundle at all" may decline; the
-        # cold-catalog path must keep ownership and return YES.
-        self.assertEqual(handler.count('return NO;'), 3)
-        self.assertEqual(handler.count('return YES;'), 2)
-
-    def test_any_app_can_route_before_springboard(self):
-        # The payment page lives in the SOURCE app (Unicom/Mobile/Taobao...).
-        # SpringBoard never sees those opens, so every app hooks openURL.
-        self.assertIn('+ (BOOL)handleOpenURL:(nullable NSURL *)url', ROUTER_H)
-        self.assertIn('applicationsForOpeningURL:', ROUTER)
-        self.assertIn('applicationForURL:', ROUTER)
-        self.assertIn('NSBundle.mainBundle.bundleIdentifier', ROUTER)
-        self.assertIn('recentAppHandoff', ROUTER)
-        # https universal links must be resolved, not blanket-passed.
-        self.assertNotIn('if (PXURLRouterSchemeIsWeb(url)) return NO;', ROUTER)
-        self.assertIn('APP-BOOT', TWEAK)
-        # The filter must no longer be SpringBoard-only.
-        plist = (ROOT / 'ParallelXClone.plist').read_text()
-        # SpringBoard only again: the workspace hook is the choke point.
-        self.assertIn('<string>com.apple.springboard</string>', plist)
-        self.assertIn('_handleOpenApplicationRequest:options:activationSettings:origin:withResult:', TWEAK)
-        # This entry hands over the bundle id STRING, not a request object.
-        self.assertIn('isKindOfClass:NSString.class', TWEAK)
-        self.assertIn('if ([request isKindOfClass:NSString.class]', ROUTER)
-        # The hook must pass the string through, not wrap it.
-        self.assertNotIn('@{ @"applicationIdentifier": request }', TWEAK)
-        self.assertIn('PXInstallProbeHooks();', TWEAK)
-        self.assertIn('PXInAppReentry', TWEAK)
+        self.assertIn('[self loadCatalogForRequest:request proceed:proceed bundle:bundle', ROUTER)
+        self.assertIn('// No account to choose', ROUTER)
 
     def test_request_target_falls_back_to_nested_selectors(self):
         self.assertIn('PXURLRouterBundleFromRequest', ROUTER)

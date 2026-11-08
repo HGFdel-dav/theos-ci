@@ -261,6 +261,7 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
     NSString *own = NSBundle.mainBundle.bundleIdentifier;
     if ([bundle isEqualToString:own] && ![[NSFileManager defaultManager] fileExistsAtPath:@"/tmp/.px-allow-self"]) return NO;
 
+    if (!PXURLRouterCatalogReady) PXURLRouterRefreshCatalog();
     NSArray<NSDictionary *> *containers = [PXCloneCrane containersForBundle:bundle];
     [PXCloneProbe log:@"APP-CONTAINERS bundle=%@ n=%lu", bundle, (unsigned long)containers.count];
     if (containers.count < 2) return NO;
@@ -314,15 +315,9 @@ static BOOL PXURLRouterSchemeIsWeb(NSURL *url) {
         return YES;
     }
 
-    NSTimeInterval now = NSDate.date.timeIntervalSince1970;
-    if (!PXURLRouterCatalogReady || now - PXURLRouterLastRefresh >= PXURLRouterRefreshThrottle)
-        PXURLRouterRefreshCatalog();
-
-    // This is an external request, so owning it while the catalog is loading
-    // is essential. Falling through here launches the current account before
-    // the chooser has a chance to appear.
-    [self loadCatalogForRequest:request proceed:once bundle:bundle attempt:0 generation:generation];
-    return YES;
+    // No account to choose: hand it straight back. No refresh, no queued
+    // retry -> ordinary links never run late code.
+    return NO;
 }
 
 + (void)loadCatalogForRequest:(id)request proceed:(void (^)(void))proceed
