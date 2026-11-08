@@ -449,6 +449,12 @@ static void MiniSightRefreshRecorderSettingsThenReadActivity(void) {
     UIPanGestureRecognizer *draw = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(draw:)];
     [_dim addGestureRecognizer:draw];
     [vc.view addSubview:_dim];
+    UILabel *hint = [[UILabel alloc] initWithFrame:CGRectMake(16, 44, scene.coordinateSpace.bounds.size.width - 32, 24)];
+    hint.text = @"拖四角缩放 · 拖中间移动 · 拖空白重画";
+    hint.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+    hint.textColor = UIColor.whiteColor;
+    hint.textAlignment = NSTextAlignmentCenter;
+    [vc.view addSubview:hint];
     CGRect r = CGRectInset(scene.coordinateSpace.bounds, 60, scene.coordinateSpace.bounds.size.height * 0.22);
     _box = [[UIView alloc] initWithFrame:r];
     _box.backgroundColor = UIColor.clearColor;
