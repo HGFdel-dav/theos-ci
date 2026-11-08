@@ -1496,6 +1496,9 @@ static void RDInstallHook(int attempt) {
 %ctor {
     NSString *bundleID = [NSBundle mainBundle].bundleIdentifier;
     if (![bundleID isEqualToString:kReynardBundleID]) return;
+    // Write the package first, then the DB record, so one launch is enough:
+    // gecko's profile starts after this constructor.
+    RDStageHandoffPayload();
     RDSeedExtensionsDatabase();
     RDLog(@"loaded in %@ enabled=%d handoff=%d", bundleID,
           RDReadBoolPref(kEnabledKey, YES), RDReadBoolPref(kHandoffKey, YES));
