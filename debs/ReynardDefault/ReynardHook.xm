@@ -424,6 +424,58 @@ static BOOL rdInstallBroadcasted;
 static int rdInstallCounter;
 static BOOL rdAddonConfirmed;
 
+// Last resort: register the extension straight in the profile's extensions.json.
+// The engine never scans our file in on its own, and install() rejects it (-5),
+// but an existing DB record with a file rootURI is what a sideloaded add-on
+// looks like, so write that record ourselves before the runtime starts.
+static void RDSeedExtensionsDatabase(void) {
+    NSString *base = [NSHomeDirectory() stringByAppendingPathComponent:
+                      @"Library/Application Support/.mozilla/firefox"];
+    NSFileManager *fm = [NSFileManager defaultManager];
+    for (NSString *profile in [fm contentsOfDirectoryAtPath:base error:NULL] ?: @[]) {
+        NSString *dir = [base stringByAppendingPathComponent:profile];
+        NSString *dbPath = [dir stringByAppendingPathComponent:@"extensions.json"];
+        NSString *xpiPath = [dir stringByAppendingPathComponent:@"extensions/reynarddefault@local.xpi"];
+        if (![fm fileExistsAtPath:dbPath] || ![fm fileExistsAtPath:xpiPath]) continue;
+
+        NSData *raw = [NSData dataWithContentsOfFile:dbPath];
+        NSMutableDictionary *db = raw ? [[NSJSONSerialization JSONObjectWithData:raw options:NSJSONReadingMutableContainers error:NULL] mutableCopy] : nil;
+        if (!db) continue;
+        NSMutableArray *addons = db[@"addons"];
+        if (![addons isKindOfClass:[NSMutableArray class]]) continue;
+
+        BOOL present = NO;
+        NSDictionary *template = nil;
+        for (NSDictionary *entry in addons) {
+            if ([entry[@"id"] isEqualToString:kHandoffAddonID]) present = YES;
+            if (!template && [entry[@"location"] isEqualToString:@"app-profile"]) template = entry;
+        }
+        if (present || !template) continue;
+
+        NSMutableDictionary *entry = [template mutableCopy];
+        entry[@"id"] = kHandoffAddonID;
+        entry[@"syncGUID"] = [[NSUUID UUID] UUIDString];
+        entry[@"version"] = @"1.2";
+        entry[@"active"] = @YES;
+        entry[@"userDisabled"] = @NO;
+        entry[@"appDisabled"] = @NO;
+        entry[@"seen"] = @YES;
+        entry[@"foreignInstall"] = @NO;
+        entry[@"signedState"] = @(3);
+        entry[@"installDate"] = @((long long)([NSDate date].timeIntervalSince1970 * 1000));
+        entry[@"rootURI"] = [NSString stringWithFormat:@"file://%@", xpiPath];
+        entry[@"path"] = xpiPath;
+        entry[@"defaultLocale"] = @{@"name": @"ReynardDefault Handoff"};
+        [addons addObject:entry];
+
+        NSData *out = [NSJSONSerialization dataWithJSONObject:db options:0 error:NULL];
+        if (out) {
+            [out writeToFile:dbPath atomically:YES];
+            RDLog(@"seeded extensions.json (%lu addons)", (unsigned long)addons.count);
+        }
+    }
+}
+
 static NSString *RDHandoffDirectoryURI(void);
 static id RDGeckoBackend(id wrapper);
 static id RDRuntimeBackend(void);
@@ -895,6 +947,7 @@ static void RDInstallHook(int attempt) {
 %ctor {
     NSString *bundleID = [NSBundle mainBundle].bundleIdentifier;
     if (![bundleID isEqualToString:kReynardBundleID]) return;
+    RDSeedExtensionsDatabase();
     RDLog(@"loaded in %@ enabled=%d handoff=%d", bundleID,
           RDReadBoolPref(kEnabledKey, YES), RDReadBoolPref(kHandoffKey, YES));
     RDInstallHook(0);
