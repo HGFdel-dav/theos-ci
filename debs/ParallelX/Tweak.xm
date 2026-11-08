@@ -587,6 +587,19 @@ static void PXForcePluginState(void) {
 // classes and run loop they need already exist, then start the panel.
 __attribute__((unused)) static const uintptr_t PXOrigInitOffsets[] = { 0x40bc, 0xab04, 0x6aabc };
 
+// pkd starts share extensions, which never touch the SpringBoard app-open
+// path. Dump PKHost first so the right selector is picked from a real list.
+static void PXPkdDump(void) {
+    Class host = NSClassFromString(@"PKHost");
+    unsigned int count = 0;
+    Method *methods = host ? class_copyMethodList(host, &count) : NULL;
+    [PXCloneProbe log:@"PKD class=%d methods=%u", (int)(host != nil), count];
+    for (unsigned int index = 0; index < count && index < 40; index++)
+        [PXCloneProbe log:@"PKDM %s %s", sel_getName(method_getName(methods[index])),
+            method_getTypeEncoding(methods[index])];
+    free(methods);
+}
+
 static BOOL PXClassHasValue(Class cls, NSString *key) {
     if (!cls) return NO;
     @try { return [cls valueForKey:key] != nil; }
@@ -654,6 +667,7 @@ static void PXBootstrap(NSUInteger attempt) {
     NSString *bundleID = NSBundle.mainBundle.bundleIdentifier;
     if (attempt == 0) [PXCloneProbe log:@"BOOT-LOADED bid=%@", bundleID ?: @"(nil)"];
     BOOL springboard = [bundleID isEqualToString:@"com.apple.springboard"];
+    if ([bundleID isEqualToString:@"com.apple.pkd"]) { PXPkdDump(); return; }
     // Match the SpringBoard-only image filter; never install in app/extensions.
     if (!springboard) return;
     if (attempt == 0) {
