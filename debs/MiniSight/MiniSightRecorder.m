@@ -1,4 +1,5 @@
 #import "MiniSightRecorder.h"
+#import "MiniSightGeometry.h"
 #import "tools/recorder/MiniSightRecorderFile.h"
 #import <UIKit/UIKit.h>
 #import <ReplayKit/ReplayKit.h>
@@ -86,16 +87,19 @@ typedef void (^MSRFileCompletion)(BOOL, NSURL *, uint64_t, double, MiniSightReco
     bool _published;
     uint64_t _bytes;
     int _publishError;
+    CGRect _crop;
+    CGRect _sessionCrop;
 }
 @property(nonatomic) uint64_t epoch;
-- (instancetype)initWithQueue:(dispatch_queue_t)queue epoch:(uint64_t)epoch;
+- (instancetype)initWithQueue:(dispatch_queue_t)queue epoch:(uint64_t)epoch crop:(CGRect)crop;
 - (void)start:(NSURL *)source directory:(NSURL *)directory completion:(MSRFileCompletion)completion;
 - (void)cancel;
 @end
 
 @implementation MSRFileJob
-- (instancetype)initWithQueue:(dispatch_queue_t)queue epoch:(uint64_t)epoch {
+- (instancetype)initWithQueue:(dispatch_queue_t)queue epoch:(uint64_t)epoch crop:(CGRect)crop {
     if ((self = [super init])) {
+        _crop = crop;
         _queue = queue; _epoch = epoch; _dirFD = -1;
         atomic_init(&_cancelled, false);
     }
@@ -124,6 +128,52 @@ typedef void (^MSRFileCompletion)(BOOL, NSURL *, uint64_t, double, MiniSightReco
                                verified ? MiniSightRecorderSaveStageNone : stage,
                                _publishError);
 }
+- (void)cropThenFinish:(double)seconds {
+    if (CGRectIsNull(_crop) || _crop.size.width <= 0 || _crop.size.height <= 0) {
+        [self finish:YES duration:seconds stage:MiniSightRecorderSaveStageNone]; return;
+    }
+    AVAssetTrack *track = [_asset tracksWithMediaType:AVMediaTypeVideo].firstObject;
+    if (!track) { [self finish:NO duration:seconds stage:MiniSightRecorderSaveStageInspect]; return; }
+    CGAffineTransform pref = track.preferredTransform;
+    CGSize shown = CGSizeApplyAffineTransform(track.naturalSize, pref);
+    shown = CGSizeMake(fabs(shown.width), fabs(shown.height));
+    CGRect px = CGRectMake(_crop.origin.x * shown.width, _crop.origin.y * shown.height,
+                           _crop.size.width * shown.width, _crop.size.height * shown.height);
+    AVMutableComposition *comp = [AVMutableComposition composition];
+    NSError *error = nil;
+    AVMutableCompositionTrack *ct = [comp addMutableTrackWithMediaType:AVMediaTypeVideo preferredTrackID:kCMPersistentTrackID_Invalid];
+    if (!ct || ![ct insertTimeRange:CMTimeRangeMake(kCMTimeZero, _asset.duration) ofTrack:track atTime:kCMTimeZero error:&error]) {
+        [self finish:NO duration:seconds stage:MiniSightRecorderSaveStageInspect]; return;
+    }
+    AVMutableVideoComposition *vc = [AVMutableVideoComposition videoComposition];
+    vc.renderSize = CGSizeMake(floor(px.size.width), floor(px.size.height));
+    vc.frameDuration = CMTimeMake(1, 30);
+    AVMutableVideoCompositionInstruction *ins = [AVMutableVideoCompositionInstruction videoInstruction];
+    ins.timeRange = CMTimeRangeMake(kCMTimeZero, _asset.duration);
+    AVMutableVideoCompositionLayerInstruction *li = [AVMutableVideoCompositionLayerInstruction videoCompositionLayerInstructionWithAssetTrack:ct];
+    [li setTransform:CGAffineTransformTranslate(pref, -px.origin.x, -px.origin.y) atTime:kCMTimeZero];
+    ins.layerInstructions = @[li];
+    vc.instructions = @[ins];
+    NSURL *out = [_temporaryURL URLByAppendingPathExtension:@"crop.mp4"];
+    [NSFileManager.defaultManager removeItemAtURL:out error:nil];
+    AVAssetExportSession *ex = [[AVAssetExportSession alloc] initWithAsset:comp presetName:AVAssetExportPresetHighestQuality];
+    if (!ex) { [self finish:NO duration:seconds stage:MiniSightRecorderSaveStageInspect]; return; }
+    ex.outputURL = out; ex.outputFileType = AVFileTypeMPEG4; ex.videoComposition = vc;
+    [ex exportAsynchronouslyWithCompletionHandler:^{
+        dispatch_async(self->_queue, ^{
+            if (self->_done) return;
+            if (ex.status != AVAssetExportStatusCompleted) {
+                [self finish:NO duration:seconds stage:MiniSightRecorderSaveStageInspect]; return;
+            }
+            [NSFileManager.defaultManager removeItemAtURL:self->_temporaryURL error:nil];
+            self->_temporaryURL = out;
+            NSDictionary *a = [NSFileManager.defaultManager attributesOfItemAtPath:out.path error:nil];
+            self->_bytes = [a[NSFileSize] unsignedLongLongValue];
+            [self finish:YES duration:seconds stage:MiniSightRecorderSaveStageNone];
+        });
+    }];
+}
+
 - (void)start:(NSURL *)source directory:(NSURL *)directory completion:(MSRFileCompletion)completion {
     _completion = [completion copy];
     dispatch_async(_queue, ^{
@@ -161,7 +211,7 @@ typedef void (^MSRFileCompletion)(BOOL, NSURL *, uint64_t, double, MiniSightReco
                             [asset tracksWithMediaType:AVMediaTypeVideo].count > 0;
                         if (valid) seconds = CMTimeGetSeconds(time);
                     }
-                    [self finish:valid duration:seconds stage:MiniSightRecorderSaveStageInspect];
+                    if (valid) [self cropThenFinish:seconds]; else [self finish:NO duration:0 stage:MiniSightRecorderSaveStageInspect];
                 });
             }];
         }
@@ -196,6 +246,7 @@ static char MSRRecordingObservation;
     MiniSightRecorderSource _lastOwner;
     MiniSightRecorderIssue _lastIssue;
     MiniSightRecorderSaveStage _saveStage;
+    CGRect _sessionCrop;
     BOOL _lastQuarantine;
 }
 - (instancetype)initPrivate;
@@ -421,7 +472,7 @@ static char MSRRecordingObservation;
     });
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(60.0 * NSEC_PER_SEC)),
                    dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), _saveTimeoutWork);
-    _fileJob = [[MSRFileJob alloc] initWithQueue:_fileQueue epoch:epoch];
+    _fileJob = [[MSRFileJob alloc] initWithQueue:_fileQueue epoch:epoch crop:_sessionCrop];
     _saveStage = MiniSightRecorderSaveStageNone;
     dispatch_queue_t queue = _fileQueue;
     [_fileJob start:url directory:_sessionDirectory completion:^(BOOL verified, NSURL *file, uint64_t bytes, double duration, MiniSightRecorderSaveStage stage, NSInteger publishError) {
@@ -500,6 +551,21 @@ static char MSRRecordingObservation;
     [self msrApply:MSRAutomaticActive(&_machine, active, MSRNow(), [self msrSnapshot])
                file:nil bytes:0 duration:0];
 }
+- (void)startWithSource:(MiniSightRecorderSource)source {
+    [self startWithSource:source region:CGRectNull];
+}
+
+- (void)startWithSource:(MiniSightRecorderSource)source region:(CGRect)region {
+    if (!CGRectIsNull(region)) {
+        region.origin.x = MSClamp(region.origin.x, 0, 1);
+        region.origin.y = MSClamp(region.origin.y, 0, 1);
+        region.size.width = MSClamp(region.size.width, 0.05, 1 - region.origin.x);
+        region.size.height = MSClamp(region.size.height, 0.05, 1 - region.origin.y);
+        _crop = region;
+    } else {
+        _crop = CGRectNull;
+    }
+    _sessionCrop = _crop;
 - (void)startWithSource:(MiniSightRecorderSource)source {
     if (![NSThread isMainThread]) {
         dispatch_async(dispatch_get_main_queue(), ^{ [self startWithSource:source]; }); return;

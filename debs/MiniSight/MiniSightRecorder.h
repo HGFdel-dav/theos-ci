@@ -60,6 +60,8 @@ typedef void (^MiniSightRecorderResultHandler)(MiniSightRecordingResult *result)
    stopped/settings messages cannot restart a limited/failed/manual session. */
 - (void)setAutomaticActive:(BOOL)active;
 - (void)startWithSource:(MiniSightRecorderSource)source;
+/* Normalized crop (0..1, screen space) applied while saving; CGRectNull = full screen. */
+- (void)startWithSource:(MiniSightRecorderSource)source region:(CGRect)region;
 - (void)stopWithSource:(MiniSightRecorderSource)source;
 - (void)toggle; /* Manual long press; 350 ms debounce. */
 - (void)cancel; /* Discard own pending/active/save result; never stops a foreign one. */

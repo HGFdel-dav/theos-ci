@@ -14,6 +14,7 @@ NS_ASSUME_NONNULL_BEGIN
 + (void)refresh:(void (^)(NSString * _Nullable container, NSDictionary *preferences,
                          BOOL shown, UIImage * _Nullable atlas))completion;
 + (void)refreshPreferences:(void (^)(NSString * _Nullable container, NSDictionary *preferences))completion;
++ (void)refreshSnapshotPreferences:(void (^)(NSString * _Nullable container, NSDictionary *preferences))completion;
 + (void)writeShown:(BOOL)shown container:(NSString *)container;
 + (void)releaseCachedAtlas;
 @end

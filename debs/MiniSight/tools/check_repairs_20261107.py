@@ -41,6 +41,9 @@ need('MSFlipVertical' in (ROOT/'MiniSightResources.m').read_text(), 'loaded spri
 need('CGImageCreateWithImageInRect' in pet, 'renderer crops the current frame explicitly')
 need('roamInterval' in tweak and 'gravityStrength' in tweak, 'activity interval and gravity strength are live')
 need('gMiniSightBubbleScale' in tweak and 'gMiniSightDwell' in tweak, 'bubble/text/dwell settings reach the panel')
+need('refreshSnapshotPreferences' in tweak and 'runtime.json' in tweak, 'live reload reads the atomic runtime snapshot')
+need('MiniSightRegionPicker' in tweak and 'startWithSource:MiniSightRecorderSourceManual region:' in tweak, 'manual recording has a draggable region picker')
+need('cropThenFinish' in (ROOT/'MiniSightRecorder.m').read_text(), 'the save stage crops the chosen region')
 import re, struct, wave
 from io import BytesIO
 _frames_match = re.search(r'frames = (\d+)', blip)
@@ -67,6 +70,9 @@ need('MSFlipVertical' in (ROOT/'MiniSightResources.m').read_text(), 'loaded spri
 need('CGImageCreateWithImageInRect' in pet, 'renderer crops the current frame explicitly')
 need('roamInterval' in tweak and 'gravityStrength' in tweak, 'activity interval and gravity strength are live')
 need('gMiniSightBubbleScale' in tweak and 'gMiniSightDwell' in tweak, 'bubble/text/dwell settings reach the panel')
+need('refreshSnapshotPreferences' in tweak and 'runtime.json' in tweak, 'live reload reads the atomic runtime snapshot')
+need('MiniSightRegionPicker' in tweak and 'startWithSource:MiniSightRecorderSourceManual region:' in tweak, 'manual recording has a draggable region picker')
+need('cropThenFinish' in (ROOT/'MiniSightRecorder.m').read_text(), 'the save stage crops the chosen region')
 need('MSKeyOutBlackBackground' in (ROOT/'MiniSightResources.m').read_text(), 'black sheet background is keyed out')
 if fails:
     print('FAIL plugin repairs'); [print(' -',x) for x in fails]; sys.exit(1)

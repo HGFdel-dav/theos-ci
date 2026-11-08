@@ -191,6 +191,26 @@ static UIImage *MSLoadAtlas(NSString *path, BOOL single, BOOL key) {
         }
     });
 }
++ (void)refreshSnapshotPreferences:(void (^)(NSString *, NSDictionary *))completion {
+    dispatch_async(MSResourceQueue(), ^{
+        @autoreleasepool {
+            NSString *container = MSFindContainer();
+            NSString *path = [container stringByAppendingPathComponent:@"Documents/MiniSight/runtime.json"];
+            NSData *data = [NSData dataWithContentsOfFile:path];
+            NSDictionary *json = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+            NSDictionary *bag = [json[@"preferences"] isKindOfClass:NSDictionary.class] ? json[@"preferences"] : nil;
+            NSMutableDictionary *filtered = [NSMutableDictionary dictionary];
+            for (NSString *key in bag) {
+                if ([key isKindOfClass:NSString.class] && [key hasPrefix:@"minisight."]) filtered[key] = bag[key];
+            }
+            if ([json[@"revision"] isKindOfClass:NSString.class]) filtered[@"minisight.settings.revision"] = json[@"revision"];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(container, filtered.copy);
+            });
+        }
+    });
+}
+
 + (void)refresh:(void (^)(NSString *, NSDictionary *, BOOL, UIImage *))completion {
     dispatch_async(MSResourceQueue(), ^{
         @autoreleasepool {

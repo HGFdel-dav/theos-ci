@@ -406,7 +406,7 @@ static void MiniSightReadActivitySnapshot(void) {
 static void MiniSightRefreshRecorderSettingsThenReadActivity(void) {
     NSCAssert([NSThread isMainThread], @"recorder refresh is main-thread owned");
     NSUInteger generation = ++gMiniSightActivityReadGeneration; // invalidate old activity reads
-    [MiniSightResources refreshPreferences:^(NSString *container, NSDictionary *preferences) {
+    [MiniSightResources refreshSnapshotPreferences:^(NSString *container, NSDictionary *preferences) {
         if (generation != gMiniSightActivityReadGeneration) return;
         if (container.length) gMiniSightContainer = [container copy];
         gMiniSightPreferences = [preferences copy] ?: @{};
@@ -415,6 +415,114 @@ static void MiniSightRefreshRecorderSettingsThenReadActivity(void) {
         panel.appearancePreferences = gMiniSightPreferences;
         MiniSightConfigureRecorderWithCompletion(^{ MiniSightReadActivitySnapshot(); });
     }];
+}
+
+/// Manual region picker: drag the body or any corner, then confirm.
+@interface MiniSightRegionPicker : UIWindow
+@property(nonatomic, copy) void (^onConfirm)(CGRect normalized);
+- (void)present;
+@end
+
+@implementation MiniSightRegionPicker {
+    UIView *_dim, *_box;
+    CGPoint _start;
+    CGRect _startFrame;
+    NSInteger _corner;
+}
+- (instancetype)init {
+    UIWindowScene *scene = nil;
+    for (UIScene *s in UIApplication.sharedApplication.connectedScenes)
+        if ([s isKindOfClass:UIWindowScene.class] && s.activationState == UISceneActivationStateForegroundActive) { scene = (id)s; break; }
+    if (!scene) return nil;
+    self = [super initWithWindowScene:scene];
+    self.windowLevel = UIWindowLevelAlert + 2;
+    self.backgroundColor = UIColor.clearColor;
+    UIViewController *vc = [UIViewController new];
+    vc.view.backgroundColor = UIColor.clearColor;
+    self.rootViewController = vc;
+    _dim = [[UIView alloc] initWithFrame:scene.coordinateSpace.bounds];
+    _dim.backgroundColor = [UIColor colorWithWhite:0 alpha:0.35];
+    [vc.view addSubview:_dim];
+    CGRect r = CGRectInset(scene.coordinateSpace.bounds, 60, scene.coordinateSpace.bounds.size.height * 0.22);
+    _box = [[UIView alloc] initWithFrame:r];
+    _box.backgroundColor = UIColor.clearColor;
+    _box.layer.borderColor = UIColor.whiteColor.CGColor;
+    _box.layer.borderWidth = 2;
+    _box.layer.cornerRadius = 10;
+    [vc.view addSubview:_box];
+    UIPanGestureRecognizer *body = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(pan:)];
+    [_box addGestureRecognizer:body];
+    for (NSInteger i = 0; i < 4; i++) {
+        UIView *h = [[UIView alloc] initWithFrame:CGRectMake(i % 2 ? r.size.width - 22 : 0, i / 2 ? r.size.height - 22 : 0, 22, 22)];
+        h.backgroundColor = UIColor.whiteColor;
+        h.layer.cornerRadius = 11;
+        h.tag = i + 1;
+        [_box addSubview:h];
+        UIPanGestureRecognizer *g = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(pan:)];
+        [h addGestureRecognizer:g];
+    }
+    UIButton *cancel = [UIButton buttonWithType:UIButtonTypeSystem];
+    cancel.frame = CGRectMake(20, scene.coordinateSpace.bounds.size.height - 110, 120, 44);
+    [cancel setTitle:@"取消" forState:UIControlStateNormal];
+    [cancel addTarget:self action:@selector(cancelTap) forControlEvents:UIControlEventTouchUpInside];
+    [vc.view addSubview:cancel];
+    UIButton *go = [UIButton buttonWithType:UIButtonTypeSystem];
+    go.frame = CGRectMake(scene.coordinateSpace.bounds.size.width - 160, scene.coordinateSpace.bounds.size.height - 110, 140, 44);
+    [go setTitle:@"开始录屏" forState:UIControlStateNormal];
+    [go setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    go.backgroundColor = UIColor.systemBlueColor;
+    go.layer.cornerRadius = 22;
+    [go addTarget:self action:@selector(confirmTap) forControlEvents:UIControlEventTouchUpInside];
+    [vc.view addSubview:go];
+    return self;
+}
+- (void)present { self.hidden = NO; [self makeKeyAndVisible]; }
+- (void)pan:(UIPanGestureRecognizer *)g {
+    UIView *v = g.view;
+    CGPoint t = [g translationInView:self.rootViewController.view];
+    if (g.state == UIGestureRecognizerStateBegan) { _start = _box.frame.origin; _startFrame = _box.frame; _corner = v.tag; }
+    if (g.state == UIGestureRecognizerStateChanged) {
+        CGRect f = _startFrame;
+        CGRect bounds = self.rootViewController.view.bounds;
+        if (_corner == 0) {
+            f.origin.x = _start.x + t.x; f.origin.y = _start.y + t.y;
+        } else {
+            BOOL left = (_corner == 1 || _corner == 3);
+            BOOL top = (_corner == 1 || _corner == 2);
+            BOOL right = (_corner == 2 || _corner == 4);
+            BOOL bottom = (_corner == 3 || _corner == 4);
+            if (left) { f.origin.x += t.x; f.size.width -= t.x; }
+            if (top) { f.origin.y += t.y; f.size.height -= t.y; }
+            if (right) { f.size.width += t.x; }
+            if (bottom) { f.size.height += t.y; }
+        }
+        f.size.width = MAX(90, f.size.width); f.size.height = MAX(90, f.size.height);
+        f.origin.x = MSClamp(f.origin.x, 0, bounds.size.width - f.size.width);
+        f.origin.y = MSClamp(f.origin.y, 40, bounds.size.height - f.size.height);
+        _box.frame = f;
+    }
+}
+- (void)cancelTap { self.hidden = YES; }
+- (void)confirmTap {
+    CGRect b = self.rootViewController.view.bounds, f = _box.frame;
+    if (self.onConfirm) self.onConfirm(CGRectMake(f.origin.x / b.size.width, f.origin.y / b.size.height,
+                                                  f.size.width / b.size.width, f.size.height / b.size.height));
+    self.hidden = YES;
+}
+@end
+
+static MiniSightRegionPicker *gMiniSightRegionPicker;
+
+static void MiniSightStartManualRecording(void) {
+    MiniSightRecorder *rec = MiniSightRecorder.sharedRecorder;
+    if (rec.state != MiniSightRecorderIdle) { [rec toggle]; return; }
+    gMiniSightRegionPicker = [[MiniSightRegionPicker alloc] init];
+    __weak MiniSightRegionPicker *weakPicker = gMiniSightRegionPicker;
+    gMiniSightRegionPicker.onConfirm = ^(CGRect region) {
+        [rec startWithSource:MiniSightRecorderSourceManual region:region];
+        weakPicker.hidden = YES;
+    };
+    [gMiniSightRegionPicker present];
 }
 
 static void MiniSightToggleRecording(void) {
@@ -438,13 +546,13 @@ static void MiniSightToggleRecording(void) {
         MSDiagEvent(@"recording", @"entry", @"pending", @{ @"source": @"plugin", @"reason": @"long_press" });
         BOOL sameContainer = observedContainer.length && [container isEqualToString:observedContainer];
         if (gMiniSightRecorderConfigured && sameContainer) {
-            [MiniSightRecorder.sharedRecorder toggle];
+            MiniSightStartManualRecording();
             return;
         }
         MiniSightConfigureRecorderWithCompletion(^{
             if (!gMiniSightRecorderManualEnabled || !MiniSightLongPressEnabled()) return;
             if (!gMiniSightRecorderConfigured) { MiniSightSay(@"录屏控制器尚未就绪，请稍后再试"); return; }
-            [MiniSightRecorder.sharedRecorder toggle];
+            MiniSightStartManualRecording();
         });
     }];
 }
@@ -992,6 +1100,8 @@ static void MiniSightApplyRuntimeConfig(void) {
     gMiniSightBubbleScale = MSClamp(c.bubbleScale, 0.8, 1.6);
     gMiniSightTextScale = MSClamp(c.textScale, 0.8, 1.6);
     gMiniSightDwell = MSClamp(c.dwell, 0.5, 3.0);
+    if (gMiniSightBubble && !gMiniSightBubble.hidden && gMiniSightBubbleText.length)
+        MiniSightShowBubbleWidth(gMiniSightBubbleText, 260.0, 600);
     gMiniSightBottomGap = MSClamp(c.bottomGap, 0, 40);
     if (c.costume.length) MiniSightLoadCostume(c.costume);
     MiniSightApplyTint(c.tint);
@@ -1456,10 +1566,10 @@ static void MiniSightStartSettingsWatch(void) {
     [gMiniSightSettingsWatch invalidate];
     gMiniSightSettingsWatch = [NSTimer timerWithTimeInterval:0.5 repeats:YES block:^(NSTimer *timer) {
         if (!gMiniSightContainer.length) return;
-        NSString *prefsPath = [gMiniSightContainer stringByAppendingPathComponent:@"Library/Preferences/com.openminis.app.plist"];
-        NSDictionary *prefs = [NSDictionary dictionaryWithContentsOfFile:prefsPath];
-        NSString *revision = [prefs[@"minisight.settings.revision"] isKindOfClass:NSString.class]
-            ? prefs[@"minisight.settings.revision"] : nil;
+        NSString *snapPath = [gMiniSightContainer stringByAppendingPathComponent:@"Documents/MiniSight/runtime.json"];
+        NSData *snapData = [NSData dataWithContentsOfFile:snapPath];
+        NSDictionary *snap = snapData ? [NSJSONSerialization JSONObjectWithData:snapData options:0 error:nil] : nil;
+        NSString *revision = [snap[@"revision"] isKindOfClass:NSString.class] ? snap[@"revision"] : nil;
         NSString *shownPath = [gMiniSightContainer stringByAppendingPathComponent:@"Documents/MiniSight/shown"];
         NSString *shownText = [NSString stringWithContentsOfFile:shownPath encoding:NSUTF8StringEncoding error:nil];
         BOOL shown = ![shownText isEqualToString:@"0"];
