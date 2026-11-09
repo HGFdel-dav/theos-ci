@@ -24,8 +24,8 @@ info=plistlib.loads((ROOT/'LocalCleanStatusPrefs/Resources/Info.plist').read_byt
 need(entry['detail']==info['NSPrincipalClass']=='LocalCleanStatusRootListController','panel controller identity')
 need(entry['bundle']==info['CFBundleExecutable']=='LocalCleanStatusPrefs','bundle executable identity')
 need(entry['isController'] is True,'real controller enabled')
-need(info['CFBundleVersion']==info['CFBundleShortVersionString']=='0.3.0','panel version')
-need('Version: 0.3.0' in text('control'),'package version')
+need(info['CFBundleVersion']==info['CFBundleShortVersionString']=='0.3.1','panel version')
+need('Version: 0.3.1' in text('control'),'package version')
 need('Maintainer: Niubiprass' in text('control') and 'Author: Niubiprass' in text('control'),'package author')
 need(entry['icon']=='icon.png' and all(('Resources/'+n) in text('LocalCleanStatusPrefs/Makefile') for n in ('icon.png','icon@2x.png','icon@3x.png')),'three original PreferenceLoader icons')
 for name,size in (('icon.png',29),('icon@2x.png',58),('icon@3x.png',87)):
@@ -213,5 +213,6 @@ need('UIControlEventValueChanged' in listvc and 'applyPoweredOff' in listvc,'the
 
 subprocess.run([sys.executable, str(ROOT/'tools/check_preserved_features.py')], check=True)
 subprocess.run([sys.executable, str(ROOT/'tools/check_animations.py')], check=True)
+subprocess.run([sys.executable, str(ROOT/'tools/test_panel_routes.py')], check=True)
 subprocess.run([sys.executable, str(ROOT/'tools/check_source_delimiters.py')], check=True)
 print(f'PASS source invariants: {checks}. iOS compile/runtime NOT performed.')

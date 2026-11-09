@@ -129,8 +129,6 @@
 			<string>动画高级设置</string>
 			<key>detail</key>
 			<string>LocalCleanStatusAnimationAdvancedController</string>
-			<key>bundle</key>
-			<string>LocalCleanStatusPrefs</string>
 			<key>isController</key>
 			<true/>
 			<key>id</key>

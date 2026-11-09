@@ -2,6 +2,7 @@
 """Strict RootHide artifact checks; not AMFI acceptance or runtime validation."""
 import hashlib, json, os, plistlib, struct, subprocess, sys, tempfile
 from pathlib import Path
+from panel_routes import validate_panel_routes
 
 def u32(b,p,end='<'): return struct.unpack_from(end+'I',b,p)[0]
 def require(ok,why):
@@ -82,7 +83,7 @@ def inspect(deb,out):
     for line in raw.splitlines():
         if line and not line.startswith(' ') and ':' in line:
             key,val=line.split(':',1);fields[key]=val.strip()
-    for key,want in {'Package':'com.local.cleanstatus','Version':'0.3.0','Architecture':'iphoneos-arm64e'}.items():
+    for key,want in {'Package':'com.local.cleanstatus','Version':'0.3.1','Architecture':'iphoneos-arm64e'}.items():
         require(fields.get(key)==want,key+' mismatch')
     report={'deb':deb.name,'sha256':hashlib.sha256(deb.read_bytes()).hexdigest(),'fields':fields}
     with tempfile.TemporaryDirectory(prefix='cleanstatus-deb-') as temp:
@@ -100,7 +101,7 @@ def inspect(deb,out):
         pref=payload/'Library/PreferenceBundles/LocalCleanStatusPrefs.bundle'
         info=plistlib.loads((pref/'Info.plist').read_bytes())
         require(info['CFBundleExecutable']=='LocalCleanStatusPrefs' and info['NSPrincipalClass']=='LocalCleanStatusRootListController','panel linkage')
-        require(info['CFBundleVersion']==info['CFBundleShortVersionString']=='0.3.0','panel version')
+        require(info['CFBundleVersion']==info['CFBundleShortVersionString']=='0.3.1','panel version')
         require((pref/'LocalCleanStatusRoot.plist').is_file(),'missing specifiers')
         for name in ('LocalCleanStatusAnimations.plist','LocalCleanStatusAnimationsAdvanced.plist'):
             require(isinstance(plistlib.loads((pref/name).read_bytes()).get('items'),list),'missing animation panel '+name)
@@ -109,6 +110,7 @@ def inspect(deb,out):
             require(raw.startswith(bytes.fromhex('89504e470d0a1a0a')) and int.from_bytes(raw[16:20],'big')==size and int.from_bytes(raw[20:24],'big')==size,'bad icon '+name)
         loader=payload/'Library/PreferenceLoader/Preferences/LocalCleanStatusPrefs.plist'
         entry=plistlib.loads(loader.read_bytes())['entry']; require(entry['bundle']=='LocalCleanStatusPrefs' and entry['icon']=='icon.png','loader bundle/icon')
+        report['static_panel_routes_checked']=validate_panel_routes(pref,loader)
         module=payload/'Library/ControlCenter/Bundles/LocalCleanStatusSystemActions.bundle'
         require((module/'Info.plist').is_file(),'missing CC module plist')
         module_info=plistlib.loads((module/'Info.plist').read_bytes())
