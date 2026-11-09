@@ -231,10 +231,11 @@ static UIViewController *PXURLRouterPresenter(void) {
     NSURL *url = [self paymentURLForRequest:request options:options];
     NSString *raw = url.absoluteString.length > 70 ?
         [url.absoluteString substringToIndex:70] : url.absoluteString;
-    // bundle-only requests carry no URL at all. 0.33 answered them by bundle
-    // and that is the only shape that worked on device; only a URL that is
-    // present and clearly not a payment is skipped here.
-    if (url && ![self isPaymentURL:url]) return NO;
+    // A request with no URL at all is an ordinary launch (home icon, task
+    // switcher, notification). Answering those by bundle made the chooser pop
+    // at random; real payments always carry the link in the payload.
+    if (!url) return NO;
+    if (![self isPaymentURL:url]) return NO;
     NSString *bundle = PXURLRouterBundleFromRequest(request);
     [PXCloneProbe log:@"PAY open url=%@ bundle=%@", raw ?: @"(none)", bundle ?: @"(nil)"];
     if (!bundle.length) return NO;
