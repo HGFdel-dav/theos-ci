@@ -40,7 +40,7 @@ int main(int argc, char **argv) {
             uint32_t length = (uint32_t)header[0] | ((uint32_t)header[1] << 8) |
                 ((uint32_t)header[2] << 16) | ((uint32_t)header[3] << 24);
             if (length > 2 * MSA_INPUT_LIMIT) return 2;
-            char *input = calloc((size_t)length + 1, 1);
+            char *input = (char *)calloc((size_t)length + 1, 1);
             if (!input) return 3;
             if (fread(input, 1, length, stdin) != length) { free(input); return 4; }
             describe(input); free(input);

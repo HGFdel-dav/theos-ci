@@ -14,6 +14,19 @@
 #include <stdio.h>
 #include <ctype.h>
 
+/* The same bounded parser is compiled as strict C11 in host tests and as
+ * Objective-C++ through Tweak.xm.  Keep zero-initializers and calloc typed in
+ * both languages without weakening the warning policy. */
+#ifdef __cplusplus
+#define MSA_ZERO_INIT {}
+#define MSA_TOKEN_INIT(TEXT, KIND, DYNAMIC) MSAToken{(TEXT), (KIND), (DYNAMIC)}
+#define MSA_CALLOC(TYPE, COUNT) static_cast<TYPE *>(calloc((COUNT), sizeof(TYPE)))
+#else
+#define MSA_ZERO_INIT {0}
+#define MSA_TOKEN_INIT(TEXT, KIND, DYNAMIC) (MSAToken){(TEXT), (KIND), (DYNAMIC)}
+#define MSA_CALLOC(TYPE, COUNT) calloc((COUNT), sizeof(TYPE))
+#endif
+
 #define MSA_INPUT_LIMIT 65536
 #define MSA_WORD_LIMIT 8192
 #define MSA_TOKEN_LIMIT 256
@@ -144,7 +157,7 @@ static int msa_lex(const char *input, MSAToken *tokens, char *storage, int *fail
         if (c == ';' || c == '\n' || c == '&' || c == '|') {
             kind = c == '|' ? MSA_PIPE : MSA_BREAK;
             if ((c == '&' || c == '|') && input[i+1] == c) { kind = c == '&' ? MSA_AND : MSA_COND; i++; }
-            i++; tokens[count++] = (MSAToken){NULL, kind, 0}; continue;
+            i++; tokens[count++] = MSA_TOKEN_INIT(NULL, kind, 0); continue;
         }
         /* Optional literal fd, e.g. 2>/tmp/log or 2>&1. */
         size_t op = i; while (isdigit((unsigned char)input[op])) op++;
@@ -153,7 +166,7 @@ static int msa_lex(const char *input, MSAToken *tokens, char *storage, int *fail
             if (input[op] == r) { if (r == '<') MSA_LEX_FAIL(); op++; kind = MSA_APPEND; }
             if (input[op] == '&') { op++; kind = MSA_DUP; }
             if (input[op] == '|' || input[op] == '<' || input[op] == '>') MSA_LEX_FAIL();
-            i = op; tokens[count++] = (MSAToken){NULL, kind, 0}; continue;
+            i = op; tokens[count++] = MSA_TOKEN_INIT(NULL, kind, 0); continue;
         }
         size_t start = used; int quote = 0, dynamic = 0, touched = 0;
         while ((c = input[i])) {
@@ -179,7 +192,7 @@ static int msa_lex(const char *input, MSAToken *tokens, char *storage, int *fail
         }
         if (quote || !touched || used > MSA_INPUT_LIMIT) MSA_LEX_FAIL();
         storage[used++] = 0;
-        tokens[count++] = (MSAToken){storage + start, MSA_WORD, dynamic};
+        tokens[count++] = MSA_TOKEN_INIT(storage + start, MSA_WORD, dynamic);
     }
 #undef MSA_LEX_FAIL
     return count;
@@ -307,7 +320,7 @@ static int msa_tool(MSAState *s, const char *tool, const MSAPairs *p, int depth)
 }
 static void msa_cli(MSAState *s, char **a, int n, int depth) {
     if (n < 4 || !msa_eq(a[1], "call")) { s->unknown = 1; return; }
-    MSAPairs p = {0}; char *json = calloc(MSA_INPUT_LIMIT + 1, 1); int saw_json = 0, valid = json != NULL;
+    MSAPairs p = MSA_ZERO_INIT; char *json = MSA_CALLOC(char, MSA_INPUT_LIMIT + 1); int saw_json = 0, valid = json != NULL;
     for (int i = 4; i < n && valid; i++) {
         if (msa_eq(a[i], "--pretty")) continue;
         if (msa_eq(a[i], "--input")) {
@@ -536,11 +549,11 @@ static void msa_dynamic_step(MSAState *s, char **a, int n, int depth) {
         return;
     }
     if (msa_eq(exe, "minis-mcp-cli") && n >= 4 && msa_eq(a[1], "call")) {
-        MSAPairs empty = {0};
+        MSAPairs empty = MSA_ZERO_INIT;
         if (!msa_eq(a[3], "run_command")) (void)msa_tool(s, a[3], &empty, depth);
         return;
     }
-    MSAState *possible = calloc(1, sizeof(*possible));
+    MSAState *possible = MSA_CALLOC(MSAState, 1);
     if (!possible) return;
     msa_step(possible, a, n, depth);
     s->effects |= possible->effects; /* no path/copy/original claims */
@@ -548,8 +561,8 @@ static void msa_dynamic_step(MSAState *s, char **a, int n, int depth) {
 }
 static void msa_shell(MSAState *s, const char *input, int depth) {
     if (depth > MSA_DEPTH_LIMIT || !msa_fits(input)) { s->unknown = 1; return; }
-    MSAToken *tokens = calloc(MSA_TOKEN_LIMIT, sizeof(*tokens));
-    char *storage = calloc(MSA_INPUT_LIMIT + 1, 1);
+    MSAToken *tokens = MSA_CALLOC(MSAToken, MSA_TOKEN_LIMIT);
+    char *storage = MSA_CALLOC(char, MSA_INPUT_LIMIT + 1);
     if (!tokens || !storage) { s->unknown = 1; free(tokens); free(storage); return; }
     int failed = 0, count = msa_lex(input, tokens, storage, &failed);
     if (failed) { s->unknown = 1; s->only_temp = 0; }
@@ -604,7 +617,7 @@ static void msa_append(char *out, size_t capacity, const char *text) {
     size_t n = strlen(out); if (n < capacity) snprintf(out+n, capacity-n, "%s", text);
 }
 static MSApprovalSummary MSApprovalDescribe(const char *command) {
-    MSApprovalSummary out = {0}; MSAState state = {0}; state.only_temp = 1;
+    MSApprovalSummary out = MSA_ZERO_INIT; MSAState state = MSA_ZERO_INIT; state.only_temp = 1;
     if (!msa_fits(command) || !command[0]) state.unknown = 1;
     else msa_shell(&state, command, 0);
     if (!state.effects) state.unknown = 1;
