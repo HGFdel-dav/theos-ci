@@ -55,7 +55,7 @@ static inline int RDParseClickPayload(const char *fragment, RDClickPayload *out)
     while (*p) {
         const char *end = strchr(p, '&');
         if (!end) end = p + strlen(p);
-        const char *eq = memchr(p, '=', (size_t)(end - p));
+        const char *eq = (const char *)memchr(p, '=', (size_t)(end - p));
         if (!eq || eq == p) return 0;
         size_t keyn = (size_t)(eq - p), vn = (size_t)(end - eq - 1);
         unsigned bit = 0; char small[32] = {0};

@@ -13,6 +13,9 @@ with tempfile.TemporaryDirectory(prefix='rd-click-') as temp:
  t=Path(temp);env=os.environ.copy();env['RD_TEST_CASES']=str(t/'cases.json')
  print(run([node,str(ROOT/'tests/click_script.test.js')],env=env).splitlines()[-1])
  print(run([node,str(ROOT/'tests/background.test.js')]).strip())
+ cpp=t/'policy-cpp.o'
+ run([clang,'-x','c++','-std=c++17','-Wall','-Wextra','-Werror','-c',str(ROOT/'tests/policy_test.c'),'-o',str(cpp)])
+ print('CPP_POLICY_COMPILE=PASS')
  for optimize in ['-O0','-O2']:
   exe=t/('policy'+optimize)
   run([clang,'-std=c11','-Wall','-Wextra','-Werror',optimize,str(ROOT/'tests/policy_test.c'),'-o',str(exe)])
