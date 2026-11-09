@@ -1,0 +1,25 @@
+{
+  "base_commit": "31ba57f3fe5bc3015f881b8072a611c788c9d7ab",
+  "files": {
+    "Tweak.x": "9c215d3f43cb617037eccd5414ba764106033503368e4c9f735237585a25cb77",
+    "Common/Common.h": "1c41c2901ede8b610324c4247ebe60f01ecd28eb25d19f660e8b4dc84ea16435",
+    "ReynardDefault.plist": "2603932692933950454548a4136655a9d3911af530e2bdeabde572e548638e87",
+    "ReynardDefaultCC/ReynardDefaultCC.m": "f155cd2b2231ea0c79095d3b8fc433c070060aa7bb24dde879227f97638d283e",
+    "ReynardDefaultCC/Makefile": "e1857cce78d40f3c7c807686dc8defbd01962bbe357a960c5139231e15bc045d",
+    "ReynardDefaultCC/ReynardDefaultCC.h": "07f002be78bd85b21934d134f326bc285c376fc8a086049485a3f835db9107ef",
+    "ReynardDefaultCC/Resources/icon@2x.png": "460e48e2b6a46ee19e4854ad721d45ccd9e3e36c9c19b14479a5e46449372cdb",
+    "ReynardDefaultCC/Resources/Info.plist": "c7a4bc3931b243cd796b2fe4a065d50012941d14b5d6739d97dcfc080f502f3a",
+    "ReynardDefaultCC/Resources/icon@3x.png": "343ddfae048761e896f94aba003de21f880d28822357a0fc7ae4f1ed12d9a772",
+    "ReynardDefaultCC/Resources/SettingsIcon@3x.png": "f9c39f5bfc33f1d396d6596603738c023e6c164ef82d7db27f899fbbdce7b6d4",
+    "ReynardDefaultCC/Resources/SettingsIcon@2x.png": "70a6c798cc25fd626672c287e565aefb2b1828105319d2f368639dbe43ae2006",
+    "ReynardDefaultPrefs/Makefile": "d25388af5a73e787660e1c55b55d7ac424b079a4003e8eb6869bb5520bf45db8",
+    "ReynardDefaultPrefs/RDRootVC.m": "cd2cf18cffa2cf832cc627775663e51225ade4d6cc2d100a414e772787110b2d",
+    "ReynardDefaultPrefs/Resources/icon.png": "8a5fd9c1bcad6d7ae6014664df9563051464a195dd05ae4b721644f4b5009d5f",
+    "ReynardDefaultPrefs/Resources/icon@2x.png": "3cc25a93219d0bf73b79859646953c3d82082965fdf9468963abb38e37cdaa79",
+    "ReynardDefaultPrefs/Resources/Root.plist": "48a4a48deb2cc57201885bd1c18edab8d2a6a53662cec32f86b7b6718884b9e6",
+    "ReynardDefaultPrefs/Resources/Info.plist": "94de29e28b5576e12752586d0c4e7556b02bf86d66f8122ca3d4206f01e51784",
+    "ReynardDefaultPrefs/Resources/icon@3x.png": "c8144ed2e99468f5ffbd9f48894dfbb4df90566a250720e055eec3037e8f2217",
+    "ReynardDefaultPrefs/layout/Library/PreferenceLoader/Preferences/ReynardDefaultPrefs.plist": "5659287f9f9720d95a29992237c9771975afba6052e6575b76c56eb8e8293cee",
+    "ReynardDefaultPrefs/Resources/en.lproj/Root.plist": "0a01003f2d08edb1b82c9661e33838f686075d47d9e90fff7e3ae1e01981587e"
+  }
+}

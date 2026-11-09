@@ -4,6 +4,16 @@ A jailbreak tweak that redirects Safari URL opens to [Reynard](https://github.co
 
 When enabled, any link that would normally open in Safari is intercepted at the SpringBoard level and opened in Reynard instead.
 
+## 1.5.34 repair candidate
+
+This update targets user-clicked links only. The signed content script transports custom-scheme clicks with a single encoded fragment; native code validates a real Gecko gesture, request identity and freshness before opening. Known Telegram `tg:resolve` forms are normalized to `tg://resolve` without losing query or fragment data. Other schemes keep their documented opaque/hierarchical form.
+
+HTTP(S) remains an original browser navigation. Only an eligible user-gesture PreNavigation attempts `universalLinksOnly`; failure returns `false` to Gecko so the same request continues. History, load-error and arbitrary extension-message events never launch apps. Page-wide metadata is not substituted for unrelated links.
+
+The extension is installed through Gecko's signed-package interface. This candidate no longer forges `extensions.json`, overrides signature preferences, broadcasts installation commands, or reloads tabs automatically. An installation confirmation may be displayed by Reynard. A small onInstalled event page refreshes the click handler in existing HTTP(S) tabs; it does not navigate or open apps.
+
+Validation status: source/host tests and package provenance are separate from device acceptance. Third-party app target screens, platform confirmation dialogs and asynchronous scripted/Android intent links require runtime compatibility; no blanket guarantee of Safari-equivalent behavior is claimed.
+
 ## Features
 
 - **Safari redirect** — hooks `FBSystemServiceOpenApplicationRequest` in SpringBoard to swap the bundle identifier
@@ -42,7 +52,9 @@ make both       # builds both variants side-by-side
 
 Builds land in `packages/` as `*_iphoneos-arm64.deb` (rootless) and `*_iphoneos-arm.deb` (rootful). Rootless debs installed via Sileo on Roothide are auto-patched; manual installs need the Roothide Patcher app first.
 
-## Tested Environments
+## Historical upstream environments (not 1.5.34 acceptance)
+
+The following table came from the original Safari-redirect project. It is not evidence that this handoff update has been tested on these devices.
 
 | Device | iOS | Jailbreak | Variant | Status |
 |--------|-----|-----------|---------|--------|
