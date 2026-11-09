@@ -27,14 +27,13 @@ class TestPaymentRouter(unittest.TestCase):
         body = method(ROUTER, '+ (BOOL)handleOpenRequest:')
         self.assertIn('paymentURLForRequest:request options:options', body)
         self.assertLess(body.index('paymentURLForRequest:'), body.index('containersForBundle:'))
-        self.assertIn('if (!url && ![self isShareRequest:request options:options]) return NO;', body)
-        self.assertIn('isShareRequest:request options:options', body)
+        self.assertIn('if (url && ![self isPaymentURL:url]) return NO;', body)
         self.assertNotIn('loadCatalogForRequest:', ROUTER)
 
     def test_url_entry_classifies_before_resolving_target(self):
         body = method(ROUTER, '+ (BOOL)handleOpenURL:')
-        self.assertIn('!url.scheme.length', body)
-        self.assertLess(body.index('!url.scheme.length'), body.index('PXURLRouterBundleForURL(url)'))
+        self.assertIn('[self isPaymentURL:url]', body)
+        self.assertLess(body.index('isPaymentURL:url'), body.index('PXURLRouterBundleForURL(url)'))
         self.assertLess(body.index('PXURLRouterBundleForURL(url)'), body.index('containersForBundle:'))
 
     def test_only_payment_requests_start_transaction(self):
@@ -69,7 +68,7 @@ class TestPaymentRouter(unittest.TestCase):
 
     def test_window_fallback_never_steals_parallelx_handle(self):
         self.assertNotIn('makeKeyAndVisible', ROUTER)
-        self.assertIn('initWithWindowScene:scene', ROUTER)
+        self.assertNotIn('[[UIWindow alloc]', ROUTER)
         self.assertIn('Never create a scene-less key window', ROUTER)
         self.assertIn('UIAlertControllerStyleActionSheet', ROUTER)
         self.assertIn('style:UIAlertActionStyleCancel', ROUTER)

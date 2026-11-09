@@ -122,7 +122,7 @@ def main():
             if bundle:
                 ok = filters.get("Bundles") == [bundle]
             else:
-                ok = filters.get("Bundles") in (["com.apple.springboard"], ["com.apple.springboard", "pkd"]) if not bundle else filters.get("Bundles") == [bundle]
+                ok = filters.get("Bundles") == [bundle] if bundle else filters.get("Bundles") == ["com.apple.springboard"]
             if not ok or image.stat().st_mode & 0o111 == 0:
                 raise ValueError(f"wrong filter/permissions for {name}: {filters}")
             pac = inspect(image, arch)

@@ -32,9 +32,10 @@ class URLHookSourceSafety(unittest.TestCase):
         entries = {
             "PXHandleOpenRequest": "paymentURLForRequest:request options:nil",
             "PXHandleWorkspaceRequest": "handleOpenRequest:request options:options",
-            "PXHandleOpenURLCore": "scheme.length",
+            "PXHandleOpenURLCore": "isPaymentURL:(NSURL *)url",
             "PXProbeOpenURL": "isPaymentURL:url",
             "PXProbeOpenURLOptions": "isPaymentURL:url",
+            "PXRouteWorkspaceOpen": "isPaymentURL:(NSURL *)url",
         }
         for name, predicate in entries.items():
             with self.subTest(entry=name):

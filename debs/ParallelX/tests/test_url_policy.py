@@ -39,7 +39,7 @@ class URLPolicyTests(unittest.TestCase):
 
     def test_nonpayment_and_notification_bail_out_before_crane(self):
         for selector, predicate in (
-                ('+ (BOOL)handleOpenURL:', 'scheme.length'),
+                ('+ (BOOL)handleOpenURL:', 'isPaymentURL:url'),
                 ('+ (BOOL)handleOpenRequest:', 'paymentURLForRequest:request options:options')):
             body = implementation(ROUTER, selector)
             self.assertLess(body.index(predicate), body.index('containersForBundle:'))
@@ -92,7 +92,7 @@ class URLPolicyTests(unittest.TestCase):
     def test_alert_never_creates_a_scene_less_window(self):
         presenter = ROUTER.split('static UIViewController *PXURLRouterPresenter', 1)[1].split('@implementation', 1)[0]
         self.assertNotIn('makeKeyAndVisible', ROUTER)
-        self.assertIn('initWithWindowScene:scene', ROUTER)
+        self.assertNotIn('[[UIWindow alloc]', ROUTER)
         self.assertIn('return nil; // Never create a scene-less key window', presenter)
         self.assertIn('UIApplication.sharedApplication', presenter)
 

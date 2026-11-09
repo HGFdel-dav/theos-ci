@@ -21,7 +21,6 @@ static NSUInteger const PXURLRouterPollLimit = 25;
 @property(nonatomic, copy) NSString *container;
 @property(nonatomic, copy) void (^proceed)(void);
 @property(nonatomic, strong) UIAlertController *alert;
-@property(nonatomic, strong) UIWindow *chooserWindow;
 @property(nonatomic) BOOL selected;
 @property(nonatomic) BOOL stopRequested;
 @property(nonatomic) BOOL requiresExit;
@@ -207,56 +206,6 @@ static UIViewController *PXURLRouterPresenter(void) {
     return PXURLRoutePayment(scheme.UTF8String, host.UTF8String, path.UTF8String, action.UTF8String);
 }
 
-// A cross-app share arrives as a document payload, not as a payment URL. Only
-// these unambiguous markers count; everything else keeps passing through.
-+ (BOOL)isShareRequest:(id)request options:(id)options {
-    for (id object in @[request ?: NSNull.null, options ?: NSNull.null]) {
-        if ([object isKindOfClass:NSDictionary.class]) {
-            NSDictionary *dictionary = object;
-            // __LaunchIntent is how a WeChat-style share arrives; a bare
-            // __PayloadOptions means a payload dictionary is attached.
-            for (NSString *key in @[@"__DocumentOpen4LS", @"__LaunchIntent", @"__PayloadOptions"]) {
-                if (dictionary[key] && ![dictionary[key] isKindOfClass:NSNull.class]) return YES;
-            }
-        }
-    }
-    for (id object in @[request ?: NSNull.null, options ?: NSNull.null]) {
-        NSURL *url = PXURLRouterTargetURL(object, 0);
-        if ([url.scheme.lowercaseString isEqualToString:@"file"]) return YES;
-    }
-    return NO;
-}
-
-// A share may name the share extension (com.tencent.xin.sharetimeline) or the
-// hosting app instead of the target app. Walk both, and the extension's parent,
-// and keep the first that really has more than one container.
-+ (NSString *)shareBundleForRequest:(id)request options:(id)options {
-    NSMutableArray<NSString *> *candidates = [NSMutableArray array];
-    if ([request isKindOfClass:NSString.class] && [(NSString *)request length])
-        [candidates addObject:request];
-    if ([options isKindOfClass:NSDictionary.class]) {
-        for (NSString *key in @[@"__AppBasedViewService", @"__AppLink4LS", @"__UserActivity4LS"]) {
-            id value = ((NSDictionary *)options)[key];
-            if ([value isKindOfClass:NSString.class] && [(NSString *)value length])
-                [candidates addObject:value];
-        }
-    }
-    for (NSString *candidate in [candidates copy]) {
-        NSRange dot = [candidate rangeOfString:@"." options:NSBackwardsSearch];
-        if (dot.location != NSNotFound && dot.location > 0)
-            [candidates addObject:[candidate substringToIndex:dot.location]];
-    }
-    for (NSString *candidate in candidates) {
-        if ([PXCloneCrane containersForBundle:candidate].count >= 2) return candidate;
-    }
-    return candidates.firstObject;
-}
-
-+ (BOOL)hasTargetURL:(id)request options:(id)options {
-    return [self paymentURLForRequest:request options:options] != nil ||
-        PXURLRouterTargetURL(request, 0) != nil || PXURLRouterTargetURL(options, 0) != nil;
-}
-
 + (NSURL *)paymentURLForRequest:(id)request options:(id)options {
     NSURL *direct = PXURLRouterTargetURL(options, 0);
     NSURL *nested = PXURLRouterTargetURL(request, 0);
@@ -269,7 +218,7 @@ static UIViewController *PXURLRouterPresenter(void) {
     // Do not resolve a target, touch Crane or create state for plain URLs.
     [PXCloneProbe log:@"PAY url=%@", url.absoluteString.length > 70 ?
         [url.absoluteString substringToIndex:70] : url.absoluteString];
-    if (!NSThread.isMainThread || !proceed || !url.scheme.length) return NO;
+    if (!NSThread.isMainThread || !proceed || ![self isPaymentURL:url]) return NO;
     NSString *bundle = PXURLRouterBundleForURL(url);
     if (!bundle.length) return NO;
     NSArray<NSDictionary *> *containers = [PXCloneCrane containersForBundle:bundle];
@@ -285,26 +234,13 @@ static UIViewController *PXURLRouterPresenter(void) {
     // bundle-only requests carry no URL at all. 0.33 answered them by bundle
     // and that is the only shape that worked on device; only a URL that is
     // present and clearly not a payment is skipped here.
-    BOOL payment = url && [self isPaymentURL:url];
-    // Everything that carries a real URL is treated as a share: the container
-    // count decides whether it is worth a chooser, and single-account apps
-    // still pass through immediately.
-    if (!url && ![self isShareRequest:request options:options]) return NO;
-    NSString *bundle = payment ? PXURLRouterBundleFromRequest(request)
-                               : [self shareBundleForRequest:request options:options];
-    [PXCloneProbe log:@"%@ open url=%@ bundle=%@", payment ? @"PAY" : @"SHARE",
-        raw ?: @"(none)", bundle ?: @"(nil)"];
+    if (url && ![self isPaymentURL:url]) return NO;
+    NSString *bundle = PXURLRouterBundleFromRequest(request);
+    [PXCloneProbe log:@"PAY open url=%@ bundle=%@", raw ?: @"(none)", bundle ?: @"(nil)"];
     if (!bundle.length) return NO;
     NSArray<NSDictionary *> *containers = [PXCloneCrane containersForBundle:bundle];
-    [PXCloneProbe log:@"%@ gate bundle=%@ n=%lu", payment ? @"PAY" : @"SHARE",
-        bundle, (unsigned long)containers.count];
+    [PXCloneProbe log:@"PAY gate bundle=%@ n=%lu", bundle, (unsigned long)containers.count];
     if (containers.count >= 2) return [self beginBundle:bundle containers:containers proceed:proceed];
-    if (!payment) {
-        // Single-account share: let the caller's normal forward run, exactly
-        // as if we had not been involved (no callback fired from inside).
-        [PXCloneProbe log:@"SHARE pass"];
-        return NO;
-    }
     // Catalog still cold: hold the request (falling through launches the
     // current account before the chooser can appear) and poll briefly.
     PXURLRoutingTransaction *transaction = [PXURLRoutingTransaction new];
@@ -422,27 +358,6 @@ static UIViewController *PXURLRouterPresenter(void) {
         alert.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(presenter.view.bounds),
             CGRectGetMidY(presenter.view.bounds), 1, 1);
         alert.popoverPresentationController.permittedArrowDirections = 0;
-    }
-    // A share runs as a remote extension sheet that sits above SpringBoard's
-    // own windows: an alert presented from the base controller renders behind
-    // it. Host the chooser in its own high-level window of the same scene.
-    UIViewController *base = presenter;
-    @try {
-        UIWindowScene *scene = presenter.view.window.windowScene;
-        if (scene) {
-            UIWindow *overlay = [[UIWindow alloc] initWithWindowScene:scene];
-            overlay.windowLevel = UIWindowLevelAlert + 5;
-            overlay.rootViewController = [UIViewController new];
-            overlay.hidden = NO;
-            // The controller must be in the hierarchy before presenting, or
-            // iOS warns and the alert can stay invisible.
-            [overlay layoutIfNeeded];
-            transaction.chooserWindow = overlay;
-            presenter = overlay.rootViewController;
-        }
-    } @catch (__unused NSException *exception) {
-        transaction.chooserWindow = nil;
-        presenter = base;
     }
     @try {
         [presenter presentViewController:alert animated:YES completion:^{
@@ -571,13 +486,7 @@ static UIViewController *PXURLRouterPresenter(void) {
     UIAlertController *alert = transaction.alert;
     transaction.alert = nil;
     transaction.containers = nil;
-    UIWindow *overlay = transaction.chooserWindow;
-    transaction.chooserWindow = nil;
     if (alert.presentingViewController) [alert dismissViewControllerAnimated:YES completion:nil];
-    if (overlay) {
-        overlay.hidden = YES;
-        overlay.rootViewController = nil;
-    }
     // A late real authentication callback may still switch Crane. Keep a
     // quarantined slot, without the opener, until that callback actually ends.
     if (!transaction.authenticationOutstanding) PXURLRouterActive = nil;

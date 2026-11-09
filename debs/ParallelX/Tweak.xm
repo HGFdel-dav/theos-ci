@@ -276,22 +276,9 @@ static void PXHandleOpenRequest(id self, SEL command, id service, id request, id
 static void PXHandleWorkspaceRequest(id self, SEL command, id request, id options,
                                      id settings, id origin, id result) {
     if (!PXOrigWorkspaceRequest) return;
-    [PXCloneProbe log:@"SBREQ hit class=%@ req=%@ keys=%@", NSStringFromClass([request class]),
-        [request isKindOfClass:NSString.class]
-            ? (((NSString *)request).length > 60 ? [(NSString *)request substringToIndex:60] : request) : @"(nonstr)",
+    [PXCloneProbe log:@"SBREQ hit class=%@ keys=%@", NSStringFromClass([request class]),
         [options isKindOfClass:NSDictionary.class]
             ? [[(NSDictionary *)options allKeys] componentsJoinedByString:@","] : @"(nodict)"];
-    id payload = [options isKindOfClass:NSDictionary.class]
-        ? ((NSDictionary *)options)[@"__PayloadOptions"] : nil;
-    if (payload) {
-        NSString *shape = NSStringFromClass([payload class]);
-        if ([payload isKindOfClass:NSDictionary.class])
-            shape = [shape stringByAppendingFormat:@":%@",
-                [[(NSDictionary *)payload allKeys] componentsJoinedByString:@","]];
-        else if ([payload isKindOfClass:NSString.class])
-            shape = [shape stringByAppendingFormat:@":%@", [(NSString *)payload substringToIndex:MIN(60u, [(NSString *)payload length])]];
-        [PXCloneProbe log:@"SBREQ po=%@", shape];
-    }
     // Notification/bundle-only requests have no actual target payment URL.
     // This test precedes block copy, proceed creation and all catalog work.
     if (!NSThread.isMainThread || PXURLForwardDepth) {
@@ -313,8 +300,8 @@ static void PXHandleOpenURLCore(id self, SEL command, id url, BOOL display,
                                 BOOL animating, id settings, id origin, id result) {
     if (!PXOrigOpenURLCore) return;
     [PXCloneProbe log:@"SBURL hit %@", [url isKindOfClass:NSURL.class] ? ((NSURL *)url).absoluteString : [url description]];
-    if (!NSThread.isMainThread || PXURLForwardDepth || ![url isKindOfClass:NSURL.class] ||
-        !((NSURL *)url).scheme.length) {
+    if (!NSThread.isMainThread || PXURLForwardDepth ||
+        ![url isKindOfClass:NSURL.class] || ![PXCloneURLRouter isPaymentURL:(NSURL *)url]) {
         PX_FORWARD_URL(PXOrigOpenURLCore(self, command, url, display, animating, settings, origin, result));
         return;
     }
@@ -420,8 +407,8 @@ static void PXProbeOpenURLOptions(id self, SEL command, NSURL *url,
 // Each entry supplies its own original; the saved IMP always matches _cmd.
 static BOOL PXRouteWorkspaceOpen(id self, SEL command, id url, id options, PXWorkspaceOpenIMP original) {
     if (!original) return NO;
-    if (!NSThread.isMainThread || PXURLForwardDepth || ![url isKindOfClass:NSURL.class] ||
-        !((NSURL *)url).scheme.length) {
+    if (!NSThread.isMainThread || PXURLForwardDepth ||
+        ![url isKindOfClass:NSURL.class] || ![PXCloneURLRouter isPaymentURL:(NSURL *)url]) {
         PX_FORWARD_URL(return original(self, command, url, options));
     }
     __block BOOL forwarded = NO;
@@ -598,19 +585,6 @@ static void PXForcePluginState(void) {
 // classes and run loop they need already exist, then start the panel.
 __attribute__((unused)) static const uintptr_t PXOrigInitOffsets[] = { 0x40bc, 0xab04, 0x6aabc };
 
-// pkd starts share extensions, which never touch the SpringBoard app-open
-// path. Dump PKHost first so the right selector is picked from a real list.
-static void PXPkdDump(void) {
-    Class host = NSClassFromString(@"PKHost");
-    unsigned int count = 0;
-    Method *methods = host ? class_copyMethodList(host, &count) : NULL;
-    [PXCloneProbe log:@"PKD class=%d methods=%u", (int)(host != nil), count];
-    for (unsigned int index = 0; index < count && index < 40; index++)
-        [PXCloneProbe log:@"PKDM %s %s", sel_getName(method_getName(methods[index])),
-            method_getTypeEncoding(methods[index])];
-    free(methods);
-}
-
 static BOOL PXClassHasValue(Class cls, NSString *key) {
     if (!cls) return NO;
     @try { return [cls valueForKey:key] != nil; }
@@ -678,7 +652,6 @@ static void PXBootstrap(NSUInteger attempt) {
     NSString *bundleID = NSBundle.mainBundle.bundleIdentifier;
     if (attempt == 0) [PXCloneProbe log:@"BOOT-LOADED bid=%@", bundleID ?: @"(nil)"];
     BOOL springboard = [bundleID isEqualToString:@"com.apple.springboard"];
-    if ([bundleID isEqualToString:@"com.apple.pkd"]) { PXPkdDump(); return; }
     // Match the SpringBoard-only image filter; never install in app/extensions.
     if (!springboard) return;
     if (attempt == 0) {
