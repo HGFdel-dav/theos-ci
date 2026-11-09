@@ -1,73 +1,62 @@
-/* ReynardDefault: 把网页里点到的非网页链接交给系统 App。
-   Gecko 对未知协议的内容点击既不发 OnLoadRequest 也不发 OnPreNavigation，
-   所以在页面里直接截住点击，再用 runtime.sendMessage 报给宿主。 */
+/* ReynardDefault click bridge v2.
+   It never opens an app during load, refresh, history, or background work.
+   Only a trusted primary click on a non-web anchor reaches the bridge. */
 (function () {
-  if (window.__rdHandoffInstalled) return;
-  window.__rdHandoffInstalled = true;
+  'use strict';
+  if (window.__rdHandoffV2Installed) return;
+  window.__rdHandoffV2Installed = true;
 
-  var INTERNAL = {
-    http: 1, https: 1, about: 1, data: 1, blob: 1, javascript: 1,
-    'moz-extension': 1, jar: 1, 'view-source': 1, file: 1, resource: 1,
-    wyciwyg: 1, ws: 1, wss: 1, ftp: 1
-  };
+  var INTERNAL = new Set([
+    'http', 'https', 'about', 'data', 'blob', 'javascript', 'moz-extension',
+    'jar', 'view-source', 'file', 'resource', 'wyciwyg', 'ws', 'wss', 'ftp',
+    'intent', 'reynard', 'chrome', 'chrome-extension'
+  ]);
+  var BRIDGE = 'https://reynarddefault.invalid/.well-known/handoff/v2#';
 
-  function schemeOf(href) {
-    try {
-      return (new URL(href, document.baseURI).protocol || '').replace(':', '').toLowerCase();
-    } catch (e) {
-      var m = /^([a-z][a-z0-9+.\-]*):/i.exec(href || '');
-      return m ? m[1].toLowerCase() : '';
+  function clickedLink(event) {
+    var path = typeof event.composedPath === 'function' ? event.composedPath() : [];
+    for (var i = 0; i < path.length; i++) {
+      var item = path[i];
+      if (item && /^(a|area)$/i.test(item.nodeName || '') && item.getAttribute) return item;
     }
+    var target = event.target;
+    if (target && target.nodeType === 3) target = target.parentElement;
+    return target && target.closest ? target.closest('a[href],area[href]') : null;
   }
 
-  // Pages like t.me advertise their app link in <meta property="al:ios:url">.
-  // Under the Android user agent their button is a plain https link, so fall back
-  // to the advertised app URL instead of letting the page reload itself.
-  function advertisedAppURL() {
-    var meta = document.querySelector('meta[property="al:ios:url"], meta[property="twitter:app:url:iphone"]');
-    var value = meta && meta.getAttribute('content');
-    if (!value) return null;
-    return INTERNAL[schemeOf(value)] ? null : value;
+  function requestID() {
+    var bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, function (b) { return b.toString(16).padStart(2, '0'); }).join('');
   }
-
-  function debug(stage, extra) {
-    try { browser.runtime.sendMessage({ rdDebug: stage, extra: extra || '' }); } catch (e) {}
-  }
-
-  // No messaging: navigate to a sentinel https URL, the host recognises it in
-  // OnPreNavigation, opens the real URL and denies this navigation.
-  // Carry both the clicked https URL (for the site's universal link) and the
-  // app URL the page advertises, so the host can behave like Safari.
-  function report(appURL, httpURL) {
-    var hash = '#a=' + encodeURIComponent(appURL);
-    if (httpURL) hash = '#h=' + encodeURIComponent(httpURL) + hash;
-    try { location.href = 'https://reynarddefault.open/' + hash; } catch (e) {}
-  }
-
-  debug('boot', location.href);
-  try { document.title = 'RD:' + document.title; } catch (e) {}
 
   document.addEventListener('click', function (event) {
-    if (event.rdHandled) return;
-    var node = event.target;
-    while (node && node.nodeName !== 'A') node = node.parentNode;
-    var href = node && node.getAttribute && node.getAttribute('href');
-    debug('click', (node ? node.nodeName : '-') + ' ' + (href || ''));
-    if (!href) return;
-    var scheme = schemeOf(href);
-    if (scheme === 'http' || scheme === 'https') {
-      var appURL = advertisedAppURL();
-      if (!appURL) return;
+    // No synthetic clicks, modifiers, secondary buttons, downloads, hidden pages,
+    // or previously cancelled events. This is the user-click gate.
+    if (event.isTrusted !== true || event.defaultPrevented || event.button !== 0 ||
+        event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || document.hidden) return;
+
+    var link = clickedLink(event);
+    if (!link || link.hasAttribute('download')) return;
+    var raw = link.getAttribute('href');
+    if (!raw || raw.length > 16384 || /[\u0000-\u0020\u007f]/.test(raw)) return;
+
+    var url;
+    try { url = new URL(raw, document.baseURI); } catch (_) { return; }
+    var scheme = url.protocol.slice(0, -1).toLowerCase();
+    if (!scheme || INTERNAL.has(scheme)) return;
+
+    var id;
+    try { id = requestID(); } catch (_) { return; }
+    var fragment = 'v=2&id=' + id + '&ts=' + Date.now() +
+      '&a=' + encodeURIComponent(url.href) + '&h=';
+    try {
+      // One '#' only; the native parser validates every field and decodes once.
+      location.href = BRIDGE + fragment;
       event.preventDefault();
-      event.stopPropagation();
-      report(appURL, new URL(href, document.baseURI).href);
-      return;
+      event.stopImmediatePropagation();
+    } catch (_) {
+      // If navigation assignment itself fails, the browser retains its normal path.
     }
-    if (!scheme || INTERNAL[scheme]) return;
-    event.preventDefault();
-    event.stopPropagation();
-    event.rdHandled = true;
-    try { href = new URL(href, document.baseURI).href; } catch (e) {}
-    report(href);
   }, true);
 })();

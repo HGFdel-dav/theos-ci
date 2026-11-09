@@ -1,0 +1,84 @@
+name: ReynardDefault repair build
+on:
+  push:
+    branches: ['reynarddefault-1.5.34-click-fix']
+    paths: ['debs/ReynardDefault/**', '.github/workflows/build-reynard-repair.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: macos-15-intel
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install host image test dependency
+        run: python3 -m pip install Pillow
+      - name: Host regression checks
+        working-directory: debs/ReynardDefault
+        run: python3 tests/run_checks.py
+      - name: Foundation routing integration test
+        working-directory: debs/ReynardDefault
+        run: |
+          set -e
+          xcrun clang++ -std=c++17 -fobjc-arc -fblocks -Wall -Wextra -Werror -framework Foundation tests/native_router_test.mm -o "$RUNNER_TEMP/rd-native-tests"
+          "$RUNNER_TEMP/rd-native-tests"
+  build:
+    needs: verify
+    runs-on: macos-15-intel
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scheme: roothide
+            arch: arm64e
+          - scheme: rootless
+            arch: arm64
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare pinned SDK and RootHide Theos
+        run: |
+          set -e
+          brew install ldid xz dpkg
+          git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/roothide/theos.git "$HOME/theos"
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/xybp888/iOS-SDKs.git "$HOME/iossdks"
+          git -C "$HOME/iossdks" sparse-checkout set iPhoneOS15.5.sdk
+          mkdir -p "$HOME/theos/sdks"
+          cp -R "$HOME/iossdks/iPhoneOS15.5.sdk" "$HOME/theos/sdks/"
+          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
+      - name: Build authorised project only
+        working-directory: debs/ReynardDefault
+        run: |
+          set -e
+          make clean
+          make package FINALPACKAGE=1 DEBUG=0 ARCHS=${{ matrix.arch }} THEOS_PACKAGE_SCHEME=${{ matrix.scheme }}
+      - name: Capture provenance and payload listings
+        run: |
+          set -e
+          mkdir -p ci-out/${{ matrix.scheme }}
+          cp debs/ReynardDefault/packages/*.deb ci-out/${{ matrix.scheme }}/
+          git rev-parse HEAD > ci-out/${{ matrix.scheme }}/SOURCE-COMMIT
+          git -C "$HOME/theos" rev-parse HEAD > ci-out/${{ matrix.scheme }}/THEOS-COMMIT
+          xcrun clang --version > ci-out/${{ matrix.scheme }}/COMPILER.txt
+          find debs/ReynardDefault/.theos -name '*.dSYM' -prune -exec cp -R '{}' ci-out/${{ matrix.scheme }}/ \;
+          for deb in ci-out/${{ matrix.scheme }}/*.deb; do
+            dpkg-deb -I "$deb" > "$deb.info.txt"
+            dpkg-deb -c "$deb" > "$deb.contents.txt"
+            mkdir "$deb.control"
+            dpkg-deb -e "$deb" "$deb.control"
+          done
+          (cd ci-out/${{ matrix.scheme }} && shasum -a 256 *.deb > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ReynardDefault-${{ matrix.scheme }}-${{ github.sha }}
+          path: ci-out/${{ matrix.scheme }}/
+          if-no-files-found: error
