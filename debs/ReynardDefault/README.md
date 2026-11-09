@@ -6,18 +6,16 @@ When enabled, any link that would normally open in Safari is intercepted at the 
 
 ## 1.5.34 repair candidate
 
-This update targets user-clicked links only. The signed content script transports custom-scheme clicks with a single encoded fragment; native code validates a real Gecko gesture, request identity and freshness before opening. Known Telegram `tg:resolve` forms are normalized to `tg://resolve` without losing query or fragment data. Other schemes keep their documented opaque/hierarchical form.
+The package keeps the original SpringBoard Safari-to-Reynard behavior and adds a native Gecko `nsDocShell::OnLinkClick` route inside Reynard itself. It does not install a WebExtension, edit the Reynard profile, or change Gecko defaults. Only a real top-level user click is eligible; history, reload, load-error, background messages, downloads, POST/header links and non-user navigation call the original Gecko path.
 
-HTTP(S) remains an original browser navigation. Only an eligible user-gesture PreNavigation attempts `universalLinksOnly`; failure returns `false` to Gecko so the same request continues. History, load-error and arbitrary extension-message events never launch apps. Page-wide metadata is not substituted for unrelated links.
+For an HTTP(S) click, the system is asked to handle the exact clicked URL as a Universal Link. If no app accepts it, Gecko continues the same original URL. For a custom scheme, the complete clicked URI is normalized only for known Telegram `tg:` action spellings and passed to the matching app; other schemes are preserved. The XUL hook is guarded by the installed Firefox 159 UUID and OnLinkClick prologue; a mismatch refuses the new route and leaves the original Safari redirect behavior.
 
-The extension is installed through Gecko's signed-package interface. This candidate no longer forges `extensions.json`, overrides signature preferences, broadcasts installation commands, or reloads tabs automatically. An installation confirmation may be displayed by Reynard. A small onInstalled event page refreshes the click handler in existing HTTP(S) tabs; it does not navigate or open apps.
-
-Validation status: source/host tests and package provenance are separate from device acceptance. Third-party app target screens, platform confirmation dialogs and asynchronous scripted/Android intent links require runtime compatibility; no blanket guarantee of Safari-equivalent behavior is claimed.
+This is a static/CI candidate until device acceptance.
 
 ## Features
 
 - **Safari redirect** — hooks `FBSystemServiceOpenApplicationRequest` in SpringBoard to swap the bundle identifier
-- **External link handoff** — inside Reynard, non-web links (`tg://`, `mailto:`, `tel:`, …) are handed to the matching app instead of dying in the browser. Hooks `-[GeckoEventDispatcherWrapper dispatchToSwift:message:callback:]` in `Frameworks/GeckoView.framework`, answers "handled" to Gecko and calls `UIApplication.openURL:`; web schemes stay in the browser
+- **Reynard click handoff** — native Gecko link-click route; no separate extension required.
 - **Settings toggles** — master switch plus one switch per direction, via PreferenceLoader
 - **Control Centre toggle** — quick toggle for the Safari redirect via CCSupport module
 

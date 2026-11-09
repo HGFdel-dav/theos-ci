@@ -26,7 +26,13 @@
 
 ## 未验证／限制
 
-- 尚无本版 iOS 编译、验包或真机验收。主机测试不证明手机运行。
+- 本版 iOS 双架构编译与静态验包已完成；仍未安装、未真机验收。主机测试不证明手机运行。
+- 最终 commit `27cc0e99a7b428f181e823f6035d094d267df9a0`，独立分支 `reynarddefault-1.5.34-click-fix`，CI `42623663356` 的 verify 与双 build 全 success；原生 Foundation 路由集成测试50项通过。
+- 首轮 `42622580510` 在原生测试编译发现 memchr 需显式指针转换，已修并补 C++ 预检；该轮没有包，不计功能通过。
+- 交付 `attachments/ReynardDefault-1.5.34`，长期 `shared/ReynardDefault-releases/1.5.34`，双DEB/Source.zip/报告/哈希；CI精确源码包保留推送时STATUS，不伪造未来状态。
+- RootHide DEB 102980B SHA256 `f7db7f291a0f9e539e43202266915ec1c1b24adaa59502c67ff969cb206773b5`；rootless 102740B `2cf1433acd3bf80875985f5ba6f5c1f77acdb63f255e73c47a4ee84819a5430e`；Source.zip `6da06d2e17dacf1447261b15115783cf1a5ad71b2368705cd26b20717d75817b`。
+- 每包20文件、3 Mach-O；SDK15.5/minOS14.0；两包全部 CodeDirectory SHA1/SHA256 页校验通过；无维护脚本。dSYM/完整CI日志已存长期交付目录。
+- 未安装/注销/重启、未改设备配置。临时OCR提取的签名凭据文件已删除，没有把凭据加入源码或交付目录。
 - 系统已经接收的 UIApplication 打开请求不能主动撤销；超时只保证插件不再重复响应/追加外跳。
 - Android intent、延时脚本自造跳转、系统限制页面和具体第三方 App 的内容路由不能承诺全部支持。不会声称与 Safari 所有行为完全相同。
 - 本版不回写修复旧版曾伪造的其他扩展数据库字段；正式安装会让引擎更新本扩展记录。没有执行设备清理。
