@@ -18,7 +18,7 @@ static const uint32_t kRDLinkPrologue[5] = {0xa9ba6ffc,0xa90167fa,0xa9025ff8,0xa
 /* Firefox 159 nsTStringRepr / nsTAutoStringN<char,16384> ABI. */
 struct RDGeckoCString { char *data; uint32_t length; uint16_t dataFlags; uint16_t classFlags; };
 struct RDGeckoLengthStorage { uint32_t value; };
-struct RDGeckoAutoCString { RDGeckoCString base; RDGeckoLengthStorage inlineCapacity; char storage[16384]; };
+struct RDGeckoAutoCString { RDGeckoCString base; RDGeckoLengthStorage inlineCapacity; char storage[64]; };
 struct RDGeckoU16String { char16_t *data; uint32_t length; uint16_t dataFlags; uint16_t classFlags; };
 struct RDGeckoStringBufferHeader { std::atomic<uint32_t> refCount; uint32_t storageSize; };
 typedef int32_t (*RDGeckoGetSpecFn)(void *, RDGeckoCString *);
@@ -30,7 +30,7 @@ typedef int32_t (*RDOnLinkClickFn)(void *,void *,void *,const RDGeckoU16String *
 static_assert(sizeof(RDGeckoCString)==16,"nsCString ABI mismatch");
 static_assert(offsetof(RDGeckoAutoCString,inlineCapacity)==16,"nsTAutoString length offset mismatch");
 static_assert(offsetof(RDGeckoAutoCString,storage)==20,"nsTAutoString storage offset mismatch");
-static_assert(sizeof(RDGeckoAutoCString)==16404,"nsTAutoStringN<char,16384> ABI mismatch");
+static_assert(sizeof(RDGeckoAutoCString)==84,"nsTAutoStringN<char,64> ABI mismatch");
 static_assert(sizeof(RDGeckoU16String)==16,"nsAString ABI mismatch");
 static_assert(sizeof(RDGeckoStringBufferHeader)==8,"StringBuffer header ABI mismatch");
 static RDOnLinkClickFn rdOriginalOnLinkClick = nullptr;
@@ -65,7 +65,7 @@ static BOOL RDNativeInternalScheme(NSString *scheme) {
 }
 static NSString *RDNativeURISpec(void *uri) {
     if (!uri) return nil;
-    RDGeckoAutoCString out = {{NULL,0,0,0},{16383},{0}};
+    RDGeckoAutoCString out = {{NULL,0,0,0},{63},{0}};
     out.base.data=out.storage;
     out.base.dataFlags=0x11;
     out.base.classFlags=0x01;
