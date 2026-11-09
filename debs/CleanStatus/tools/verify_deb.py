@@ -82,7 +82,7 @@ def inspect(deb,out):
     for line in raw.splitlines():
         if line and not line.startswith(' ') and ':' in line:
             key,val=line.split(':',1);fields[key]=val.strip()
-    for key,want in {'Package':'com.local.cleanstatus','Version':'0.2.5','Architecture':'iphoneos-arm64e'}.items():
+    for key,want in {'Package':'com.local.cleanstatus','Version':'0.3.0','Architecture':'iphoneos-arm64e'}.items():
         require(fields.get(key)==want,key+' mismatch')
     report={'deb':deb.name,'sha256':hashlib.sha256(deb.read_bytes()).hexdigest(),'fields':fields}
     with tempfile.TemporaryDirectory(prefix='cleanstatus-deb-') as temp:
@@ -96,11 +96,14 @@ def inspect(deb,out):
         require(not any(p.is_symlink() for p in payload.rglob('*')),'unexpected payload symlinks')
         dyn=payload/'Library/MobileSubstrate/DynamicLibraries'
         require(plistlib.loads((dyn/'LocalCleanStatus.plist').read_bytes())=={'Filter':{'Bundles':['com.apple.UIKit','com.apple.springboard']}},'injection filter')
+        require(plistlib.loads((dyn/'LocalCleanStatusAnimations.plist').read_bytes())=={'Filter':{'Bundles':['com.apple.springboard']}},'animation injection must be SpringBoard only')
         pref=payload/'Library/PreferenceBundles/LocalCleanStatusPrefs.bundle'
         info=plistlib.loads((pref/'Info.plist').read_bytes())
         require(info['CFBundleExecutable']=='LocalCleanStatusPrefs' and info['NSPrincipalClass']=='LocalCleanStatusRootListController','panel linkage')
-        require(info['CFBundleVersion']==info['CFBundleShortVersionString']=='0.2.5','panel version')
+        require(info['CFBundleVersion']==info['CFBundleShortVersionString']=='0.3.0','panel version')
         require((pref/'LocalCleanStatusRoot.plist').is_file(),'missing specifiers')
+        for name in ('LocalCleanStatusAnimations.plist','LocalCleanStatusAnimationsAdvanced.plist'):
+            require(isinstance(plistlib.loads((pref/name).read_bytes()).get('items'),list),'missing animation panel '+name)
         for name,size in (('icon.png',29),('icon@2x.png',58),('icon@3x.png',87)):
             raw=(pref/name).read_bytes()
             require(raw.startswith(bytes.fromhex('89504e470d0a1a0a')) and int.from_bytes(raw[16:20],'big')==size and int.from_bytes(raw[20:24],'big')==size,'bad icon '+name)
@@ -116,7 +119,7 @@ def inspect(deb,out):
         for name,size in (('SettingsIcon.png',29),('SettingsIcon@2x.png',58),('SettingsIcon@3x.png',87)):
             raw=(module/name).read_bytes()
             require(raw.startswith(bytes.fromhex('89504e470d0a1a0a')) and int.from_bytes(raw[16:20],'big')==size and int.from_bytes(raw[20:24],'big')==size,'bad module settings icon '+name)
-        binaries=[dyn/'LocalCleanStatus.dylib',pref/'LocalCleanStatusPrefs',module/'LocalCleanStatusSystemActions']
+        binaries=[dyn/'LocalCleanStatus.dylib',dyn/'LocalCleanStatusAnimations.dylib',pref/'LocalCleanStatusPrefs',module/'LocalCleanStatusSystemActions']
         report['binaries']=[macho(p) for p in binaries]
         for p in binaries:
             require(os.access(p,os.X_OK),'binary executable permission')
