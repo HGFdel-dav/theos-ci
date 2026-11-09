@@ -365,8 +365,6 @@
 			<string>动画效果</string>
 			<key>detail</key>
 			<string>LocalCleanStatusAnimationsController</string>
-			<key>bundle</key>
-			<string>LocalCleanStatusPrefs</string>
 			<key>isController</key>
 			<true/>
 			<key>id</key>
