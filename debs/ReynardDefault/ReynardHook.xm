@@ -1345,7 +1345,7 @@ static NSSet *RDInternalSchemes(void) {
 // Try the clicked https URL as a universal link first (that is what Safari does,
 // and it lands inside the app), then fall back to the advertised app scheme.
 static void RDOpenTarget(NSURL *httpURL, NSURL *schemeURL) {
-    NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
+    NSURLComponents *components = schemeURL ? [NSURLComponents componentsWithURL:schemeURL resolvingAgainstBaseURL:NO] : nil;
     NSString *domain = nil;
     for (NSURLQueryItem *item in components.queryItems) {
         if ([item.name isEqualToString:@"domain"]) domain = item.value;
