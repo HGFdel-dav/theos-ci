@@ -2301,6 +2301,9 @@ static void MiniSightAnswerConfirm(BOOL allow) {
 /// specific verb wins, so a log grep is "查看日志", not "执行命令".
 static NSString *MiniSightDescribeCommand(NSString *action, NSString *command) {
     NSString *a = action.lowercaseString ?: @"", *c = command.lowercaseString ?: @"";
+    NSString *known = @{@"read_file": @"读取文件", @"write_file": @"写入文件", @"edit_file": @"修改文件",
+        @"list_dir": @"查看目录", @"browser_use": @"浏览网页", @"subagent_task": @"派发子任务"}[a];
+    if (known) return known;
     // Classify by the command first: relays vary the tool name.
     if ([c containsString:@"sed -i"] || [c containsString:@"plutil"] || [c containsString:@"cp /"] ||
         [c containsString:@"mv "]) return @"修改文件";
