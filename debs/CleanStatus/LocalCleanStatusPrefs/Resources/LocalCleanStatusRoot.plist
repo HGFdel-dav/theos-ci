@@ -350,6 +350,28 @@
 			<key>set</key>
 			<string>setPreferenceValue:specifier:</string>
 		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSGroupCell</string>
+			<key>label</key>
+			<string>动画效果</string>
+			<key>footerText</key>
+			<string>独立设置应用开合、神灯收缩与通知中心图标飞入。动画选项自动保存。</string>
+		</dict>
+		<dict>
+			<key>cell</key>
+			<string>PSLinkCell</string>
+			<key>label</key>
+			<string>动画效果</string>
+			<key>detail</key>
+			<string>LocalCleanStatusAnimationsController</string>
+			<key>bundle</key>
+			<string>LocalCleanStatusPrefs</string>
+			<key>isController</key>
+			<true/>
+			<key>id</key>
+			<string>localCleanStatusAnimations</string>
+		</dict>
 	</array>
 </dict>
 </plist>

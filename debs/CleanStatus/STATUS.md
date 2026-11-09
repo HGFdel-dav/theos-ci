@@ -1,40 +1,35 @@
-# CleanStatus 0.2.1 本地修复状态
+# CleanStatus 0.3.0 动画集成本地状态
 
-## 当前授权
-用户反馈 0.2.0 的三处失败并同意先本地修改：
-1. Wi-Fi/蓝牙长按没有 QuickCC2 原版列表效果。
-2. 缺图标指的是设置→控制中心模块列表，不是下拉控制中心图标。
-3. 原系统菜单有五项，现版真机只显示三项。
-仅本地修改、静态检查及必要只读取证。未授权 commit/push/CI/安装/卸载/修改设备设置/注销/安全模式/任何重启。
+## 授权与阶段
+用户同意中文动画方案，并强调独立开关、开即应用、关闭恢复正常，以及「原来的功能不要动」。用户本轮明确说「推送」，已授权本候选 commit/push 并运行 GitHub CI、下载验包。推送前本地检查已复核通过；未授权安装、注销、重启或修改设备配置。
 
-## 基线
-精确复制已交付 0.2.0 源码，与 Source.zip 逐文件差异为 0。
-- 候选 `/var/minis/shared/CleanStatus-0.2.1-local-20261106/`
-- 旧版 `/var/minis/shared/CleanStatus-cc-local-20261106/` 不改。
-- release: HGFdel-dav/theos-ci cleanstatus-0.2.0 @9b6f88b, CI109/42178907388。
-- baseline files SHA256 / protected-file hashes 在 `../CleanStatus-0.2.1-research-20261106/`。
-- 电池绘制 / 状态图标 / 未知部件 / 低电量逻辑 / 设置面板控制器源码本轮必须逐字保持。
+## 精确基线
+- 原功能：HGFdel-dav/theos-ci cleanstatus-0.2.5，4301746eba66244b1a869e7f53650184e6fca10b。
+- 新动画：ba31k/ios26-27-anims v1.5.2，8c3159717f8cb692dc017556a99bde3fa8cabaf0；保留原作者署名。
+- 工作目录：/var/minis/shared/CleanStatus-animation-0.3.0/source。
+- 原始基线解出在 ../research/baseline-0.2.5；保护哈希和原设置行见 docs/BASELINE-0.2.5-PROTECTED.json。
+- 31 个原有 .h/.m/.xm 全部逐字节一致；原设置24项内容及顺序一致，末尾仅新增动画分组/链接。
 
-## 发现（本次源码 + 只读设备证据）
-- 当前设备实装 CleanStatus 0.2.0；CCSupport 1.3.13.1。
-- dpkg 未返回 com.ichitaso.quickcc2 信息，不能沿用旧“两个都装着”的结论。
-- 原模块只有 Info.plist 和可执行，没有任何设置图标资源。
-- 原长按只是 UIAlertController action sheet；没有 table/refresher/dismiss/request state 的实际链路。
-- scan 超时只清 bool/写日志，不投递失败；回调代数在 UI 无真正校验；bluetooth action 立即 success=YES。
-- Hook 使用 method_setImplementation 对继承 Method 直接写，可能改到父类；buttons 按字符串精确类名寻找也缺子类与唯一性。
-- 原工具路径用 NSBundle.mainBundle（SpringBoard.app）的 Library 分段反推；这不是模块自身 Bundle。
-- SpringBoard 当前 UID501。已找到 launchctl/killall，权限0755 owner0；存在/可执行不证明 reboot 权限。
-- 尚未确认是否还存在原生菜单高度导致只显示三行的另一个因素，修复应固定五项并允许滚动。
+## 已实现
+- 同包第二个独立 dylib LocalCleanStatusAnimations，仅注入 SpringBoard；原 LocalCleanStatus 源列表及旧功能实现保持。
+- 动画独立配置 com.local.cleanstatus.animations.plist，隐根按插件/框架标记排名、mtime 选择一次并缓存；只迁移同名动画文件。
+- 独立动画总开关默认关闭；原插件总开关不影响动画开关。中文基础/高级页面共8开关、6实数滑条，150ms合并自动保存；跨子页保留待写值；保存失败可重试。
+- 应用开合/神灯/通知中心图标可分别选；透明通知中心、水滴、回弹、模糊、速度及慢放在高级页。
+- 关闭、减弱动态效果、取消路径恢复本模块记录的弹簧/滤镜/图层原值，清理网格和Dock自身令牌；代数丢弃旧完成回调。
+- 私有方法逐组核对参数/返回类型后安装；能力缺失时对应控件禁用并说明。显示帧只读内存快照，不读取配置文件。
 
-## 修复验收合同
-- CC2 表格交互：居中模态列表、信号/锁/当前连接、已配对状态、下拉刷新、独立关闭、选择后的真实连接/错误反馈。
-- 普通点击与展开后的系统连接模块不改；只有已开启并解锁、折叠、可见时接管长按。
-- generation/token/cancellation/timeout 真正接入；过期/关闭/锁屏/多次点击不会重弹或误操作。
-- 设置模块图标必须被元数据加载规则引用并随包安装。
-- 五个动作固定显示；可用才执行，不可用给明确原因，不静默隐藏，不以请求成功代替运行成功。
-- 所有危险动作第二次确认、重检开关/锁状态、单次执行；异步权限后端与进程退出状态可诊断。
-- 若需特权 helper，只支持固定 probe / userspace reboot，不接任意命令或参数，执行前校验；不更改设备现有二进制权限。
-- 原电池和其余既有功能不变。任何 RootHide 路径修复不得重新引入删除当前 plist 的迁移循环。
+## 本地检查结果
+- 旧核心：5,252,881；控制中心策略：658；源不变量：354。
+- 旧路径模型37例、Mach-O核验器46个正反例通过。
+- 新动画开关/减弱动态效果真值表、数值边界、结构体类型正反例、神灯连续反向及收敛数学测试通过。
+- 46个源码文件字符串注释外括号检查通过。
+- Logos预处理成功且无stderr。仅是源码转换，不是Objective-C++编译或链接。
+- 原31份源码/24项设置保护检查通过。Git推送工作树未动。
 
-## 状态
-本地修复进行中；未编译 iOS / 未出新 DEB / 未推送 / 未安装。
+## 仍未验证
+- 无精确15.5私有框架样本；15.0/15.6公开声明只作接口证据，不能当真机保证。
+- 未执行iOS编译/CI、DEB验包、安装加载、视觉效果或开关保存到最终画面的真机验证。
+- Timer Block内部调用签名、phase/direction含义、通知中心反向/取消时序、神灯网格、第三方动画/图标插件共存、原功能回归均需真机验收。
+- 原Wi-Fi/蓝牙/电池等此前未验项目保留原状态，本轮不宣称修复。个人热点灰色问题也未做设备对照诊断。
+
+下一步：提交具体候选请用户单独确认推送，获准后才触发GitHub CI。安装、注销、重启分别另问。
