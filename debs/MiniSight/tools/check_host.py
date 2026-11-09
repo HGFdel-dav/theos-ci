@@ -119,8 +119,29 @@ ok('dispatch_async(dispatch_get_main_queue()' in power and power.index('dispatch
 ok('MiniSightResources.m' in makefile and 'ImageIO' in makefile, '8c 资源加载实现/框架未纳入插件构建')
 ok('gMiniSightBubbleScroll.contentSize' in tweak and 'scrollEnabled' in tweak,
    '8d 气泡正文缺少限高滚动')
-ok('MiniSightDescribeCommand' in tweak and 'preview' in tweak,
+ok('MiniSightApprovalSummary.h' in tweak and
+   'MiniSightDescribeCommand' in read('MiniSightApprovalSummary.h') and
+   'MiniSightApprovalSummaryCore.h' in read('MiniSightApprovalSummary.h'),
    '8e 审批命令仍被 UI 截断')
+approval = read('MiniSightApprovalSummary.h')
+approval_core = read('MiniSightApprovalSummaryCore.h')
+ok('#include "MiniSightApprovalSummaryCore.h"' in approval and
+   'MiniSightDescribeCommand' in approval,
+   '8e1 审批摘要接口未接入有界分类器')
+ok('run_command' in approval_core and 'command' in approval_core and 'static void msa_cli' in approval_core,
+   '8e1 未解析 minis-mcp-cli 包装命令')
+ok('允许修改临时配置副本？' in approval_core and '未发现写回原路径的步骤' in approval_core,
+   '8e2 未说明临时配置副本及未写回原件')
+ok('temp_copy_edit' in approval_core and 'state.copies' in approval_core and
+   'state.only_temp' in approval_core,
+   '8e2a 未区分临时副本编辑与原文件写回路径')
+ok('original_write' in approval_core and 'RootHide 配置路径' in approval_core,
+   '8e3 未区分原始 RootHide 配置写入')
+ok('NSString *text = MiniSightDescribeCommand(action, command);' in tweak and
+   '允许%@？' not in tweak,
+   '8e4 UI 仍把原始命令拼回审批文案')
+ok('CGFloat maxWidth = MIN(360. * (0.8 + 0.2 * panelScale)' in read('MiniSightChatPanel.m'),
+   '8e5 审批修复不应改聊天面板宽度')
 ok('MiniSightCancelConfirm(void) {' in tweak and 'kMiniSightConfirmCancel' in tweak,
    '8f 审批隐藏/取消未拒绝收口')
 

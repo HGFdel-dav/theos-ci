@@ -3,7 +3,8 @@
 //  MiniSight
 //
 //  Petdex-style animated pet. A 9-row sprite sheet: row 0 idle, 1 run-right,
-//  2 run-left, 3 waving, 4 jumping, 5 failed, 6 waiting, 7 running, 8 review.
+//  2 run-left, 3 waving, 4 jumping, 5 sit/sleep/wake, 6 waiting, 7 running,
+//  8 review. Rows refer to the host's already upright, vertically flipped atlas.
 //  Frame counts/timings follow crafter-station/petdex (MIT).
 //
 
@@ -25,7 +26,6 @@ typedef NS_OPTIONS(NSUInteger, MiniSightPetMotionLockReason) {
 @property (nonatomic, strong, null_resettable) UIImage *image;
 /// 0..71: outer pet in an 8x9 pack. Each outer cell contains its own 8x9 frames.
 @property (nonatomic) NSInteger variantIndex;
-/// 0 = 64x81 pack, 1 = whole single image, 2 = v1 outer cell, 3 = v2 inner cell.
 /// 0 = 64x81 pack, 1 = whole static image, 2 = legacy outer cell,
 /// 3 = 8x9 single animation sheet, 4 = static 72-pose sheet (outer cell).
 @property (nonatomic) NSInteger spriteLayout;
@@ -73,7 +73,8 @@ typedef NS_OPTIONS(NSUInteger, MiniSightPetMotionLockReason) {
 /// Main-thread, changed geometry only (including the final motion point/clamps).
 @property (nonatomic, copy, nullable) void (^onGeometryChanged)(void);
 
-/// Only changes the delay between roaming actions, not sprite/display-link FPS.
+/// Authoritative assistant activity (chat/voice/tool work). YES wakes and blocks
+/// resident sleep; changes the roam delay, never sprite/display-link FPS.
 @property (nonatomic) BOOL activityActive;
 /// 0.6 lively, 1.0 natural, 4.0 quiet, 0 = no roaming (breathing/idle stays).
 @property (nonatomic) double roamPace;
@@ -91,6 +92,18 @@ typedef NS_OPTIONS(NSUInteger, MiniSightPetMotionLockReason) {
 @property (nonatomic) BOOL interactionActive;
 /// Low power: longer resident-idle gaps only; sprite/movement/gravity stay fluid.
 @property (nonatomic) BOOL reducedWork;
+
+/// Record a real interaction and wake without replacing drag/walk/jump/fling.
+/// Safe to repeat during a gesture; does not start playback or clear any lock.
+- (void)wakeForInteraction;
+/// One short raised-hand response (row 3) when its pose is available; otherwise
+/// queue it for at most 3 seconds. Call once per tap/chat/voice/approval event,
+/// not for every stream token, gravity sample, layout update or drag Changed.
+- (void)requestAttentionResponse;
+/// Request bounded idle sleep; ignored while hidden/stopped/active/locked or a
+/// gesture/motion/held action owns the pose. NO wakes, never starts playback.
+- (void)setResidentSleeping:(BOOL)sleeping;
+@property (nonatomic, readonly, getter=isResidentSleeping) BOOL residentSleeping;
 
 /// Compatibility callback storage only. The host owns/invokes the unified press.
 @property (nonatomic, copy, nullable) void (^onLongPress)(void);

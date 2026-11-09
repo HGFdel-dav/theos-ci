@@ -18,19 +18,25 @@
 #import <math.h>
 #import <stdlib.h>
 #import "MiniSightBlip.h"
+#import "MiniSightLog.h"
+#import "MiniSightPetBehavior.h"
 
 typedef NS_ENUM(NSInteger, MiniSightPetState) {
     MiniSightPetStateIdle = 0,
     MiniSightPetStateRunRight = 1,
     MiniSightPetStateRunLeft = 2,
+    // After the resource loader's vertical flip, row 3 is the existing
+    // raised-hand response clip and row 5 is the seated/eyes-closed clip.
     MiniSightPetStateWaving = 3,
     MiniSightPetStateJumping = 4,
+    MiniSightPetStateSleeping = 5,
 };
 
 static const NSInteger kMiniSightPetRows = 9;
 static const NSInteger kMiniSightPetMaxCols = 8;
 static const NSTimeInterval kMiniSightSpriteInterval = 1.0 / 15.0;
-static const NSTimeInterval kMiniSightIdleSpriteInterval = 1.0 / 4.0;
+static const NSTimeInterval kMiniSightIdleSpriteInterval = MS_PET_IDLE_FRAME_INTERVAL;
+static const NSTimeInterval kMiniSightSleepSpriteInterval = MS_PET_SLEEP_FRAME_INTERVAL;
 
 // Roaming delays. Only the delay between actions changes; FPS never does.
 static const NSTimeInterval kMiniSightRoamActiveLo = 2.4;   // activityActive == YES
@@ -117,6 +123,9 @@ static CGPoint MSPetCGPoint(MSPoint p) { return CGPointMake((CGFloat)p.x, (CGFlo
     NSUInteger _motionGeneration, _activeMotionGeneration, _roamGeneration;
     CGRect _centerBounds;
     BOOL _activityActive, _longPressEnabled, _roamingPaused, _interactionActive, _reducedWork, _soundEnabled;
+    MSPetResident _resident;
+    BOOL _dragging;
+    UILabel *_sleepBadge;
     double _roamPace;
     NSInteger _preferredFPS;
     void (^_onGeometryChanged)(void);
@@ -127,6 +136,12 @@ static CGPoint MSPetCGPoint(MSPoint p) { return CGPointMake((CGFloat)p.x, (CGFlo
 - (BOOL)shouldAnimate;
 - (BOOL)mayRoam;
 - (void)reconcilePlayback;
+- (MSPetResidentContext)residentContext;
+- (void)updateResidentAtTime:(CFTimeInterval)now;
+- (void)applyResidentTransition:(MSPetResidentTransition)transition atTime:(CFTimeInterval)now;
+- (void)clearResidentForPlayback;
+- (void)updateSleepBadge;
+- (BOOL)consumeAttentionAtTime:(CFTimeInterval)now;
 - (void)invalidateFrameTimer;
 - (void)invalidateRoamTimer;
 - (void)ensureFrameTimer;
@@ -241,8 +256,28 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
                    name:UIWindowDidBecomeHiddenNotification object:nil];
         [nc addObserver:self selector:@selector(windowVisibilityChanged:)
                    name:UIWindowDidBecomeVisibleNotification object:nil];
+        _sleepBadge = [[UILabel alloc] initWithFrame:CGRectZero];
+        _sleepBadge.text = @"Z";
+        _sleepBadge.textAlignment = NSTextAlignmentCenter;
+        _sleepBadge.textColor = [UIColor systemBlueColor];
+        _sleepBadge.font = [UIFont systemFontOfSize:15.0 weight:UIFontWeightBold];
+        _sleepBadge.userInteractionEnabled = NO;
+        _sleepBadge.isAccessibilityElement = NO;
+        _sleepBadge.accessibilityElementsHidden = YES;
+        _sleepBadge.hidden = YES;
+        _sleepBadge.alpha = 0.0;
+        [self addSubview:_sleepBadge];
     }
     return self;
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    if (!_sleepBadge) return;
+    CGFloat size = MIN(20.0, MAX(13.0, self.bounds.size.width * 0.30));
+    _sleepBadge.font = [UIFont systemFontOfSize:size weight:UIFontWeightBold];
+    _sleepBadge.frame = CGRectMake(self.bounds.size.width - size * 0.72,
+                                   -size * 0.40, size * 0.9, size * 1.15);
 }
 
 - (void)dealloc {
@@ -266,6 +301,7 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
 - (void)stopPlaying {
     NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
     _wantsPlaying = NO;
+    [self clearResidentForPlayback];
     [self invalidateFrameTimer];
     [self invalidateRoamTimer];
     [self cancelMotion];
@@ -286,6 +322,9 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     NSUInteger next = locked ? (_motionLockReasons | mask) : (_motionLockReasons & ~mask);
     if (!mask || next == _motionLockReasons) return;
     _motionLockReasons = next;
+    // Owner masks stay independent. Lock acquisition is an actual attention
+    // boundary; repeated owner refreshes above deliberately do nothing.
+    if (locked) [self wakeForInteraction];
     [self reconcilePlayback];
 }
 
@@ -301,8 +340,11 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
     if (_activityActive == active) return;
     _activityActive = active;
+    // Only activity boundaries reset inactivity; autonomous moves and frame
+    // timer rearming never do. Repeated YES refreshes cannot restart a pose.
+    [self wakeForInteraction];
     [self invalidateRoamTimer];
-    [self scheduleRoam]; // Only the roaming delay changes; no FPS change.
+    [self reconcilePlayback];
 }
 
 - (void)setRoamingPaused:(BOOL)paused {
@@ -316,8 +358,104 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
     if (_interactionActive == active) return;
     _interactionActive = active;
+    if (active) [self wakeForInteraction];
     if (active) [self cancelGravityImpulse];
     [self reconcilePlayback];
+}
+
+- (MSPetResidentContext)residentContext {
+    return (MSPetResidentContext){
+        .running = [self shouldAnimate], .activity = _activityActive,
+        .interaction = _interactionActive, .paused = _roamingPaused,
+        .moving = _motionActive, .holding = _stateHoldUntil > 0.,
+        .locks = (unsigned)_motionLockReasons
+    };
+}
+
+- (BOOL)isResidentSleeping { return _resident.sleeping; }
+
+- (void)updateSleepBadge {
+    BOOL visible = _resident.sleeping && [self shouldAnimate];
+    // Static decoration: no animation clock/completion survives stop or hide,
+    // no gesture, no larger bounds or hit region, no accessibility focus.
+    [_sleepBadge.layer removeAllAnimations];
+    _sleepBadge.hidden = !visible;
+    _sleepBadge.alpha = visible ? 1.0 : 0.0;
+}
+
+- (void)clearResidentForPlayback {
+    BOOL hadSleepPose = _resident.sleeping || _resident.waking;
+    MSPetResidentReset(&_resident);
+    _dragging = NO;
+    [self updateSleepBadge];
+    if (hadSleepPose) [self setSpriteState:MiniSightPetStateIdle];
+}
+
+- (void)applyResidentTransition:(MSPetResidentTransition)transition atTime:(CFTimeInterval)now {
+    switch (transition) {
+        case MSPetResidentFellAsleep:
+            if (_roamTimer) MSPetResidentSaveRoam(&_resident, now, _roamTimer.fireDate.timeIntervalSinceNow);
+            [self invalidateRoamTimer];
+            [self cancelGravityImpulse];
+            [self setSpriteState:MiniSightPetStateSleeping];
+            MSDiag(@"pet.resident sleep");
+            break;
+        case MSPetResidentWoke:
+            // Never cancel a drag, held jump or fling to render a wake pose.
+            if (_dragging || _motionActive || _stateHoldUntil > 0.)
+                MSPetResidentCancelWakePose(&_resident);
+            if (!_resident.waking && _state == MiniSightPetStateSleeping)
+                [self setSpriteState:MiniSightPetStateIdle];
+            MSDiag(@"pet.resident wake");
+            break;
+        case MSPetResidentFinishedWaking:
+            if (_state == MiniSightPetStateSleeping) [self setSpriteState:MiniSightPetStateIdle];
+            break;
+        default: return;
+    }
+    [self updateSleepBadge];
+}
+
+- (void)updateResidentAtTime:(CFTimeInterval)now {
+    MSPetResidentTransition transition = MSPetResidentAdvance(&_resident, now, [self residentContext]);
+    [self applyResidentTransition:transition atTime:now];
+}
+
+- (void)setResidentSleeping:(BOOL)sleeping {
+    NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
+    if (!sleeping) { [self wakeForInteraction]; return; }
+    CFTimeInterval now = CACurrentMediaTime();
+    if (MSPetResidentTrySleep(&_resident, now, [self residentContext])) {
+        [self applyResidentTransition:MSPetResidentFellAsleep atTime:now];
+        [self reconcilePlayback];
+    }
+}
+
+- (void)wakeForInteraction {
+    NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
+    if (![self shouldAnimate]) return; // Never invent intent or a hidden clock.
+    CFTimeInterval now = CACurrentMediaTime();
+    if (MSPetResidentTouch(&_resident, now))
+        [self applyResidentTransition:MSPetResidentWoke atTime:now];
+    [self reconcilePlayback];
+}
+
+- (BOOL)consumeAttentionAtTime:(CFTimeInterval)now {
+    BOOL available = !_motionActive && !_dragging && !_interactionActive &&
+                     _stateHoldUntil <= 0. && _state == MiniSightPetStateIdle;
+    if (!MSPetResidentTakeAttention(&_resident, now, available)) return NO;
+    // Motion owner locks freeze position, not a short sprite-only response.
+    [self holdState:MiniSightPetStateWaving forDuration:0.75];
+    return YES;
+}
+
+- (void)requestAttentionResponse {
+    NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
+    if (![self shouldAnimate]) return;
+    [self wakeForInteraction];
+    CFTimeInterval now = CACurrentMediaTime();
+    MSPetResidentRequestAttention(&_resident, now);
+    [self consumeAttentionAtTime:now];
 }
 
 - (void)setReducedWork:(BOOL)reduced {
@@ -365,7 +503,7 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
 
 - (BOOL)mayRoam {
     MSRect area = [self feasibleCenters];
-    return [self shouldAnimate] && _hasCenterBounds &&
+    return [self shouldAnimate] && _hasCenterBounds && !_resident.sleeping && !_resident.waking &&
            MSGravityMotionAllowed(_wantsPlaying, _suspended, [self isActuallyVisible],
                                   _roamingPaused, _interactionActive, (unsigned)_motionLockReasons) &&
            (area.w > 0. || area.h > 0.);
@@ -373,18 +511,24 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
 
 - (void)reconcilePlayback {
     if (![self shouldAnimate]) {
+        [self clearResidentForPlayback];
         [self invalidateFrameTimer];
         [self invalidateRoamTimer];
         [self cancelMotion];
         [self cancelGravityImpulse];
         return;
     }
+    CFTimeInterval now = CACurrentMediaTime();
+    [self updateResidentAtTime:now];
     if (![self mayRoam]) {
         [self invalidateRoamTimer];
-        [self cancelMotion];
-        [self cancelGravityImpulse];
+        // Cancel a real trajectory once. Repeated layout/owner refreshes must
+        // not clear an unrelated hold, sleep or user-owned dragging direction.
+        if (_motionActive || _motionLink || _physicsMotion) [self cancelMotion];
+        if (_gravityImpulseDuration > 0. || _gravityLink) [self cancelGravityImpulse];
     }
     if (!_motionActive) [self ensureFrameTimer];
+    [self consumeAttentionAtTime:now];
     if (!_motionActive && !_roamTimer && _stateHoldUntil <= 0.) [self scheduleRoam];
 }
 
@@ -403,6 +547,7 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
 
 - (void)ensureFrameTimer {
     if (_frameTimer || _motionActive || ![self shouldAnimate]) return;
+    // Dropping motion ownership must not restart the independent idle clock.
     _lastSpriteTime = CACurrentMediaTime();
     __weak typeof(self) weakSelf = self;
     _frameTimer = [NSTimer timerWithTimeInterval:kMiniSightSpriteInterval repeats:YES
@@ -420,12 +565,16 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     if (_stateHoldUntil > 0. && now >= _stateHoldUntil) {
         _stateHoldUntil = 0.;
         [self setSpriteState:MiniSightPetStateIdle];
-        if (!_roamTimer && !_motionActive) [self scheduleRoam];
     }
+    [self updateResidentAtTime:now];
+    [self consumeAttentionAtTime:now];
+    if (!_roamTimer && !_motionActive && _stateHoldUntil <= 0.) [self scheduleRoam];
     [self advanceSpriteAtTime:now];
 }
 
 - (NSInteger)frameCountForRow:(NSInteger)row {
+    // After the loader's vertical flip, row 3 is the raised-hand response
+    // clip (4 cells) and row 5 is the seated/eyes-closed sleep clip (8 cells).
     static const NSInteger counts[9] = {6, 8, 8, 4, 5, 8, 6, 6, 6};
     return (row >= 0 && row < kMiniSightPetRows) ? counts[row] : 1;
 }
@@ -434,15 +583,17 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     if (_state == state) return;
     _state = state;
     _column = 0;
+    MSPetResidentResetBlink(&_resident);
     _lastSpriteTime = CACurrentMediaTime();
     [self applySpriteFrame];
 }
 
 - (NSTimeInterval)currentSpriteInterval {
-    // Idle clip has only six poses; at 15 fps it blinked roughly once a second.
-    // Walking/acting keeps the snappy 15 fps.
+    // Idle is deliberately slower so the eye/breathing poses read as life,
+    // while walking and the response clip keep their existing snappy timing.
     switch (_state) {
         case MiniSightPetStateIdle: return kMiniSightIdleSpriteInterval;
+        case MiniSightPetStateSleeping: return kMiniSightSleepSpriteInterval;
         case MiniSightPetStateWaving: return 1.0 / 7.0;
         case MiniSightPetStateJumping: return 1.0 / 11.0;
         default: return kMiniSightSpriteInterval;
@@ -450,6 +601,20 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
 }
 
 - (void)advanceSpriteAtTime:(CFTimeInterval)now {
+    if (_state == MiniSightPetStateSleeping || _state == MiniSightPetStateIdle) {
+        NSInteger next;
+        if (_state == MiniSightPetStateSleeping) {
+            next = _resident.waking ? MSPetResidentWakeColumn(now - _resident.wakeBegan)
+                                     : MSPetResidentSleepColumn(now - _resident.sleepBegan);
+        } else {
+            // Randomness is consumed only when arming a blink, never every FPS.
+            BOOL needsDelay = _resident.nextBlinkAt <= 0. ||
+                (_resident.blinking && now - _resident.blinkBegan >= 6. * kMiniSightIdleSpriteInterval);
+            next = MSPetResidentIdleColumn(&_resident, now, needsDelay ? MSPetRandomUnit() : 0.5);
+        }
+        if (next != _column) { _column = next; [self applySpriteFrame]; }
+        return;
+    }
     NSTimeInterval interval = [self currentSpriteInterval];
     double elapsed = fmax(0., now - _lastSpriteTime);
     if (elapsed < interval) return;
@@ -677,10 +842,15 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
 
 - (void)triggerGravityImpulseWithDirection:(CGFloat)direction strength:(CGFloat)strength {
     NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
-    if (!_gravityEnabled || ![self mayRoam]) return;
+    if (!_gravityEnabled || ![self shouldAnimate] || _roamingPaused || _interactionActive || _motionLockReasons) return;
     direction = MSPetClampUnit(direction);
     strength = MIN(1.0, MAX(0.0, isfinite(strength) ? strength : 0.0));
     if (fabs(direction) < 0.01 || strength < 0.05) return;
+    // A deliberate shake is an interaction. Continuous gravityRoll samples
+    // remain visual-only and do not repeatedly wake/reset the resident clock.
+    [self wakeForInteraction];
+    MSPetResidentCancelWakePose(&_resident);
+    if (![self mayRoam]) return;
     _gravityImpulseAngle = direction * strength * kMiniSightGravityImpulseAngle;
     _gravityImpulseBegan = CACurrentMediaTime();
     _gravityImpulseDuration = kMiniSightGravityImpulseDuration;
@@ -791,12 +961,18 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
 - (void)scheduleRoam {
     // A state hold (waving) owns the sprite state: frameTick arms the next roam.
     // A running motion arms the next roam itself, in finishMotion.
+    if (_resident.sleeping || _resident.waking) return; // No wake-up roam timer.
     if (_stateHoldUntil > 0. || _motionActive || ![self mayRoam]) {
         [self invalidateRoamTimer];
         return;
     }
-    // activityActive replaces the old tweak global: YES while the assistant is
-    // acting (lively), NO for the resident idle pet (a move every 9-15 s).
+    NSTimeInterval resumedDelay = MSPetResidentTakeRoamDelay(&_resident, CACurrentMediaTime());
+    if (resumedDelay >= 0. && _roamPace != 0.) {
+        [self armRoamTimerWithDelay:resumedDelay];
+        return;
+    }
+    // Preserve the original weighted walk/jump/wave choices and pace table.
+    // Assistant activity changes the delay, not sprite or display-link FPS.
     NSTimeInterval delay = _activityActive
         ? MSPetRandomRange(kMiniSightRoamActiveLo, kMiniSightRoamActiveHi)
         : MSPetRandomRange(kMiniSightRoamIdleLo, kMiniSightRoamIdleHi);
@@ -825,7 +1001,12 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
 }
 
 - (void)roamOnce {
+    [self updateResidentAtTime:CACurrentMediaTime()];
     if (![self mayRoam] || _motionActive) { [self invalidateRoamTimer]; return; }
+    // A fired timer must not leave a stale pointer that blocks a bounded
+    // attention hold or the next old roaming action from arming its successor.
+    [self invalidateRoamTimer];
+    if ([self consumeAttentionAtTime:CACurrentMediaTime()]) return;
     MSRect area = [self feasibleCenters];
     uint32_t roll = arc4random_uniform(100);
     if (roll < 52) {
@@ -864,26 +1045,43 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
 #pragma mark - Motion (one CADisplayLink; position and sprite for the same frame)
 
 - (void)beginDraggingWithDirection:(CGFloat)direction {
-    _interactionActive = YES;
+    NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
+    if (!_dragging) {
+        // Hosts may call this on every Changed. Only Began wakes/cancels once;
+        // subsequent direction updates keep their running frame and clock.
+        [self wakeForInteraction];
+        _dragging = YES;
+        _interactionActive = YES;
+        MSPetResidentCancelWakePose(&_resident);
+        [self cancelMotion];
+        [self cancelGravityImpulse];
+    }
     _stateHoldUntil = DBL_MAX;
     [self invalidateRoamTimer];
     if (direction >= 0) [self setSpriteState:MiniSightPetStateRunRight];
     else [self setSpriteState:MiniSightPetStateRunLeft];
+    [self reconcilePlayback];
 }
 
 - (void)endDragging {
+    NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
+    _dragging = NO;
     _interactionActive = NO;
+    if (![self shouldAnimate]) { [self reconcilePlayback]; return; }
+    MSPetResidentTouch(&_resident, CACurrentMediaTime());
+    MSPetResidentCancelWakePose(&_resident);
     _stateHoldUntil = CACurrentMediaTime() + 0.35;
     [self setSpriteState:MiniSightPetStateIdle];
     _restAfterMotion = 0.35;
-    [self scheduleRoam];
+    [self reconcilePlayback];
 }
 
 - (void)startMotionTo:(CGPoint)target jump:(BOOL)jump rest:(NSTimeInterval)rest {
     NSAssert([NSThread isMainThread], @"Pet UI must be used on the main thread");
     // Without a host-provided feasible range there is nothing safe to move to.
     if (!_hasCenterBounds || ![self shouldAnimate]) return;
-    if (_roamingPaused || _interactionActive || _motionLockReasons) return;
+    if (_roamingPaused || _interactionActive || _motionLockReasons ||
+        _resident.sleeping || _resident.waking) return;
     _physicsMotion = NO;
     MSGravityBodyCancel(&_gravityBody);
     _stateHoldUntil = 0.;
@@ -1038,7 +1236,10 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     _restAfterMotion = 0.;
     [_motionLink invalidate];
     _motionLink = nil;
-    [self setSpriteState:MiniSightPetStateIdle];
+    // Geometry updates may cancel an absent trajectory while sleeping or
+    // dragging. They do not own those poses and must not turn them into idle.
+    if (_resident.sleeping || _resident.waking) [self setSpriteState:MiniSightPetStateSleeping];
+    else if (!_dragging) [self setSpriteState:MiniSightPetStateIdle];
 }
 
 @end

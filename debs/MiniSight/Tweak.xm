@@ -29,6 +29,8 @@
 #import "MiniSightMotionPolicy.h"
 #import "MiniSightBridgeIO.h"
 #import "MiniSightRecorder.h"
+#import "MiniSightRegionSelection.h"
+#import "MiniSightApprovalSummary.h"
 #import "MiniSightChatPanel.h"
 #import "MiniSightLog.h"
 #import "MiniSightRuntimeConfig.h"
@@ -123,6 +125,7 @@ static void MiniSightReplyToPluginProbe(void);
 static void MiniSightStopGravity(void);
 // 浮窗载体：定义在文件前部，呈现协调（MiniSightReconcileAppPresentation）要先用到它。
 static UIWindow *gMiniSightWindow = nil;
+static MiniSightPetView *gMiniSightPet = nil; // Used by activity and prompt callbacks too.
 extern BOOL gMiniSightBurst;
 
 static NSString *MiniSightAppContainer(void) { return gMiniSightContainer; }
@@ -220,6 +223,7 @@ static BOOL MiniSightLongPressEnabled(void) {
 
 /// 短提示：直接写气泡，不走 3 秒消失逻辑（长按场景要留得住）
 static void MiniSightSay(NSString *line) {
+    if (gMiniSightPet) [gMiniSightPet requestAttentionResponse];
     MiniSightShowBubble(line);
 }
 
@@ -380,6 +384,7 @@ static void MiniSightApplyActivitySnapshot(NSDictionary *activity, NSUInteger ge
     if (gMiniSightActivityExecuting != active) MSDiagEvent(@"activity", @"state", valid ? @"ok" : @"failed", @{ @"source": @"plugin", @"executing": @(active), @"count": @(count), @"valid": @(valid) });
     BOOL endedExecution = gMiniSightActivityExecuting && !active && gMiniSightActivityEverExecuted;
     gMiniSightActivityExecuting = active;
+    gMiniSightPet.activityActive = gMiniSightBurst || active;
     if (active) gMiniSightActivityEverExecuted = YES;
     MSDiag(@"activity valid=%d active=%d count=%ld nativeReturn=%d ended=%d", valid, active, (long)count, gMiniSightAppNativeReturn, endedExecution);
     // Automatic MCP capture is independently gated by the App switch.
@@ -420,18 +425,17 @@ static void MiniSightRefreshRecorderSettingsThenReadActivity(void) {
     }];
 }
 
-/// Manual region picker: drag the body or any corner, then confirm.
+/// Manual region picker: one press-drag-release draws the capture rectangle.
 @interface MiniSightRegionPicker : UIWindow
 @property(nonatomic, copy) void (^onConfirm)(CGRect normalized);
 - (void)present;
 @end
 
 @implementation MiniSightRegionPicker {
-    UIView *_dim, *_box, *_dragArea;
-    NSMutableArray<UIView *> *_handles;
+    UIView *_dim, *_box;
+    UIButton *_confirmButton;
     CGPoint _start;
-    CGRect _startFrame;
-    NSInteger _corner;
+    BOOL _hasRegion;
 }
 - (instancetype)init {
     UIWindowScene *scene = nil;
@@ -439,6 +443,8 @@ static void MiniSightRefreshRecorderSettingsThenReadActivity(void) {
         if ([s isKindOfClass:UIWindowScene.class] && s.activationState == UISceneActivationStateForegroundActive) { scene = (id)s; break; }
     if (!scene) return nil;
     self = [super initWithWindowScene:scene];
+    if (!self) return nil;
+    self.frame = scene.coordinateSpace.bounds;
     self.windowLevel = UIWindowLevelAlert + 2;
     self.backgroundColor = UIColor.clearColor;
     UIViewController *vc = [UIViewController new];
@@ -448,37 +454,27 @@ static void MiniSightRefreshRecorderSettingsThenReadActivity(void) {
     _dim.backgroundColor = [UIColor colorWithWhite:0 alpha:0.35];
     _dim.userInteractionEnabled = YES;
     UIPanGestureRecognizer *draw = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(draw:)];
+    draw.maximumNumberOfTouches = 1;
     [_dim addGestureRecognizer:draw];
+    _dim.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     [vc.view addSubview:_dim];
-    UILabel *hint = [[UILabel alloc] initWithFrame:CGRectMake(16, 44, scene.coordinateSpace.bounds.size.width - 32, 24)];
-    hint.text = @"拖四角缩放 · 拖中间移动 · 拖空白重画";
+    UILabel *hint = [[UILabel alloc] initWithFrame:CGRectMake(16, 44, scene.coordinateSpace.bounds.size.width - 32, 42)];
+    hint.text = @"按住一个位置拖到另一个位置\n松开后就是录制区域；重新拖可重画";
     hint.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
     hint.textColor = UIColor.whiteColor;
     hint.textAlignment = NSTextAlignmentCenter;
+    hint.numberOfLines = 2;
+    hint.userInteractionEnabled = NO;
     [vc.view addSubview:hint];
-    CGRect r = CGRectInset(scene.coordinateSpace.bounds, 60, scene.coordinateSpace.bounds.size.height * 0.22);
-    _box = [[UIView alloc] initWithFrame:r];
+    _box = [[UIView alloc] initWithFrame:CGRectZero];
+    _box.hidden = YES;
+    _box.userInteractionEnabled = NO;
     _box.backgroundColor = UIColor.clearColor;
     _box.layer.borderColor = UIColor.whiteColor.CGColor;
     _box.layer.borderWidth = 2;
     _box.layer.cornerRadius = 10;
     [vc.view addSubview:_box];
-    _handles = [NSMutableArray array];
-    _dragArea = [[UIView alloc] initWithFrame:CGRectInset(_box.bounds, 30, 30)];
-    _dragArea.backgroundColor = UIColor.clearColor;
-    [_box addSubview:_dragArea];
-    UIPanGestureRecognizer *body = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(pan:)];
-    [_dragArea addGestureRecognizer:body];
-    for (NSInteger i = 0; i < 4; i++) {
-        UIView *h = [[UIView alloc] initWithFrame:CGRectMake(i % 2 ? r.size.width - 30 : 0, i / 2 ? r.size.height - 30 : 0, 30, 30)];
-        h.backgroundColor = UIColor.whiteColor;
-        h.layer.cornerRadius = 15;
-        h.tag = i + 1;
-        [_handles addObject:h];
-        [_box addSubview:h];
-        UIPanGestureRecognizer *g = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(pan:)];
-        [h addGestureRecognizer:g];
-    }
+
     UIButton *reselect = [UIButton buttonWithType:UIButtonTypeSystem];
     reselect.frame = CGRectMake(20, scene.coordinateSpace.bounds.size.height - 110, 90, 44);
     [reselect setTitle:@"重画" forState:UIControlStateNormal];
@@ -489,77 +485,94 @@ static void MiniSightRefreshRecorderSettingsThenReadActivity(void) {
     [cancel setTitle:@"取消" forState:UIControlStateNormal];
     [cancel addTarget:self action:@selector(cancelTap) forControlEvents:UIControlEventTouchUpInside];
     [vc.view addSubview:cancel];
-    UIButton *go = [UIButton buttonWithType:UIButtonTypeSystem];
-    go.frame = CGRectMake(scene.coordinateSpace.bounds.size.width - 160, scene.coordinateSpace.bounds.size.height - 110, 140, 44);
-    [go setTitle:@"开始录屏" forState:UIControlStateNormal];
-    [go setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-    go.backgroundColor = UIColor.systemBlueColor;
-    go.layer.cornerRadius = 22;
-    [go addTarget:self action:@selector(confirmTap) forControlEvents:UIControlEventTouchUpInside];
-    [vc.view addSubview:go];
+    _confirmButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    _confirmButton.frame = CGRectMake(scene.coordinateSpace.bounds.size.width - 160, scene.coordinateSpace.bounds.size.height - 110, 140, 44);
+    [_confirmButton setTitle:@"开始录屏" forState:UIControlStateNormal];
+    [_confirmButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    _confirmButton.backgroundColor = UIColor.systemBlueColor;
+    _confirmButton.layer.cornerRadius = 22;
+    _confirmButton.enabled = NO;
+    _confirmButton.alpha = 0.45;
+    [_confirmButton addTarget:self action:@selector(confirmTap) forControlEvents:UIControlEventTouchUpInside];
+    [vc.view addSubview:_confirmButton];
+    // Equal-width controls do not overlap on a 390pt phone or small landscape.
+    UIStackView *controls = [[UIStackView alloc] initWithArrangedSubviews:@[reselect, cancel, _confirmButton]];
+    controls.axis = UILayoutConstraintAxisHorizontal;
+    controls.distribution = UIStackViewDistributionFillEqually;
+    controls.spacing = 10.0;
+    controls.translatesAutoresizingMaskIntoConstraints = NO;
+    [vc.view addSubview:controls];
+    [NSLayoutConstraint activateConstraints:@[
+        [controls.leadingAnchor constraintEqualToAnchor:vc.view.safeAreaLayoutGuide.leadingAnchor constant:16.0],
+        [controls.trailingAnchor constraintEqualToAnchor:vc.view.safeAreaLayoutGuide.trailingAnchor constant:-16.0],
+        [controls.bottomAnchor constraintEqualToAnchor:vc.view.safeAreaLayoutGuide.bottomAnchor constant:-16.0],
+        [controls.heightAnchor constraintEqualToConstant:44.0]
+    ]];
     return self;
 }
-- (void)layoutHandles {
-    CGFloat w = _box.bounds.size.width, h = _box.bounds.size.height;
-    for (UIView *v in _handles) {
-        NSInteger i = v.tag - 1;
-        v.frame = CGRectMake(i % 2 ? w - 30 : 0, i / 2 ? h - 30 : 0, 30, 30);
-    }
-    _dragArea.frame = CGRectInset(_box.bounds, 30, 30);
-}
-- (void)present { self.hidden = NO; [self makeKeyAndVisible]; [self layoutHandles]; }
-- (void)pan:(UIPanGestureRecognizer *)g {
-    UIView *v = g.view;
-    CGPoint t = [g translationInView:self.rootViewController.view];
-    if (g.state == UIGestureRecognizerStateBegan) _corner = v.tag;
-    if (g.state == UIGestureRecognizerStateChanged) {
-        [g setTranslation:CGPointZero inView:self.rootViewController.view];
-        CGRect f = _box.frame;
-        CGRect bounds = self.rootViewController.view.bounds;
-        if (_corner == 0) {
-            f.origin.x += t.x; f.origin.y += t.y;
-        } else {
-            BOOL left = (_corner == 1 || _corner == 3);
-            BOOL top = (_corner == 1 || _corner == 2);
-            BOOL right = (_corner == 2 || _corner == 4);
-            BOOL bottom = (_corner == 3 || _corner == 4);
-            if (left) { f.size.width -= t.x; f.origin.x += t.x; }
-            if (top) { f.size.height -= t.y; f.origin.y += t.y; }
-            if (right) { f.size.width += t.x; }
-            if (bottom) { f.size.height += t.y; }
-        }
-        f.size.width = MAX(90, f.size.width); f.size.height = MAX(90, f.size.height);
-        f.origin.x = MSClamp(f.origin.x, 0, bounds.size.width - f.size.width);
-        f.origin.y = MSClamp(f.origin.y, 40, bounds.size.height - f.size.height);
-        _box.frame = f;
-        _dragArea.frame = CGRectInset(_box.bounds, 30, 30);
-    }
+- (void)present {
+    [self reselectTap];
+    self.hidden = NO;
+    [self makeKeyAndVisible];
 }
 - (void)draw:(UIPanGestureRecognizer *)g {
-    CGPoint p = [g locationInView:self.rootViewController.view];
+    UIView *root = self.rootViewController.view;
+    CGPoint point = [g locationInView:root];
+    CGRect b = root.bounds;
+    MSRect bounds = {b.origin.x, b.origin.y, b.size.width, b.size.height};
     if (g.state == UIGestureRecognizerStateBegan) {
+        // Pan recognition happens after some movement: subtract its accumulated
+        // translation to retain the point where the finger actually touched.
+        CGPoint moved = [g translationInView:root];
+        MSPoint first = MSRegionClampPoint((MSPoint){point.x - moved.x, point.y - moved.y}, bounds);
+        _start = CGPointMake(first.x, first.y);
+        _hasRegion = NO;
+        _confirmButton.enabled = NO;
+        _confirmButton.alpha = 0.45;
         _box.hidden = NO;
-        _box.frame = CGRectMake(p.x, p.y, 2, 2);
-    } else if (g.state == UIGestureRecognizerStateChanged) {
-        _box.frame = CGRectMake(MIN(_start.x, p.x), MIN(_start.y, p.y), fabs(p.x - _start.x), fabs(p.y - _start.y));
-    } else if (g.state == UIGestureRecognizerStateEnded) {
-        if (_box.frame.size.width < 40 || _box.frame.size.height < 40)
-            _box.frame = CGRectInset(self.rootViewController.view.bounds, 60, 120);
-        [self layoutHandles];
     }
-    if (g.state == UIGestureRecognizerStateBegan) _start = p;
+    if (g.state == UIGestureRecognizerStateBegan || g.state == UIGestureRecognizerStateChanged ||
+        g.state == UIGestureRecognizerStateEnded) {
+        MSRect rect = MSRegionBetween((MSPoint){_start.x, _start.y},
+                                      (MSPoint){point.x, point.y}, bounds);
+        _box.frame = CGRectMake(rect.x, rect.y, rect.w, rect.h);
+        if (g.state == UIGestureRecognizerStateEnded) {
+            _hasRegion = MSRegionValid(rect);
+            _box.hidden = !_hasRegion;
+            _confirmButton.enabled = _hasRegion;
+            _confirmButton.alpha = _hasRegion ? 1.0 : 0.45;
+            MSDiagEvent(@"recording", @"picker", _hasRegion ? @"pending" : @"skipped",
+                @{ @"source": @"plugin", @"valid": @(_hasRegion) });
+        }
+    } else if (g.state == UIGestureRecognizerStateCancelled || g.state == UIGestureRecognizerStateFailed) {
+        [self reselectTap];
+    }
 }
 - (void)reselectTap {
-    _box.frame = CGRectInset(self.rootViewController.view.bounds, 60, 120);
-    [self layoutHandles];
+    _hasRegion = NO;
+    _box.hidden = YES;
+    _box.frame = CGRectZero;
+    _confirmButton.enabled = NO;
+    _confirmButton.alpha = 0.45;
 }
-- (void)cancelTap { MSDiagEvent(@"recording", @"region", @"skipped", @{ @"source": @"plugin", @"reason": @"cancel" }); self.hidden = YES; }
-- (void)confirmTap {
-    CGRect b = self.rootViewController.view.bounds, f = _box.frame;
-    MSDiagEvent(@"recording", @"region", @"ok", @{ @"source": @"plugin", @"x": @(f.origin.x / b.size.width), @"y": @(f.origin.y / b.size.height), @"w": @(f.size.width / b.size.width), @"h": @(f.size.height / b.size.height) });
-    if (self.onConfirm) self.onConfirm(CGRectMake(f.origin.x / b.size.width, f.origin.y / b.size.height,
-                                                  f.size.width / b.size.width, f.size.height / b.size.height));
+- (void)cancelTap {
+    [self reselectTap];
     self.hidden = YES;
+    MSDiagEvent(@"recording", @"picker", @"cancelled", @{ @"source": @"plugin" });
+}
+- (void)confirmTap {
+    if (!_hasRegion || _box.hidden) return;
+    CGRect b = self.rootViewController.view.bounds, f = _box.frame;
+    MSRect normalized = MSRegionNormalized((MSRect){f.origin.x, f.origin.y, f.size.width, f.size.height},
+        (MSRect){b.origin.x, b.origin.y, b.size.width, b.size.height});
+    if (normalized.w <= 0 || normalized.h <= 0) return;
+    _hasRegion = NO;
+    _confirmButton.enabled = NO;
+    // Hide the selection overlay BEFORE starting capture.
+    self.hidden = YES;
+    MSDiagEvent(@"recording", @"picker", @"ok", @{ @"source": @"plugin", @"x": @(normalized.x),
+        @"y": @(normalized.y), @"w": @(normalized.w), @"h": @(normalized.h) });
+    if (self.onConfirm) self.onConfirm(CGRectMake(normalized.x, normalized.y, normalized.w, normalized.h));
 }
 @end
 
@@ -581,7 +594,7 @@ static void MiniSightStartManualRecording(void) {
     if (rec.state != MiniSightRecorderIdle) { [rec toggle]; return; }
     UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"录屏"
         message:nil preferredStyle:UIAlertControllerStyleActionSheet];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"区域录屏（可画框移动）" style:UIAlertActionStyleDefault
+    [sheet addAction:[UIAlertAction actionWithTitle:@"区域录屏（拖动画框）" style:UIAlertActionStyleDefault
         handler:^(UIAlertAction *a) { MiniSightPresentRegionPicker(); }]];
     [sheet addAction:[UIAlertAction actionWithTitle:@"全屏录屏" style:UIAlertActionStyleDefault
         handler:^(UIAlertAction *a) { [rec startWithSource:MiniSightRecorderSourceManual region:CGRectNull]; }]];
@@ -666,7 +679,6 @@ static UIView   *gMiniSightPulse  = nil;   // 圆点背后的脉动圈
 static UILabel  *gMiniSightLabel  = nil;   // 文字
 static id        gMiniSightGestureTarget = nil; // 手势/通知的 target（需强引用）
 static BOOL      gMiniSightBuilt  = NO;
-static MiniSightPetView *gMiniSightPet = nil;   // 可选桌宠（存在 pet.png 时启用）
 static dispatch_block_t gMiniSightPendingHide = nil; // 两个调用之间的 2.5 秒缓冲
 BOOL gMiniSightBurst = NO;   // 只在 MCP 调用期间为 YES
 BOOL gMiniSightBubbleShown = NO;   // 气泡是否显示（供桌宠决定要不要算位置）
@@ -1162,7 +1174,7 @@ static void MiniSightApplyRuntimeConfig(void) {
         gMiniSightPet.roamInterval = c.activity == 2 ? 0 : c.activityInterval;
         gMiniSightPet.gravityStrength = MSClamp(c.gravityStrength, 0.4, 1.6);
         gMiniSightPet.preferredFPS = c.frameLimit == 1 ? 30 : (c.frameLimit == 2 ? 60 : (c.frameLimit == 3 ? 120 : 0));
-        gMiniSightPet.activityActive = YES;
+        gMiniSightPet.activityActive = gMiniSightBurst || gMiniSightActivityExecuting;
         gMiniSightPet.soundEnabled = c.sound;
     }
     gMiniSightBubbleScale = MSClamp(c.bubbleScale, 0.8, 1.6);
@@ -1211,6 +1223,7 @@ static void MiniSightSetAnchor(CGPoint want, BOOL save) {
 
 /// 手指按住/拖动期间：冻在真实位置（不是停“播放意图”），松手恢复
 static void MiniSightInteractionBegin(void) {
+    [gMiniSightPet wakeForInteraction];
     gMiniSightPet.roamingPaused = YES;
     gMiniSightPet.interactionActive = YES;
 }
@@ -1293,6 +1306,7 @@ static BOOL MiniSightGestureEnabled(NSString *key) {
 }
 
 static void MiniSightRunGesture(NSString *action, BOOL allowSecondTap) {
+    [gMiniSightPet requestAttentionResponse];
     MiniSightChatPanel *panel = MiniSightChatPanel.existingPanel;
     if ([action isEqualToString:@"input"]) {
         if (!MiniSightOpenChat()) return;
@@ -1899,7 +1913,7 @@ static void MiniSightShowAfterOwnershipCheck(void) {
     // 每次显示都按当前设置刷新：长按开关、低电量省电、调用期间才有走动
     gMiniSightPet.longPressEnabled = MiniSightLongPressEnabled();
     gMiniSightPet.reducedWork = [NSProcessInfo processInfo].lowPowerModeEnabled;
-    gMiniSightPet.activityActive = YES;
+    gMiniSightPet.activityActive = gMiniSightBurst || gMiniSightActivityExecuting;
     [gMiniSightPet startPlaying];
     MiniSightInstallRecorderCallbacks();
 
@@ -1964,6 +1978,7 @@ static void MiniSightDestroyUI(void) {
     // 确认态要一起清，否则气泡永远"正在确认"、再也收不起来
     if (gMiniSightConfirmTimeout) { dispatch_block_cancel(gMiniSightConfirmTimeout); gMiniSightConfirmTimeout = nil; }
     gMiniSightConfirming = NO;
+    [gMiniSightPet setMotionLocked:NO forReason:MiniSightPetMotionLockApproval];
     gMiniSightConfirmId = nil;
     if (gMiniSightBubble) { [gMiniSightBubble removeFromSuperview]; gMiniSightBubble = nil; gMiniSightBubbleLabel = nil; gMiniSightBubbleTail = nil; }
     gMiniSightConfirmBar = nil;
@@ -2168,7 +2183,7 @@ static void MiniSightShowBubbleWidth(NSString *raw, CGFloat maxW, NSUInteger cap
     if (MiniSightChatPanel.existingPanel.isVisible && !gMiniSightConfirming) return;
     NSString *text = [raw stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     if (!text.length) { MiniSightHideBubble(); return; }
-    if (cap > 0 && text.length > cap)
+    if (!gMiniSightConfirming && cap > 0 && text.length > cap)
         text = [[text substringWithRange:[text rangeOfComposedCharacterSequencesForRange:NSMakeRange(0, cap)]] stringByAppendingString:@"…"];
 
     if (!gMiniSightBubble) {
@@ -2284,6 +2299,7 @@ static void MiniSightAnswerConfirm(BOOL allow) {
     if (!gMiniSightConfirming) return;
     MSDiagEvent(@"approval", @"answer", allow ? @"allow" : @"deny", @{ @"source": @"plugin" });
     gMiniSightConfirming = NO;
+    [gMiniSightPet setMotionLocked:NO forReason:MiniSightPetMotionLockApproval];
     if (gMiniSightConfirmTimeout) { dispatch_block_cancel(gMiniSightConfirmTimeout); gMiniSightConfirmTimeout = nil; }
     MiniSightWriteConfirmResult(allow);
     gMiniSightConfirmId = nil;
@@ -2297,35 +2313,9 @@ static void MiniSightAnswerConfirm(BOOL allow) {
     if (!gMiniSightBurst && !MiniSightAlwaysShow()) MiniSightHide();
 }
 
-/// Turn a tool call into a short human action. Order matters: the most
-/// specific verb wins, so a log grep is "查看日志", not "执行命令".
-static NSString *MiniSightDescribeCommand(NSString *action, NSString *command) {
-    NSString *a = action.lowercaseString ?: @"", *c = command.lowercaseString ?: @"";
-    NSString *known = @{@"read_file": @"读取文件", @"write_file": @"写入文件", @"edit_file": @"修改文件",
-        @"list_dir": @"查看目录", @"browser_use": @"浏览网页", @"subagent_task": @"派发子任务"}[a];
-    if (known) return known;
-    // Classify by the command first: relays vary the tool name.
-    if ([c containsString:@"sed -i"] || [c containsString:@"plutil"] || [c containsString:@"cp /"] ||
-        [c containsString:@"mv "]) return @"修改文件";
-    if ([c containsString:@"tap_screen"] || [c containsString:@"tap_element"]) return @"点击屏幕";
-    if ([c containsString:@"swipe_screen"]) return @"滑动屏幕";
-    if ([c containsString:@"screenshot"]) return @"截屏";
-    if ([c containsString:@"launch_app"]) return @"打开应用";
-    if ([c containsString:@"install_app"]) return @"安装应用";
-    if ([c containsString:@"toggle_mute"]) return @"切换静音";
-    if ([c containsString:@"press_home"] || [c containsString:@"press_power"]) return @"按键操作";
-    if ([c containsString:@"get_syslog"]) return @"读取系统日志";
-    if ([c containsString:@"record"]) return @"录屏";
-    if ([c containsString:@"list_dir"]) return @"查看目录";
-    if ([c containsString:@"grep "] || [c containsString:@"tail "] || [c containsString:@"cat "] ||
-        [c containsString:@"read_file"] || [c containsString:@".log"]) return @"查看日志";
-    if ([c containsString:@"write_file"] || [c containsString:@"edit_file"]) return @"写入文件";
-    if ([c containsString:@"curl "] || [c containsString:@"wget "]) return @"网络请求";
-    if ([c containsString:@"git "] || [c hasPrefix:@"git"]) return @"Git 操作";
-    if ([c containsString:@"python"] || [c containsString:@"node "]) return @"运行脚本";
-    if ([c containsString:@"minis-mcp-cli"]) return @"操作手机";
-    return @"执行终端命令";
-}
+/// Approval text is produced by MiniSightApprovalSummary.h.  Keep the
+/// classifier out of this host file so the App/plugin host tests exercise one
+/// bounded parser rather than two subtly different shell heuristics.
 
 /// 读 confirm.json，把问题+命令塞进气泡，底下挂两个按钮。
 static void MiniSightShowConfirm(void) {
@@ -2355,14 +2345,11 @@ static void MiniSightShowConfirm(void) {
         MiniSightAnswerConfirm(NO);
         return;
     }
-    NSString *label = MiniSightDescribeCommand(action, command);
-    BOOL generic = [label isEqualToString:@"执行终端命令"] || [label isEqualToString:@"执行操作"];
-    if (generic) {
-        NSString *preview = [command stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-        if (preview.length > 80) preview = [[preview substringToIndex:80] stringByAppendingString:@"…"];
-        label = [NSString stringWithFormat:@"%@\n%@", label, preview];
-    }
-    NSString *text = [NSString stringWithFormat:@"允许%@？", label];
+    // The classifier returns a complete, user-facing approval summary.
+    // Do not prepend a generic title or append the raw wrapper command again.
+    [gMiniSightPet setMotionLocked:YES forReason:MiniSightPetMotionLockApproval];
+    [gMiniSightPet requestAttentionResponse];
+    NSString *text = MiniSightDescribeCommand(action, command);
     MiniSightShowBubbleWidth(text, 260.0, 600);
 
     gMiniSightBubble.userInteractionEnabled = YES;
@@ -2606,6 +2593,7 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
         } else {
             // 工具是一条接一条的，隔一两秒就 hide 会闪；等 2.5 秒没下一条再收。
             gMiniSightBurst = NO;
+            gMiniSightPet.activityActive = gMiniSightActivityExecuting;
             if (gMiniSightPendingHide) dispatch_block_cancel(gMiniSightPendingHide);
             gMiniSightPendingHide = dispatch_block_create(DISPATCH_BLOCK_DETACHED, ^{
                 MiniSightHide();
