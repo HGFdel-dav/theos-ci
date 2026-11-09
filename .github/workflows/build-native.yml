@@ -20,7 +20,11 @@ jobs:
         with: {python-version: '3.12'}
       - run: python3 -m pip install Pillow
       - working-directory: debs/ReynardDefault
-        run: python3 tests/run_checks.py
+        run: |
+          set -e
+          python3 tests/run_checks.py
+          xcrun clang++ -std=c++17 -fobjc-arc -fblocks -Wall -Wextra -Werror -framework Foundation tests/native_xul_hook_test.mm -o "$RUNNER_TEMP/native-xul-test"
+          "$RUNNER_TEMP/native-xul-test"
   build:
     needs: verify
     runs-on: macos-15-intel

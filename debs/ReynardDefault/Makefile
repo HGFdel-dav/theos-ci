@@ -27,9 +27,3 @@ SUBPROJECTS = ReynardDefaultPrefs ReynardDefaultCC
 include $(THEOS)/makefiles/common.mk
 include $(THEOS_MAKE_PATH)/tweak.mk
 include $(THEOS_MAKE_PATH)/aggregate.mk
-
-before-all::
-	python3 tests/verify_payload.py
-
-before-package::
-	python3 tests/verify_payload.py
