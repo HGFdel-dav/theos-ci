@@ -30,7 +30,7 @@ typedef int32_t (*RDOnLinkClickFn)(void *,void *,void *,const RDGeckoU16String *
 static_assert(sizeof(RDGeckoCString)==16,"nsCString ABI mismatch");
 static_assert(offsetof(RDGeckoAutoCString,inlineCapacity)==16,"nsTAutoString length offset mismatch");
 static_assert(offsetof(RDGeckoAutoCString,storage)==20,"nsTAutoString storage offset mismatch");
-static_assert(sizeof(RDGeckoAutoCString)==84,"nsTAutoStringN<char,64> ABI mismatch");
+static_assert(sizeof(RDGeckoAutoCString)==88,"nsTAutoStringN<char,64> ABI mismatch");
 static_assert(sizeof(RDGeckoU16String)==16,"nsAString ABI mismatch");
 static_assert(sizeof(RDGeckoStringBufferHeader)==8,"StringBuffer header ABI mismatch");
 static RDOnLinkClickFn rdOriginalOnLinkClick = nullptr;
@@ -142,7 +142,6 @@ static BOOL RDOpenCustomSynchronously(NSURL *url) {
 #pragma clang diagnostic pop
     return result;
 }
-static int32_t (*rdOriginalOnLinkClick)(void*,void*,void*,const RDGeckoU16String*,const RDGeckoU16String*,void*,void*,bool,uint8_t,void*,void*);
 static int32_t RDCallOriginal(void*self,void*content,void*uri,const RDGeckoU16String*target,const RDGeckoU16String*file,void*post,void*headers,bool user,uint8_t involvement,void*principal,void*policy) {
     return rdOriginalOnLinkClick(self,content,uri,target,file,post,headers,user,involvement,principal,policy);
 }
