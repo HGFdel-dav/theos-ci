@@ -1,7 +1,7 @@
 # CleanStatus 0.3.0 动画集成本地状态
 
 ## 授权与阶段
-用户同意中文动画方案，并强调独立开关、开即应用、关闭恢复正常，以及「原来的功能不要动」。用户本轮明确说「推送」，已授权本候选 commit/push 并运行 GitHub CI、下载验包。推送前本地检查已复核通过；未授权安装、注销、重启或修改设备配置。
+用户同意中文动画方案，并强调独立开关、开即应用、关闭恢复正常，以及「原来的功能不要动」。用户本轮明确说「推送」，已授权本候选 commit/push 并运行 GitHub CI、下载验包。首次 CI run 158/42599014312 已失败：`LCSAAnimationSupport.h:141` 使用了 iOS 15.5 SDK 不声明的 `+[NSHashTable strongObjectsHashTable]`；已改为 `hashTableWithOptions:NSPointerFunctionsStrongMemory`，本地检查重新通过。未授权安装、注销、重启或修改设备配置。
 
 ## 精确基线
 - 原功能：HGFdel-dav/theos-ci cleanstatus-0.2.5，4301746eba66244b1a869e7f53650184e6fca10b。

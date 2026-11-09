@@ -138,7 +138,7 @@ static void LCSASetFilters(CALayer *layer, NSArray *added) {
     LCSALayerState *s = LCSATouchLayer(layer); if (!s) return;
     if (!s.hasFilters) { s.filters = [layer.filters copy]; s.hasFilters = YES; }
     else if (layer.filters != s.writtenFilters && ![layer.filters isEqual:s.writtenFilters]) return;
-    if (!s.ownedFilters) s.ownedFilters = [NSHashTable strongObjectsHashTable];
+    if (!s.ownedFilters) s.ownedFilters = [NSHashTable hashTableWithOptions:NSPointerFunctionsStrongMemory];
     for (id filter in added) [s.ownedFilters addObject:filter];
     NSArray *value = added.count ? [(s.filters ?: @[]) arrayByAddingObjectsFromArray:added] : s.filters;
     layer.filters = value; s.writtenFilters = [layer.filters copy];
