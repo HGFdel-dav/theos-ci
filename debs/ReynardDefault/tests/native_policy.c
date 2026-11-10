@@ -5,12 +5,13 @@
 int main(void) {
     unsigned n=0;
 #define T(x) do { n++; assert(x); } while (0)
-    T(RDClickEventAllowed(1,1,1,0,1));
-    T(!RDClickEventAllowed(1,0,1,0,1));
-    T(!RDClickEventAllowed(1,1,0,0,1));
-    T(!RDClickEventAllowed(1,1,1,0x800000u,1));
-    T(!RDClickEventAllowed(1,1,1,0,0));
-    T(!RDClickEventAllowed(0,1,1,0,1));
+    T(RDNativeClickAllowed(1,1,1,1,0,0));
+    T(!RDNativeClickAllowed(1,0,1,1,0,0));
+    T(!RDNativeClickAllowed(1,1,0,1,0,0));
+    T(!RDNativeClickAllowed(1,1,1,0,0,0));
+    T(!RDNativeClickAllowed(1,1,1,1,1,0));
+    T(!RDNativeClickAllowed(1,1,1,1,0,1));
+    T(!RDNativeClickAllowed(0,1,1,1,0,0));
     char out[256];
     T(RDNormalizeAppURL("tg:resolve?domain=moonup_chat&post=2&start=a%2Bb#x",out,sizeof(out)));
     T(!strcmp(out,"tg://resolve?domain=moonup_chat&post=2&start=a%2Bb#x"));

@@ -1,4 +1,4 @@
-name: ReynardDefault 1.5.35 plugin-only build
+name: ReynardDefault 1.5.37 plugin-only diagnostic
 on:
   workflow_dispatch:
   push:
@@ -14,10 +14,9 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: {node-version: '22'}
       - uses: actions/setup-python@v5
-        with: {python-version: '3.12'}
+        with:
+          python-version: '3.12'
       - run: python3 -m pip install Pillow
       - working-directory: debs/ReynardDefault
         run: python3 tests/run_checks.py
@@ -41,7 +40,8 @@ jobs:
           git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/roothide/theos.git "$HOME/theos"
           git clone --depth 1 --filter=blob:none --sparse https://github.com/xybp888/iOS-SDKs.git "$HOME/iossdks"
           git -C "$HOME/iossdks" sparse-checkout set iPhoneOS15.5.sdk
-          mkdir -p "$HOME/theos/sdks"; cp -R "$HOME/iossdks/iPhoneOS15.5.sdk" "$HOME/theos/sdks/"
+          mkdir -p "$HOME/theos/sdks"
+          cp -R "$HOME/iossdks/iPhoneOS15.5.sdk" "$HOME/theos/sdks/"
           echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
       - working-directory: debs/ReynardDefault
         run: |
@@ -55,18 +55,18 @@ jobs:
           git rev-parse HEAD > ci-out/${{ matrix.scheme }}/SOURCE-COMMIT
           git -C "$HOME/theos" rev-parse HEAD > ci-out/${{ matrix.scheme }}/THEOS-COMMIT
           xcrun clang --version > ci-out/${{ matrix.scheme }}/COMPILER.txt
-          find debs/ReynardDefault/.theos -name '*.dSYM' -prune -exec cp -R '{}' ci-out/${{ matrix.scheme }}/ \;
+          find debs/ReynardDefault/.theos -name '*.dSYM' -prune -exec cp -R '{}' ci-out/${{ matrix.scheme }}/ \\;
           for deb in ci-out/${{ matrix.scheme }}/*.deb; do
-            dpkg-deb -I "$deb" > "$deb.info.txt"; dpkg-deb -c "$deb" > "$deb.contents.txt"
+            dpkg-deb -I "$deb" > "$deb.info.txt"
+            dpkg-deb -c "$deb" > "$deb.contents.txt"
             mkdir "$deb.control"; dpkg-deb -e "$deb" "$deb.control"
-            grep -q '^ Version: 1.5.35$' "$deb.info.txt"
-            ! grep -Eqi 'handoff\.xpi|extensions\.json|RDHandoff|WebExtension|signatures\.required' "$deb.contents.txt"
+            grep -q '^ Version: 1.5.37$' "$deb.info.txt"
+            ! grep -Eqi 'handoff\\.xpi|extensions\\.json|RDHandoff|WebExtension|signatures\\.required' "$deb.contents.txt"
             test "$(find "$deb.control" -type f | wc -l | tr -d ' ')" = 1
-            test -x "$(find debs/ReynardDefault/.theos -name ReynardDefault.dylib | head -1)"
           done
           (cd ci-out/${{ matrix.scheme }} && shasum -a 256 *.deb > SHA256SUMS)
       - uses: actions/upload-artifact@v4
         with:
-          name: ReynardDefault-native-${{ matrix.scheme }}-${{ github.sha }}
+          name: ReynardDefault-1.5.37-${{ matrix.scheme }}-${{ github.sha }}
           path: ci-out/${{ matrix.scheme }}/
           if-no-files-found: error

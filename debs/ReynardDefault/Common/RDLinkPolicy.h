@@ -5,21 +5,15 @@
 #include <string.h>
 
 #define RD_URL_CAP 16385
-#define RD_REDIRECT_FLAG 0x800000u
+#define RD_NATIVE_CLICK_ACTIVATION 1u
 
-/* These values come from GeckoView's OnPreNavigation payload. */
-static inline int RDClickEventAllowed(int is_request, int user_gesture,
-                                      int top_level, uint32_t flags,
-                                      int foreground) {
-    return is_request && user_gesture && top_level && foreground &&
-           !(flags & RD_REDIRECT_FLAG);
-}
-
-static inline int RDHex(int c) {
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-    return -1;
+static inline int RDNativeClickAllowed(int enabled, int userTriggered,
+                                       uint8_t userNavigationInvolvement,
+                                       int fileNameIsVoid, int hasPostData,
+                                       int hasHeaderStream) {
+    return enabled && userTriggered &&
+           userNavigationInvolvement == RD_NATIVE_CLICK_ACTIVATION &&
+           fileNameIsVoid && !hasPostData && !hasHeaderStream;
 }
 
 static inline int RDValidScheme(const char *s, size_t n) {
