@@ -5,6 +5,12 @@
 int main(void) {
     unsigned n=0;
 #define T(x) do { n++; assert(x); } while (0)
+    T(RDClickEventAllowed(1,1,1,0,1));
+    T(RDClickEventAllowed(1,1,1,0x800000u,1));
+    T(!RDClickEventAllowed(1,0,1,0x800000u,1));
+    T(!RDClickEventAllowed(0,1,1,0,1));
+    T(!RDClickEventAllowed(1,1,0,0,1));
+    T(!RDClickEventAllowed(1,1,1,0,0));
     T(RDNativeClickAllowed(1,1,1,1,0,0));
     T(!RDNativeClickAllowed(1,0,1,1,0,0));
     T(!RDNativeClickAllowed(1,1,0,1,0,0));

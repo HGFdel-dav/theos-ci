@@ -7,6 +7,15 @@
 #define RD_URL_CAP 16385
 #define RD_NATIVE_CLICK_ACTIVATION 1u
 
+/* GeckoView load flags are not a redirect detector. Verified tapped-link
+   requests can carry 0x800000; gesture/top-level/foreground gate the handoff. */
+static inline int RDClickEventAllowed(int isRequest, int userGesture,
+                                      int topLevel, uint32_t flags,
+                                      int foreground) {
+    (void)flags;
+    return isRequest && userGesture && topLevel && foreground;
+}
+
 static inline int RDNativeClickAllowed(int enabled, int userTriggered,
                                        uint8_t userNavigationInvolvement,
                                        int fileNameIsVoid, int hasPostData,
