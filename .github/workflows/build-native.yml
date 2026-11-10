@@ -18,7 +18,12 @@ jobs:
         with: {python-version: '3.12'}
       - run: python3 -m pip install Pillow
       - working-directory: debs/ReynardDefault
-        run: python3 tests/run_checks.py
+        run: |
+          set -e
+          python3 tests/run_checks.py
+          xcrun clang++ -std=c++17 -fobjc-arc -fblocks -Wall -Wextra -Werror \\
+            -framework Foundation tests/router_host.mm -o "$RUNNER_TEMP/router-host"
+          "$RUNNER_TEMP/router-host"
   build:
     needs: verify
     runs-on: macos-15-intel
