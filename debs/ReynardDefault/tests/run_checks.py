@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Host-only checks for the native Gecko click-router candidate."""
+"""Host-only checks for the plugin-only GeckoView click-router candidate."""
 from pathlib import Path
 import subprocess, tempfile, os, hashlib, plistlib, shutil, json, sys
 ROOT=Path(__file__).resolve().parents[1]
@@ -22,12 +22,16 @@ print('PROTECTED_FILES='+str(len(protected)))
 for p in ROOT.rglob('*.plist'): plistlib.loads(p.read_bytes())
 print('PLISTS='+str(len(list(ROOT.rglob('*.plist')))))
 print(run([sys.executable,str(ROOT/'tests/icon_check.py')],cwd=ROOT).splitlines()[-1])
-assert not (ROOT/'layout').exists(),'extension layout must not be present in native-only candidate'
-assert not (ROOT/'Common/RDExtensionInstall.h').exists(),'extension installer must not be present'
-assert not (ROOT/'Common/RDHandoffPayload.h').exists(),'embedded XPI must not be present'
-native=(ROOT/'Common/RDNativeLink.h').read_text()
-assert 'RDInstallNativeXULHook' in native
-assert 'RD_XUL_ON_LINK_CLICK' in native and 'kRDExpectedXULUUID' in native
-assert 'RDSeedExtensionsDatabase' not in native and 'signatures.required' not in native
-print('NATIVE_ONLY_CANDIDATE=PASS')
-print('LOCAL_CHECKS_PASS; XUL ABI/device behavior still unverified')
+assert not (ROOT/'layout').exists(),'extension layout must not be present'
+for name in ['RDExtensionInstall.h','RDHandoffPayload.h','RDNativeLink.h']:
+ assert not (ROOT/'Common'/name).exists(),name+' must not be present'
+assert not (ROOT/'tests/native_xul_hook_test.mm').exists(),'obsolete XUL test must not be present'
+assert not (ROOT/'tests/policy_test.c').exists(),'obsolete XUL policy test must not be present'
+entry=(ROOT/'ReynardHook.xm').read_text(); router=(ROOT/'Common/RDClickRouter.h').read_text()
+assert 'RDClickRouter.h' in entry and 'dispatchToSwift:message:callback:' in entry
+assert 'RDInstallNativeXULHook' not in entry and 'WebExtension' not in entry and 'ExtensionInstall' not in entry
+assert 'RDHandleClickNavigation' in router and 'OnPreNavigation' in entry
+assert 'sendSuccess:@(handled)' in router
+assert 'RD_XUL_ON_LINK_CLICK' not in router and 'signatures.required' not in entry
+print('PLUGIN_ONLY_CANDIDATE=PASS')
+print('LOCAL_CHECKS_PASS; iOS CI and device behavior still unverified')

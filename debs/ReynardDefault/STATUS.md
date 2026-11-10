@@ -1,6 +1,14 @@
-# ReynardDefault 1.5.34
+# ReynardDefault 1.5.35
 
-阶段：本地修复和主机测试通过；用户于本轮明确授权继续修复并推送编译。未授权安装、注销、重启或修改设备配置。
+阶段：用户已明确要求修复为单一插件并立即编译；纯插件 1.5.35 候选已完成本地修改和门禁，尚未推送、未 CI 编译、未安装、未注销、未重启。
+
+## 本轮候选事实
+
+- 已移除旧 XUL/未验证 PAC 路径、扩展安装代码、扩展 payload 和相关过期测试。
+- Reynard 侧改回已在设备上核实过的 GeckoView `dispatchToSwift:message:callback:` 边界；只处理 `OnPreNavigation` / `OnLoadRequest`，不处理 visited/error/扩展消息。
+- 点击准入要求 Gecko `hasUserGesture`、顶层、前台、非 redirect；HTTP Universal Link 成功才阻断，失败回原 URL；自定义 scheme 成功才阻断，TG 已知 action 只补 `//`。
+- 本地门禁：O0/O2 native policy 19 assertions、C++ policy 编译、20 个保护文件、6 个 plist、图标及无扩展残留均通过。
+- **CI 编译、DEB 静态验包、安装加载和真机功能仍未验证。**
 
 ## 目标
 
