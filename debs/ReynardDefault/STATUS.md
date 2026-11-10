@@ -1,6 +1,6 @@
-# ReynardDefault 1.5.38
+# ReynardDefault 1.5.39
 
-阶段：纯插件 1.5.37 的 native hook 源码已做 PAC ABI 修正，门禁增加 arm64e 原始 vtable 调用汇编检查。用户要求推送并编译；最新变更还未推送、CI 未验证、设备未改动。
+阶段：本地确认实际网页在 `com.minh-ton.Reynard.Helper`，上一版只过滤主 App，因此点击没有进入 native hook；当前已把 Helper bundle 加入注入过滤，并将 Helper ctor 分流到原生点击 hook。尚未推送、未 CI 编译、未安装、未注销、未重启。
 
 ## 本轮候选事实
 
@@ -8,8 +8,10 @@
 - 新增路由入口诊断：仅记录事件类型、scheme、hasUserGesture、topLevel、flags、准入结果；不记录完整 URL、query 或 token。
 - 设备旧日志有真实用户点击 `OnPreNavigation` 样本 `hasUserGesture=1, flags=8388608`；历史门禁曾把 `0x800000` 当 redirect 拒绝，已移除该猜测判定。
 - 仍保留已核实的 GeckoView 请求路由；同时加入基线 UUID/prologue 防护的 `nsDocShell::OnLinkClick` native hook，专门覆盖 GeckoView 未转发的自定义协议点击。
-- 本地门禁：O0/O2 native policy 20 assertions、C++ policy 编译、20 个保护文件、6 个 plist、图标及无扩展残留均通过。
-- **CI 编译、DEB 静态验包、真机加载/功能仍未验证。**
+- 最新推送分支 `reynarddefault-1.5.38-plugin-only`，CI commit `a8505faa122ff66039a16d8d726eea39cc248ea9`，run `42846634560`：Verify、macOS 生产路由主机回归 252 checks、RootHide arm64e、rootless arm64 全通过。
+- 本地门禁：O0/O2 native policy 26 assertions、C++ 编译、arm64e 目标汇编验证 `blr x16`（无 `braa/blraa`）、20 个保护文件、6 个 plist、图标与无扩展残留通过。
+- 两个 DEB 已逐页校验 SHA1/SHA256 CodeDirectory，各 22 页均通过；16 payload、无维护脚本、无 WebExtension/XPI/旧 XUL hook。RootHide SHA256 `d3aee2af49bab14defa9bb083656760afddba48a4666f88a04de4d3f624432f6`，rootless `45d4a8937806821243aa0dce55778c827e1a00f2a8720c08d83a85ae8b883a48`。Source.zip SHA256 `8131a089e1a652b6724ac4e11ba1eecf9951f9e439c759fa440fabaf73f175e2`。
+- **未安装、未加载验证、未对真实点击作真机验收；CI/主机测试不等于设备功能完成。**
 
 ## 目标
 

@@ -3,7 +3,7 @@
   "files": {
     "Tweak.x": "9c215d3f43cb617037eccd5414ba764106033503368e4c9f735237585a25cb77",
     "Common/Common.h": "1c41c2901ede8b610324c4247ebe60f01ecd28eb25d19f660e8b4dc84ea16435",
-    "ReynardDefault.plist": "2603932692933950454548a4136655a9d3911af530e2bdeabde572e548638e87",
+    "ReynardDefault.plist": "a4065dca0a4c79d16b90de022806fe4ef22690d2ffad20f3d9d131ef47a7226f",
     "ReynardDefaultCC/ReynardDefaultCC.m": "f155cd2b2231ea0c79095d3b8fc433c070060aa7bb24dde879227f97638d283e",
     "ReynardDefaultCC/Makefile": "e1857cce78d40f3c7c807686dc8defbd01962bbe357a960c5139231e15bc045d",
     "ReynardDefaultCC/ReynardDefaultCC.h": "07f002be78bd85b21934d134f326bc285c376fc8a086049485a3f835db9107ef",
