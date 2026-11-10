@@ -4,13 +4,13 @@ A jailbreak tweak that redirects Safari URL opens to [Reynard](https://github.co
 
 When enabled, any link that would normally open in Safari is intercepted at the SpringBoard level and opened in Reynard instead.
 
-## 1.5.34 repair candidate
+## 1.5.35 plugin-only repair candidate
 
-The package keeps the original SpringBoard Safari-to-Reynard behavior and adds a native Gecko `nsDocShell::OnLinkClick` route inside Reynard itself. It does not install a WebExtension, edit the Reynard profile, or change Gecko defaults. Only a real top-level user click is eligible; history, reload, load-error, background messages, downloads, POST/header links and non-user navigation call the original Gecko path.
+The package keeps the original SpringBoard Safari-to-Reynard behavior and handles Reynard navigation through the already verified GeckoView `dispatchToSwift:message:callback:` boundary. It does not install a WebExtension, write a profile extension record, change signature preferences, or modify the Reynard app.
 
-For an HTTP(S) click, the system is asked to handle the exact clicked URL as a Universal Link. If no app accepts it, Gecko continues the same original URL. For a custom scheme, the complete clicked URI is normalized only for known Telegram `tg:` action spellings and passed to the matching app; other schemes are preserved. The XUL hook is guarded by the installed Firefox 159 UUID and OnLinkClick prologue; a mismatch refuses the new route and leaves the original Safari redirect behavior.
+Only a top-level foreground navigation with Gecko's `hasUserGesture` flag is eligible. History, reload, redirects, load-error/visited events, background messages, downloads and non-user navigation remain on Gecko's original path. An accepted HTTP(S) Universal Link is handled once; if no app accepts it, the same original URL continues in Gecko. Custom schemes are opened only after click validation; known Telegram `tg:` action spellings are normalized while all following bytes remain unchanged.
 
-This is a static/CI candidate until device acceptance.
+This remains a static/CI candidate until device acceptance.
 
 ## Features
 

@@ -1,4 +1,4 @@
-name: ReynardDefault native-only repair
+name: ReynardDefault 1.5.35 plugin-only build
 on:
   workflow_dispatch:
   push:
@@ -59,6 +59,10 @@ jobs:
           for deb in ci-out/${{ matrix.scheme }}/*.deb; do
             dpkg-deb -I "$deb" > "$deb.info.txt"; dpkg-deb -c "$deb" > "$deb.contents.txt"
             mkdir "$deb.control"; dpkg-deb -e "$deb" "$deb.control"
+            grep -q '^ Version: 1.5.35$' "$deb.info.txt"
+            ! grep -Eqi 'handoff\.xpi|extensions\.json|RDHandoff|WebExtension|signatures\.required' "$deb.contents.txt"
+            test "$(find "$deb.control" -type f | wc -l | tr -d ' ')" = 1
+            test -x "$(find debs/ReynardDefault/.theos -name ReynardDefault.dylib | head -1)"
           done
           (cd ci-out/${{ matrix.scheme }} && shasum -a 256 *.deb > SHA256SUMS)
       - uses: actions/upload-artifact@v4
