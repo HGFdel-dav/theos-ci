@@ -1153,11 +1153,13 @@ static CGPoint MiniSightDefaultAnchor(void) {
     CGRect screen = MiniSightScreenRect();
     CGFloat minX = L.centers.x, maxX = L.centers.x + L.centers.w;
     CGFloat minY = L.centers.y;
-    CGFloat maxY = MIN(L.centers.y + L.centers.h, screen.size.height * 0.55);
+    CGFloat maxY = L.centers.y + L.centers.h;
     if (maxY < minY) maxY = minY;
-    CGFloat x = minX + (maxX > minX ? (CGFloat)arc4random_uniform((uint32_t)(maxX - minX)) : 0.0);
-    CGFloat y = minY + (maxY > minY ? (CGFloat)arc4random_uniform((uint32_t)(maxY - minY)) : 0.0);
-    return CGPointMake(x, y);
+    // New installs start near the dock, where the reference pet has room to
+    // chat and hop between nearby icon rows. Saved user positions still win.
+    CGFloat x = screen.size.width * 0.5;
+    CGFloat y = maxY > minY ? (minY + (maxY - minY) * 0.86) : minY;
+    return CGPointMake(MSClamp(x, minX, maxX), MSClamp(y, minY, maxY));
 }
 
 /// 落地锚点：更新桌宠可行范围 → 移动子视图（窗口不动）→ 气泡跟上。
@@ -1306,7 +1308,6 @@ static BOOL MiniSightGestureEnabled(NSString *key) {
 }
 
 static void MiniSightRunGesture(NSString *action, BOOL allowSecondTap) {
-    [gMiniSightPet requestAttentionResponse];
     MiniSightChatPanel *panel = MiniSightChatPanel.existingPanel;
     if ([action isEqualToString:@"input"]) {
         if (!MiniSightOpenChat()) return;
@@ -1409,6 +1410,7 @@ static void MiniSightRunGesture(NSString *action, BOOL allowSecondTap) {
         return;
     }
     MSDiagEvent(@"gesture", @"single", @"ok", @{ @"action": MiniSightRuntimeConfig.shared.singleTap ?: @"" });
+    [gMiniSightPet requestAttentionResponse];
     MiniSightRunGesture(MiniSightRuntimeConfig.shared.singleTap, YES);
 }
 
@@ -1420,6 +1422,7 @@ static void MiniSightRunGesture(NSString *action, BOOL allowSecondTap) {
         return;
     }
     MSDiagEvent(@"gesture", @"double", @"ok", @{ @"action": MiniSightRuntimeConfig.shared.doubleTap ?: @"" });
+    [gMiniSightPet requestAttentionResponse];
     UIImpactFeedbackGenerator *feedback =
         [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
     [feedback impactOccurred];

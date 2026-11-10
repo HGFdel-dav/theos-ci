@@ -21,10 +21,12 @@
 #define MSA_ZERO_INIT {}
 #define MSA_TOKEN_INIT(TEXT, KIND, DYNAMIC) MSAToken{(TEXT), (KIND), (DYNAMIC)}
 #define MSA_CALLOC(TYPE, COUNT) static_cast<TYPE *>(calloc((COUNT), sizeof(TYPE)))
+#define MSA_STATIC_ASSERT static_assert
 #else
 #define MSA_ZERO_INIT {0}
 #define MSA_TOKEN_INIT(TEXT, KIND, DYNAMIC) (MSAToken){(TEXT), (KIND), (DYNAMIC)}
 #define MSA_CALLOC(TYPE, COUNT) calloc((COUNT), sizeof(TYPE))
+#define MSA_STATIC_ASSERT _Static_assert
 #endif
 
 #define MSA_INPUT_LIMIT 65536
@@ -41,7 +43,7 @@ typedef enum {
     MSA_USERSPACE, MSA_RESPRING, MSA_REBOOT, MSA_LOG, MSA_APPINFO,
     MSA_DIR, MSA_READ, MSA_UI, MSA_CLIPREAD, MSA_CLIPWRITE,
     MSA_COPY, MSA_MOVE, MSA_DELETE, MSA_EDIT, MSA_WRITE, MSA_NETWORK, MSA_OUTPUT,
-    MSA_EFFECT_COUNT
+    MSA_SEARCH, MSA_EXEC, MSA_DEVICE, MSA_INPUT, MSA_PROCESS, MSA_NOOP, MSA_EFFECT_COUNT
 } MSAEffect;
 typedef struct { const char *title, *purpose; int write; } MSARule;
 static const MSARule msa_rules[] = {
@@ -71,25 +73,37 @@ static const MSARule msa_rules[] = {
     {"允许修改文件内容？", "修改指定目标文件的内容。", 1},
     {"允许写入文件？", "创建、覆盖或追加写入目标文件。", 1},
     {"允许发起网络请求？", "连接网络，可能发送数据或下载并写入文件。", 1},
-    {"允许输出文本？", "向命令输出通道发送文本或状态信息。", 0}
+    {"允许输出文本？", "向命令输出通道返回文本或状态信息。", 0},
+    {"允许查找文件或内容？", "在指定路径中搜索文件、目录或符合条件的文本。", 0},
+    {"允许执行命令？", "运行命令指定的程序；无法确认的部分按可能产生影响处理。", 1},
+    {"允许读取设备信息？", "读取设备、前台应用或运行状态。", 0},
+    {"允许输入或控制界面？", "输入文字、按键或执行长按、拖动等界面操作。", 1},
+    {"允许管理运行中的 App？", "结束指定应用进程，可能导致该应用关闭。", 1},
+    {"允许处理辅助命令？", "处理命令的成功或失败状态，不读取或修改设备数据。", 0}
 };
+MSA_STATIC_ASSERT(sizeof(msa_rules) / sizeof(msa_rules[0]) == MSA_EFFECT_COUNT,
+                  "approval rule table must stay aligned with MSAEffect");
 /* Canonical effect order and exact tool names are shared with the Swift port. */
 typedef struct { const char *name; MSAEffect effect; } MSATool;
 static const MSATool msa_tools[] = {
     {"screenshot", MSA_SCREENSHOT}, {"tap_screen", MSA_TAP}, {"tap_element", MSA_TAP},
     {"swipe_screen", MSA_SWIPE}, {"record_screen", MSA_RECORD}, {"start_recording", MSA_RECORD},
-    {"stop_recording", MSA_RECORD}, {"launch_app", MSA_LAUNCH},
+    {"stop_recording", MSA_RECORD}, {"launch_app", MSA_LAUNCH}, {"open_url", MSA_LAUNCH},
     {"press_home", MSA_KEY}, {"press_power", MSA_KEY}, {"press_volume_up", MSA_KEY},
-    {"press_volume_down", MSA_KEY}, {"wake_and_home", MSA_KEY}, {"toggle_mute", MSA_MUTE},
-    {"set_brightness", MSA_SETTING}, {"set_volume", MSA_SETTING},
+    {"press_volume_down", MSA_KEY}, {"wake_and_home", MSA_KEY}, {"press_key", MSA_INPUT},
+    {"toggle_mute", MSA_MUTE}, {"set_brightness", MSA_SETTING}, {"set_volume", MSA_SETTING},
     {"install_app", MSA_INSTALL}, {"uninstall_app", MSA_UNINSTALL},
     {"get_syslog", MSA_LOG}, {"get_crash_logs", MSA_LOG}, {"read_crash_log", MSA_LOG},
-    {"get_app_info", MSA_APPINFO}, {"list_apps", MSA_APPINFO}, {"list_dir", MSA_DIR},
-    {"read_file", MSA_READ}, {"write_file", MSA_WRITE}, {"edit_file", MSA_EDIT},
-    {"get_ui_elements", MSA_UI}, {"get_screen_info", MSA_UI},
+    {"get_app_info", MSA_APPINFO}, {"list_apps", MSA_APPINFO}, {"list_running_apps", MSA_DEVICE},
+    {"list_dir", MSA_DIR}, {"read_file", MSA_READ}, {"write_file", MSA_WRITE}, {"edit_file", MSA_EDIT},
+    {"get_ui_elements", MSA_UI}, {"get_screen_info", MSA_DEVICE}, {"get_device_info", MSA_DEVICE},
+    {"get_frontmost_app", MSA_DEVICE}, {"get_element_at_point", MSA_UI},
     {"wait_for_element", MSA_UI}, {"wait_for_disappear", MSA_UI},
-    {"get_brightness", MSA_UI}, {"get_volume", MSA_UI},
-    {"get_clipboard", MSA_CLIPREAD}, {"set_clipboard", MSA_CLIPWRITE}
+    {"ocr_screen", MSA_UI}, {"describe_screen", MSA_UI},
+    {"get_brightness", MSA_DEVICE}, {"get_volume", MSA_DEVICE},
+    {"get_clipboard", MSA_CLIPREAD}, {"set_clipboard", MSA_CLIPWRITE},
+    {"kill_app", MSA_PROCESS}, {"input_text", MSA_INPUT}, {"type_text", MSA_INPUT},
+    {"long_press", MSA_INPUT}, {"double_tap", MSA_INPUT}, {"drag_and_drop", MSA_INPUT}
 };
 typedef struct {
     uint64_t effects;
@@ -101,6 +115,7 @@ typedef struct { char source[MSA_PATH_LIMIT], dest[MSA_PATH_LIMIT]; } MSACopy;
 typedef struct {
     uint64_t effects;
     int unknown, steps, copies, edits, only_temp, original;
+    int text_filter, result_sorted, result_dedup, file_search;
     MSACopy copy[MSA_COPY_LIMIT];
 } MSAState;
 typedef struct { char *text; int kind, dynamic; } MSAToken;
@@ -461,6 +476,52 @@ static void msa_step(MSAState *s, char **a, int n, int depth) {
         return;
     }
     if (msa_eq(exe, "mcp-logreader")) { msa_effect(s, MSA_LOG); return; }
+    if (msa_eq(exe, "find")) {
+        int deleting = 0, executing = 0, file_output = 0;
+        s->file_search = 1;
+        for (int i = 1; i < n; i++) {
+            if (msa_eq(a[i], "-delete")) deleting = 1;
+            if (msa_eq(a[i], "-exec") || msa_eq(a[i], "-execdir") || msa_eq(a[i], "-ok") || msa_eq(a[i], "-okdir")) executing = 1;
+            if (msa_eq(a[i], "-fprint") || msa_eq(a[i], "-fprint0") || msa_eq(a[i], "-fprintf")) file_output = 1;
+        }
+        if (executing) { msa_effect(s, MSA_EXEC); s->only_temp = 0; }
+        else if (deleting) { msa_effect(s, MSA_DELETE); s->only_temp = 0; }
+        else if (file_output) { msa_effect(s, MSA_WRITE); s->only_temp = 0; }
+        else msa_effect(s, MSA_SEARCH);
+        return;
+    }
+    if (msa_eq(exe, "sort") || msa_eq(exe, "uniq")) {
+        int valid = 1, output_path = -1, is_sort = msa_eq(exe, "sort"), unique = 0;
+        const char *short_flags = is_sort ? "bdfgiMhnorRscuVz" : "cdiu";
+        for (int i = 1; i < n; i++) {
+            if (msa_eq(a[i], "-o") || msa_eq(a[i], "--output")) {
+                if (++i >= n) { valid = 0; break; }
+                output_path = i;
+            } else if (msa_prefix(a[i], "--output=")) {
+                output_path = i;
+            } else if (a[i][0] == '-' && a[i][1] == '-') {
+                if (msa_eq(a[i], "--unique")) unique = 1;
+                else if (!msa_eq(a[i], "--reverse") && !msa_eq(a[i], "--numeric-sort")) valid = 0;
+            } else if (a[i][0] == '-' && a[i][1]) {
+                for (int k = 1; a[i][k]; k++) {
+                    if (!strchr(short_flags, a[i][k])) valid = 0;
+                    if (!is_sort && a[i][k] == 'u') unique = 1;
+                    if (is_sort && a[i][k] == 'u') unique = 1;
+                }
+            }
+        }
+        if (!valid) { s->unknown = 1; s->only_temp = 0; return; }
+        if (output_path >= 0) {
+            const char *dest = a[output_path];
+            if (msa_prefix(dest, "--output=")) dest += 9;
+            msa_effect(s, MSA_WRITE); msa_destination(s, dest, 0); s->only_temp = 0;
+        } else {
+            s->result_sorted = is_sort ? 1 : 0;
+            s->result_dedup = is_sort ? unique : 1;
+            msa_effect(s, MSA_READ);
+        }
+        return;
+    }
     if (msa_eq(exe, "cp") || msa_eq(exe, "mv")) { msa_copy_move(s, a, n, msa_eq(exe, "mv")); return; }
     if (msa_eq(exe, "sed")) { msa_sed(s, a, n); return; }
     if (msa_eq(exe, "rm")) {
@@ -526,14 +587,22 @@ static void msa_step(MSAState *s, char **a, int n, int depth) {
     else if (msa_eq(exe, "ls")) { flags = "laAdhHiknprRstux1FGLTU@eO"; e = MSA_DIR; }
     else if (msa_eq(exe, "wc")) flags = "clmwL";
     else if (msa_eq(exe, "uname")) flags = "amnprsv";
-    if (flags) { msa_effect(s, e); if (!msa_read_flags(a, n, flags)) s->unknown = 1; return; }
+    if (flags) {
+        msa_effect(s, e);
+        if (msa_eq(exe, "grep")) s->text_filter = 1;
+        if (!msa_read_flags(a, n, flags)) s->unknown = 1;
+        return;
+    }
     if (msa_eq(exe, "log") && n >= 2 && (msa_eq(a[1], "show") || msa_eq(a[1], "stream"))) {
         msa_effect(s, MSA_LOG);
         for (int i = 2; i < n; i++) if (msa_eq(a[i], "--output") || msa_prefix(a[i], "--output=")) { msa_effect(s, MSA_WRITE); s->only_temp = 0; }
         return;
     }
-    if (msa_eq(exe, "echo") || msa_eq(exe, "printf") || msa_eq(exe, "pwd") || msa_eq(exe, "true") || msa_eq(exe, "false") || msa_eq(exe, ":")) {
+    if (msa_eq(exe, "echo") || msa_eq(exe, "printf")) {
         msa_effect(s, MSA_OUTPUT); return;
+    }
+    if (msa_eq(exe, "pwd") || msa_eq(exe, "true") || msa_eq(exe, "false") || msa_eq(exe, ":")) {
+        msa_effect(s, MSA_NOOP); return;
     }
     s->unknown = 1;
 }
@@ -625,33 +694,57 @@ static MSApprovalSummary MSApprovalDescribe(const char *command) {
     out.original_write = state.original;
     out.temp_copy_edit = state.copies > 0 && state.edits > 0 && state.only_temp && !state.original && !state.unknown;
     int effects = 0;
-    for (int i = 0; i < MSA_EFFECT_COUNT; i++) if (msa_has(&state, (MSAEffect)i)) { effects++; if (msa_rules[i].write) out.is_write = 1; }
+    for (int i = 0; i < MSA_EFFECT_COUNT; i++) if (i != MSA_NOOP && msa_has(&state, (MSAEffect)i)) {
+        effects++; if (msa_rules[i].write) out.is_write = 1;
+    }
     out.is_write |= state.unknown;
     out.title = "允许执行设备命令？";
     if (out.temp_copy_edit) {
         out.title = "允许修改临时配置副本？";
         snprintf(out.purpose, sizeof(out.purpose), "按命令中的目标路径，将 RootHide 配置复制到临时文件并编辑该副本；未发现写回原路径的步骤。目标若为符号链接或目录，实际影响可能不同；执行结果仍需确认。");
-        for (int i = 0; i < MSA_EFFECT_COUNT; i++) if (i != MSA_COPY && i != MSA_EDIT && msa_has(&state, (MSAEffect)i)) {
+        for (int i = 0; i < MSA_EFFECT_COUNT; i++) if (i != MSA_NOOP && i != MSA_COPY && i != MSA_EDIT && msa_has(&state, (MSAEffect)i)) {
             msa_append(out.purpose, sizeof(out.purpose), "\n");
             msa_append(out.purpose, sizeof(out.purpose), msa_rules[i].purpose);
         }
     } else {
-        if (state.unknown) out.title = "允许执行尚未完全识别的操作？";
+        if (state.unknown) out.title = "允许执行需进一步确认的设备操作？";
         else if (state.original) out.title = "允许写入 RootHide 配置路径？";
         else if (effects > 1) out.title = "允许执行这些设备操作？";
-        else for (int i = 0; i < MSA_EFFECT_COUNT; i++) if (msa_has(&state, (MSAEffect)i)) out.title = msa_rules[i].title;
+        else if (effects == 0 && msa_has(&state, MSA_NOOP)) out.title = msa_rules[MSA_NOOP].title;
+        else for (int i = 0; i < MSA_EFFECT_COUNT; i++)
+            if (i != MSA_NOOP && msa_has(&state, (MSAEffect)i)) out.title = msa_rules[i].title;
         if (state.original) msa_append(out.purpose, sizeof(out.purpose), "已识别的写入目标包含 RootHide 配置路径，可能改变插件的加载行为。");
-        for (int i = 0; i < MSA_EFFECT_COUNT; i++) if (msa_has(&state, (MSAEffect)i)) {
+        int has_mutation = msa_has(&state, MSA_DELETE) || msa_has(&state, MSA_WRITE) ||
+            msa_has(&state, MSA_EDIT) || msa_has(&state, MSA_EXEC);
+        if (!has_mutation && state.text_filter && state.result_sorted && state.result_dedup) {
+            msa_append(out.purpose, sizeof(out.purpose), "读取指定文件中的文本，筛选符合条件的内容，并对结果排序去重；不会修改原文件。");
+        } else if (!has_mutation && state.text_filter && state.result_sorted) {
+            msa_append(out.purpose, sizeof(out.purpose), "读取指定文件中的文本，筛选符合条件的内容并排序；不会修改原文件。");
+        } else if (!has_mutation && state.text_filter && state.result_dedup) {
+            msa_append(out.purpose, sizeof(out.purpose), "读取指定文件中的文本，筛选符合条件的内容并去重；不会修改原文件。");
+        } else if (!has_mutation && state.text_filter) {
+            msa_append(out.purpose, sizeof(out.purpose), "读取指定文件并筛选符合条件的文本；不会修改原文件。");
+        } else if (state.result_sorted && state.result_dedup && !has_mutation) {
+            msa_append(out.purpose, sizeof(out.purpose), "读取文本并排序去重；不会修改原文件。");
+        } else if (state.result_sorted && !has_mutation) {
+            msa_append(out.purpose, sizeof(out.purpose), "读取文本并排序；不会修改原文件。");
+        } else if (state.result_dedup && !has_mutation) {
+            msa_append(out.purpose, sizeof(out.purpose), "读取文本并去重；不会修改原文件。");
+        } else if (state.file_search && !state.unknown && !has_mutation) {
+            msa_append(out.purpose, sizeof(out.purpose), "在指定路径下查找符合条件的文件或目录；不会修改文件。");
+        } else for (int i = 0; i < MSA_EFFECT_COUNT; i++) if (i != MSA_NOOP && msa_has(&state, (MSAEffect)i)) {
             if (out.purpose[0]) msa_append(out.purpose, sizeof(out.purpose), "\n");
             msa_append(out.purpose, sizeof(out.purpose), msa_rules[i].purpose);
         }
+        if (!out.purpose[0] && msa_has(&state, MSA_NOOP) && !state.unknown)
+            msa_append(out.purpose, sizeof(out.purpose), msa_rules[MSA_NOOP].purpose);
         if (state.unknown) {
             if (out.purpose[0]) msa_append(out.purpose, sizeof(out.purpose), "\n");
-            msa_append(out.purpose, sizeof(out.purpose), "无法完全判断整条命令；还可能包含写入或其他设备操作，请查看完整命令。");
+            msa_append(out.purpose, sizeof(out.purpose), "部分操作无法自动确认，可能会读取、修改或控制设备。请核对操作来源与内容后再决定。");
         }
     }
-    out.risk = state.unknown ? "影响未完全确定 · 请查看完整命令" : out.is_write ?
-        "会改变文件、界面或系统状态" : "已识别为读取操作";
+    out.risk = state.unknown ? "有未确认的操作 · 请仔细核对后决定" : out.is_write ?
+        "会改变文件、界面或系统状态" : "只读取信息，不修改文件或系统设置";
     return out;
 }
 #endif

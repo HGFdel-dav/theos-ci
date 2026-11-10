@@ -104,6 +104,20 @@ static void authoritative_activity_and_owner_gates(void) {
     CHECK(MSPetResidentAdvance(&resident, 118., context) == MSPetResidentFellAsleep);
 }
 
+static void lively_roam_stays_nearby_and_bounded(void) {
+    MSRect bounds = {40., 240., 300., 360.};
+    MSPoint current = {190., 420.};
+    MSPoint target = MSPetNearbyTarget(bounds, current, .9, .9, true);
+    CHECK(target.x >= bounds.x && target.x <= bounds.x + bounds.w);
+    CHECK(target.y >= bounds.y && target.y <= bounds.y + bounds.h);
+    CHECK(fabs(target.x - current.x) <= bounds.w * .43 + 1.);
+    CHECK(MSPetSafeJumpHeight(bounds, current, target, 26.) >= 0.);
+    CHECK(MSPetSafeJumpHeight(bounds, current, target, 26.) <= 26.);
+    CHECK(MSPetRoamDelay(3., .6, 3., false, true, .5) >= 1.79);
+    CHECK(MSPetRoamDelay(3., 3., 3., false, false, .5) >= 8.99);
+    CHECK(MSPetRoamDelay(3., 0., 3., false, true, .5) == 0.);
+}
+
 static void interactions_and_bounded_response(void) {
     MSPetResident resident;
     nap(&resident, 1.);
@@ -136,6 +150,7 @@ int main(void) {
     verified_frame_sequences();
     inactivity_is_not_pose_duration();
     authoritative_activity_and_owner_gates();
+    lively_roam_stays_nearby_and_bounded();
     interactions_and_bounded_response();
     printf("pet behavior: %u checks passed\n", checks);
     return 0;

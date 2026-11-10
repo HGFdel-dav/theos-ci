@@ -75,6 +75,7 @@ static double MSPetRandomRange(double lo, double hi) {
 static MSPoint MSPetPoint(CGPoint p) { return (MSPoint){(double)p.x, (double)p.y}; }
 static CGPoint MSPetCGPoint(MSPoint p) { return CGPointMake((CGFloat)p.x, (CGFloat)p.y); }
 
+
 // CADisplayLink retains its target: the target must not retain the view.
 @interface MiniSightPetDisplayLinkProxy : NSObject
 @property (nonatomic, weak) MiniSightPetView *owner;
@@ -973,12 +974,12 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     }
     // Preserve the original weighted walk/jump/wave choices and pace table.
     // Assistant activity changes the delay, not sprite or display-link FPS.
-    NSTimeInterval delay = _activityActive
+    NSTimeInterval base = _activityActive
         ? MSPetRandomRange(kMiniSightRoamActiveLo, kMiniSightRoamActiveHi)
         : MSPetRandomRange(kMiniSightRoamIdleLo, kMiniSightRoamIdleHi);
-    if (_roamInterval > 0) delay = _roamInterval * MSPetRandomRange(0.75, 1.25);
-    else if (_roamPace > 0) delay *= _roamPace;
-    if (_reducedWork && !_activityActive) delay *= 1.5;
+    NSTimeInterval delay = MSPetRoamDelay(base, _roamPace, _roamInterval,
+                                          _reducedWork, _activityActive,
+                                          MSPetRandomUnit());
     if (_roamPace == 0) { [self invalidateRoamTimer]; return; }
     delay += _restAfterMotion;
     _restAfterMotion = 0.;
@@ -1010,21 +1011,23 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     MSRect area = [self feasibleCenters];
     uint32_t roll = arc4random_uniform(100);
     if (roll < 52) {
-        // Wander to a random feasible CENTER; y is never taken from the row above.
-        MSPoint target = {MSPetRandomRange(area.x, area.x + area.w),
-                          MSPetRandomRange(area.y, area.y + area.h)};
-        [self startMotionTo:MSPetCGPoint(target) jump:NO rest:MSPetRandomRange(0.6, 2.2)];
+        // Move to a nearby perch so the pet reads as walking across the
+        // desktop, not teleporting to an arbitrary screen point.
+        MSPoint target = MSPetNearbyTarget(area, MSPetPoint(self.center),
+                                           MSPetRandomUnit(), MSPetRandomUnit(), false);
+        [self startMotionTo:MSPetCGPoint(target) jump:NO rest:MSPetRandomRange(0.35, 1.1)];
     } else if (roll < 80) {
-        // Hop in place. The height is capped by MSJumpHeight(), so the apex can
-        // never rise above the top of the feasible range; if there is no room
-        // left overhead, walk instead of "jumping" zero pixels.
+        // Use a nearby lane target; the shared solver limits the arc so neither
+        // the pet head nor its chat bubble crosses the reserved top boundary.
         CGPoint origin = self.center;
-        double height = MSJumpHeight(area, MSPetPoint(origin), kMiniSightJumpDesiredHeight);
+        MSPoint target = MSPetNearbyTarget(area, MSPetPoint(origin),
+                                           MSPetRandomUnit(), MSPetRandomUnit(), true);
+        double height = MSPetSafeJumpHeight(area, MSPetPoint(origin), target,
+                                            kMiniSightJumpDesiredHeight);
         if (height < kMiniSightJumpMinHeight) {
-            MSPoint target = {MSPetRandomRange(area.x, area.x + area.w), origin.y};
-            [self startMotionTo:MSPetCGPoint(target) jump:NO rest:MSPetRandomRange(0.6, 2.2)];
+            [self startMotionTo:MSPetCGPoint(target) jump:NO rest:MSPetRandomRange(0.35, 1.1)];
         } else {
-            [self startMotionTo:origin jump:YES rest:MSPetRandomRange(1.0, 2.4)];
+            [self startMotionTo:MSPetCGPoint(target) jump:YES rest:MSPetRandomRange(0.65, 1.5)];
         }
     } else if (roll < 90) {
         [self holdState:MiniSightPetStateWaving forDuration:kMiniSightWaveHold];
@@ -1090,9 +1093,8 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     CGPoint end = [self clampedCenter:target];
     double height = 0.;
     if (jump) {
-        height = MSJumpHeight([self feasibleCenters], MSPetPoint(start), kMiniSightJumpDesiredHeight);
+        height = MSPetSafeJumpHeight([self feasibleCenters], MSPetPoint(start), MSPetPoint(end), kMiniSightJumpDesiredHeight);
         if (height < kMiniSightJumpMinHeight) height = 0.;
-        else end = start; // A hop stays in place: no horizontal drift under the apex.
     }
     double distance = hypot((double)end.x - start.x, (double)end.y - start.y);
     if (distance < 1. && height <= 0.) {

@@ -12,10 +12,8 @@ static NSString *MiniSightDescribeCommand(NSString *action, NSString *command) {
     NSString *purpose = [NSString stringWithUTF8String:usage.purpose];
     NSString *risk = [NSString stringWithUTF8String:usage.risk];
     NSString *summary = [NSString stringWithFormat:@"%@\n%@\n%@", title, purpose, risk];
-    // The existing pet bubble scrolls. Until a separate detail control exists,
-    // retain the ENTIRE authorization for uncertain commands, without clipping.
-    // Known actions stay concise; the native dialog has a collapsed detail view.
-    if (usage.unknown) return [summary stringByAppendingFormat:@"\n\n完整命令（可滚动查看）：\n%@", command ?: @""];
+    // Presentation only: keep the original request in the existing transport,
+    // but never concatenate executable text into the user-facing approval.
     return summary;
 }
 #endif

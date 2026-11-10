@@ -9,8 +9,10 @@ static const char *const names[] = {
     "screenshot", "tap", "swipe", "record", "launch", "key", "mute", "setting",
     "install", "uninstall", "userspace", "respring", "reboot", "log", "appinfo",
     "dir", "read", "ui", "clipread", "clipwrite", "copy", "move", "delete",
-    "edit", "write", "network", "output"
+    "edit", "write", "network", "output", "search", "exec", "device", "input", "process", "noop"
 };
+_Static_assert(sizeof(names) / sizeof(names[0]) == MSA_EFFECT_COUNT,
+               "CLI effect names must stay aligned with MSAEffect");
 static void quoted(const char *text) {
     putchar('"');
     for (const unsigned char *p = (const unsigned char *)text; *p; p++) {
