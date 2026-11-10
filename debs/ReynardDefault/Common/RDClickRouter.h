@@ -11,35 +11,15 @@ static BOOL RDExactFlag(id value, BOOL fallback) {
 static BOOL RDWebScheme(NSString *scheme) {
     return [scheme isEqualToString:@"http"] || [scheme isEqualToString:@"https"];
 }
-static BOOL RDAppScheme(NSString *scheme) {
-    static NSSet *internal;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        internal = [NSSet setWithArray:@[
-            @"http", @"https", @"about", @"data", @"blob", @"javascript",
-            @"moz-extension", @"jar", @"view-source", @"file", @"resource",
-            @"wyciwyg", @"ws", @"wss", @"ftp", @"intent", @"reynard",
-            @"chrome", @"chrome-extension"
-        ]];
-    });
-    return scheme.length > 0 && ![internal containsObject:scheme];
-}
-static NSURL *RDValidatedRouteURL(NSString *text, BOOL web) {
+static NSURL *RDValidatedWebURL(NSString *text) {
     if (![text isKindOfClass:[NSString class]] || !text.length || text.length >= RD_URL_CAP) return nil;
     NSCharacterSet *bad = [NSCharacterSet controlCharacterSet];
     if ([text rangeOfCharacterFromSet:bad].location != NSNotFound ||
         [text rangeOfCharacterFromSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]].location != NSNotFound) return nil;
     NSURLComponents *parts = [NSURLComponents componentsWithString:text];
     NSString *scheme = parts.scheme.lowercaseString;
-    if (web ? !RDWebScheme(scheme) : !RDAppScheme(scheme)) return nil;
-    if (web && (!parts.host.length || parts.user.length || parts.password.length)) return nil;
+    if (!RDWebScheme(scheme) || !parts.host.length || parts.user.length || parts.password.length) return nil;
     return parts.URL;
-}
-static NSURL *RDNormalizedAppTarget(NSString *text) {
-    if (![text isKindOfClass:[NSString class]]) return nil;
-    char normalized[RD_URL_CAP + 2];
-    if (!RDNormalizeAppURL(text.UTF8String, normalized, sizeof(normalized))) return nil;
-    return RDValidatedRouteURL([NSString stringWithUTF8String:normalized], NO);
 }
 
 @interface RDRouteReply : NSObject {
@@ -178,9 +158,12 @@ static BOOL RDHandleClickNavigation(id dispatcher, NSString *type,
     BOOL isRequest = [type isEqualToString:@"GeckoView:OnPreNavigation"] ||
                      [type isEqualToString:@"GeckoView:OnLoadRequest"];
     if (!isRequest || ![payload isKindOfClass:[NSDictionary class]] ||
-        ![callback respondsToSelector:@selector(sendSuccess:)]) return NO;
+        ![callback respondsToSelector:@selector(sendSuccess:)]) {
+        RDLog(@"route reject reason=event-or-payload event=%@", type);
+        return NO;
+    }
     NSString *uri = [payload[@"uri"] isKindOfClass:[NSString class]] ? payload[@"uri"] : nil;
-    if (!uri.length) return NO;
+    if (!uri.length) { RDLog(@"route reject reason=missing-uri event=%@",type); return NO; }
 
     NSURLComponents *parts = [NSURLComponents componentsWithString:uri];
     NSString *scheme = parts.scheme.lowercaseString;
@@ -189,50 +172,48 @@ static BOOL RDHandleClickNavigation(id dispatcher, NSString *type,
     uint32_t flags = [payload[@"flags"] isKindOfClass:[NSNumber class]] ?
                      [payload[@"flags"] unsignedIntValue] : 0;
     BOOL foreground = [UIApplication sharedApplication].applicationState == UIApplicationStateActive;
-    BOOL eligible = RDClickEventAllowed(YES, gesture, topLevel, flags, foreground) && RDRouteEnabled();
+    BOOL enabled = RDRouteEnabled();
+    BOOL eligible = RDClickEventAllowed(YES, gesture, topLevel, flags, foreground) && enabled;
+    RDLog(@"route gate event=%@ scheme=%@ gesture=%d top=%d flags=0x%x foreground=%d enabled=%d eligible=%d",
+          type, scheme, gesture, topLevel, flags, foreground, enabled, eligible);
     RDRouteReply *reply = [RDRouteReply new];
     reply.callback = callback;
 
-    /* A later OnLoadRequest is only a reply phase of the earlier decision. */
-    if ([type isEqualToString:@"GeckoView:OnLoadRequest"] &&
-        (RDWebScheme(scheme) || RDAppScheme(scheme))) {
+    /* Custom protocols are handled exclusively by RDNativeOnLinkClick. This
+       GeckoView notification path is only used for HTTP(S) Universal Links. */
+    if (!RDWebScheme(scheme)) return NO;
+    if ([type isEqualToString:@"GeckoView:OnLoadRequest"]) {
         RDNavigationAttempt *attempt = RDWebAttempts(dispatcher)[uri];
-        if (attempt && !attempt.finished) [attempt.replies addObject:reply];
-        else [reply finish:attempt ? attempt.handled : NO];
+        if (!attempt) return NO;
+        if (!attempt.finished) [attempt.replies addObject:reply];
+        else [reply finish:attempt.handled];
+        RDLog(@"route load-phase reuse web finished=%d handled=%d",attempt.finished,attempt.handled);
         return YES;
     }
-    if (!eligible) return NO;
+    if (!eligible) {
+        RDLog(@"route reject reason=gate scheme=%@ gesture=%d top=%d flags=0x%x foreground=%d enabled=%d",
+              scheme, gesture, topLevel, flags, foreground, enabled);
+        return NO;
+    }
 
-    if (RDWebScheme(scheme)) {
-        NSURL *webURL = RDValidatedRouteURL(uri, YES);
-        if (!webURL) return NO;
-        NSString *trigger = [payload[@"triggerUri"] isKindOfClass:[NSString class]] ? payload[@"triggerUri"] : nil;
-        if (trigger.length && parts.fragment.length) {
-            NSURLComponents *from = [NSURLComponents componentsWithString:trigger];
-            NSURLComponents *to = [parts copy];
-            from.fragment = nil; to.fragment = nil;
-            if (from.URL && [from.URL isEqual:to.URL]) return NO;
+    NSURL *webURL = RDValidatedWebURL(uri);
+    if (!webURL) { RDLog(@"route reject reason=invalid-web-uri"); return NO; }
+    NSString *trigger = [payload[@"triggerUri"] isKindOfClass:[NSString class]] ? payload[@"triggerUri"] : nil;
+    if (trigger.length && parts.fragment.length) {
+        NSURLComponents *from = [NSURLComponents componentsWithString:trigger];
+        NSURLComponents *to = [parts copy];
+        from.fragment = nil; to.fragment = nil;
+        if (from.URL && [from.URL isEqual:to.URL]) {
+            RDLog(@"route skip reason=same-document-anchor");
+            return NO;
         }
-        RDNavigationAttempt *attempt = RDBeginWebAttempt(dispatcher, uri, reply);
-        if (!attempt) return YES;
-        RDOpenOperation *operation = [RDOpenOperation new];
-        operation.webURL = webURL;
-        operation.completion = ^(BOOL handled) { RDFinishWebAttempt(attempt, handled); };
-        [operation start];
-        return YES;
     }
-
-    NSURL *appURL = RDNormalizedAppTarget(uri);
-    if (!appURL) return NO;
     RDNavigationAttempt *attempt = RDBeginWebAttempt(dispatcher, uri, reply);
     if (!attempt) return YES;
-    /* Keep the Gecko callback pending until LaunchServices reports whether
-       the target app accepted the exact clicked URI. Failure returns NO so the
-       original Gecko path remains available; success blocks it exactly once. */
     RDOpenOperation *operation = [RDOpenOperation new];
-    operation.appURL = appURL;
-    operation.completion = ^(BOOL accepted) { RDFinishWebAttempt(attempt, accepted); };
-    dispatch_async(dispatch_get_main_queue(), ^{ [operation start]; });
+    operation.webURL = webURL;
+    operation.completion = ^(BOOL handled) { RDFinishWebAttempt(attempt, handled); };
+    [operation start];
     return YES;
 }
 #endif

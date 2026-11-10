@@ -13,8 +13,6 @@ static NSString *const kDispatcherClass = @"_TtC9GeckoView27GeckoEventDispatcher
 - (void)sendError:(id)response;
 @end
 
-#import "Common/RDClickRouter.h"
-
 static NSString *RDLogPath(void) {
     static NSString *path; static dispatch_once_t once;
     dispatch_once(&once, ^{ path = [NSTemporaryDirectory() stringByAppendingPathComponent:@"ReynardDefault.log"]; });
@@ -41,14 +39,29 @@ static void RDLog(NSString *format, ...) {
     [handle closeFile];
 }
 
+#import "Common/RDClickRouter.h"
+#import "Common/RDNativeLink.h"
+
 %group ReynardGroup
 %hook _TtC9GeckoView27GeckoEventDispatcherWrapper
 - (void)dispatchToSwift:(NSString *)type message:(id)message callback:(id<RDEventCallback>)callback {
     BOOL navigation = [type isEqualToString:@"GeckoView:OnPreNavigation"] ||
                       [type isEqualToString:@"GeckoView:OnLoadRequest"];
     if (!navigation) { %orig; return; }
+    NSDictionary *payload = [message isKindOfClass:[NSDictionary class]] ? message : nil;
+    NSString *diagURI = [payload[@"uri"] isKindOfClass:[NSString class]] ? payload[@"uri"] : @"<none>";
+    id diagGesture = [payload[@"hasUserGesture"] isKindOfClass:[NSNumber class]] ? payload[@"hasUserGesture"] : @"<none>";
+    id diagTop = [payload[@"isTopLevel"] isKindOfClass:[NSNumber class]] ? payload[@"isTopLevel"] : @"<none>";
+    id diagFlags = [payload[@"flags"] isKindOfClass:[NSNumber class]] ? payload[@"flags"] : @"<none>";
+    NSURLComponents *diagParts = [NSURLComponents componentsWithString:diagURI];
+    NSString *diagScheme = diagParts.scheme.lowercaseString ?: @"<none>";
+    RDLog(@"route event=%@ scheme=%@ gesture=%@ top=%@ flags=%@ callback=%d",
+          type, diagScheme, diagGesture, diagTop, diagFlags,
+          [callback respondsToSelector:@selector(sendSuccess:)]);
     void (^handle)(void) = [^{
-        if (RDHandleClickNavigation(self, type, message, callback)) return;
+        BOOL handled = RDHandleClickNavigation(self, type, message, callback);
+        RDLog(@"route decision event=%@ scheme=%@ handled=%d", type, diagScheme, handled);
+        if (handled) return;
         %orig(type, message, callback);
     } copy];
     if ([NSThread isMainThread]) handle();
@@ -66,6 +79,7 @@ static void RDLog(NSString *format, ...) {
             RDLog(@"native click hook unavailable"); return;
         }
         %init(ReynardGroup);
-        RDLog(@"loaded plugin-only click router enabled=%d", RDRouteEnabled());
+        RDNativeInstallXULHook();
+        RDLog(@"loaded plugin-only router enabled=%d", RDRouteEnabled());
     }
 }

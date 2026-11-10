@@ -4,11 +4,11 @@ A jailbreak tweak that redirects Safari URL opens to [Reynard](https://github.co
 
 When enabled, any link that would normally open in Safari is intercepted at the SpringBoard level and opened in Reynard instead.
 
-## 1.5.35 plugin-only repair candidate
+## 1.5.37 plugin-only diagnostic candidate
 
-The package keeps the original SpringBoard Safari-to-Reynard behavior and handles Reynard navigation through the already verified GeckoView `dispatchToSwift:message:callback:` boundary. It does not install a WebExtension, write a profile extension record, change signature preferences, or modify the Reynard app.
+The package keeps the original SpringBoard Safari-to-Reynard behavior. Inside Reynard it retains the GeckoView request hook for HTTP(S) Universal Links and adds a version-guarded native Gecko `OnLinkClick` hook for custom schemes. Both paths are in this one DEB; no WebExtension, XPI, profile extension write or signature preference change is included.
 
-Only a top-level foreground navigation with Gecko's `hasUserGesture` flag is eligible. History, reload, redirects, load-error/visited events, background messages, downloads and non-user navigation remain on Gecko's original path. An accepted HTTP(S) Universal Link is handled once; if no app accepts it, the same original URL continues in Gecko. Custom schemes are opened only after click validation; known Telegram `tg:` action spellings are normalized while all following bytes remain unchanged.
+The native hook only handles top-level, foreground, user-triggered link clicks, and fails open to Gecko for downloads, POST/header requests or mismatched XUL builds. HTTP(S) uses the normal request callback: an accepted Universal Link is handled once; otherwise the original URL continues in Gecko. Custom schemes are sent to the system from the native link-click entry; known Telegram `tg:` action spellings get only the missing `//`, preserving the remaining address bytes.
 
 This remains a static/CI candidate until device acceptance.
 

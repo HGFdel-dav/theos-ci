@@ -23,15 +23,17 @@ for p in ROOT.rglob('*.plist'): plistlib.loads(p.read_bytes())
 print('PLISTS='+str(len(list(ROOT.rglob('*.plist')))))
 print(run([sys.executable,str(ROOT/'tests/icon_check.py')],cwd=ROOT).splitlines()[-1])
 assert not (ROOT/'layout').exists(),'extension layout must not be present'
-for name in ['RDExtensionInstall.h','RDHandoffPayload.h','RDNativeLink.h']:
+for name in ['RDExtensionInstall.h','RDHandoffPayload.h']:
  assert not (ROOT/'Common'/name).exists(),name+' must not be present'
-assert not (ROOT/'tests/native_xul_hook_test.mm').exists(),'obsolete XUL test must not be present'
-assert not (ROOT/'tests/policy_test.c').exists(),'obsolete XUL policy test must not be present'
+assert not (ROOT/'layout').exists(),'extension layout must not be present'
 entry=(ROOT/'ReynardHook.xm').read_text(); router=(ROOT/'Common/RDClickRouter.h').read_text()
-assert 'RDClickRouter.h' in entry and 'dispatchToSwift:message:callback:' in entry
-assert 'RDInstallNativeXULHook' not in entry and 'WebExtension' not in entry and 'ExtensionInstall' not in entry
-assert 'RDHandleClickNavigation' in router and 'OnPreNavigation' in entry
-assert 'sendSuccess:@(handled)' in router
-assert 'RD_XUL_ON_LINK_CLICK' not in router and 'signatures.required' not in entry
+native=(ROOT/'Common/RDNativeLink.h').read_text()
+assert 'dispatchToSwift:message:callback:' in entry and 'RDHandleClickNavigation' in router
+assert 'RDNativeInstallXULHook' in entry and 'RDNativeOnLinkClick' in native
+assert 'kRDExpectedXULUUID' in native and 'kRDLinkPrologue' in native
+assert 'RDClickAllowed' not in router and 'RD_REDIRECT_FLAG' not in router
+assert 'RDSeedExtensionsDatabase' not in native and 'signatures.required' not in native
+assert 'native click gate' in native and 'route gate' in router
+assert 'handoff.xpi' not in entry and 'WebExtension:InstallPrompt' not in entry
 print('PLUGIN_ONLY_CANDIDATE=PASS')
 print('LOCAL_CHECKS_PASS; iOS CI and device behavior still unverified')
