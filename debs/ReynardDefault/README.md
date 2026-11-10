@@ -4,11 +4,11 @@ A jailbreak tweak that redirects Safari URL opens to [Reynard](https://github.co
 
 When enabled, any link that would normally open in Safari is intercepted at the SpringBoard level and opened in Reynard instead.
 
-## 1.5.37 plugin-only diagnostic candidate
+## 1.5.38 plugin-only native click candidate
 
-The package keeps the original SpringBoard Safari-to-Reynard behavior. Inside Reynard it retains the GeckoView request hook for HTTP(S) Universal Links and adds a version-guarded native Gecko `OnLinkClick` hook for custom schemes. Both paths are in this one DEB; no WebExtension, XPI, profile extension write or signature preference change is included.
+The package keeps the original SpringBoard Safari-to-Reynard behavior. Inside Reynard it keeps the GeckoView request hook for HTTP(S) Universal Links and adds a version-guarded native Gecko `OnLinkClick` hook for custom schemes. Both paths are in this one DEB; no WebExtension, XPI, profile extension write or signature preference change is included.
 
-The native hook only handles top-level, foreground, user-triggered link clicks, and fails open to Gecko for downloads, POST/header requests or mismatched XUL builds. HTTP(S) uses the normal request callback: an accepted Universal Link is handled once; otherwise the original URL continues in Gecko. Custom schemes are sent to the system from the native link-click entry; known Telegram `tg:` action spellings get only the missing `//`, preserving the remaining address bytes.
+The native hook checks the Firefox 159 XUL UUID and exact `OnLinkClick` prologue. Its XUL slice is plain arm64 even in the arm64e app process, so the `nsIURI::GetSpec` vtable entry is called without arm64e PAC authentication; the helper has an arm64e assembly regression check. The hook handles only top-level, foreground, user-triggered clicks, and leaves downloads, POST/header requests or mismatched XUL builds to Gecko. HTTP(S) uses the GeckoView request callback; accepted Universal Links are handled once, otherwise the original URL continues in Gecko. Custom schemes are handed off from the native link-click entry; known Telegram `tg:` action spellings get only the missing `//`, preserving the rest of the address bytes.
 
 This remains a static/CI candidate until device acceptance.
 
