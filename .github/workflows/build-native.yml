@@ -21,8 +21,7 @@ jobs:
         run: |
           set -e
           python3 tests/run_checks.py
-          xcrun clang++ -std=c++17 -fobjc-arc -fblocks -Wall -Wextra -Werror \\
-            -framework Foundation tests/router_host.mm -o "$RUNNER_TEMP/router-host"
+          xcrun clang++ -std=c++17 -fobjc-arc -fblocks -Wall -Wextra -Werror -framework Foundation tests/router_host.mm -o "$RUNNER_TEMP/router-host"
           "$RUNNER_TEMP/router-host"
   build:
     needs: verify
