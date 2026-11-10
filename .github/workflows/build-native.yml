@@ -55,13 +55,13 @@ jobs:
           git rev-parse HEAD > ci-out/${{ matrix.scheme }}/SOURCE-COMMIT
           git -C "$HOME/theos" rev-parse HEAD > ci-out/${{ matrix.scheme }}/THEOS-COMMIT
           xcrun clang --version > ci-out/${{ matrix.scheme }}/COMPILER.txt
-          find debs/ReynardDefault/.theos -name '*.dSYM' -prune -exec cp -R '{}' ci-out/${{ matrix.scheme }}/ \\;
+          find debs/ReynardDefault/.theos -name '*.dSYM' -prune -exec cp -R '{}' ci-out/${{ matrix.scheme }}/ \;
           for deb in ci-out/${{ matrix.scheme }}/*.deb; do
             dpkg-deb -I "$deb" > "$deb.info.txt"
             dpkg-deb -c "$deb" > "$deb.contents.txt"
             mkdir "$deb.control"; dpkg-deb -e "$deb" "$deb.control"
             grep -q '^ Version: 1.5.37$' "$deb.info.txt"
-            ! grep -Eqi 'handoff\\.xpi|extensions\\.json|RDHandoff|WebExtension|signatures\\.required' "$deb.contents.txt"
+            ! grep -Eqi 'handoff\.xpi|extensions\.json|RDHandoff|WebExtension|signatures\.required' "$deb.contents.txt"
             test "$(find "$deb.control" -type f | wc -l | tr -d ' ')" = 1
           done
           (cd ci-out/${{ matrix.scheme }} && shasum -a 256 *.deb > SHA256SUMS)
