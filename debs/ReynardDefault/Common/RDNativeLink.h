@@ -10,6 +10,8 @@
 #import <cstdlib>
 #import <cstring>
 #import "RDLinkPolicy.h"
+#import "RDGeckoABI.h"
+#import "RDGeckoABI.h"
 
 #define RD_NS_ERROR_ABORT ((int32_t)0x80004004)
 #define RD_XUL_ON_LINK_CLICK 0x5d74298ULL
@@ -38,18 +40,7 @@ struct RDGeckoAutoCString {
 struct RDGeckoStringBufferHeader {
     std::atomic<uint32_t> refCount; uint32_t storageSize;
 };
-struct RDGeckoIID;
 typedef int32_t RDGeckoResult;
-class RDGeckoSupports {
-public:
-    virtual RDGeckoResult QueryInterface(const RDGeckoIID &, void **) = 0;
-    virtual uint32_t AddRef(void) = 0;
-    virtual uint32_t Release(void) = 0;
-};
-class RDGeckoURI : public RDGeckoSupports {
-public:
-    virtual RDGeckoResult GetSpec(RDGeckoCString &) = 0;
-};
 typedef int32_t (*RDOnLinkClickFn)(
     void *, void *, void *, const RDGeckoU16String *, const RDGeckoU16String *,
     void *, void *, bool, uint8_t, void *, void *);
@@ -110,7 +101,7 @@ static NSString *RDNativeURISpec(void *uri) {
     value.data = storage.storage; value.length = 0;
     value.dataFlags = 0x11; value.classFlags = RD_GECKO_STRING_CLASS_INLINE;
     storage.inlineCapacity = 63; storage.storage[0] = 0;
-    RDGeckoResult result = static_cast<RDGeckoURI *>(uri)->GetSpec(value);
+    RDGeckoResult result = (RDGeckoResult)RDGeckoCallUnsignedVTable3(uri, &value);
     NSString *copy = nil;
     BOOL inlineStorage = value.data == storage.storage;
     BOOL inlineFlag = (value.dataFlags & RD_GECKO_STRING_INLINE) != 0;
