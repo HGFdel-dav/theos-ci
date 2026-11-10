@@ -6,6 +6,7 @@
 
 #define RD_TAG @"[ReynardDefault]"
 static NSString *const kReynardBundleID = @"com.minh-ton.Reynard";
+static NSString *const kReynardHelperBundleID = @"com.minh-ton.Reynard.Helper";
 static NSString *const kDispatcherClass = @"_TtC9GeckoView27GeckoEventDispatcherWrapper";
 
 @protocol RDEventCallback <NSObject>
@@ -72,14 +73,21 @@ static void RDLog(NSString *format, ...) {
 
 %ctor {
     @autoreleasepool {
-        if (![[NSBundle mainBundle].bundleIdentifier isEqualToString:kReynardBundleID]) return;
+        NSString *bundleID = [NSBundle mainBundle].bundleIdentifier;
+        if ([bundleID isEqualToString:kReynardHelperBundleID]) {
+            RDNativeInstallXULHook();
+            RDLog(@"plugin-only native click hook in Gecko Helper");
+            return;
+        }
+        if (![bundleID isEqualToString:kReynardBundleID]) return;
         Class cls = objc_getClass(kDispatcherClass.UTF8String);
         Method method = class_getInstanceMethod(cls, @selector(dispatchToSwift:message:callback:));
-        if (!method || method_getNumberOfArguments(method) != 5) {
-            RDLog(@"native click hook unavailable"); return;
+        if (method && method_getNumberOfArguments(method) == 5) {
+            %init(ReynardGroup);
+            RDLog(@"GeckoView web router enabled=%d", RDRouteEnabled());
+        } else {
+            RDLog(@"GeckoView request hook unavailable");
         }
-        %init(ReynardGroup);
         RDNativeInstallXULHook();
-        RDLog(@"loaded plugin-only router enabled=%d", RDRouteEnabled());
     }
 }

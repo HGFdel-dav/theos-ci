@@ -8,6 +8,7 @@
 		<array>
 			<string>com.apple.springboard</string>
 			<string>com.minh-ton.Reynard</string>
+			<string>com.minh-ton.Reynard.Helper</string>
 		</array>
 	</dict>
 </dict>

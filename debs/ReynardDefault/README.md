@@ -4,11 +4,11 @@ A jailbreak tweak that redirects Safari URL opens to [Reynard](https://github.co
 
 When enabled, any link that would normally open in Safari is intercepted at the SpringBoard level and opened in Reynard instead.
 
-## 1.5.38 plugin-only native click candidate
+## 1.5.39 plugin-only Helper injection fix
 
-The package keeps the original SpringBoard Safari-to-Reynard behavior. Inside Reynard it keeps the GeckoView request hook for HTTP(S) Universal Links and adds a version-guarded native Gecko `OnLinkClick` hook for custom schemes. Both paths are in this one DEB; no WebExtension, XPI, profile extension write or signature preference change is included.
+The package keeps the original SpringBoard Safari-to-Reynard behavior. It now injects the native click hook into both the Reynard app and its Gecko `Reynard Helper` content process, where the recorded Telegram button taps actually execute. The direct XUL hook checks the Firefox 159 UUID and exact `OnLinkClick` prologue. Its XUL slice is plain arm64 even in the arm64e process; `nsIURI::GetSpec` therefore uses an unauthenticated ARM64 `BLR` helper instead of an arm64e C++ virtual call. No WebExtension, XPI, profile extension write or signature preference change is included.
 
-The native hook checks the Firefox 159 XUL UUID and exact `OnLinkClick` prologue. Its XUL slice is plain arm64 even in the arm64e app process, so the `nsIURI::GetSpec` vtable entry is called without arm64e PAC authentication; the helper has an arm64e assembly regression check. The hook handles only top-level, foreground, user-triggered clicks, and leaves downloads, POST/header requests or mismatched XUL builds to Gecko. HTTP(S) uses the GeckoView request callback; accepted Universal Links are handled once, otherwise the original URL continues in Gecko. Custom schemes are handed off from the native link-click entry; known Telegram `tg:` action spellings get only the missing `//`, preserving the rest of the address bytes.
+Only top-level foreground user-triggered clicks qualify; downloads, POST/header requests and a mismatched XUL build fail open to Gecko. The GeckoView request hook remains for HTTP(S) Universal Links. The custom-protocol handoff is performed in the Helper's native click path, and known Telegram `tg:` action spellings receive only the missing `//` while the rest of the URI bytes remain unchanged.
 
 This remains a static/CI candidate until device acceptance.
 
