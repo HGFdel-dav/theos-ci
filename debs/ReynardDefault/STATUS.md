@@ -1,56 +1,36 @@
-# ReynardDefault 1.5.39
+# ReynardDefault 1.5.43 本地候选
 
-阶段：本地确认实际网页在 `com.minh-ton.Reynard.Helper`，上一版只过滤主 App，因此点击没有进入 native hook；当前已把 Helper bundle 加入注入过滤，并将 Helper ctor 分流到原生点击 hook。尚未推送、未 CI 编译、未安装、未注销、未重启。
+**状态：本地静态检查通过；未推送、未 CI 编译、未安装、未注销/重启、未真机验收。**
 
-## 本轮候选事实
+## 范围与授权
 
-- 已移除旧 XUL/未验证 PAC 路径、扩展安装代码、扩展 payload 和相关过期测试。
-- 新增路由入口诊断：仅记录事件类型、scheme、hasUserGesture、topLevel、flags、准入结果；不记录完整 URL、query 或 token。
-- 设备旧日志有真实用户点击 `OnPreNavigation` 样本 `hasUserGesture=1, flags=8388608`；历史门禁曾把 `0x800000` 当 redirect 拒绝，已移除该猜测判定。
-- 仍保留已核实的 GeckoView 请求路由；同时加入基线 UUID/prologue 防护的 `nsDocShell::OnLinkClick` native hook，专门覆盖 GeckoView 未转发的自定义协议点击。
-- 最新推送分支 `reynarddefault-1.5.38-plugin-only`，CI commit `a8505faa122ff66039a16d8d726eea39cc248ea9`，run `42846634560`：Verify、macOS 生产路由主机回归 252 checks、RootHide arm64e、rootless arm64 全通过。
-- 本地门禁：O0/O2 native policy 26 assertions、C++ 编译、arm64e 目标汇编验证 `blr x16`（无 `braa/blraa`）、20 个保护文件、6 个 plist、图标与无扩展残留通过。
-- 两个 DEB 已逐页校验 SHA1/SHA256 CodeDirectory，各 22 页均通过；16 payload、无维护脚本、无 WebExtension/XPI/旧 XUL hook。RootHide SHA256 `d3aee2af49bab14defa9bb083656760afddba48a4666f88a04de4d3f624432f6`，rootless `45d4a8937806821243aa0dce55778c827e1a00f2a8720c08d83a85ae8b883a48`。Source.zip SHA256 `8131a089e1a652b6724ac4e11ba1eecf9951f9e439c759fa440fabaf73f175e2`。
-- **未安装、未加载验证、未对真实点击作真机验收；CI/主机测试不等于设备功能完成。**
+用户明确：只交付一个原生 DEB；不带 WebExtension/XPI，不安装、不写扩展配置、不弹“添加插件”；保留 Safari/其他 App→Reynard、设置面板和控制中心。验证真实用户点击外部协议并完整保留参数；启动、刷新、历史、后台和自动重定向不能拉 App。已批准本地核实修改，未批准推送或安装。
 
-## 目标
+## 本轮改动
 
-- 不重编 Reynard App；不改控制中心图标/文字或 Safari→Reynard 旧行为。
-- 只有用户点击后外跳，完整保留目标地址及参数；普通网页失败时继续原请求。
-- 桌面网页已由用户确认点击能进入 moonup 群；移动网页仍是链接界面。两者分别返回 `tg://resolve` 与 `tg:resolve`；本候选补兼容已知 tg action 并保留后续字节，不对 mailto/tel 等通用补斜杠。
+- 不注入 Helper? **仍注入 `com.minh-ton.Reynard.Helper`**，因为在设备旧记录中真实网页点击运行在 Helper；这是原生进程不是扩展。延迟到主线程再安装 XUL Hook，避免在 dyld 回调内改代码。
+- 真实点击由 `nsDocShell::OnLinkClick` 证明；再核验 `UserNavigationInvolvement == Activation`、用户手势、非下载、无 POST/header、顶层上下文和前台状态。所有条件汇总到 `RDProtocolCore.h` 并由 20,686 个主机组合断言覆盖。
+- Helper 命中后写一个共享待处理网址并发 Darwin 通知；主 App 仅在“本次通知已到达（armed）”且启用时消费，避免单纯回前台重放。写入同步失败则保留 Gecko 原导航。
+- 关闭 handoff 时丢弃待处理值。协议 scheme 先在原生层剔除内部协议；Telegram 仅对已知 action 补 `//`，其余字节保留。
+- XUL UUID、`OnLinkClick`、`GetBrowsingContext`、`GetParent` 四处均做指令/边界防护。
+- 保留原有 SpringBoard、设置和控制中心文件；`ReynardDefault.plist` 是唯一变化保护文件，其清单哈希已同步。
 
-## 已确认缺陷与修复
+## 本地已通过
 
-- 基线 31ba57f3fe5bc3015f881b8072a611c788c9d7ab / 1.5.33 的桥构造 `#h=...#a=...` 与宿主 `&` 拆分不符，已用真实脚本重现参数丢失。
-- 移动站点及日志实际为 `tg:resolve?domain=moonup_chat`，原 host==resolve 分支不匹配。已按具体协议动作归一化；其他协议不改写。
-- 原 OnVisited、OnLoadError、任意扩展消息会外跳，已取消；仅请求事件和真实手势准入。程序生成点击、后台、加载/刷新不触发。
-- 原脚本把任意 http(s) 点击替换为当前页 meta App 链接。已去掉：HTTP(S)沿原导航仅试系统通用链接，失败回 false；自定义链接只携带真实点击 href。
-- 移除伪造扩展数据库、关闭签名检查、广播安装、自动刷新、RD标题探针等试验逻辑，保留正式签名安装接口。安装确认由 Reynard 本身处理。
-- 签名后扩展 event page 只在更新/安装后向现有网页装监听，不主动导航；是否覆盖实际标签页仍待真机。
+- `run_checks.py`：O0/O2 26 项旧策略、C++ 策略编译、20,686 项协议/点击组合、arm64e 非 PAC 汇编门禁、20 个保护哈希、6 个 plist、图标、无扩展载荷。
+- `raw_vtable_call.cpp` 额外编译三参数、无参和五参数原始 XUL 调用。
+- 无 `.xpi`、`extensions.json`、`RDHandoffPayload`、`RDExtensionInstall`。
 
-## 已完成的验证
+## 未验证 / 风险
 
-- 41 个真实脚本夹具，10 个后台脚本断言。
-- C 生产解析和门禁 92 断言（-O0/-O2）；259 编码/解码往返每配置通过。
-- 20 个旧功能保护文件哈希不变，6 个 plist 可读，图标原测试通过。
-- AMO 1.9（file 5228634）正式签名，0错误/0警告/0notice；XPI SHA256 `0f1d7e4beb4e22ab93b16c611d3af819fc4b8de478edc9e078adb11952a1f131`。源码、签名包和内嵌字节一致；旧签名包混入会被构建门禁拒绝。
+- **尚无 iOS 编译或 DEB 验包；C 主机测试不等于真实 ABI。**
+- `CFPreferences` 跨 App/Helper 沙盒同一路径尚未真机证明；同步成功也不等于主 App 已收到、已打开目标 App。
+- Helper 注入重走 1.5.39 的路径；1.5.39 的整机异常根因仍未证实，延迟安装只是降低回调风险，不是已证明修复。
+- 顶层判断依赖 `GetBrowsingContext/GetParent` 偏移与指令保护；版本不符就拒绝 Hook。
+- 系统已接收的外链不能撤销；目标 App 拒绝时原页面能否自动续载尚未真机验证。
+- 设置关闭后旧通知、并发两次点击、Helper 被回收等运行时竞态未真机覆盖。
 
-## 未验证／限制
+历史 1.5.38 说明保留在下方，仅作背景，不代表当前已通过项。
 
-- 本版 iOS 双架构编译与静态验包已完成；仍未安装、未真机验收。主机测试不证明手机运行。
-- 最终 commit `27cc0e99a7b428f181e823f6035d094d267df9a0`，独立分支 `reynarddefault-1.5.34-click-fix`，CI `42623663356` 的 verify 与双 build 全 success；原生 Foundation 路由集成测试50项通过。
-- 首轮 `42622580510` 在原生测试编译发现 memchr 需显式指针转换，已修并补 C++ 预检；该轮没有包，不计功能通过。
-- 交付 `attachments/ReynardDefault-1.5.34`，长期 `shared/ReynardDefault-releases/1.5.34`，双DEB/Source.zip/报告/哈希；CI精确源码包保留推送时STATUS，不伪造未来状态。
-- RootHide DEB 102980B SHA256 `f7db7f291a0f9e539e43202266915ec1c1b24adaa59502c67ff969cb206773b5`；rootless 102740B `2cf1433acd3bf80875985f5ba6f5c1f77acdb63f255e73c47a4ee84819a5430e`；Source.zip `6da06d2e17dacf1447261b15115783cf1a5ad71b2368705cd26b20717d75817b`。
-- 每包20文件、3 Mach-O；SDK15.5/minOS14.0；两包全部 CodeDirectory SHA1/SHA256 页校验通过；无维护脚本。dSYM/完整CI日志已存长期交付目录。
-- 未安装/注销/重启、未改设备配置。临时OCR提取的签名凭据文件已删除，没有把凭据加入源码或交付目录。
-- 系统已经接收的 UIApplication 打开请求不能主动撤销；超时只保证插件不再重复响应/追加外跳。
-- Android intent、延时脚本自造跳转、系统限制页面和具体第三方 App 的内容路由不能承诺全部支持。不会声称与 Safari 所有行为完全相同。
-- 本版不回写修复旧版曾伪造的其他扩展数据库字段；正式安装会让引擎更新本扩展记录。没有执行设备清理。
-- 升级必须重新启动 Reynard 进程以加载新 dylib；不强制双次冷启动，不自动操作设备。
-
-## 研究依据
-
-上游 Reynard 源码 8ded3486821e6c922b5f2985274aefdc86752344：EventDispatcher.swift、NavigationDelegate.swift、LoadURIDelegateChild.sys.mjs.patch、AddonRuntimeCommands.swift、AddonRuntimeEvents.swift、AddonCoordinator.swift。
-已存实装 0.20.1 的 ObjC 方法核验：dispatchToSwift v40@0:8@16@24@32；attach v24@0:8@16。
-MDN tabs.executeScript/runtime.onInstalled：只在升级后向已打开文档补监听，不导航。
+---
+# 历史基线记录：ReynardDefault 1.5.38

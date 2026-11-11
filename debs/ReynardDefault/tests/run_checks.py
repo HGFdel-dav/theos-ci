@@ -16,6 +16,9 @@ with tempfile.TemporaryDirectory(prefix='rd-native-') as temp:
   print(opt,run([str(exe)]).strip())
  cpp=t/'policy-cpp.o';run([clang,'-x','c++','-std=c++17','-Wall','-Wextra','-Werror','-c',str(ROOT/'tests/native_policy.c'),'-o',str(cpp)])
  print('CPP_POLICY_COMPILE=PASS')
+ exe=t/'protocol-core'
+ run([shutil.which('clang++') or 'clang++','-std=c++17','-Wall','-Wextra','-Werror','-O2',str(ROOT/'tests/protocol_core.cpp'),'-o',str(exe)])
+ print('PROTOCOL_CORE='+run([str(exe)]).strip())
  asm=t/'native-vtable-arm64e.s'
  run([shutil.which('clang++') or 'clang++','--target=arm64e-apple-ios15.0','-O2','-S',str(ROOT/'tests/raw_vtable_call.cpp'),'-o',str(asm)])
  text=asm.read_text(); assert 'blr'+chr(9)+'x16' in text and 'braa'+chr(9) not in text and 'blraa'+chr(9) not in text
@@ -34,13 +37,21 @@ entry=(ROOT/'ReynardHook.xm').read_text(); router=(ROOT/'Common/RDClickRouter.h'
 native=(ROOT/'Common/RDNativeLink.h').read_text()
 assert 'dispatchToSwift:message:callback:' in entry and 'RDHandleClickNavigation' in router
 assert 'RDNativeInstallXULHook' in entry and 'RDNativeOnLinkClick' in native
+assert 'RDProtocolCore.h' in native and 'RDClickIntentEligible' in native
+assert 'RDNativePublishExternalURL' in native and 'RDNativeConsumeExternalURL' in native
+assert 'RD_REYNARD_HELPER_BUNDLE_ID' in native and 'RDConsumeRelayedURL' in entry
+assert 'RDNativePublishExternalURL(appURL.absoluteString)' in native
+assert 'RD_HOOK_NOTIFICATION' in entry and 'UIApplicationDidBecomeActiveNotification' in entry
+assert 'RDNativeInstallExternalLoadHook' not in entry
 abi=(ROOT/'Common/RDGeckoABI.h').read_text()
 assert 'RDGeckoCallUnsignedVTable3' in abi and 'blr x16' in abi
 assert 'RDGeckoCallUnsignedVTable3(uri, &value)' in native
-assert 'kRDExpectedXULUUID' in native and 'kRDLinkPrologue' in native
+assert 'kRDExpectedXULUUID' in native and 'kRDLinkPrologue' in native and 'kRDContextPrologue' in native
 assert 'RDClickAllowed' not in router and 'RD_REDIRECT_FLAG' not in router
 assert 'RDSeedExtensionsDatabase' not in native and 'signatures.required' not in native
-assert 'native click gate' in native and 'route gate' in router
+assert 'native click reject reason' in native and 'route gate' in router
+filter_bundles=plistlib.loads((ROOT/'ReynardDefault.plist').read_bytes())['Filter']['Bundles']
+assert filter_bundles==['com.apple.springboard','com.minh-ton.Reynard','com.minh-ton.Reynard.Helper'],filter_bundles
 assert 'handoff.xpi' not in entry and 'WebExtension:InstallPrompt' not in entry
 print('PLUGIN_ONLY_CANDIDATE=PASS')
 print('LOCAL_CHECKS_PASS; iOS CI and device behavior still unverified')

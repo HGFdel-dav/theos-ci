@@ -11,10 +11,15 @@
 #import <cstring>
 #import "RDLinkPolicy.h"
 #import "RDGeckoABI.h"
-#import "RDGeckoABI.h"
+#import "RDProtocolCore.h"
 
 #define RD_NS_ERROR_ABORT ((int32_t)0x80004004)
+#define RD_HOOK_NOTIFICATION CFSTR("com.guacforlife.reynarddefault.external-link")
+#define RD_PENDING_HANDOFF_KEY @"pendingExternalHandoff"
+#define RD_REYNARD_HELPER_BUNDLE_ID @"com.minh-ton.Reynard.Helper"
 #define RD_XUL_ON_LINK_CLICK 0x5d74298ULL
+#define RD_XUL_GET_BROWSING_CONTEXT 0x5d61ddcULL
+#define RD_XUL_GET_PARENT 0x5d17600ULL
 #define RD_GECKO_STRING_VOIDED 0x02u
 #define RD_GECKO_STRING_STRINGBUFFER 0x04u
 #define RD_GECKO_STRING_OWNED 0x08u
@@ -27,6 +32,8 @@ static const uint8_t kRDExpectedXULUUID[16] = {
 static const uint32_t kRDLinkPrologue[5] = {
     0xa9ba6ffc,0xa90167fa,0xa9025ff8,0xa90357f6,0xa9044ff4
 };
+static const uint32_t kRDContextPrologue[2] = {0xf9415000,0xd65f03c0};
+static const uint32_t kRDParentPrologue[4] = {0xf9426008,0xb4000068,0xf940f900,0xd65f03c0};
 
 struct RDGeckoCString {
     char *data; uint32_t length; uint16_t dataFlags; uint16_t classFlags;
@@ -53,6 +60,8 @@ static_assert(sizeof(RDGeckoStringBufferHeader) == 8, "StringBuffer header ABI c
 static RDOnLinkClickFn gRDOriginalOnLinkClick = nullptr;
 static std::atomic_bool gRDHookInstalled{false};
 static std::atomic_bool gRDImageCallbackRegistered{false};
+static std::atomic_bool gRDInstallScheduled{false};
+static std::atomic_uint gRDInstallAttempts{0};
 
 static BOOL RDNativeEnabled(void) {
     return RDReadBoolPref(kEnabledKey, YES) && RDReadBoolPref(kHandoffKey, YES);
@@ -116,12 +125,46 @@ struct RDNativeClickGuard {
     RDNativeClickGuard() : owns(!gRDHandlingLinkClick) { if (owns) gRDHandlingLinkClick = YES; }
     ~RDNativeClickGuard() { if (owns) gRDHandlingLinkClick = NO; }
 };
+static uintptr_t gRDGetContextAddress=0;
+static uintptr_t gRDGetParentAddress=0;
 static BOOL RDNativeOpenCustom(NSURL *url) {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
     BOOL accepted = [[UIApplication sharedApplication] openURL:url];
 #pragma clang diagnostic pop
     return accepted;
+}
+static NSString *RDNativeHandoffDomain(void) {
+    return @"com.guacforlife.reynarddefaultprefs";
+}
+static BOOL RDNativePublishExternalURL(NSString *spec) {
+    if (!spec.length || spec.length >= RD_URL_CAP) return NO;
+    NSDictionary *payload=@{ @"url": spec, @"time": @([[NSDate date] timeIntervalSince1970]) };
+    CFPreferencesSetValue((__bridge CFStringRef)RD_PENDING_HANDOFF_KEY,
+                          (__bridge CFPropertyListRef)payload,
+                          (__bridge CFStringRef)RDNativeHandoffDomain(),
+                          kCFPreferencesCurrentUser,kCFPreferencesAnyHost);
+    BOOL synchronized=CFPreferencesSynchronize((__bridge CFStringRef)RDNativeHandoffDomain(),
+                                                kCFPreferencesCurrentUser,kCFPreferencesAnyHost);
+    if (synchronized)
+        CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                             RD_HOOK_NOTIFICATION,NULL,NULL, true);
+    return synchronized;
+}
+static NSDictionary *RDNativeConsumeExternalURL(void) {
+    CFPropertyListRef value=CFPreferencesCopyValue((__bridge CFStringRef)RD_PENDING_HANDOFF_KEY,
+                                                     (__bridge CFStringRef)RDNativeHandoffDomain(),
+                                                     kCFPreferencesCurrentUser,kCFPreferencesAnyHost);
+    NSDictionary *payload=[(__bridge id)value isKindOfClass:[NSDictionary class]] ? [(__bridge id)value copy] : nil;
+    if (value) CFRelease(value);
+    if (payload) {
+        CFPreferencesSetValue((__bridge CFStringRef)RD_PENDING_HANDOFF_KEY,NULL,
+                              (__bridge CFStringRef)RDNativeHandoffDomain(),
+                              kCFPreferencesCurrentUser,kCFPreferencesAnyHost);
+        CFPreferencesSynchronize((__bridge CFStringRef)RDNativeHandoffDomain(),
+                                 kCFPreferencesCurrentUser,kCFPreferencesAnyHost);
+    }
+    return payload;
 }
 static int32_t RDNativeCallOriginal(void *self, void *content, void *uri,
     const RDGeckoU16String *target, const RDGeckoU16String *file,
@@ -137,25 +180,47 @@ static int32_t RDNativeOnLinkClick(void *self, void *content, void *uri,
     if (gRDHandlingLinkClick)
         return RDNativeCallOriginal(self,content,uri,target,file,post,headers,user,involvement,principal,policy);
     RDNativeClickGuard guard;
-    BOOL fileIsVoid = !file || (file->dataFlags & RD_GECKO_STRING_VOIDED) != 0;
-    BOOL enabled = RDNativeEnabled();
-    BOOL allowed = RDNativeClickAllowed(enabled, user, involvement, fileIsVoid,
-                                        post != nullptr, headers != nullptr);
-    RDLog(@"native click gate user=%d involvement=%u fileVoid=%d post=%d headers=%d enabled=%d allowed=%d",
-          user, involvement, fileIsVoid, post != nullptr, headers != nullptr, enabled, allowed);
-    if (!allowed)
+    BOOL fileVoid = !file || (file->dataFlags & RD_GECKO_STRING_VOIDED) != 0;
+    RDClickIntent intent={ true,true,true,content!=NULL,false,true,false,fileVoid,
+        post!=NULL,headers!=NULL,user,user,(uint8_t)involvement };
+    if (!RDClickIntentEligible(intent)) {
+        RDLog(@"native click reject reason=%s",RDClickIntentReason(intent));
         return RDNativeCallOriginal(self,content,uri,target,file,post,headers,user,involvement,principal,policy);
+    }
     NSString *spec = RDNativeURISpec(uri);
     if (!spec) {
         RDLog(@"native click reject reason=uri-spec");
         return RDNativeCallOriginal(self,content,uri,target,file,post,headers,user,involvement,principal,policy);
     }
-    NSURL *appURL = RDNativeAppURL(spec);
-    if (!appURL) {
-        RDLog(@"native click reject reason=scheme-or-url");
+    char scheme[RD_SCHEME_CAP];
+    if (!RDProtocolCopyScheme(spec.UTF8String,strlen(spec.UTF8String),scheme)) {
+        RDLog(@"native click reject reason=scheme");
         return RDNativeCallOriginal(self,content,uri,target,file,post,headers,user,involvement,principal,policy);
     }
-    RDLog(@"native click candidate scheme=%@", appURL.scheme);
+    if (gRDGetContextAddress && gRDGetParentAddress) {
+        void *ctx=RDGeckoCallUnsignedMethod0(self,gRDGetContextAddress);
+        if (ctx && RDGeckoCallUnsignedMethod0(ctx,gRDGetParentAddress)) {
+            RDLog(@"native click reject reason=subframe");
+            return RDNativeCallOriginal(self,content,uri,target,file,post,headers,user,involvement,principal,policy);
+        }
+    }
+    if ([UIApplication sharedApplication].applicationState != UIApplicationStateActive) {
+        RDLog(@"native click reject reason=background");
+        return RDNativeCallOriginal(self,content,uri,target,file,post,headers,user,involvement,principal,policy);
+    }
+    NSURL *appURL = RDNativeAppURL(spec);
+    if (!appURL) {
+        RDLog(@"native click reject reason=app-url");
+        return RDNativeCallOriginal(self,content,uri,target,file,post,headers,user,involvement,principal,policy);
+    }
+    RDLog(@"native click candidate scheme=%@",appURL.scheme);
+    BOOL helper = [[NSBundle mainBundle].bundleIdentifier isEqualToString:RD_REYNARD_HELPER_BUNDLE_ID];
+    if (helper) {
+        BOOL relayed=RDNativePublishExternalURL(appURL.absoluteString);
+        RDLog(@"native click relay scheme=%@ synchronized=%d",appURL.scheme,relayed);
+        if (relayed) return RD_NS_ERROR_ABORT;
+        return RDNativeCallOriginal(self,content,uri,target,file,post,headers,user,involvement,principal,policy);
+    }
     BOOL accepted = RDNativeOpenCustom(appURL);
     RDLog(@"native click scheme=%@ accepted=%d",appURL.scheme,accepted);
     if (accepted) return RD_NS_ERROR_ABORT;
@@ -179,38 +244,48 @@ static BOOL RDNativeXULMatches(const struct mach_header_64 *header) {
         }
         cursor += lc->cmdsize;
     }
-    return uuid && textSize > RD_XUL_ON_LINK_CLICK + sizeof(kRDLinkPrologue);
+    uint64_t end=RD_XUL_ON_LINK_CLICK+sizeof(kRDLinkPrologue);
+    if (end<RD_XUL_GET_BROWSING_CONTEXT+sizeof(kRDContextPrologue)) end=RD_XUL_GET_BROWSING_CONTEXT+sizeof(kRDContextPrologue);
+    if (end<RD_XUL_GET_PARENT+sizeof(kRDParentPrologue)) end=RD_XUL_GET_PARENT+sizeof(kRDParentPrologue);
+    return uuid && textSize>end;
+}
+static void RDNativeTryInstallXUL(void);
+static void RDNativeScheduleInstall(void) {
+    if (gRDHookInstalled.load(std::memory_order_acquire) ||
+        gRDInstallAttempts.load(std::memory_order_relaxed)>=100 ||
+        gRDInstallScheduled.exchange(true,std::memory_order_acq_rel)) return;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,100*NSEC_PER_MSEC),dispatch_get_main_queue(),^{
+        gRDInstallScheduled.store(false,std::memory_order_release);
+        RDNativeTryInstallXUL();
+    });
 }
 static void RDNativeTryInstallXUL(void) {
-    if (gRDHookInstalled.load(std::memory_order_acquire)) return;
-    for (uint32_t i = 0; i < _dyld_image_count(); ++i) {
-        const char *name = _dyld_get_image_name(i);
+    if (gRDHookInstalled.load(std::memory_order_acquire) || ![NSThread isMainThread]) return;
+    gRDInstallAttempts.fetch_add(1,std::memory_order_relaxed);
+    for (uint32_t i=0;i<_dyld_image_count();++i) {
+        const char *name=_dyld_get_image_name(i);
         if (!name || !strstr(name,"/Frameworks/XUL")) continue;
-        const struct mach_header_64 *header = (const struct mach_header_64 *)_dyld_get_image_header(i);
-        if (!RDNativeXULMatches(header)) {
-            RDLog(@"native XUL baseline mismatch");
-            gRDHookInstalled.store(true,std::memory_order_release); return;
+        const struct mach_header_64 *header=(const struct mach_header_64*)_dyld_get_image_header(i);
+        if (!RDNativeXULMatches(header)) { RDLog(@"native XUL baseline mismatch"); gRDHookInstalled.store(true,std::memory_order_release); return; }
+        uintptr_t slide=(uintptr_t)_dyld_get_image_vmaddr_slide(i);
+        uintptr_t address=slide+RD_XUL_ON_LINK_CLICK;
+        uintptr_t context=slide+RD_XUL_GET_BROWSING_CONTEXT;
+        uintptr_t parent=slide+RD_XUL_GET_PARENT;
+        if (memcmp((const void*)address,kRDLinkPrologue,sizeof(kRDLinkPrologue))!=0 ||
+            memcmp((const void*)context,kRDContextPrologue,sizeof(kRDContextPrologue))!=0 ||
+            memcmp((const void*)parent,kRDParentPrologue,sizeof(kRDParentPrologue))!=0) {
+            RDLog(@"native click prologue mismatch"); gRDHookInstalled.store(true,std::memory_order_release); return;
         }
-        uintptr_t address = (uintptr_t)_dyld_get_image_vmaddr_slide(i) + RD_XUL_ON_LINK_CLICK;
-        if (memcmp((const void *)address,kRDLinkPrologue,sizeof(kRDLinkPrologue)) != 0) {
-            RDLog(@"native OnLinkClick prologue mismatch");
-            gRDHookInstalled.store(true,std::memory_order_release); return;
-        }
-        MSHookFunction((void *)address,(void *)&RDNativeOnLinkClick,(void **)&gRDOriginalOnLinkClick);
-        if (gRDOriginalOnLinkClick) {
-            gRDHookInstalled.store(true,std::memory_order_release);
-            RDLog(@"native OnLinkClick installed");
-        }
+        gRDGetContextAddress=context; gRDGetParentAddress=parent;
+        MSHookFunction((void*)address,(void*)&RDNativeOnLinkClick,(void**)&gRDOriginalOnLinkClick);
+        if (gRDOriginalOnLinkClick) { gRDHookInstalled.store(true,std::memory_order_release); RDLog(@"native OnLinkClick installed"); }
         return;
     }
+    RDNativeScheduleInstall();
 }
-static void RDNativeImageAdded(const struct mach_header *header, intptr_t slide) {
-    (void)header; (void)slide; RDNativeTryInstallXUL();
-}
+static void RDNativeImageAdded(const struct mach_header *header,intptr_t slide) { (void)header; (void)slide; RDNativeScheduleInstall(); }
 static void RDNativeInstallXULHook(void) {
-    RDNativeTryInstallXUL();
-    if (!gRDHookInstalled.load(std::memory_order_acquire) &&
-        !gRDImageCallbackRegistered.exchange(true,std::memory_order_acq_rel))
-        _dyld_register_func_for_add_image(&RDNativeImageAdded);
+    if (!gRDImageCallbackRegistered.exchange(true,std::memory_order_acq_rel)) _dyld_register_func_for_add_image(&RDNativeImageAdded);
+    RDNativeScheduleInstall();
 }
 #endif

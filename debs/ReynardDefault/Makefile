@@ -1,3 +1,5 @@
+# 1.5.43 local candidate: native link-click proof + Helper relay; no WebExtension.
+
 export THEOS ?= $(HOME)/theos
 export ARCHS = arm64 arm64e
 export TARGET = iphone:clang:15.5:14.0

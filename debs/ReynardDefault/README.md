@@ -4,13 +4,15 @@ A jailbreak tweak that redirects Safari URL opens to [Reynard](https://github.co
 
 When enabled, any link that would normally open in Safari is intercepted at the SpringBoard level and opened in Reynard instead.
 
-## 1.5.39 plugin-only Helper injection fix
+## 1.5.43 plugin-only native click candidate
 
-The package keeps the original SpringBoard Safari-to-Reynard behavior. It now injects the native click hook into both the Reynard app and its Gecko `Reynard Helper` content process, where the recorded Telegram button taps actually execute. The direct XUL hook checks the Firefox 159 UUID and exact `OnLinkClick` prologue. Its XUL slice is plain arm64 even in the arm64e process; `nsIURI::GetSpec` therefore uses an unauthenticated ARM64 `BLR` helper instead of an arm64e C++ virtual call. No WebExtension, XPI, profile extension write or signature preference change is included.
+This is one native DEB. It contains no WebExtension, XPI, extension profile write or install prompt. SpringBoard Safari-to-Reynard behavior, the settings pane and the Control Centre toggle are unchanged.
 
-Only top-level foreground user-triggered clicks qualify; downloads, POST/header requests and a mismatched XUL build fail open to Gecko. The GeckoView request hook remains for HTTP(S) Universal Links. The custom-protocol handoff is performed in the Helper's native click path, and known Telegram `tg:` action spellings receive only the missing `//` while the rest of the URI bytes remain unchanged.
+Reynard renders pages in its signed `Reynard Helper` process; the tweak therefore installs the same version-guarded native click hook there as well as in the main app. That is an app process, not a browser extension. The hook runs on the XUL `nsDocShell::OnLinkClick` entry and requires a direct click, Activation involvement, user gesture, top-level context, foreground app, no download, and no POST/header stream. Helper only publishes the resulting URL; the active main app consumes the one pending value on the matching notification and asks iOS to open it. If handoff is disabled or the Helper write fails, Gecko's original navigation continues.
 
-This remains a static/CI candidate until device acceptance.
+The XUL image UUID plus exact instructions for the click entry and the two context getters are checked before patching. Known Telegram `tg:` action spellings receive only the missing `//`; other bytes, including query and fragment, are preserved.
+
+Static host policy and package-source checks pass. iOS compilation, DEB inspection and device acceptance remain separate and are not yet complete.
 
 ## Features
 
