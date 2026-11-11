@@ -4,7 +4,7 @@ A jailbreak tweak that redirects Safari URL opens to [Reynard](https://github.co
 
 When enabled, any link that would normally open in Safari is intercepted at the SpringBoard level and opened in Reynard instead.
 
-## 1.5.43 plugin-only native click candidate
+## 1.5.44 Firefox160 plugin-only native click candidate
 
 This is one native DEB. It contains no WebExtension, XPI, extension profile write or install prompt. SpringBoard Safari-to-Reynard behavior, the settings pane and the Control Centre toggle are unchanged.
 
