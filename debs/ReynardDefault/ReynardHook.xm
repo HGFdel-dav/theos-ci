@@ -47,7 +47,7 @@ static void RDConsumeRelayedURL(void) {
 #pragma clang diagnostic pop
     RDLog(@"relayed external URL scheme=%@ accepted=%d",url.scheme,accepted);
 }
-static void RDRelayNotification(CFNotificationCenterRef center,const void *observer,CFStringRef name,const void *object,CFDictionaryRef userInfo) {
+static void RDRelayNotification(CFNotificationCenterRef center,void *observer,CFStringRef name,const void *object,CFDictionaryRef userInfo) {
     (void)center; (void)observer; (void)name; (void)object; (void)userInfo;
     dispatch_async(dispatch_get_main_queue(), ^{ gRDRelayArmed=YES; RDConsumeRelayedURL(); });
 }
