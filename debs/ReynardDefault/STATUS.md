@@ -1,4 +1,4 @@
-# ReynardDefault 1.5.43 本地候选
+# ReynardDefault 1.5.44 Firefox160 本地候选
 
 **状态：本地静态检查通过；未推送、未 CI 编译、未安装、未注销/重启、未真机验收。**
 
@@ -12,7 +12,7 @@
 - 真实点击由 `nsDocShell::OnLinkClick` 证明；再核验 `UserNavigationInvolvement == Activation`、用户手势、非下载、无 POST/header、顶层上下文和前台状态。所有条件汇总到 `RDProtocolCore.h` 并由 20,686 个主机组合断言覆盖。
 - Helper 命中后写一个共享待处理网址并发 Darwin 通知；主 App 仅在“本次通知已到达（armed）”且启用时消费，避免单纯回前台重放。写入同步失败则保留 Gecko 原导航。
 - 关闭 handoff 时丢弃待处理值。协议 scheme 先在原生层剔除内部协议；Telegram 仅对已知 action 补 `//`，其余字节保留。
-- XUL UUID、`OnLinkClick`、`GetBrowsingContext`、`GetParent` 四处均做指令/边界防护。
+- 按设备实装 Reynard 0.21.0 / Firefox160 更新 XUL UUID、`OnLinkClick`、`GetBrowsingContext`、`GetParent` 四处指纹；均做指令/边界防护。
 - 保留原有 SpringBoard、设置和控制中心文件；`ReynardDefault.plist` 是唯一变化保护文件，其清单哈希已同步。
 
 ## 本地已通过

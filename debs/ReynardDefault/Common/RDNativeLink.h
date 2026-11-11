@@ -17,17 +17,17 @@
 #define RD_HOOK_NOTIFICATION CFSTR("com.guacforlife.reynarddefault.external-link")
 #define RD_PENDING_HANDOFF_KEY @"pendingExternalHandoff"
 #define RD_REYNARD_HELPER_BUNDLE_ID @"com.minh-ton.Reynard.Helper"
-#define RD_XUL_ON_LINK_CLICK 0x5d74298ULL
-#define RD_XUL_GET_BROWSING_CONTEXT 0x5d61ddcULL
-#define RD_XUL_GET_PARENT 0x5d17600ULL
+#define RD_XUL_ON_LINK_CLICK 0x5d78310ULL
+#define RD_XUL_GET_BROWSING_CONTEXT 0x5d65e54ULL
+#define RD_XUL_GET_PARENT 0x5d1b678ULL
 #define RD_GECKO_STRING_VOIDED 0x02u
 #define RD_GECKO_STRING_STRINGBUFFER 0x04u
 #define RD_GECKO_STRING_OWNED 0x08u
 #define RD_GECKO_STRING_INLINE 0x10u
 #define RD_GECKO_STRING_CLASS_INLINE 0x01u
 static const uint8_t kRDExpectedXULUUID[16] = {
-    0x4c,0x4c,0x44,0x3a,0x55,0x55,0x31,0x44,
-    0xa1,0xf3,0x62,0x45,0x76,0x1c,0xfd,0xe8
+    0x4c,0x4c,0x44,0x29,0x55,0x55,0x31,0x44,
+    0xa1,0x13,0x2f,0x42,0xdb,0x9c,0xfa,0x90
 };
 static const uint32_t kRDLinkPrologue[5] = {
     0xa9ba6ffc,0xa90167fa,0xa9025ff8,0xa90357f6,0xa9044ff4
