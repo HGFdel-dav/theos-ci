@@ -2,7 +2,7 @@ name: Build Theos Projects
 
 on:
   push:
-    branches-ignore: ['reynarddefault-1.5.34-click-fix', 'reynarddefault-1.5.35-plugin-only', 'reynarddefault-1.5.37-plugin-only', 'reynarddefault-1.5.39-plugin-only']
+    branches-ignore: ['reynarddefault-1.5.34-click-fix', 'reynarddefault-1.5.35-plugin-only', 'reynarddefault-1.5.37-plugin-only', 'reynarddefault-1.5.39-plugin-only', 'reynarddefault-1.5.40-disable-helper-hook', 'reynarddefault-1.5.43-native-click']
     paths:
       - 'debs/**'
   workflow_dispatch:
