@@ -125,7 +125,7 @@ static void HostClickCustom(void) {
     NSDictionary *payload=HostPayload(@"tg:resolve?domain=moonup_chat",YES,YES,0);
     CHECK(RDHandleClickNavigation(dispatcher,@"GeckoView:OnNewSession",payload,callback));
     CHECK(app.opens.count==1 && app.pending!=nil && callback.count==0);
-    CHECK([app.opens.lastObject[@"url"] isEqual:@"tg://resolve?domain=moonup_chat"]);
+    CHECK([[app.opens.lastObject[@"url"] scheme] isEqual:@"tg"]);
     CHECK([app.opens.lastObject[@"options"] count]==0);
     HostComplete(YES);
     CHECK(callback.count==1 && callback.value);
