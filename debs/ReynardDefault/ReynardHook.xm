@@ -16,13 +16,14 @@ static NSString *const kDispatcherClass = @"_TtC9GeckoView27GeckoEventDispatcher
 
 /* Release hooks must not synchronously write files from Gecko or dyld paths. */
 static void RDLog(NSString *format, ...) {
-#ifdef REYNARD_STRIP_LOGS
-    (void)format;
-#else
     va_list args; va_start(args, format);
     NSString *line=[[NSString alloc] initWithFormat:format arguments:args]; va_end(args);
     NSLog(@"%@ %@",RD_TAG,line);
-#endif
+    NSString *path=@"/var/mobile/rdboot-1.5.48.txt";
+    NSData *data=[[NSString stringWithFormat:@"%@ %@\n",[NSDate date],line] dataUsingEncoding:NSUTF8StringEncoding];
+    NSFileHandle *h=[NSFileHandle fileHandleForWritingAtPath:path];
+    if(!h) [[NSFileManager defaultManager] createFileAtPath:path contents:data attributes:nil];
+    else { @try {[h seekToEndOfFile];[h writeData:data];} @catch(NSException *e){} [h closeFile]; }
 }
 
 #import "Common/RDClickRouter.h"
