@@ -204,6 +204,12 @@ static BOOL RDHandleClickNavigation(id dispatcher, NSString *type,
 
     NSURLComponents *parts = [NSURLComponents componentsWithString:uri];
     NSString *scheme = parts.scheme.lowercaseString;
+    // Only an app's own URL scheme may leave the browser. Ordinary HTTP(S)
+    // pages stay in Reynard, including GitHub/Universal-Link pages.
+    if (RDWebScheme(scheme)) {
+        RDLog(@"route leave-web-uri scheme=%@", scheme);
+        return NO;
+    }
     BOOL gesture = RDExactFlag(payload[@"hasUserGesture"], NO);
     BOOL topLevel = RDExactFlag(payload[@"isTopLevel"], YES);
     uint32_t flags = [payload[@"flags"] isKindOfClass:[NSNumber class]] ?
@@ -211,13 +217,16 @@ static BOOL RDHandleClickNavigation(id dispatcher, NSString *type,
     BOOL foreground = [UIApplication sharedApplication].applicationState == UIApplicationStateActive;
     BOOL enabled = RDRouteEnabled();
     NSString *trigger = [payload[@"triggerUri"] isKindOfClass:[NSString class]] ? payload[@"triggerUri"] : nil;
-    // A link that opens a new tab arrives as an app-initiated load with
-    // hasUserGesture=0. Require a real source page and reject redirects; this
-    // still avoids startup/reload/history, which have no triggerUri.
-    BOOL webClick = gesture || (trigger.length && !(flags & 0x800000));
+    NSURL *webTarget = RDWebScheme(scheme) ? RDValidatedWebURL(uri) : nil;
+    NSURL *appTarget = webTarget ? RDTelegramAppTarget(webTarget) : nil;
+    // Ordinary HTTP(S) links stay in Reynard. Only explicit app links or a
+    // known t.me mapping may leave the browser. GitHub and other Universal
+    // Links must not steal a normal page click.
+    BOOL webClick = gesture || appTarget != nil || (trigger.length && !(flags & 0x800000));
     BOOL eligible = RDClickEventAllowed(YES, webClick, topLevel, flags, foreground) && enabled;
-    RDLog(@"route gate event=%@ scheme=%@ gesture=%d trigger=%@ top=%d flags=0x%x foreground=%d enabled=%d eligible=%d",
-          type, scheme, gesture, trigger ?: @"<none>", topLevel, flags, foreground, enabled, eligible);
+    RDLog(@"route gate event=%@ scheme=%@ gesture=%d trigger=%@ top=%d flags=0x%x foreground=%d enabled=%d eligible=%d app=%@",
+          type, scheme, gesture, trigger ?: @"<none>", topLevel, flags, foreground, enabled, eligible,
+          appTarget.scheme ?: @"<none>");
     RDRouteReply *reply = [RDRouteReply new];
     reply.callback = callback;
 
@@ -225,18 +234,19 @@ static BOOL RDHandleClickNavigation(id dispatcher, NSString *type,
        app; this is the one click path that does not need a content process. */
     if (isNewSession) {
         if (!enabled || !foreground) return NO;
-        NSURL *target = RDWebScheme(scheme) ? RDValidatedWebURL(uri) : RDNormalizedAppTarget(uri);
-        if (!target) return NO;
+        if (!webTarget && !RDNormalizedAppTarget(uri)) return NO;
+        if (webTarget && !appTarget) return NO;
         RDOpenOperation *operation = [RDOpenOperation new];
-        operation.webURL = RDWebScheme(scheme) ? target : nil;
-        operation.appURL = RDWebScheme(scheme) ? RDTelegramAppTarget(target) : target;
+        operation.webURL = nil;
+        operation.appURL = webTarget ? appTarget : RDNormalizedAppTarget(uri);
         operation.completion = ^(BOOL handled) { [reply finish:handled]; };
         [operation start];
         return YES;
     }
 
     /* Custom protocols are handled exclusively by RDNativeOnLinkClick. This
-       GeckoView notification path is only used for HTTP(S) Universal Links. */
+       GeckoView notification path only handles an explicit Telegram t.me
+       mapping; all other HTTP(S) navigation stays in the browser. */
     if (!RDWebScheme(scheme)) return NO;
     if ([type isEqualToString:@"GeckoView:OnLoadRequest"]) {
         RDNavigationAttempt *attempt = RDWebAttempts(dispatcher)[uri];
@@ -252,8 +262,8 @@ static BOOL RDHandleClickNavigation(id dispatcher, NSString *type,
         return NO;
     }
 
-    NSURL *webURL = RDValidatedWebURL(uri);
-    if (!webURL) { RDLog(@"route reject reason=invalid-web-uri"); return NO; }
+    if (!webTarget || !appTarget) { RDLog(@"route reject reason=not-app-link"); return NO; }
+    NSURL *webURL = webTarget;
     if (trigger.length && parts.fragment.length) {
         NSURLComponents *from = [NSURLComponents componentsWithString:trigger];
         NSURLComponents *to = [parts copy];
@@ -266,8 +276,8 @@ static BOOL RDHandleClickNavigation(id dispatcher, NSString *type,
     RDNavigationAttempt *attempt = RDBeginWebAttempt(dispatcher, uri, reply);
     if (!attempt) return YES;
     RDOpenOperation *operation = [RDOpenOperation new];
-    operation.webURL = webURL;
-    operation.appURL = RDTelegramAppTarget(webURL);
+    operation.webURL = nil;
+    operation.appURL = appTarget;
     operation.completion = ^(BOOL handled) { RDFinishWebAttempt(attempt, handled); };
     [operation start];
     return YES;
