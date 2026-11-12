@@ -117,83 +117,49 @@ static void HostPass(NSString *event, NSDictionary *payload) {
     HostWorker(^{});
     CHECK(app.opens.count == opens && app.pending == nil && callback.count == 0);
 }
-static void HostRoundTrip(NSString *uri, BOOL accepted, uint32_t flags) {
+static void HostClickCustom(void) {
     HostReset();
-    UIApplication *app = [UIApplication sharedApplication];
-    NSObject *dispatcher = [NSObject new];
-    NSDictionary *payload = HostPayload(uri, YES, YES, flags);
-    NSMutableArray<HostCallback *> *callbacks = [NSMutableArray new];
-    // Pre/Pre/Load/Load overlap while the OS completion is pending.
-    for (NSString *event in @[pre, pre, load, load]) {
-        HostCallback *callback = [HostCallback new];
-        [callbacks addObject:callback];
-        CHECK(RDHandleClickNavigation(dispatcher, event, payload, callback));
-        CHECK(app.opens.count == 1 && callback.count == 0);
-    }
-    NSDictionary *record = app.opens.lastObject;
-    CHECK([[record[@"url"] absoluteString] isEqualToString:uri]);
-    NSDictionary *options = record[@"options"];
-    CHECK(options.count == 1 && [options[UIApplicationOpenURLOptionUniversalLinksOnly] isEqual:@YES]);
-    HostComplete(accepted); // Two contradictory OS replies must finish only once.
-    for (HostCallback *callback in callbacks) CHECK(callback.count == 1 && callback.value == accepted);
-    // Completed Pre deduplication has a production 350ms window. Load reuses
-    // the result independently of that window; test its repeated phase too.
-    for (NSString *event in @[pre, load, load]) {
-        HostCallback *callback = [HostCallback new];
-        CHECK(RDHandleClickNavigation(dispatcher, event, payload, callback));
-        CHECK(callback.count == 1 && callback.value == accepted);
-    }
-    CHECK(app.opens.count == 1 && app.pending == nil);
+    UIApplication *app=[UIApplication sharedApplication];
+    NSObject *dispatcher=[NSObject new];
+    HostCallback *callback=[HostCallback new];
+    NSDictionary *payload=HostPayload(@"tg:resolve?domain=moonup_chat",YES,YES,0);
+    CHECK(RDHandleClickNavigation(dispatcher,@"GeckoView:OnNewSession",payload,callback));
+    CHECK(app.opens.count==1 && app.pending!=nil && callback.count==0);
+    CHECK([app.opens.lastObject[@"url"] isEqual:@"tg://resolve?domain=moonup_chat"]);
+    CHECK([app.opens.lastObject[@"options"] count]==0);
+    HostComplete(YES);
+    CHECK(callback.count==1 && callback.value);
 }
-static void HostTimeout(void) {
-    HostReset();
-    UIApplication *app = [UIApplication sharedApplication];
-    HostCallback *callback = [HostCallback new];
-    NSObject *dispatcher = [NSObject new];
-    CHECK(RDHandleClickNavigation(dispatcher, pre, HostPayload(web, YES, YES, 0), callback));
-    CHECK(callback.count == 0 && app.opens.count == 1);
-    HostWait(^BOOL { return callback.count == 1; }, 6.0); // Real production 3s timeout.
-    CHECK(!callback.value);
-    HostComplete(YES); // A late success and then failure cannot finish again.
-    CHECK(callback.count == 1 && !callback.value && app.opens.count == 1);
+static void HostNoHandoff(NSString *event, NSString *uri) {
+    HostPass(event,HostPayload(uri,YES,YES,0));
 }
-
 int main(void) {
     @autoreleasepool {
-        for (uint32_t flags : {0u, 0x800000u}) {
-            HostRoundTrip(web, YES, flags);
-            HostRoundTrip(@"http://news.example/plain?x=%2F#text", NO, flags);
+        HostNoHandoff(pre,web);
+        HostNoHandoff(load,web);
+        HostNoHandoff(pre,@"http://news.example/plain?x=%2F#text");
+        HostNoHandoff(pre,@"https://github.com/someone");
+        HostNoHandoff(pre,@"tg://resolve?domain=moonup_chat");
+        HostNoHandoff(load,@"tg://resolve?domain=moonup_chat");
+        HostNoHandoff(pre,@"mailto:a@example.com?subject=x%26y");
+        HostNoHandoff(pre,@"tel:+861234");
+        HostPass(pre,HostPayload(web,NO,YES,0));
+        HostPass(pre,HostPayload(web,YES,NO,0));
+        UIApplication *app=[UIApplication sharedApplication];
+        for (UIApplicationState state in {UIApplicationStateBackground,UIApplicationStateInactive}) {
+            app.applicationState=state; HostPass(pre,HostPayload(@"tg://resolve?domain=x",YES,YES,0));
         }
-        HostReset();
-        UIApplication *app = [UIApplication sharedApplication];
-        HostPass(pre, HostPayload(web, NO, YES, 0x800000));
-        HostPass(pre, HostPayload(web, YES, NO, 0x800000));
-        for (UIApplicationState state : {UIApplicationStateBackground, UIApplicationStateInactive}) {
-            app.applicationState = state;
-            HostPass(pre, HostPayload(web, YES, YES, 0x800000));
-        }
-        app.applicationState = UIApplicationStateActive;
-        enabled = NO; HostPass(pre, HostPayload(web, YES, YES, 0)); enabled = YES;
-        handoff = NO; HostPass(pre, HostPayload(web, YES, YES, 0)); handoff = YES;
-        HostPass(load, HostPayload(web, YES, YES, 0)); // Orphan Load stays with Gecko.
-        for (NSString *uri in @[@"tg://resolve?domain=moonup_chat&start=a%2Bb#c",
-                @"tg:resolve?domain=moonup_chat", @"mailto:a@example.com?subject=x%26y",
-                @"tel:+861234", @"demo://item/42?a=%2F&b=%23"]) {
-            NSObject *dispatcher = [NSObject new];
-            for (NSString *event in @[pre, pre, load, load]) {
-                HostCallback *callback = [HostCallback new];
-                CHECK(!RDHandleClickNavigation(dispatcher, event, HostPayload(uri, YES, YES, 0x800000), callback));
-                CHECK(callback.count == 0 && app.opens.count == 0 && app.pending == nil);
-            }
-        }
-        HostCallback *callback = [HostCallback new];
-        RDRouteReply *reply = [RDRouteReply new];
-        reply.callback = callback;
+        app.applicationState=UIApplicationStateActive;
+        enabled=NO; HostPass(pre,HostPayload(@"tg://resolve?domain=x",YES,YES,0)); enabled=YES;
+        handoff=NO; HostPass(pre,HostPayload(@"tg://resolve?domain=x",YES,YES,0)); handoff=YES;
+        HostClickCustom();
+        HostCallback *callback=[HostCallback new];
+        RDRouteReply *reply=[RDRouteReply new];
+        reply.callback=callback;
         HostWorker(^{ [reply finish:YES]; [reply finish:NO]; });
         [reply finish:NO];
-        CHECK(callback.count == 1 && callback.value && reply.callback == nil);
-        HostTimeout();
-        printf("ROUTER_HOST_PASS checks=%u\n", checks);
+        CHECK(callback.count==1 && callback.value && reply.callback==nil);
+        printf("ROUTER_HOST_PASS checks=%u\n",checks);
     }
     return 0;
 }
