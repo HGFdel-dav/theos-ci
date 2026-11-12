@@ -1,36 +1,37 @@
-# ReynardDefault 1.5.44 Firefox160 本地候选
+# ReynardDefault 1.5.47 纯插件候选
 
-**状态：本地静态检查通过；未推送、未 CI 编译、未安装、未注销/重启、未真机验收。**
+**状态：CI verify 与双架构构建成功，DEB 静态验包通过；未安装、未注销/重启、未真机验收。**
 
-## 范围与授权
+## 范围
 
-用户明确：只交付一个原生 DEB；不带 WebExtension/XPI，不安装、不写扩展配置、不弹“添加插件”；保留 Safari/其他 App→Reynard、设置面板和控制中心。验证真实用户点击外部协议并完整保留参数；启动、刷新、历史、后台和自动重定向不能拉 App。已批准本地核实修改，未批准推送或安装。
+一个原生 DEB。无 XPI、无 Helper 注入、无脚本资源。保留 Safari→Reynard、设置面板、控制中心。
 
-## 本轮改动
+## 实现
 
-- 不注入 Helper? **仍注入 `com.minh-ton.Reynard.Helper`**，因为在设备旧记录中真实网页点击运行在 Helper；这是原生进程不是扩展。延迟到主线程再安装 XUL Hook，避免在 dyld 回调内改代码。
-- 真实点击由 `nsDocShell::OnLinkClick` 证明；再核验 `UserNavigationInvolvement == Activation`、用户手势、非下载、无 POST/header、顶层上下文和前台状态。所有条件汇总到 `RDProtocolCore.h` 并由 20,686 个主机组合断言覆盖。
-- Helper 命中后写一个共享待处理网址并发 Darwin 通知；主 App 仅在“本次通知已到达（armed）”且启用时消费，避免单纯回前台重放。写入同步失败则保留 Gecko 原导航。
-- 关闭 handoff 时丢弃待处理值。协议 scheme 先在原生层剔除内部协议；Telegram 仅对已知 action 补 `//`，其余字节保留。
-- 按设备实装 Reynard 0.21.0 / Firefox160 更新 XUL UUID、`OnLinkClick`、`GetBrowsingContext`、`GetParent` 四处指纹；均做指令/边界防护。
-- 保留原有 SpringBoard、设置和控制中心文件；`ReynardDefault.plist` 是唯一变化保护文件，其清单哈希已同步。
+- `GeckoView:OnPreNavigation` / `OnLoadRequest`：只处理顶层、前台、真实用户手势的 HTTP(S)，排除同文档锚点；先尝试系统 Universal Link，失败回答 false，让同一原导航继续。已有 1.5.44 实现。
+- `ContentParent::RecvLoadURIExternal`：只处理顶层上下文、前台、`userGesture`、非外部触发、非内部 scheme 的自定义链接；按已确认入口指纹（XUL UUID + `RecvLoadURIExternal`/`GetParent` 指令）安装；成功后以系统 openURL 结果判断是否吞掉原外部请求，失败交给原处理器。
+- 移除 Helper 注入、CFPreferences 单槽、Darwin 通知和 XUL `OnLinkClick`。`RDExternalLink.h` 只在主 App 安装外部协议钩子。
+- `FINALPACKAGE=1`，arm64e（RootHide）与 arm64（rootless）双架构。
 
-## 本地已通过
+## 已通过
 
-- `run_checks.py`：O0/O2 26 项旧策略、C++ 策略编译、20,686 项协议/点击组合、arm64e 非 PAC 汇编门禁、20 个保护哈希、6 个 plist、图标、无扩展载荷。
-- `raw_vtable_call.cpp` 额外编译三参数、无参和五参数原始 XUL 调用。
-- 无 `.xpi`、`extensions.json`、`RDHandoffPayload`、`RDExtensionInstall`。
+- CI run 43277426646：verify、arm64e、arm64 全部 success。
+- 主机规则 20,686 项、O0/O2 策略、arm64e 非 PAC 汇编、保护文件、plist、图标、无扩展载荷：通过。
+- 双包 control/版本/架构正确；16 个载荷；无维护脚本；过滤器仅 SpringBoard + Reynard。
+- 三 Mach-O 架构正确；代码签名 22/22 页、双哈希槽全通过。
+- SHA256：
+  - arm64e `7f1da4fd5d44d553d60e6fe3e515adfbefb18592ef0314358c7c101d9776c994`
+  - arm64 `ec1dbb4a9eccc770c5cf85bc871c9c2e4914492aeadba00d5e04c880e40f0089`
 
 ## 未验证 / 风险
 
-- **尚无 iOS 编译或 DEB 验包；C 主机测试不等于真实 ABI。**
-- `CFPreferences` 跨 App/Helper 沙盒同一路径尚未真机证明；同步成功也不等于主 App 已收到、已打开目标 App。
-- Helper 注入重走 1.5.39 的路径；1.5.39 的整机异常根因仍未证实，延迟安装只是降低回调风险，不是已证明修复。
-- 顶层判断依赖 `GetBrowsingContext/GetParent` 偏移与指令保护；版本不符就拒绝 Hook。
-- 系统已接收的外链不能撤销；目标 App 拒绝时原页面能否自动续载尚未真机验证。
-- 设置关闭后旧通知、并发两次点击、Helper 被回收等运行时竞态未真机覆盖。
+- 尚无设备安装、加载和功能验收；静态/CI 不等于能用。
+- 自定义链接只在主 App 外部协议入口打开；系统拒绝时原页面保留，但异步 IPC 无法把失败回传子进程，原链接不会自动再次导航。
+- 自定义链接依赖 Reynard 0.21.0 / Firefox160 XUL 指纹；版本不符时该钩子整体拒绝，网页路由仍工作。
+- 若外部协议流程本身弹出“允许打开 App”选择页，插件不会跳过该页；按原系统选择结果处理。
+- 需重启 Reynard 进程加载新 dylib。
 
-历史 1.5.38 说明保留在下方，仅作背景，不代表当前已通过项。
+## 1.5.47 现场诊断
 
----
-# 历史基线记录：ReynardDefault 1.5.38
+- 1.5.46 已实装且过滤器正确、进程装后重启，但用户报告无效果；发布包剥离日志导致无法取证。
+- 1.5.47 保留 NSLog；启动即记录 boot/pid；先安装外部协议钩子，派发类最多延迟 10 秒重试，不再因类未加载直接退出。

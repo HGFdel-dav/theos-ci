@@ -54,16 +54,31 @@ static void RDLog(NSString *format, ...) {
 %end
 %end
 
+static void RDAttachDispatcher(unsigned attempt) {
+    static BOOL attached=NO;
+    if (attached) return;
+    Class cls=objc_getClass(kDispatcherClass.UTF8String);
+    Method method=cls?class_getInstanceMethod(cls,@selector(dispatchToSwift:message:callback:)):NULL;
+    if (method && method_getNumberOfArguments(method)==5) {
+        %init(ReynardGroup);
+        attached=YES;
+        RDLog(@"dispatcher hook installed attempt=%u",attempt);
+        return;
+    }
+    if (attempt<50) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2*NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{ RDAttachDispatcher(attempt+1); });
+    } else {
+        RDLog(@"native dispatcher unavailable");
+    }
+}
+
 %ctor {
     @autoreleasepool {
         if (![[NSBundle mainBundle].bundleIdentifier isEqualToString:kReynardBundleID]) return;
-        Class cls=objc_getClass(kDispatcherClass.UTF8String);
-        Method method=class_getInstanceMethod(cls,@selector(dispatchToSwift:message:callback:));
-        if (!method || method_getNumberOfArguments(method)!=5) {
-            RDLog(@"native dispatcher unavailable"); return;
-        }
-        %init(ReynardGroup);
+        RDLog(@"1.5.47 boot pid=%d enabled=%d",getpid(),RDRouteEnabled());
         RDInstallExternalLinkHook();
+        RDAttachDispatcher(0);
         RDLog(@"loaded native-only router enabled=%d",RDRouteEnabled());
     }
 }

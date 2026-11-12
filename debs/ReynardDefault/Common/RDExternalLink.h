@@ -109,6 +109,9 @@ static RDExternalIPCResult RDExternalHook(void *self, void *uri, void *principal
         RDReadBoolPref(kHandoffKey, YES) && userGesture && !externallyTriggered &&
         [NSThread isMainThread] && [UIApplication sharedApplication].applicationState == UIApplicationStateActive &&
         RDExternalTopLevel(browsingContext) && url;
+    RDLog(@"external hook scheme=%@ gesture=%d ext=%d top=%d state=%ld eligible=%d",
+          url.scheme ?: spec, userGesture, externallyTriggered, RDExternalTopLevel(browsingContext),
+          (long)[UIApplication sharedApplication].applicationState, eligible);
     if (!eligible)
         return gRDExternalOriginal(self, uri, principal, redirectPrincipal, browsingContext,
                                     externallyTriggered, userGesture, newWindowTarget);
@@ -145,6 +148,7 @@ static void RDExternalTryInstall(void) {
     for (uint32_t i=0; i<_dyld_image_count(); ++i) {
         const char *name=_dyld_get_image_name(i); if (!name || !strstr(name, "/Frameworks/XUL")) continue;
         const struct mach_header_64 *header=(const struct mach_header_64 *)_dyld_get_image_header(i);
+        RDLog(@"external hook XUL found");
         if (!RDExternalHeaderMatches(header)) { gRDExternalRejected.store(true, std::memory_order_release); RDLog(@"external IPC XUL identity mismatch"); return; }
         uintptr_t address=(uintptr_t)_dyld_get_image_vmaddr_slide(i)+RD_EXTERNAL_RECV_LOAD_URI_EXTERNAL;
         uintptr_t parent=(uintptr_t)_dyld_get_image_vmaddr_slide(i)+RD_EXTERNAL_GET_PARENT;
