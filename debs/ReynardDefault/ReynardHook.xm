@@ -19,7 +19,7 @@ static void RDLog(NSString *format, ...) {
     va_list args; va_start(args, format);
     NSString *line=[[NSString alloc] initWithFormat:format arguments:args]; va_end(args);
     NSLog(@"%@ %@",RD_TAG,line);
-    NSString *path=[NSHomeDirectory() stringByAppendingPathComponent:@"tmp/rdboot-1.5.49.txt"];
+    NSString *path=[NSHomeDirectory() stringByAppendingPathComponent:@"tmp/rdboot-1.5.50.txt"];
     NSData *data=[[NSString stringWithFormat:@"%@ %@\n",[NSDate date],line] dataUsingEncoding:NSUTF8StringEncoding];
     NSFileHandle *h=[NSFileHandle fileHandleForWritingAtPath:path];
     if(!h) [[NSFileManager defaultManager] createFileAtPath:path contents:data attributes:nil];
@@ -40,9 +40,10 @@ static void RDLog(NSString *format, ...) {
     id diagGesture=[payload[@"hasUserGesture"] isKindOfClass:[NSNumber class]] ? payload[@"hasUserGesture"] : @"<none>";
     id diagTop=[payload[@"isTopLevel"] isKindOfClass:[NSNumber class]] ? payload[@"isTopLevel"] : @"<none>";
     id diagFlags=[payload[@"flags"] isKindOfClass:[NSNumber class]] ? payload[@"flags"] : @"<none>";
+    id diagTrigger=[payload[@"triggerUri"] isKindOfClass:[NSString class]] ? payload[@"triggerUri"] : @"<none>";
     NSURLComponents *parts=[NSURLComponents componentsWithString:diagURI];
-    RDLog(@"route event=%@ scheme=%@ gesture=%@ top=%@ flags=%@ callback=%d",type,
-          parts.scheme.lowercaseString ?: @"<none>",diagGesture,diagTop,diagFlags,
+    RDLog(@"route event=%@ scheme=%@ gesture=%@ trigger=%@ top=%@ flags=%@ callback=%d",type,
+          parts.scheme.lowercaseString ?: @"<none>",diagGesture,diagTrigger,diagTop,diagFlags,
           [callback respondsToSelector:@selector(sendSuccess:)]);
     void (^handle)(void)=^{
         BOOL handled=RDHandleClickNavigation(self,type,message,callback);
@@ -77,7 +78,7 @@ static void RDAttachDispatcher(unsigned attempt) {
 %ctor {
     @autoreleasepool {
         if (![[NSBundle mainBundle].bundleIdentifier isEqualToString:kReynardBundleID]) return;
-        RDLog(@"1.5.49 boot pid=%d enabled=%d",getpid(),RDRouteEnabled());
+        RDLog(@"1.5.50 boot pid=%d enabled=%d",getpid(),RDRouteEnabled());
         RDInstallExternalLinkHook();
         RDAttachDispatcher(0);
         RDLog(@"loaded native-only router enabled=%d",RDRouteEnabled());

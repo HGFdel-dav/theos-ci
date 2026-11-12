@@ -173,9 +173,14 @@ static BOOL RDHandleClickNavigation(id dispatcher, NSString *type,
                      [payload[@"flags"] unsignedIntValue] : 0;
     BOOL foreground = [UIApplication sharedApplication].applicationState == UIApplicationStateActive;
     BOOL enabled = RDRouteEnabled();
-    BOOL eligible = RDClickEventAllowed(YES, gesture, topLevel, flags, foreground) && enabled;
-    RDLog(@"route gate event=%@ scheme=%@ gesture=%d top=%d flags=0x%x foreground=%d enabled=%d eligible=%d",
-          type, scheme, gesture, topLevel, flags, foreground, enabled, eligible);
+    NSString *trigger = [payload[@"triggerUri"] isKindOfClass:[NSString class]] ? payload[@"triggerUri"] : nil;
+    // A link that opens a new tab arrives as an app-initiated load with
+    // hasUserGesture=0. Require a real source page and reject redirects; this
+    // still avoids startup/reload/history, which have no triggerUri.
+    BOOL webClick = gesture || (trigger.length && !(flags & 0x800000));
+    BOOL eligible = RDClickEventAllowed(YES, webClick, topLevel, flags, foreground) && enabled;
+    RDLog(@"route gate event=%@ scheme=%@ gesture=%d trigger=%@ top=%d flags=0x%x foreground=%d enabled=%d eligible=%d",
+          type, scheme, gesture, trigger ?: @"<none>", topLevel, flags, foreground, enabled, eligible);
     RDRouteReply *reply = [RDRouteReply new];
     reply.callback = callback;
 
@@ -198,7 +203,6 @@ static BOOL RDHandleClickNavigation(id dispatcher, NSString *type,
 
     NSURL *webURL = RDValidatedWebURL(uri);
     if (!webURL) { RDLog(@"route reject reason=invalid-web-uri"); return NO; }
-    NSString *trigger = [payload[@"triggerUri"] isKindOfClass:[NSString class]] ? payload[@"triggerUri"] : nil;
     if (trigger.length && parts.fragment.length) {
         NSURLComponents *from = [NSURLComponents componentsWithString:trigger];
         NSURLComponents *to = [parts copy];
