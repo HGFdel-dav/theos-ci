@@ -19,7 +19,7 @@ both: rootless rootful
 TWEAK_NAME = ReynardDefault
 ReynardDefault_FILES = Tweak.x ReynardHook.xm
 FINALPACKAGE = 1
-ReynardDefault_CFLAGS = -fobjc-arc -fvisibility=hidden -DREYNARD_STRIP_LOGS=1
+ReynardDefault_CFLAGS = -fobjc-arc -fvisibility=hidden
 ReynardDefault_LDFLAGS = -Wl,-x -Wl,-dead_strip
 ReynardDefault_FRAMEWORKS = Foundation UIKit
 ReynardDefault_EXTRA_FRAMEWORKS = FrontBoardServices
