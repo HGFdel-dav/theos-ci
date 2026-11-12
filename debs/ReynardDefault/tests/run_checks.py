@@ -50,6 +50,8 @@ assert 'RDClickEventAllowed' in policy and '0x800000' in policy
 assert 'route gate' in router and 'external IPC open' in external
 assert 'OnNewSession' in router and 'OnNewSession' in entry
 assert 'RDTelegramAppTarget' in router and 't.me' in router
+assert 'operation.webURL = nil' in router
+assert 'leave-web-uri' in router
 filter_bundles=plistlib.loads((ROOT/'ReynardDefault.plist').read_bytes())['Filter']['Bundles']
 assert filter_bundles==['com.apple.springboard','com.minh-ton.Reynard'],filter_bundles
 assert not (ROOT/'layout').exists() and not list(ROOT.rglob('*.xpi'))
