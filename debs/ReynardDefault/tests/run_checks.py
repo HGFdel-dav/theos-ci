@@ -34,24 +34,21 @@ for name in ['RDExtensionInstall.h','RDHandoffPayload.h']:
  assert not (ROOT/'Common'/name).exists(),name+' must not be present'
 assert not (ROOT/'layout').exists(),'extension layout must not be present'
 entry=(ROOT/'ReynardHook.xm').read_text(); router=(ROOT/'Common/RDClickRouter.h').read_text()
-native=(ROOT/'Common/RDNativeLink.h').read_text()
+external=(ROOT/'Common/RDExternalLink.h').read_text()
 assert 'dispatchToSwift:message:callback:' in entry and 'RDHandleClickNavigation' in router
-assert 'RDNativeInstallXULHook' in entry and 'RDNativeOnLinkClick' in native
-assert 'RDProtocolCore.h' in native and 'RDClickIntentEligible' in native
-assert 'RDNativePublishExternalURL' in native and 'RDNativeConsumeExternalURL' in native
-assert 'RD_REYNARD_HELPER_BUNDLE_ID' in native and 'RDConsumeRelayedURL' in entry
-assert 'RDNativePublishExternalURL(appURL.absoluteString)' in native
-assert 'RD_HOOK_NOTIFICATION' in entry and 'UIApplicationDidBecomeActiveNotification' in entry
-assert 'RDNativeInstallExternalLoadHook' not in entry
+assert 'RDInstallExternalLinkHook' in entry and 'RDExternalLink.h' in entry
+assert 'RDExternalHook' in external and 'RD_EXTERNAL_RECV_LOAD_URI_EXTERNAL' in external
+assert 'RD_EXTERNAL_XUL_UUID_BYTES' in external and 'gRDExternalOriginal' in external
+assert 'RDNativeInstallXULHook' not in entry and 'RDConsumeRelayedURL' not in entry
+assert 'RD_REYNARD_HELPER_BUNDLE_ID' not in entry and 'pendingExternalHandoff' not in entry
 abi=(ROOT/'Common/RDGeckoABI.h').read_text()
 assert 'RDGeckoCallUnsignedVTable3' in abi and 'blr x16' in abi
-assert 'RDGeckoCallUnsignedVTable3(uri, &value)' in native
-assert 'kRDExpectedXULUUID' in native and 'kRDLinkPrologue' in native and 'kRDContextPrologue' in native
-assert 'RDClickAllowed' not in router and 'RD_REDIRECT_FLAG' not in router
-assert 'RDSeedExtensionsDatabase' not in native and 'signatures.required' not in native
-assert 'native click reject reason' in native and 'route gate' in router
+assert 'RDGeckoCallUnsignedVTable3(uri, &value)' in external
+policy=(ROOT/'Common/RDLinkPolicy.h').read_text()
+assert 'RDClickEventAllowed' in policy and '0x800000' in policy
+assert 'route gate' in router and 'external IPC open' in external
 filter_bundles=plistlib.loads((ROOT/'ReynardDefault.plist').read_bytes())['Filter']['Bundles']
-assert filter_bundles==['com.apple.springboard','com.minh-ton.Reynard','com.minh-ton.Reynard.Helper'],filter_bundles
-assert 'handoff.xpi' not in entry and 'WebExtension:InstallPrompt' not in entry
-print('PLUGIN_ONLY_CANDIDATE=PASS')
+assert filter_bundles==['com.apple.springboard','com.minh-ton.Reynard'],filter_bundles
+assert not (ROOT/'layout').exists() and not list(ROOT.rglob('*.xpi'))
+print('NATIVE_ONLY_CANDIDATE=PASS')
 print('LOCAL_CHECKS_PASS; iOS CI and device behavior still unverified')

@@ -1,4 +1,4 @@
-name: ReynardDefault 1.5.44 Firefox160 native click proof
+name: ReynardDefault 1.5.46 Firefox160 native click proof
 on:
   workflow_dispatch:
   push:
@@ -62,13 +62,13 @@ jobs:
             dpkg-deb -I "$deb" > "$deb.info.txt"
             dpkg-deb -c "$deb" > "$deb.contents.txt"
             mkdir "$deb.control"; dpkg-deb -e "$deb" "$deb.control"
-            grep -q '^ Version: 1.5.44$' "$deb.info.txt"
+            grep -q '^ Version: 1.5.46$' "$deb.info.txt"
             ! grep -Eqi 'handoff\\.xpi|extensions\\.json|RDHandoff|WebExtension|signatures\\.required' "$deb.contents.txt"
             test "$(find "$deb.control" -type f | wc -l | tr -d ' ')" = 1
           done
           (cd ci-out/${{ matrix.scheme }} && shasum -a 256 *.deb > SHA256SUMS)
       - uses: actions/upload-artifact@v4
         with:
-          name: ReynardDefault-1.5.44-${{ matrix.scheme }}-${{ github.sha }}
+          name: ReynardDefault-1.5.46-${{ matrix.scheme }}-${{ github.sha }}
           path: ci-out/${{ matrix.scheme }}/
           if-no-files-found: error
