@@ -146,7 +146,7 @@ int main(void) {
         HostPass(pre,HostPayload(web,NO,YES,0));
         HostPass(pre,HostPayload(web,YES,NO,0));
         UIApplication *app=[UIApplication sharedApplication];
-        for (UIApplicationState state in {UIApplicationStateBackground,UIApplicationStateInactive}) {
+        for (UIApplicationState state : {UIApplicationStateBackground,UIApplicationStateInactive}) {
             app.applicationState=state; HostPass(pre,HostPayload(@"tg://resolve?domain=x",YES,YES,0));
         }
         app.applicationState=UIApplicationStateActive;
