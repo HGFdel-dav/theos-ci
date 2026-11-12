@@ -11,6 +11,27 @@ static BOOL RDExactFlag(id value, BOOL fallback) {
 static BOOL RDWebScheme(NSString *scheme) {
     return [scheme isEqualToString:@"http"] || [scheme isEqualToString:@"https"];
 }
+static BOOL RDInternalScheme(NSString *scheme) {
+    static NSSet<NSString *> *internal;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        internal = [NSSet setWithArray:@[@"about",@"data",@"blob",@"javascript",
+            @"moz-extension",@"jar",@"view-source",@"file",@"resource",@"wyciwyg",
+            @"ws",@"wss",@"ftp",@"intent",@"reynard",@"chrome",@"chrome-extension"]];
+    });
+    return [internal containsObject:scheme.lowercaseString];
+}
+static NSURL *RDAppTarget(NSString *text) {
+    if (![text isKindOfClass:[NSString class]] || !text.length || text.length >= RD_URL_CAP) return nil;
+    if ([text rangeOfCharacterFromSet:[NSCharacterSet controlCharacterSet]].location != NSNotFound ||
+        [text rangeOfCharacterFromSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]].location != NSNotFound) return nil;
+    char normalized[RD_URL_CAP + 2];
+    if (!RDNormalizeAppURL(text.UTF8String, normalized, sizeof(normalized))) return nil;
+    NSString *value = [NSString stringWithUTF8String:normalized];
+    NSURLComponents *parts = [NSURLComponents componentsWithString:value];
+    if (!parts.scheme.length || RDWebScheme(parts.scheme) || RDInternalScheme(parts.scheme)) return nil;
+    return parts.URL;
+}
 static NSURL *RDValidatedWebURL(NSString *text) {
     if (![text isKindOfClass:[NSString class]] || !text.length || text.length >= RD_URL_CAP) return nil;
     NSCharacterSet *bad = [NSCharacterSet controlCharacterSet];
@@ -27,7 +48,7 @@ static NSURL *RDValidatedWebURL(NSString *text) {
 static NSURL *RDTelegramAppTarget(NSURL *webURL) {
     if (!webURL || ![webURL.host.lowercaseString isEqualToString:@"t.me"]) return nil;
     NSMutableArray<NSString *> *parts = [[webURL.pathComponents filteredArrayUsingPredicate:
-        [NSPredicate predicateWithBlock:^BOOL(NSString *value, NSDictionary *bindings) {
+        [NSPredicate predicateWithBlock:^BOOL(NSString *value, __unused NSDictionary *bindings) {
             return value.length > 0 && ![value isEqualToString:@"/"];
         }]] mutableCopy];
     if (!parts.count || [parts[0] isEqualToString:@"s"]) return nil;
@@ -234,11 +255,11 @@ static BOOL RDHandleClickNavigation(id dispatcher, NSString *type,
        app; this is the one click path that does not need a content process. */
     if (isNewSession) {
         if (!enabled || !foreground) return NO;
-        if (!webTarget && !RDNormalizedAppTarget(uri)) return NO;
+        if (!webTarget && !RDAppTarget(uri)) return NO;
         if (webTarget && !appTarget) return NO;
         RDOpenOperation *operation = [RDOpenOperation new];
         operation.webURL = nil;
-        operation.appURL = webTarget ? appTarget : RDNormalizedAppTarget(uri);
+        operation.appURL = webTarget ? appTarget : RDAppTarget(uri);
         operation.completion = ^(BOOL handled) { [reply finish:handled]; };
         [operation start];
         return YES;
