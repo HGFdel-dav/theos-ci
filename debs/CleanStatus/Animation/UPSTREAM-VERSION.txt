@@ -1,0 +1,9 @@
+Integrated source: ba31k/ios26-27-anims v1.5.2
+Tag commit: 8c3159717f8cb692dc017556a99bde3fa8cabaf0
+Archive SHA256: 94c7d1400975c0bd321744b17bf23246f1639257b73045ab9ad7714845b5373a
+Source: https://github.com/ba31k/ios26-27-anims/tree/v1.5.2
+License: no LICENSE/COPYING/NOTICE was included in the upstream v1.5.2 archive; no license is assumed.
+Upstream author: bazik1337 (@bazik1337)
+Upstream channel: https://t.me/ba31k_tweaks
+Scope: Genie engine, spring math, native mesh tracks, app transitions and Notification Center icon fly-in.
+Test/debug exports and recording/screenshot utilities are excluded.

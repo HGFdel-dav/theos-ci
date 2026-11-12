@@ -1,0 +1,236 @@
+{
+  "repository": "HGFdel-dav/theos-ci",
+  "commit": "4301746eba66244b1a869e7f53650184e6fca10b",
+  "version": "0.2.5",
+  "protected_sources": {
+    "Headers/LocalCleanStatusPrivate.h": "f3a4737a4bf57f011c5aa94639241fb38a894e7cce5a3424d09fbaf83582ba93",
+    "Headers/LocalCleanStatusRuntime.h": "7dd253654add6370cee71f083fa5392a5fcd5e50ff6cf13eac698b7281a3377c",
+    "Hooks/LocalCleanStatusMain.xm": "0645467ccaa65622ef4b7ef1af7035fa7239e76f3d67260a0eb3218af9d39022",
+    "LocalCleanStatusPrefs/LocalCleanStatusRootListController.h": "53a071f6051be3d2c1e3ebcdc66aa8614cf7630a8b870de44465fd49470758af",
+    "LocalCleanStatusPrefs/LocalCleanStatusRootListController.m": "cbe9de6691a4d59d8490703a4ae8ecd898e924f741808c024cb297f5fd7c2428",
+    "LocalCleanStatusSystemActions/Headers/ControlCenterUIKit/CCUIButtonModuleViewController.h": "bc596211a777e7c5c9b7fdee36ce24dc7e5ebecbf83548a8302c25c7a5251b40",
+    "LocalCleanStatusSystemActions/Headers/ControlCenterUIKit/CCUIContentModule.h": "5364386ae21abbd9bdb5c7a3199e6a6cd1c6fc86c34125d4c4c2a01da3d58d59",
+    "LocalCleanStatusSystemActions/Headers/ControlCenterUIKit/CCUIContentModuleContext.h": "c9d018f0b93520e961883af58c855aba67354924c0620f08e18a25fb9c6056fc",
+    "LocalCleanStatusSystemActions/Headers/ControlCenterUIKit/CCUIMenuModuleViewController.h": "875f43d31571e94d10c583d8f61c81a9d5bc5977b56e10272b4bb2babdf253df",
+    "LocalCleanStatusSystemActions/LocalCleanStatusSystemActions.m": "d72d6426598850bb071effff686f4c098e42dd44364e1dfb5774e2e5b3213bd0",
+    "Shared/LocalCleanStatusCCDiagnostics.h": "6196137463b94b8b21d6ce22c9d387ebf2110a2f0d2ebbced047fd8977c75e82",
+    "Shared/LocalCleanStatusCCDiagnostics.m": "3cf92d6dbe54654b134d68dab49bf885bac99ab01cf4a13a8d3678dc07c48911",
+    "Shared/LocalCleanStatusCCEnvironment.h": "bcfb0577ab1461c8fa6e61b71f5c300d99f95b4dea382f0c9d5213192fe9c41b",
+    "Shared/LocalCleanStatusCCEnvironment.m": "8ac55265e9c2046ccf845f4521eb2dacddaf79b906fdc8ab89a36cab861bb793",
+    "Shared/LocalCleanStatusCCPolicy.h": "149bcf59c602be38d9f6a014b7cfa765d2fa4541b984deaeac9def4e7d0c8c5a",
+    "Shared/LocalCleanStatusCCRuntime.h": "12e94b69e60995ff31012d50729396f7581b80783c4ccd31ad878ba850b302f8",
+    "Sources/LocalCleanStatusBattery.m": "b7b20c271905e0ce313bf9fdac47fad295dbe01c4de95a91ec02119f4478706b",
+    "Sources/LocalCleanStatusCCBackend.h": "1c22cde784b1e262e282d65b0f6a5adcf6be53abdb050c01e47c89a4f0c5944f",
+    "Sources/LocalCleanStatusCCBackend.m": "a765b16d1912a2e0ebb58b05e56d9fc1d4129ff6ece14313aedbe5f597b88414",
+    "Sources/LocalCleanStatusCCListViewController.h": "10f6bc291cd5098793bc34e72d7ccae7c9299febee2fd5c80996fdc8dac1b1c7",
+    "Sources/LocalCleanStatusCCListViewController.m": "7f4eef6b2dcb605456d861f4b8209105da18c38651645bc0a2d3e190212fd0f6",
+    "Sources/LocalCleanStatusConfig.h": "d1ef091b4212d468dc16c094c76da8f94a530fd82201360e0d9a75a831d0ec9a",
+    "Sources/LocalCleanStatusConfig.m": "5c331bafcc41ea5f1ff4ff7889837457c235eb116d5af6a3429f444230ab8d8b",
+    "Sources/LocalCleanStatusControlCenter.m": "fabd91ca509e9c72bb342ec1f9565d6288cdb13ba56e7e36d99988ceff4c856a",
+    "Sources/LocalCleanStatusCore.h": "eaaeeac27ea33daff5b0c93362b886019cd93f914eec9cc8e07f27da7e2cd35a",
+    "Sources/LocalCleanStatusLowPower.m": "060f51b15fe8c344edfbf0d3629e5ab4a932fa977a052d899b7ade11c8dbbe46",
+    "Sources/LocalCleanStatusPaths.h": "7e0b76ca043e5aa4cb54574436d2806336dd1069efd01a1b11411f95737d2a2b",
+    "Sources/LocalCleanStatusPaths.m": "c9039863b376c2a0397fa37659e34fb83503a7febd7435a3e18e4b95d28295a5",
+    "Sources/LocalCleanStatusPreferences.h": "fc88f41318e13049152811e6278e951ae1455107d8043b94773f05c057fac09e",
+    "Sources/LocalCleanStatusStatus.m": "ac0d6a64149f5ed60ba26b5ea8c5d31623cf2982ae11da4172d930b15ddfb84a",
+    "Sources/LocalCleanStatusUnknownParts.m": "cfb266ebf0545a3ba8979ec85278b9b845e33ac17c813eb996f52ea26110e697"
+  },
+  "original_root_items": [
+    {
+      "cell": "PSGroupCell",
+      "label": "CleanStatus 0.2.0",
+      "footerText": "除“隐藏未知部件提示”默认开启外，其余默认关闭。修改后点右上角“应用”。关闭总开关并应用可恢复系统显示。"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "启用插件",
+      "key": "enabled",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSGroupCell",
+      "label": "状态栏",
+      "footerText": "只隐藏状态图标，不停用系统功能；Siri/CarPlay 仅针对状态栏指示，不隐藏 Siri 界面或车辆仪表。"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "隐藏飞行模式",
+      "key": "hideAirplane",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "隐藏闹钟",
+      "key": "hideAlarm",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "隐藏蓝牙",
+      "key": "hideBluetooth",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "隐藏 Siri",
+      "key": "hideSiri",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "隐藏 CarPlay",
+      "key": "hideCarPlay",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "隐藏勿扰 / 专注模式",
+      "key": "hideFocus",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "隐藏定位",
+      "key": "hideLocation",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "隐藏旋转锁",
+      "key": "hideRotationLock",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "隐藏信号",
+      "key": "hideCellular",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "隐藏 VPN",
+      "key": "hideVPN",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "隐藏 Wi-Fi",
+      "key": "hideWiFi",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSGroupCell",
+      "label": "未知部件提示",
+      "footerText": "隐藏电池健康警告、关于本机的未知部件行和设置角标；只改显示，不改健康数据。"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "隐藏未知部件提示",
+      "key": "hideUnknownParts",
+      "defaults": "com.local.cleanstatus",
+      "default": true,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSGroupCell",
+      "label": "控制中心",
+      "footerText": "长按控制中心的 Wi-Fi / 蓝牙按钮直接选网络或设备；普通点击和展开菜单保持原生。系统操作需另装 CCSupport 后加入控制中心。仅 iOS 15 生效。"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "Wi-Fi 长按快捷选择",
+      "key": "ccWiFiLongPress",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "蓝牙长按快捷选择",
+      "key": "ccBluetoothLongPress",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "系统操作模块",
+      "key": "ccSystemActions",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSGroupCell",
+      "label": "电池",
+      "footerText": "数字内嵌样式；轻点功能仅在解锁后有效。与其他状态栏、电池插件同时开启可能冲突。"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "现代电池",
+      "key": "modernBattery",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "隐藏充电闪电",
+      "key": "hideChargingBolt",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "轻点电池切换低电量模式",
+      "key": "tapLowPower",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    }
+  ]
+}

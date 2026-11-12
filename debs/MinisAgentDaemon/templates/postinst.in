@@ -1,0 +1,16 @@
+#!/bin/sh
+# @PREFIX@ is substituted at package time: empty for roothide, /var/jb for rootless.
+set -e
+PREFIX="@PREFIX@"
+BASE="$PREFIX/var/mobile/Library/MinisAgent"
+mkdir -p "$BASE/inbox" "$BASE/jobs" "$BASE/debs"
+chown root:mobile "$BASE" "$BASE/inbox" "$BASE/debs" 2>/dev/null || true
+chmod 0775 "$BASE"
+chmod 0770 "$BASE/inbox" "$BASE/debs"
+chown root:mobile "$BASE/jobs" 2>/dev/null || true
+chmod 0750 "$BASE/jobs"
+if command -v launchctl >/dev/null 2>&1; then
+    launchctl unload "$PREFIX/Library/LaunchDaemons/com.niubiprass.minisagentd.plist" 2>/dev/null || true
+    launchctl load "$PREFIX/Library/LaunchDaemons/com.niubiprass.minisagentd.plist" 2>/dev/null || true
+fi
+exit 0

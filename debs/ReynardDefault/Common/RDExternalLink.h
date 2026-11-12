@@ -24,7 +24,7 @@ static uintptr_t gRDExternalGetParent = 0;
 struct RDExternalIPCResult { bool success; };
 static_assert(sizeof(RDExternalIPCResult) == 1, "IPCResult ABI changed");
 typedef RDExternalIPCResult (*RDExternalRecvFn)(
-    void *, void *, void *, void *, void *, bool, bool, bool);
+    void *, void *, void *, void *, bool, bool, bool);
 
 struct RDExternalCString { char *data; uint32_t length; uint16_t dataFlags; uint16_t classFlags; };
 struct RDExternalAutoCString { RDExternalCString base; uint32_t inlineCapacity; char storage[64]; };

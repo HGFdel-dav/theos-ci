@@ -1,0 +1,5 @@
+#!/bin/sh
+set -e
+PREFIX="@PREFIX@"
+rm -rf "$PREFIX/var/mobile/Library/MinisAgent"
+exit 0
