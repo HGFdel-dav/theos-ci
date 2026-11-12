@@ -19,7 +19,7 @@ static void RDLog(NSString *format, ...) {
     va_list args; va_start(args, format);
     NSString *line=[[NSString alloc] initWithFormat:format arguments:args]; va_end(args);
     NSLog(@"%@ %@",RD_TAG,line);
-    NSString *path=[NSHomeDirectory() stringByAppendingPathComponent:@"tmp/rdboot-1.5.50.txt"];
+    NSString *path=[NSHomeDirectory() stringByAppendingPathComponent:@"tmp/rdboot-1.5.52.txt"];
     NSData *data=[[NSString stringWithFormat:@"%@ %@\n",[NSDate date],line] dataUsingEncoding:NSUTF8StringEncoding];
     NSFileHandle *h=[NSFileHandle fileHandleForWritingAtPath:path];
     if(!h) [[NSFileManager defaultManager] createFileAtPath:path contents:data attributes:nil];
@@ -33,7 +33,8 @@ static void RDLog(NSString *format, ...) {
 %hook _TtC9GeckoView27GeckoEventDispatcherWrapper
 - (void)dispatchToSwift:(NSString *)type message:(id)message callback:(id<RDEventCallback>)callback {
     BOOL navigation=[type isEqualToString:@"GeckoView:OnPreNavigation"] ||
-                     [type isEqualToString:@"GeckoView:OnLoadRequest"];
+                     [type isEqualToString:@"GeckoView:OnLoadRequest"] ||
+                     [type isEqualToString:@"GeckoView:OnNewSession"];
     if (!navigation) { %orig; return; }
     NSDictionary *payload=[message isKindOfClass:[NSDictionary class]] ? message : nil;
     NSString *diagURI=[payload[@"uri"] isKindOfClass:[NSString class]] ? payload[@"uri"] : @"<none>";
@@ -78,7 +79,7 @@ static void RDAttachDispatcher(unsigned attempt) {
 %ctor {
     @autoreleasepool {
         if (![[NSBundle mainBundle].bundleIdentifier isEqualToString:kReynardBundleID]) return;
-        RDLog(@"1.5.50 boot pid=%d enabled=%d",getpid(),RDRouteEnabled());
+        RDLog(@"1.5.52 boot pid=%d enabled=%d",getpid(),RDRouteEnabled());
         RDInstallExternalLinkHook();
         RDAttachDispatcher(0);
         RDLog(@"loaded native-only router enabled=%d",RDRouteEnabled());
