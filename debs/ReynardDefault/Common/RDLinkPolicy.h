@@ -7,6 +7,18 @@
 #define RD_URL_CAP 16385
 #define RD_NATIVE_CLICK_ACTIVATION 1u
 
+/* nsExternalHelperAppService::LoadURI receives const MaybeDiscarded<BC>&.
+   It is {uint64_t id; RefPtr<BC> ptr}, not a BrowsingContext pointer. */
+struct RDMaybeDiscardedContext { uint64_t id; uintptr_t context; };
+static inline int RDUnwrapMaybeDiscardedContext(const void *raw, uint64_t *id,
+                                                uintptr_t *context) {
+    if (!raw || !id || !context) return 0;
+    struct RDMaybeDiscardedContext value;
+    memcpy(&value, raw, sizeof(value));
+    if (!value.id || !value.context) return 0;
+    *id=value.id; *context=value.context; return 1;
+}
+
 /* GeckoView load flags are not a redirect detector. Verified tapped-link
    requests can carry 0x800000; gesture/top-level/foreground gate the handoff. */
 static inline int RDClickEventAllowed(int isRequest, int userGesture,

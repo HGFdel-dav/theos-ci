@@ -9,9 +9,8 @@
 #import <atomic>
 #import <cstdlib>
 #import <cstring>
-#import "RDLinkPolicy.h"
-#import "RDGeckoABI.h"
 #import "RDProtocolCore.h"
+#import "RDGeckoABI.h"
 
 #define RD_NS_ERROR_ABORT ((int32_t)0x80004004)
 #define RD_HOOK_NOTIFICATION CFSTR("com.guacforlife.reynarddefault.external-link")
@@ -57,7 +56,10 @@ static_assert(offsetof(RDGeckoAutoCString, storage) == 20, "nsAutoCString storag
 static_assert(sizeof(RDGeckoAutoCString) == 88, "nsAutoCString size changed");
 static_assert(sizeof(RDGeckoStringBufferHeader) == 8, "StringBuffer header ABI changed");
 
+typedef void (*RDTriggerLinkFn)(void *, void *, const RDGeckoU16String *, uint8_t);
 static RDOnLinkClickFn gRDOriginalOnLinkClick = nullptr;
+static RDTriggerLinkFn gRDOriginalTriggerLink = nullptr;
+static thread_local BOOL gRDTrustedPointerTrigger = NO;
 static std::atomic_bool gRDHookInstalled{false};
 static std::atomic_bool gRDImageCallbackRegistered{false};
 static std::atomic_bool gRDInstallScheduled{false};
@@ -216,9 +218,9 @@ static int32_t RDNativeOnLinkClick(void *self, void *content, void *uri,
     RDLog(@"native click candidate scheme=%@",appURL.scheme);
     BOOL helper = [[NSBundle mainBundle].bundleIdentifier isEqualToString:RD_REYNARD_HELPER_BUNDLE_ID];
     if (helper) {
-        BOOL relayed=RDNativePublishExternalURL(appURL.absoluteString);
-        RDLog(@"native click relay scheme=%@ synchronized=%d",appURL.scheme,relayed);
-        if (relayed) return RD_NS_ERROR_ABORT;
+        BOOL accepted=RDNativeOpenCustom(appURL);
+        RDLog(@"helper native click scheme=%@ accepted=%d",appURL.scheme,accepted);
+        if (accepted) return RD_NS_ERROR_ABORT;
         return RDNativeCallOriginal(self,content,uri,target,file,post,headers,user,involvement,principal,policy);
     }
     BOOL accepted = RDNativeOpenCustom(appURL);

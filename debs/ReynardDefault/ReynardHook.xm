@@ -19,7 +19,7 @@ static void RDLog(NSString *format, ...) {
     va_list args; va_start(args, format);
     NSString *line=[[NSString alloc] initWithFormat:format arguments:args]; va_end(args);
     NSLog(@"%@ %@",RD_TAG,line);
-    NSString *path=@"/var/mobile/rdboot-1.5.48.txt";
+    NSString *path=[NSHomeDirectory() stringByAppendingPathComponent:@"tmp/rdboot-1.5.49.txt"];
     NSData *data=[[NSString stringWithFormat:@"%@ %@\n",[NSDate date],line] dataUsingEncoding:NSUTF8StringEncoding];
     NSFileHandle *h=[NSFileHandle fileHandleForWritingAtPath:path];
     if(!h) [[NSFileManager defaultManager] createFileAtPath:path contents:data attributes:nil];
@@ -77,7 +77,7 @@ static void RDAttachDispatcher(unsigned attempt) {
 %ctor {
     @autoreleasepool {
         if (![[NSBundle mainBundle].bundleIdentifier isEqualToString:kReynardBundleID]) return;
-        RDLog(@"1.5.47 boot pid=%d enabled=%d",getpid(),RDRouteEnabled());
+        RDLog(@"1.5.49 boot pid=%d enabled=%d",getpid(),RDRouteEnabled());
         RDInstallExternalLinkHook();
         RDAttachDispatcher(0);
         RDLog(@"loaded native-only router enabled=%d",RDRouteEnabled());
