@@ -15,6 +15,11 @@
 
 #define RD_EXTERNAL_XUL_UUID_BYTES {0x4c,0x4c,0x44,0x29,0x55,0x55,0x31,0x44,0xa1,0x13,0x2f,0x42,0xdb,0x9c,0xfa,0x90}
 #define RD_EXTERNAL_RECV_LOAD_URI_EXTERNAL 0x52201d0ULL
+#define RD_EXTERNAL_MAYBEDISCARDED_CONTEXT_OFFSET 8u
+#define RD_EXTERNAL_CONTEXT_DISCARDED_OFFSET 0x54cu
+#define RD_EXTERNAL_CONTEXT_DISCARDED_BIT (1u<<2)
+struct RDExternalMaybeDiscardedContext { uint64_t id; void *context; };
+static_assert(sizeof(RDExternalMaybeDiscardedContext)==16,"MaybeDiscarded ABI changed");
 #define RD_EXTERNAL_GET_PARENT 0x5d1b678ULL
 static uintptr_t gRDExternalGetParent = 0;
 
@@ -94,9 +99,17 @@ static BOOL RDExternalOpen(NSURL *url) {
     RDLog(@"external IPC open scheme=%@ accepted=%d", url.scheme, accepted);
     return accepted;
 }
-static BOOL RDExternalTopLevel(void *context) {
-    if (!context || !gRDExternalGetParent) return NO;
-    return RDGeckoCallUnsignedMethod0(context, gRDExternalGetParent) == NULL;
+static_assert(sizeof(RDMaybeDiscardedContext)==16,
+              "MaybeDiscarded<BrowsingContext> ABI changed");
+static BOOL RDExternalTopLevel(void *maybeContext) {
+    if (!gRDExternalGetParent) return NO;
+    uint64_t id=0; uintptr_t context=0;
+    if (!RDUnwrapMaybeDiscardedContext(maybeContext,&id,&context)) return NO;
+    (void)id;
+    uint16_t state=0;
+    memcpy(&state,(const uint8_t *)context+RD_EXTERNAL_CONTEXT_DISCARDED_OFFSET,sizeof(state));
+    if (state & RD_EXTERNAL_CONTEXT_DISCARDED_BIT) return NO;
+    return RDGeckoCallUnsignedMethod0((void *)context,gRDExternalGetParent)==NULL;
 }
 static RDExternalIPCResult RDExternalHook(void *self, void *uri, void *principal,
     void *redirectPrincipal, void *browsingContext, bool externallyTriggered,

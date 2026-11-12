@@ -37,10 +37,11 @@ entry=(ROOT/'ReynardHook.xm').read_text(); router=(ROOT/'Common/RDClickRouter.h'
 external=(ROOT/'Common/RDExternalLink.h').read_text()
 assert 'dispatchToSwift:message:callback:' in entry and 'RDHandleClickNavigation' in router
 assert 'RDInstallExternalLinkHook' in entry and 'RDExternalLink.h' in entry
+assert 'RDNativeInstallXULHook' not in entry and 'RDNativeLink.h' not in entry
 assert 'RDExternalHook' in external and 'RD_EXTERNAL_RECV_LOAD_URI_EXTERNAL' in external
+assert 'RDUnwrapMaybeDiscardedContext' in external and 'RD_EXTERNAL_CONTEXT_DISCARDED_OFFSET' in external
 assert 'RD_EXTERNAL_XUL_UUID_BYTES' in external and 'gRDExternalOriginal' in external
-assert 'RDNativeInstallXULHook' not in entry and 'RDConsumeRelayedURL' not in entry
-assert 'RD_REYNARD_HELPER_BUNDLE_ID' not in entry and 'pendingExternalHandoff' not in entry
+assert 'RDNativePublishExternalURL' not in entry and 'pendingExternalHandoff' not in entry
 abi=(ROOT/'Common/RDGeckoABI.h').read_text()
 assert 'RDGeckoCallUnsignedVTable3' in abi and 'blr x16' in abi
 assert 'RDGeckoCallUnsignedVTable3(uri, &value)' in external

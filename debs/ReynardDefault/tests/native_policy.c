@@ -18,6 +18,14 @@ int main(void) {
     T(!RDNativeClickAllowed(1,1,1,1,1,0));
     T(!RDNativeClickAllowed(1,1,1,1,0,1));
     T(!RDNativeClickAllowed(0,1,1,1,0,0));
+    struct { uint64_t id; uintptr_t context; } wrapped={42,0x12345678};
+    uint64_t contextID=0; uintptr_t context=0;
+    T(RDUnwrapMaybeDiscardedContext(&wrapped,&contextID,&context));
+    T(contextID==42 && context==0x12345678);
+    wrapped.context=0; T(!RDUnwrapMaybeDiscardedContext(&wrapped,&contextID,&context));
+    wrapped.id=0; wrapped.context=0x12345678;
+    T(!RDUnwrapMaybeDiscardedContext(&wrapped,&contextID,&context));
+    T(!RDUnwrapMaybeDiscardedContext(NULL,&contextID,&context));
     char out[256];
     T(RDNormalizeAppURL("tg:resolve?domain=moonup_chat&post=2&start=a%2Bb#x",out,sizeof(out)));
     T(!strcmp(out,"tg://resolve?domain=moonup_chat&post=2&start=a%2Bb#x"));
