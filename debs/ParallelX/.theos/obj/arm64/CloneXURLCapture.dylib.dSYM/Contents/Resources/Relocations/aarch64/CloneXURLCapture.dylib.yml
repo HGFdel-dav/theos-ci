@@ -1,0 +1,22 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     '/Users/runner/work/theos-ci/theos-ci/debs/ParallelX/.theos/obj/arm64/CloneXURLCapture.dylib'
+relocations:
+  - { offset: 0x1E, size: 0x8, addend: 0x0, symName: _CXURLCaptureInit, symObjAddr: 0x0, symBinAddr: 0x4000, symSize: 0x3E0 }
+  - { offset: 0xA3, size: 0x8, addend: 0x0, symName: _CXURLOrigOpen, symObjAddr: 0x3438, symBinAddr: 0xC148, symSize: 0x0 }
+  - { offset: 0x10A, size: 0x8, addend: 0x0, symName: _CXURLOrigLegacy, symObjAddr: 0x3440, symBinAddr: 0xC150, symSize: 0x0 }
+  - { offset: 0x14B, size: 0x8, addend: 0x0, symName: _CXURLOrigWorkspaceOpen, symObjAddr: 0x3450, symBinAddr: 0xC160, symSize: 0x0 }
+  - { offset: 0x17B, size: 0x8, addend: 0x0, symName: _CXURLOrigWorkspaceSensitive, symObjAddr: 0x3458, symBinAddr: 0xC168, symSize: 0x0 }
+  - { offset: 0x190, size: 0x8, addend: 0x0, symName: _CXURLOrigContextInit, symObjAddr: 0x3448, symBinAddr: 0xC158, symSize: 0x0 }
+  - { offset: 0x208, size: 0x8, addend: 0x0, symName: _CXURLCaptureInit, symObjAddr: 0x0, symBinAddr: 0x4000, symSize: 0x3E0 }
+  - { offset: 0x58C, size: 0x8, addend: 0x0, symName: _CXURLObjectArg, symObjAddr: 0x3E0, symBinAddr: 0x43E0, symSize: 0x60 }
+  - { offset: 0x60D, size: 0x8, addend: 0x0, symName: _CXURLOpen, symObjAddr: 0x440, symBinAddr: 0x4440, symSize: 0xAC }
+  - { offset: 0x6AC, size: 0x8, addend: 0x0, symName: _CXURLStore, symObjAddr: 0x6BC, symBinAddr: 0x46BC, symSize: 0x220 }
+  - { offset: 0x770, size: 0x8, addend: 0x0, symName: _CXURLLegacy, symObjAddr: 0x4EC, symBinAddr: 0x44EC, symSize: 0x7C }
+  - { offset: 0x7E2, size: 0x8, addend: 0x0, symName: _CXURLOpenURLContextInit, symObjAddr: 0x568, symBinAddr: 0x4568, symSize: 0xA8 }
+  - { offset: 0x870, size: 0x8, addend: 0x0, symName: _CXURLWorkspace, symObjAddr: 0x610, symBinAddr: 0x4610, symSize: 0xAC }
+  - { offset: 0xCAA, size: 0x8, addend: 0x0, symName: _CXLogPath, symObjAddr: 0x0, symBinAddr: 0x48DC, symSize: 0x4C }
+  - { offset: 0xE2D, size: 0x8, addend: 0x0, symName: _CXLogPath, symObjAddr: 0x0, symBinAddr: 0x48DC, symSize: 0x4C }
+  - { offset: 0xE54, size: 0x8, addend: 0x0, symName: _CXLogDirectory, symObjAddr: 0x4C, symBinAddr: 0x4928, symSize: 0xF8 }
+  - { offset: 0xF46, size: 0x8, addend: 0x0, symName: _CXLog, symObjAddr: 0x144, symBinAddr: 0x4A20, symSize: 0x290 }
+...

@@ -1,0 +1,13 @@
+Package: com.niubiprass.splitx
+Name: SplitX
+Description: 弧形唤醒与窗口分屏的整合面板。
+Author: Niubiprass
+Section: Tweaks
+Depends: mobilesubstrate, preferenceloader
+Conflicts: com.niubiprass.twin
+Replaces: com.niubiprass.twin
+Provides: com.niubiprass.twin
+Maintainer: Niubiprass <maintainer@localhost>
+Architecture: iphoneos-arm64e
+Version: 0.1.2
+Installed-Size: 196

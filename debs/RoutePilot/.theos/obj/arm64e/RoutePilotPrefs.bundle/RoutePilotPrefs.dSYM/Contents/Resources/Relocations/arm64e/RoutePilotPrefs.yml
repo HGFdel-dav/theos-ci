@@ -1,0 +1,24 @@
+---
+triple:          'arm64e-apple-darwin'
+binary-path:     '/Users/runner/work/theos-ci/theos-ci/debs/RoutePilot/.theos/obj/arm64e/RoutePilotPrefs.bundle/RoutePilotPrefs'
+relocations:
+  - { offset: 0x1E, size: 0x8, addend: 0x0, symName: '-[RoutePilotRootListController specifiers]', symObjAddr: 0x0, symBinAddr: 0x4000, symSize: 0x134 }
+  - { offset: 0x2718, size: 0x8, addend: 0x0, symName: '-[RoutePilotRootListController specifiers]', symObjAddr: 0x0, symBinAddr: 0x4000, symSize: 0x134 }
+  - { offset: 0x2769, size: 0x8, addend: 0x0, symName: '-[RoutePilotRootListController routepilot_app_addButton:action:to:]', symObjAddr: 0x134, symBinAddr: 0x4134, symSize: 0xB4 }
+  - { offset: 0x27D5, size: 0x8, addend: 0x0, symName: '-[RoutePilotRootListController readPreferenceValue:]', symObjAddr: 0x1E8, symBinAddr: 0x41E8, symSize: 0xE4 }
+  - { offset: 0x2830, size: 0x8, addend: 0x0, symName: _routepilot_app_readPreferences, symObjAddr: 0x2CC, symBinAddr: 0x42CC, symSize: 0x120 }
+  - { offset: 0x28CF, size: 0x8, addend: 0x0, symName: '-[RoutePilotRootListController setPreferenceValue:specifier:]', symObjAddr: 0x3EC, symBinAddr: 0x43EC, symSize: 0x160 }
+  - { offset: 0x2978, size: 0x8, addend: 0x0, symName: _routepilot_app_writePreference, symObjAddr: 0x54C, symBinAddr: 0x454C, symSize: 0x3DC }
+  - { offset: 0x2B02, size: 0x8, addend: 0x0, symName: '-[RoutePilotRootListController routepilot_app_openURL:fallback:]', symObjAddr: 0x928, symBinAddr: 0x4928, symSize: 0xF4 }
+  - { offset: 0x2B50, size: 0x8, addend: 0x0, symName: '___64-[RoutePilotRootListController routepilot_app_openURL:fallback:]_block_invoke', symObjAddr: 0xA1C, symBinAddr: 0x4A1C, symSize: 0xFC }
+  - { offset: 0x2B9D, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s40s, symObjAddr: 0xB18, symBinAddr: 0x4B18, symSize: 0x3C }
+  - { offset: 0x2BC3, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_e8_32s40s, symObjAddr: 0xB54, symBinAddr: 0x4B54, symSize: 0x3C }
+  - { offset: 0x2BE0, size: 0x8, addend: 0x0, symName: '-[RoutePilotRootListController routepilot_app_openRepository:]', symObjAddr: 0xB90, symBinAddr: 0x4B90, symSize: 0x110 }
+  - { offset: 0x2C57, size: 0x8, addend: 0x0, symName: '-[RoutePilotRootListController routepilot_app_openTelegram:]', symObjAddr: 0xCA0, symBinAddr: 0x4CA0, symSize: 0x90 }
+  - { offset: 0x2C92, size: 0x8, addend: 0x0, symName: '-[RoutePilotRootListController routepilot_app_openQQ:]', symObjAddr: 0xD30, symBinAddr: 0x4D30, symSize: 0x64 }
+  - { offset: 0x2CCD, size: 0x8, addend: 0x0, symName: '-[RoutePilotRootListController routepilot_app_openAppPicker:]', symObjAddr: 0xD94, symBinAddr: 0x4D94, symSize: 0x240 }
+  - { offset: 0x2D42, size: 0x8, addend: 0x0, symName: '___61-[RoutePilotRootListController routepilot_app_openAppPicker:]_block_invoke', symObjAddr: 0xFD4, symBinAddr: 0x4FD4, symSize: 0xA0 }
+  - { offset: 0x2D72, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s, symObjAddr: 0x1074, symBinAddr: 0x5074, symSize: 0x8 }
+  - { offset: 0x2D96, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_e8_32s, symObjAddr: 0x107C, symBinAddr: 0x507C, symSize: 0x8 }
+  - { offset: 0x2DB3, size: 0x8, addend: 0x0, symName: '___61-[RoutePilotRootListController routepilot_app_openAppPicker:]_block_invoke.88', symObjAddr: 0x1084, symBinAddr: 0x5084, symSize: 0x304 }
+...

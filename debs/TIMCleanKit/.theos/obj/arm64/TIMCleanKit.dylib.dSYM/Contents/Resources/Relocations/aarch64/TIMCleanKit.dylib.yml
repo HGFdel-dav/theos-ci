@@ -1,0 +1,459 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     '/Users/runner/work/theos-ci/theos-ci/debs/TIMCleanKit/.theos/obj/arm64/TIMCleanKit.dylib'
+relocations:
+  - { offset: 0x9A, size: 0x8, addend: 0x0, symName: __ZL15gTKLastRedProbe, symObjAddr: 0x95158, symBinAddr: 0x46F78, symSize: 0x0 }
+  - { offset: 0xB3, size: 0x8, addend: 0x0, symName: __ZL12gTKRedEvents, symObjAddr: 0x95160, symBinAddr: 0x46F80, symSize: 0x0 }
+  - { offset: 0xFF, size: 0x8, addend: 0x0, symName: __ZL12gTKCacheLock, symObjAddr: 0x95168, symBinAddr: 0x46F88, symSize: 0x0 }
+  - { offset: 0x149, size: 0x8, addend: 0x0, symName: __ZL14gTKRecalledIDs, symObjAddr: 0x95170, symBinAddr: 0x46F90, symSize: 0x0 }
+  - { offset: 0x195, size: 0x8, addend: 0x0, symName: __ZL17gTKProvisionalIDs, symObjAddr: 0x95178, symBinAddr: 0x46F98, symSize: 0x0 }
+  - { offset: 0x1AF, size: 0x8, addend: 0x0, symName: __ZL18gTKProvisionalInfo, symObjAddr: 0x95180, symBinAddr: 0x46FA0, symSize: 0x0 }
+  - { offset: 0x1FB, size: 0x8, addend: 0x0, symName: __ZL12gTKRecallLog, symObjAddr: 0x95188, symBinAddr: 0x46FA8, symSize: 0x0 }
+  - { offset: 0x215, size: 0x8, addend: 0x0, symName: __ZL11gTKLabelLog, symObjAddr: 0x95190, symBinAddr: 0x46FB0, symSize: 0x0 }
+  - { offset: 0x22F, size: 0x8, addend: 0x0, symName: __ZL11gTKListener, symObjAddr: 0x95198, symBinAddr: 0x46FB8, symSize: 0x0 }
+  - { offset: 0x268, size: 0x8, addend: 0x0, symName: __ZL17gTKMessageService, symObjAddr: 0x951A0, symBinAddr: 0x46FC0, symSize: 0x0 }
+  - { offset: 0x282, size: 0x8, addend: 0x0, symName: __ZL15gTKMessageCache, symObjAddr: 0x951A8, symBinAddr: 0x46FC8, symSize: 0x0 }
+  - { offset: 0x29C, size: 0x8, addend: 0x0, symName: __ZL17gTKRecentMessages, symObjAddr: 0x951B0, symBinAddr: 0x46FD0, symSize: 0x0 }
+  - { offset: 0x2B6, size: 0x8, addend: 0x0, symName: __ZL17gTKSeenRedPackets, symObjAddr: 0x951B8, symBinAddr: 0x46FD8, symSize: 0x0 }
+  - { offset: 0x2D0, size: 0x8, addend: 0x0, symName: __ZL23gTKCurrentClaimIdentity, symObjAddr: 0x951C0, symBinAddr: 0x46FE0, symSize: 0x0 }
+  - { offset: 0x2EA, size: 0x8, addend: 0x0, symName: __ZL15gTKPreOpenProbe, symObjAddr: 0x951C8, symBinAddr: 0x46FE8, symSize: 0x0 }
+  - { offset: 0x304, size: 0x8, addend: 0x0, symName: __ZL15gTKEngineStatus, symObjAddr: 0x2E428, symBinAddr: 0x46CA0, symSize: 0x0 }
+  - { offset: 0x31E, size: 0x8, addend: 0x0, symName: __ZL11gTKRedQueue, symObjAddr: 0x951D0, symBinAddr: 0x46FF0, symSize: 0x0 }
+  - { offset: 0x338, size: 0x8, addend: 0x0, symName: __ZL14gTKRecallFacts, symObjAddr: 0x951D8, symBinAddr: 0x46FF8, symSize: 0x0 }
+  - { offset: 0x351, size: 0x8, addend: 0x0, symName: __ZL15gTKVisibleCells, symObjAddr: 0x951E0, symBinAddr: 0x47000, symSize: 0x0 }
+  - { offset: 0x4E4, size: 0x8, addend: 0x0, symName: __ZL10gTKSpeaker, symObjAddr: 0x951E8, symBinAddr: 0x47008, symSize: 0x0 }
+  - { offset: 0x566, size: 0x8, addend: 0x0, symName: __ZL9gTKPlayer, symObjAddr: 0x951F0, symBinAddr: 0x47010, symSize: 0x0 }
+  - { offset: 0xCDF, size: 0x8, addend: 0x0, symName: __ZL11gTKReadSeen, symObjAddr: 0x951F8, symBinAddr: 0x47018, symSize: 0x0 }
+  - { offset: 0xCEC, size: 0x8, addend: 0x0, symName: '-[TKAIChatController tableView:cellForRowAtIndexPath:]', symObjAddr: 0xD37C, symBinAddr: 0x1137C, symSize: 0x378 }
+  - { offset: 0xD8A, size: 0x8, addend: 0x0, symName: __ZL7gTKBall, symObjAddr: 0x95200, symBinAddr: 0x47020, symSize: 0x0 }
+  - { offset: 0x154F, size: 0x8, addend: 0x0, symName: '+[TKBallTarget shared]', symObjAddr: 0xFEF0, symBinAddr: 0x13EF0, symSize: 0x30 }
+  - { offset: 0x157A, size: 0x8, addend: 0x0, symName: '__ZZ22+[TKBallTarget shared]E1s', symObjAddr: 0x95208, symBinAddr: 0x47028, symSize: 0x0 }
+  - { offset: 0x1590, size: 0x8, addend: 0x0, symName: '__ZZ22+[TKBallTarget shared]E4once', symObjAddr: 0x95210, symBinAddr: 0x47030, symSize: 0x0 }
+  - { offset: 0x15FD, size: 0x8, addend: 0x0, symName: '+[TIMCKGestureTarget shared]', symObjAddr: 0x104BC, symBinAddr: 0x144BC, symSize: 0x74 }
+  - { offset: 0x1628, size: 0x8, addend: 0x0, symName: '__ZZ28+[TIMCKGestureTarget shared]E1t', symObjAddr: 0x95218, symBinAddr: 0x47038, symSize: 0x0 }
+  - { offset: 0x163E, size: 0x8, addend: 0x0, symName: '__ZZ28+[TIMCKGestureTarget shared]E4once', symObjAddr: 0x95220, symBinAddr: 0x47040, symSize: 0x0 }
+  - { offset: 0x169F, size: 0x8, addend: 0x0, symName: '-[TIMCKGestureTarget onMessageDoubleTap:]', symObjAddr: 0x10B18, symBinAddr: 0x14B18, symSize: 0xC38 }
+  - { offset: 0x16C6, size: 0x8, addend: 0x0, symName: '__ZZ41-[TIMCKGestureTarget onMessageDoubleTap:]E8previous', symObjAddr: 0x95450, symBinAddr: 0x47270, symSize: 0x0 }
+  - { offset: 0x1BB4, size: 0x8, addend: 0x0, symName: __ZL14TKUIParseCentsP8NSStringPlPU15__autoreleasingS0_, symObjAddr: 0x3E98, symBinAddr: 0x7E98, symSize: 0x560 }
+  - { offset: 0x1BDD, size: 0x8, addend: 0x0, symName: __ZZL14TKUIParseCentsP8NSStringPlPU15__autoreleasingS0_E7pattern, symObjAddr: 0x95460, symBinAddr: 0x47280, symSize: 0x0 }
+  - { offset: 0x1BF2, size: 0x8, addend: 0x0, symName: __ZZL14TKUIParseCentsP8NSStringPlPU15__autoreleasingS0_E4once, symObjAddr: 0x95468, symBinAddr: 0x47288, symSize: 0x0 }
+  - { offset: 0x1D75, size: 0x8, addend: 0x0, symName: __ZL10TKProfiles, symObjAddr: 0x34D08, symBinAddr: 0x3C7F0, symSize: 0x0 }
+  - { offset: 0x1DC8, size: 0x8, addend: 0x0, symName: __ZL13gTKSpoofIndex, symObjAddr: 0x2E678, symBinAddr: 0x46EF0, symSize: 0x0 }
+  - { offset: 0x1DE1, size: 0x8, addend: 0x0, symName: __ZL17kTKRecallLabelKey, symObjAddr: 0x95470, symBinAddr: 0x47290, symSize: 0x0 }
+  - { offset: 0x1E15, size: 0x8, addend: 0x0, symName: __ZL13kTKRecallFlag, symObjAddr: 0x95488, symBinAddr: 0x472A8, symSize: 0x0 }
+  - { offset: 0x1E22, size: 0x8, addend: 0x0, symName: __ZL20TKRecallArchiveCachev, symObjAddr: 0x156C4, symBinAddr: 0x196C4, symSize: 0x3B8 }
+  - { offset: 0x1E4D, size: 0x8, addend: 0x0, symName: __ZZL20TKRecallArchiveCachevE4arch, symObjAddr: 0x95490, symBinAddr: 0x472B0, symSize: 0x0 }
+  - { offset: 0x1E63, size: 0x8, addend: 0x0, symName: __ZZL20TKRecallArchiveCachevE6loaded, symObjAddr: 0x95498, symBinAddr: 0x472B8, symSize: 0x0 }
+  - { offset: 0x1EFF, size: 0x8, addend: 0x0, symName: __ZL17kTKLabelRecordKey, symObjAddr: 0x95471, symBinAddr: 0x47291, symSize: 0x0 }
+  - { offset: 0x1F19, size: 0x8, addend: 0x0, symName: __ZL14gTKLabelHidden, symObjAddr: 0x95478, symBinAddr: 0x47298, symSize: 0x0 }
+  - { offset: 0x1F32, size: 0x8, addend: 0x0, symName: __ZL19gTKTextProbeWritten, symObjAddr: 0x9549C, symBinAddr: 0x472BC, symSize: 0x0 }
+  - { offset: 0x1F4B, size: 0x8, addend: 0x0, symName: __ZL15gTKTextProbeBuf, symObjAddr: 0x954A0, symBinAddr: 0x472C0, symSize: 0x0 }
+  - { offset: 0x1F71, size: 0x8, addend: 0x0, symName: __ZL12gTKTextProbe, symObjAddr: 0x2E680, symBinAddr: 0x46EF8, symSize: 0x0 }
+  - { offset: 0x1F8A, size: 0x8, addend: 0x0, symName: __ZL16kTKLabelRetryKey, symObjAddr: 0x956A0, symBinAddr: 0x474C0, symSize: 0x0 }
+  - { offset: 0x1FA4, size: 0x8, addend: 0x0, symName: __ZL13gTKLabelShown, symObjAddr: 0x95480, symBinAddr: 0x472A0, symSize: 0x0 }
+  - { offset: 0x1FB1, size: 0x8, addend: 0x0, symName: __ZL17TKRuntimeSnapshotv, symObjAddr: 0x614C, symBinAddr: 0xA14C, symSize: 0x13C0 }
+  - { offset: 0x1FDC, size: 0x8, addend: 0x0, symName: __ZZL17TKRuntimeSnapshotvE18gTKClassProbeCache, symObjAddr: 0x956A8, symBinAddr: 0x474C8, symSize: 0x0 }
+  - { offset: 0x23A3, size: 0x8, addend: 0x0, symName: __ZL10gHookCount, symObjAddr: 0x956B0, symBinAddr: 0x474D0, symSize: 0x0 }
+  - { offset: 0x23BD, size: 0x8, addend: 0x0, symName: __ZL6gHooks, symObjAddr: 0x956B8, symBinAddr: 0x474D8, symSize: 0x0 }
+  - { offset: 0x2475, size: 0x8, addend: 0x0, symName: __ZL21gTKListenerRegistered, symObjAddr: 0x979B8, symBinAddr: 0x497D8, symSize: 0x0 }
+  - { offset: 0x2496, size: 0x8, addend: 0x0, symName: __ZL11gTKReceived, symObjAddr: 0x979C0, symBinAddr: 0x497E0, symSize: 0x0 }
+  - { offset: 0x24B0, size: 0x8, addend: 0x0, symName: __ZL15gTKAutoAttempts, symObjAddr: 0x979C8, symBinAddr: 0x497E8, symSize: 0x0 }
+  - { offset: 0x24CA, size: 0x8, addend: 0x0, symName: __ZL16gTKAutoCompleted, symObjAddr: 0x979D0, symBinAddr: 0x497F0, symSize: 0x0 }
+  - { offset: 0x24E4, size: 0x8, addend: 0x0, symName: __ZL13gTKAutoErrors, symObjAddr: 0x979D8, symBinAddr: 0x497F8, symSize: 0x0 }
+  - { offset: 0x24FE, size: 0x8, addend: 0x0, symName: __ZL10gTKRepeats, symObjAddr: 0x979E0, symBinAddr: 0x49800, symSize: 0x0 }
+  - { offset: 0x2517, size: 0x8, addend: 0x0, symName: __ZL15gTKMessageBinds, symObjAddr: 0x979E8, symBinAddr: 0x49808, symSize: 0x0 }
+  - { offset: 0x2530, size: 0x8, addend: 0x0, symName: __ZL21gTKRecordReadFailures, symObjAddr: 0x979F0, symBinAddr: 0x49810, symSize: 0x0 }
+  - { offset: 0x2559, size: 0x8, addend: 0x0, symName: __ZL16gTKHardwareReads, symObjAddr: 0x979F8, symBinAddr: 0x49818, symSize: 0x0 }
+  - { offset: 0x2573, size: 0x8, addend: 0x0, symName: __ZL15gTKRecallEvents, symObjAddr: 0x97A00, symBinAddr: 0x49820, symSize: 0x0 }
+  - { offset: 0x258D, size: 0x8, addend: 0x0, symName: __ZL19gTKProvisionalMarks, symObjAddr: 0x97A08, symBinAddr: 0x49828, symSize: 0x0 }
+  - { offset: 0x25A7, size: 0x8, addend: 0x0, symName: __ZL18gTKProvisionalHits, symObjAddr: 0x97A10, symBinAddr: 0x49830, symSize: 0x0 }
+  - { offset: 0x25C1, size: 0x8, addend: 0x0, symName: __ZL14gTKPreOpenTaps, symObjAddr: 0x97A18, symBinAddr: 0x49838, symSize: 0x0 }
+  - { offset: 0x25DB, size: 0x8, addend: 0x0, symName: __ZL17gTKRecallRestores, symObjAddr: 0x97A20, symBinAddr: 0x49840, symSize: 0x0 }
+  - { offset: 0x25F4, size: 0x8, addend: 0x0, symName: __ZL14gTKLastRedType, symObjAddr: 0x2E688, symBinAddr: 0x46F00, symSize: 0x0 }
+  - { offset: 0x260D, size: 0x8, addend: 0x0, symName: __ZL16gTKLastRedAmount, symObjAddr: 0x2E690, symBinAddr: 0x46F08, symSize: 0x0 }
+  - { offset: 0x2626, size: 0x8, addend: 0x0, symName: __ZL17gTKSkipCommonType, symObjAddr: 0x97A28, symBinAddr: 0x49848, symSize: 0x0 }
+  - { offset: 0x263F, size: 0x8, addend: 0x0, symName: __ZL20gTKSkipUnknownAmount, symObjAddr: 0x97A30, symBinAddr: 0x49850, symSize: 0x0 }
+  - { offset: 0x2658, size: 0x8, addend: 0x0, symName: __ZL21gTKLayoutAssociations, symObjAddr: 0x97A38, symBinAddr: 0x49858, symSize: 0x0 }
+  - { offset: 0x2671, size: 0x8, addend: 0x0, symName: __ZL19gTKLayoutMatchFails, symObjAddr: 0x97A40, symBinAddr: 0x49860, symSize: 0x0 }
+  - { offset: 0x268A, size: 0x8, addend: 0x0, symName: __ZL14gTKRedTypeHist, symObjAddr: 0x97A48, symBinAddr: 0x49868, symSize: 0x0 }
+  - { offset: 0x26B0, size: 0x8, addend: 0x0, symName: __ZL19gRegistrationRounds, symObjAddr: 0x97AC8, symBinAddr: 0x498E8, symSize: 0x0 }
+  - { offset: 0x26CA, size: 0x8, addend: 0x0, symName: __ZL15gTKSetRecallPos, symObjAddr: 0x97AD0, symBinAddr: 0x498F0, symSize: 0x0 }
+  - { offset: 0x26E4, size: 0x8, addend: 0x0, symName: __ZL14gTKGestureTaps, symObjAddr: 0x95228, symBinAddr: 0x47048, symSize: 0x0 }
+  - { offset: 0x26FD, size: 0x8, addend: 0x0, symName: __ZL17gTKLastHitInfoBuf, symObjAddr: 0x95230, symBinAddr: 0x47050, symSize: 0x0 }
+  - { offset: 0x2716, size: 0x8, addend: 0x0, symName: __ZL14gTKLastHitInfo, symObjAddr: 0x2E610, symBinAddr: 0x46E88, symSize: 0x0 }
+  - { offset: 0x272F, size: 0x8, addend: 0x0, symName: __ZL16kTKBoundModelKey, symObjAddr: 0x97AD8, symBinAddr: 0x498F8, symSize: 0x0 }
+  - { offset: 0x2748, size: 0x8, addend: 0x0, symName: __ZL16kTKCellRecordKey, symObjAddr: 0x2E698, symBinAddr: 0x46F10, symSize: 0x0 }
+  - { offset: 0x2761, size: 0x8, addend: 0x0, symName: __ZL20gTKNoRecordAssocFail, symObjAddr: 0x95430, symBinAddr: 0x47250, symSize: 0x0 }
+  - { offset: 0x277A, size: 0x8, addend: 0x0, symName: __ZL17gTKNoRecordNoCell, symObjAddr: 0x95438, symBinAddr: 0x47258, symSize: 0x0 }
+  - { offset: 0x2793, size: 0x8, addend: 0x0, symName: __ZL20gTKNoRecordMatchFail, symObjAddr: 0x95440, symBinAddr: 0x47260, symSize: 0x0 }
+  - { offset: 0x27AD, size: 0x8, addend: 0x0, symName: __ZL18gTKGestureNoRecord, symObjAddr: 0x95448, symBinAddr: 0x47268, symSize: 0x0 }
+  - { offset: 0x27C6, size: 0x8, addend: 0x0, symName: __ZL17gTKRepeatFailures, symObjAddr: 0x95458, symBinAddr: 0x47278, symSize: 0x0 }
+  - { offset: 0x27E0, size: 0x8, addend: 0x0, symName: __ZL20kTKRecallProvisional, symObjAddr: 0x97AF8, symBinAddr: 0x49918, symSize: 0x0 }
+  - { offset: 0x27FA, size: 0x8, addend: 0x0, symName: __ZL11gTKAutoBusy, symObjAddr: 0x97AF9, symBinAddr: 0x49919, symSize: 0x0 }
+  - { offset: 0x281A, size: 0x8, addend: 0x0, symName: __ZL22TKOriginalSysctlByName, symObjAddr: 0x97B08, symBinAddr: 0x49928, symSize: 0x0 }
+  - { offset: 0x2867, size: 0x8, addend: 0x0, symName: __ZL16TKOriginalSysctl, symObjAddr: 0x97B10, symBinAddr: 0x49930, symSize: 0x0 }
+  - { offset: 0x28B9, size: 0x8, addend: 0x0, symName: __ZL15TKOriginalUname, symObjAddr: 0x97B18, symBinAddr: 0x49938, symSize: 0x0 }
+  - { offset: 0x2933, size: 0x8, addend: 0x0, symName: __ZL19TKEnsureCellGestureP6UIView, symObjAddr: 0x20E94, symBinAddr: 0x24E94, symSize: 0x178 }
+  - { offset: 0x295A, size: 0x8, addend: 0x0, symName: __ZZL19TKEnsureCellGestureP6UIViewE14kTKGestureCell, symObjAddr: 0x97B38, symBinAddr: 0x49958, symSize: 0x0 }
+  - { offset: 0x2A05, size: 0x8, addend: 0x0, symName: __ZL16gTKListenerToken, symObjAddr: 0x97B40, symBinAddr: 0x49960, symSize: 0x0 }
+  - { offset: 0x2A1F, size: 0x8, addend: 0x0, symName: __ZL17gTKAutoGeneration, symObjAddr: 0x97B48, symBinAddr: 0x49968, symSize: 0x0 }
+  - { offset: 0x2A2C, size: 0x8, addend: 0x0, symName: __ZL16TKQueueRedPacketP11objc_object, symObjAddr: 0x21240, symBinAddr: 0x25240, symSize: 0x508 }
+  - { offset: 0x2A53, size: 0x8, addend: 0x0, symName: __ZZL16TKQueueRedPacketP11objc_objectE13TKRedRetryKey, symObjAddr: 0x97B50, symBinAddr: 0x49970, symSize: 0x0 }
+  - { offset: 0x2C79, size: 0x8, addend: 0x0, symName: __ZL16kGestureAddedKey, symObjAddr: 0x97B52, symBinAddr: 0x49972, symSize: 0x0 }
+  - { offset: 0x7DD5, size: 0x8, addend: 0x0, symName: '-[TKRedKeywordsController init]', symObjAddr: 0x0, symBinAddr: 0x4000, symSize: 0x38 }
+  - { offset: 0x7EBF, size: 0x8, addend: 0x0, symName: '-[TKRedKeywordsController viewDidLoad]', symObjAddr: 0x38, symBinAddr: 0x4038, symSize: 0x43C }
+  - { offset: 0x7F21, size: 0x8, addend: 0x0, symName: '-[TKRedKeywordsController numberOfSectionsInTableView:]', symObjAddr: 0x474, symBinAddr: 0x4474, symSize: 0x8 }
+  - { offset: 0x7F5C, size: 0x8, addend: 0x0, symName: '-[TKRedKeywordsController tableView:numberOfRowsInSection:]', symObjAddr: 0x47C, symBinAddr: 0x447C, symSize: 0x8 }
+  - { offset: 0x7FA2, size: 0x8, addend: 0x0, symName: '-[TKRedKeywordsController tableView:heightForRowAtIndexPath:]', symObjAddr: 0x484, symBinAddr: 0x4484, symSize: 0xC }
+  - { offset: 0x7FE8, size: 0x8, addend: 0x0, symName: '-[TKRedKeywordsController tableView:titleForHeaderInSection:]', symObjAddr: 0x490, symBinAddr: 0x4490, symSize: 0xC }
+  - { offset: 0x802E, size: 0x8, addend: 0x0, symName: '-[TKRedKeywordsController tableView:titleForFooterInSection:]', symObjAddr: 0x49C, symBinAddr: 0x449C, symSize: 0xC }
+  - { offset: 0x8074, size: 0x8, addend: 0x0, symName: '-[TKRedKeywordsController tableView:cellForRowAtIndexPath:]', symObjAddr: 0x4A8, symBinAddr: 0x44A8, symSize: 0x4FC }
+  - { offset: 0x80CD, size: 0x8, addend: 0x0, symName: '-[TKRedKeywordsController saveKeywords]', symObjAddr: 0x9A4, symBinAddr: 0x49A4, symSize: 0x1F4 }
+  - { offset: 0x813F, size: 0x8, addend: 0x0, symName: '-[TKRedKeywordsController editor]', symObjAddr: 0xB98, symBinAddr: 0x4B98, symSize: 0x10 }
+  - { offset: 0x8173, size: 0x8, addend: 0x0, symName: '-[TKRedKeywordsController setEditor:]', symObjAddr: 0xBA8, symBinAddr: 0x4BA8, symSize: 0x14 }
+  - { offset: 0x81B0, size: 0x8, addend: 0x0, symName: '-[TKRedKeywordsController didSave]', symObjAddr: 0xBBC, symBinAddr: 0x4BBC, symSize: 0x10 }
+  - { offset: 0x81E4, size: 0x8, addend: 0x0, symName: '-[TKRedKeywordsController setDidSave:]', symObjAddr: 0xBCC, symBinAddr: 0x4BCC, symSize: 0xC }
+  - { offset: 0x821F, size: 0x8, addend: 0x0, symName: '-[TKRedKeywordsController .cxx_destruct]', symObjAddr: 0xBD8, symBinAddr: 0x4BD8, symSize: 0x40 }
+  - { offset: 0x824F, size: 0x8, addend: 0x0, symName: '+[TKInputPanel showIn:title:message:fieldLabels:placeholders:initial:onValidate:onSave:onCancel:]', symObjAddr: 0xC18, symBinAddr: 0x4C18, symSize: 0x280 }
+  - { offset: 0x8319, size: 0x8, addend: 0x0, symName: '-[TKInputPanel dealloc]', symObjAddr: 0xE98, symBinAddr: 0x4E98, symSize: 0xA8 }
+  - { offset: 0x8349, size: 0x8, addend: 0x0, symName: '-[TKInputPanel keyboardNote:]', symObjAddr: 0xF50, symBinAddr: 0x4F50, symSize: 0x1A4 }
+  - { offset: 0x83D8, size: 0x8, addend: 0x0, symName: '___29-[TKInputPanel keyboardNote:]_block_invoke', symObjAddr: 0x10F4, symBinAddr: 0x50F4, symSize: 0x28 }
+  - { offset: 0x83FD, size: 0x8, addend: 0x0, symName: ___copy_helper_block_ea8_32s, symObjAddr: 0x111C, symBinAddr: 0x511C, symSize: 0x8 }
+  - { offset: 0x8421, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_ea8_32s, symObjAddr: 0x1124, symBinAddr: 0x5124, symSize: 0x8 }
+  - { offset: 0x843E, size: 0x8, addend: 0x0, symName: '-[TKInputPanel buildTitle:message:labels:placeholders:initial:]', symObjAddr: 0x112C, symBinAddr: 0x512C, symSize: 0x924 }
+  - { offset: 0x84E3, size: 0x8, addend: 0x0, symName: '-[TKInputPanel firstField]', symObjAddr: 0x1A50, symBinAddr: 0x5A50, symSize: 0x10 }
+  - { offset: 0x8517, size: 0x8, addend: 0x0, symName: '-[TKInputPanel saveTap]', symObjAddr: 0x1A60, symBinAddr: 0x5A60, symSize: 0x234 }
+  - { offset: 0x85A4, size: 0x8, addend: 0x0, symName: '-[TKInputPanel cancelTap]', symObjAddr: 0x1C94, symBinAddr: 0x5C94, symSize: 0x38 }
+  - { offset: 0x85DF, size: 0x8, addend: 0x0, symName: '-[TKInputPanel dismissPanel]', symObjAddr: 0x1CCC, symBinAddr: 0x5CCC, symSize: 0x28 }
+  - { offset: 0x860F, size: 0x8, addend: 0x0, symName: '-[TKInputPanel textField:shouldChangeCharactersInRange:replacementString:]', symObjAddr: 0x1CF4, symBinAddr: 0x5CF4, symSize: 0x28 }
+  - { offset: 0x8664, size: 0x8, addend: 0x0, symName: '-[TKInputPanel layoutSubviews]', symObjAddr: 0x1D1C, symBinAddr: 0x5D1C, symSize: 0x3C0 }
+  - { offset: 0x8767, size: 0x8, addend: 0x0, symName: '-[TKInputPanel .cxx_destruct]', symObjAddr: 0x20DC, symBinAddr: 0x60DC, symSize: 0x108 }
+  - { offset: 0x8797, size: 0x8, addend: 0x0, symName: '-[TKSettingsController init]', symObjAddr: 0x21E4, symBinAddr: 0x61E4, symSize: 0x7C4 }
+  - { offset: 0x87CB, size: 0x8, addend: 0x0, symName: '-[TKSettingsController viewDidLoad]', symObjAddr: 0x29A8, symBinAddr: 0x69A8, symSize: 0x674 }
+  - { offset: 0x885A, size: 0x8, addend: 0x0, symName: '-[TKSettingsController closePage]', symObjAddr: 0x301C, symBinAddr: 0x701C, symSize: 0xC0 }
+  - { offset: 0x88A8, size: 0x8, addend: 0x0, symName: '-[TKSettingsController numberOfSectionsInTableView:]', symObjAddr: 0x30DC, symBinAddr: 0x70DC, symSize: 0x50 }
+  - { offset: 0x88E7, size: 0x8, addend: 0x0, symName: '-[TKSettingsController tableView:numberOfRowsInSection:]', symObjAddr: 0x312C, symBinAddr: 0x712C, symSize: 0x88 }
+  - { offset: 0x8935, size: 0x8, addend: 0x0, symName: '-[TKSettingsController tableView:titleForHeaderInSection:]', symObjAddr: 0x31B4, symBinAddr: 0x71B4, symSize: 0x28 }
+  - { offset: 0x897F, size: 0x8, addend: 0x0, symName: '-[TKSettingsController tableView:titleForFooterInSection:]', symObjAddr: 0x31DC, symBinAddr: 0x71DC, symSize: 0x28 }
+  - { offset: 0x89FD, size: 0x8, addend: 0x0, symName: '-[TKSettingsController tableView:cellForRowAtIndexPath:]', symObjAddr: 0x3204, symBinAddr: 0x7204, symSize: 0x5C4 }
+  - { offset: 0x8B47, size: 0x8, addend: 0x0, symName: __ZL7prefStrP8NSStringS0_, symObjAddr: 0x37C8, symBinAddr: 0x77C8, symSize: 0xFC }
+  - { offset: 0x8BA6, size: 0x8, addend: 0x0, symName: __ZL7prefIntP8NSStringl, symObjAddr: 0x38C4, symBinAddr: 0x78C4, symSize: 0xB4 }
+  - { offset: 0x8C05, size: 0x8, addend: 0x0, symName: __ZL8prefBoolP8NSStringb, symObjAddr: 0x3978, symBinAddr: 0x7978, symSize: 0xB4 }
+  - { offset: 0x8C64, size: 0x8, addend: 0x0, symName: '-[TKSettingsController showMessage:]', symObjAddr: 0x3A2C, symBinAddr: 0x7A2C, symSize: 0x134 }
+  - { offset: 0x8CE3, size: 0x8, addend: 0x0, symName: '___36-[TKSettingsController showMessage:]_block_invoke', symObjAddr: 0x3B60, symBinAddr: 0x7B60, symSize: 0x14 }
+  - { offset: 0x8D08, size: 0x8, addend: 0x0, symName: ___copy_helper_block_ea8_32s40s, symObjAddr: 0x3B74, symBinAddr: 0x7B74, symSize: 0x28 }
+  - { offset: 0x8D2E, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_ea8_32s40s, symObjAddr: 0x3B9C, symBinAddr: 0x7B9C, symSize: 0x28 }
+  - { offset: 0x8D4B, size: 0x8, addend: 0x0, symName: '-[TKSettingsController validateAmountAlert:minimum:maximum:error:]', symObjAddr: 0x3BC4, symBinAddr: 0x7BC4, symSize: 0x2D4 }
+  - { offset: 0x8E3E, size: 0x8, addend: 0x0, symName: __ZL14TKUIParseCentsP8NSStringPlPU15__autoreleasingS0_.cold.1, symObjAddr: 0x2196C, symBinAddr: 0x2596C, symSize: 0x14 }
+  - { offset: 0x8E59, size: 0x8, addend: 0x0, symName: __ZL14TKUIParseCentsP8NSStringPlPU15__autoreleasingS0_.cold.1, symObjAddr: 0x2196C, symBinAddr: 0x2596C, symSize: 0x14 }
+  - { offset: 0x8E6A, size: 0x8, addend: 0x0, symName: '-[TKSettingsController amountInputChanged:]', symObjAddr: 0x43F8, symBinAddr: 0x83F8, symSize: 0x200 }
+  - { offset: 0x8EFA, size: 0x8, addend: 0x0, symName: '-[TKSettingsController toggle:]', symObjAddr: 0x45F8, symBinAddr: 0x85F8, symSize: 0x188 }
+  - { offset: 0x8F9D, size: 0x8, addend: 0x0, symName: __ZL21TKRefreshSpoofProfilev, symObjAddr: 0x4780, symBinAddr: 0x8780, symSize: 0x160 }
+  - { offset: 0x9023, size: 0x8, addend: 0x0, symName: __ZL21TKRefreshRecallLabelsv, symObjAddr: 0x48E0, symBinAddr: 0x88E0, symSize: 0x384 }
+  - { offset: 0x90D1, size: 0x8, addend: 0x0, symName: __ZL21TKCollectMessageCellsP6UIViewP14NSMutableArray, symObjAddr: 0x13974, symBinAddr: 0x17974, symSize: 0x1FC }
+  - { offset: 0x915F, size: 0x8, addend: 0x0, symName: __ZL19TKUpdateRecallLabelP6UIView, symObjAddr: 0x13B70, symBinAddr: 0x17B70, symSize: 0xCBC }
+  - { offset: 0x9818, size: 0x8, addend: 0x0, symName: '-[TKSettingsController tableView:didSelectRowAtIndexPath:]', symObjAddr: 0x4C64, symBinAddr: 0x8C64, symSize: 0xEE4 }
+  - { offset: 0x9A27, size: 0x8, addend: 0x0, symName: __ZL25TKOpenVoiceAISettingsFromP16UIViewController, symObjAddr: 0x6010, symBinAddr: 0xA010, symSize: 0xCC }
+  - { offset: 0x9A76, size: 0x8, addend: 0x0, symName: '___58-[TKSettingsController tableView:didSelectRowAtIndexPath:]_block_invoke', symObjAddr: 0x5B48, symBinAddr: 0x9B48, symSize: 0xEC }
+  - { offset: 0x9B00, size: 0x8, addend: 0x0, symName: '___58-[TKSettingsController tableView:didSelectRowAtIndexPath:]_block_invoke_2', symObjAddr: 0x5C34, symBinAddr: 0x9C34, symSize: 0x164 }
+  - { offset: 0x9BA0, size: 0x8, addend: 0x0, symName: ___copy_helper_block_ea8_32w, symObjAddr: 0x5D98, symBinAddr: 0x9D98, symSize: 0xC }
+  - { offset: 0x9BC6, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_ea8_32w, symObjAddr: 0x5DA4, symBinAddr: 0x9DA4, symSize: 0x8 }
+  - { offset: 0x9BE3, size: 0x8, addend: 0x0, symName: '___58-[TKSettingsController tableView:didSelectRowAtIndexPath:]_block_invoke.451', symObjAddr: 0x5DAC, symBinAddr: 0x9DAC, symSize: 0x108 }
+  - { offset: 0x9C44, size: 0x8, addend: 0x0, symName: '___58-[TKSettingsController tableView:didSelectRowAtIndexPath:]_block_invoke_2.457', symObjAddr: 0x5EB4, symBinAddr: 0x9EB4, symSize: 0x15C }
+  - { offset: 0x9CC4, size: 0x8, addend: 0x0, symName: __ZL11TKPresentVCP16UIViewController, symObjAddr: 0xFDE4, symBinAddr: 0x13DE4, symSize: 0xD4 }
+  - { offset: 0x9D18, size: 0x8, addend: 0x0, symName: '___58-[TKSettingsController tableView:didSelectRowAtIndexPath:]_block_invoke_3', symObjAddr: 0x60DC, symBinAddr: 0xA0DC, symSize: 0x70 }
+  - { offset: 0x9DFC, size: 0x8, addend: 0x0, symName: __ZL9TKStrSafePKc, symObjAddr: 0x16180, symBinAddr: 0x1A180, symSize: 0x5C }
+  - { offset: 0x9E65, size: 0x8, addend: 0x0, symName: '-[TKSettingsController sections]', symObjAddr: 0x750C, symBinAddr: 0xB50C, symSize: 0x10 }
+  - { offset: 0x9E99, size: 0x8, addend: 0x0, symName: '-[TKSettingsController setSections:]', symObjAddr: 0x751C, symBinAddr: 0xB51C, symSize: 0x14 }
+  - { offset: 0x9ED6, size: 0x8, addend: 0x0, symName: '-[TKSettingsController amountAlert]', symObjAddr: 0x7530, symBinAddr: 0xB530, symSize: 0x20 }
+  - { offset: 0x9F0A, size: 0x8, addend: 0x0, symName: '-[TKSettingsController setAmountAlert:]', symObjAddr: 0x7550, symBinAddr: 0xB550, symSize: 0x14 }
+  - { offset: 0x9F47, size: 0x8, addend: 0x0, symName: '-[TKSettingsController .cxx_destruct]', symObjAddr: 0x7564, symBinAddr: 0xB564, symSize: 0x3C }
+  - { offset: 0x9F77, size: 0x8, addend: 0x0, symName: '-[TKGlassPopupController init]', symObjAddr: 0x75A0, symBinAddr: 0xB5A0, symSize: 0x80 }
+  - { offset: 0x9FAB, size: 0x8, addend: 0x0, symName: '-[TKGlassPopupController viewDidLoad]', symObjAddr: 0x7620, symBinAddr: 0xB620, symSize: 0xD60 }
+  - { offset: 0x9FEA, size: 0x8, addend: 0x0, symName: '-[TKGlassPopupController updateGlass]', symObjAddr: 0x8380, symBinAddr: 0xC380, symSize: 0x1C0 }
+  - { offset: 0xA03E, size: 0x8, addend: 0x0, symName: '-[TKGlassPopupController traitCollectionDidChange:]', symObjAddr: 0x8540, symBinAddr: 0xC540, symSize: 0x74 }
+  - { offset: 0xA07D, size: 0x8, addend: 0x0, symName: '-[TKGlassPopupController updateAccessibility:]', symObjAddr: 0x85B4, symBinAddr: 0xC5B4, symSize: 0x4 }
+  - { offset: 0xA0DD, size: 0x8, addend: 0x0, symName: '-[TKGlassPopupController viewDidLayoutSubviews]', symObjAddr: 0x85B8, symBinAddr: 0xC5B8, symSize: 0x478 }
+  - { offset: 0xA2EB, size: 0x8, addend: 0x0, symName: '-[TKGlassPopupController keyboardChanged:]', symObjAddr: 0x8A30, symBinAddr: 0xCA30, symSize: 0x1FC }
+  - { offset: 0xA353, size: 0x8, addend: 0x0, symName: '___42-[TKGlassPopupController keyboardChanged:]_block_invoke', symObjAddr: 0x8C2C, symBinAddr: 0xCC2C, symSize: 0x48 }
+  - { offset: 0xA378, size: 0x8, addend: 0x0, symName: '-[TKGlassPopupController keyboardHidden:]', symObjAddr: 0x8C74, symBinAddr: 0xCC74, symSize: 0xB0 }
+  - { offset: 0xA3B3, size: 0x8, addend: 0x0, symName: '___41-[TKGlassPopupController keyboardHidden:]_block_invoke', symObjAddr: 0x8D24, symBinAddr: 0xCD24, symSize: 0x48 }
+  - { offset: 0xA3D8, size: 0x8, addend: 0x0, symName: '-[TKGlassPopupController viewDidAppear:]', symObjAddr: 0x8D6C, symBinAddr: 0xCD6C, symSize: 0xE0 }
+  - { offset: 0xA44F, size: 0x8, addend: 0x0, symName: '-[TKGlassPopupController closePopup]', symObjAddr: 0x8E4C, symBinAddr: 0xCE4C, symSize: 0x80 }
+  - { offset: 0xA47F, size: 0x8, addend: 0x0, symName: '-[TKGlassPopupController accessibilityPerformEscape]', symObjAddr: 0x8ECC, symBinAddr: 0xCECC, symSize: 0x18 }
+  - { offset: 0xA4B3, size: 0x8, addend: 0x0, symName: '-[TKGlassPopupController dealloc]', symObjAddr: 0x8EE4, symBinAddr: 0xCEE4, symSize: 0xA8 }
+  - { offset: 0xA4E3, size: 0x8, addend: 0x0, symName: '-[TKGlassPopupController shade]', symObjAddr: 0x8F8C, symBinAddr: 0xCF8C, symSize: 0x10 }
+  - { offset: 0xA517, size: 0x8, addend: 0x0, symName: '-[TKGlassPopupController setShade:]', symObjAddr: 0x8F9C, symBinAddr: 0xCF9C, symSize: 0x14 }
+  - { offset: 0xA554, size: 0x8, addend: 0x0, symName: '-[TKGlassPopupController card]', symObjAddr: 0x8FB0, symBinAddr: 0xCFB0, symSize: 0x10 }
+  - { offset: 0xA588, size: 0x8, addend: 0x0, symName: '-[TKGlassPopupController setCard:]', symObjAddr: 0x8FC0, symBinAddr: 0xCFC0, symSize: 0x14 }
+  - { offset: 0xA5C5, size: 0x8, addend: 0x0, symName: '-[TKGlassPopupController glass]', symObjAddr: 0x8FD4, symBinAddr: 0xCFD4, symSize: 0x10 }
+  - { offset: 0xA5F9, size: 0x8, addend: 0x0, symName: '-[TKGlassPopupController setGlass:]', symObjAddr: 0x8FE4, symBinAddr: 0xCFE4, symSize: 0x14 }
+  - { offset: 0xA636, size: 0x8, addend: 0x0, symName: '-[TKGlassPopupController navigation]', symObjAddr: 0x8FF8, symBinAddr: 0xCFF8, symSize: 0x10 }
+  - { offset: 0xA66A, size: 0x8, addend: 0x0, symName: '-[TKGlassPopupController setNavigation:]', symObjAddr: 0x9008, symBinAddr: 0xD008, symSize: 0x14 }
+  - { offset: 0xA6A7, size: 0x8, addend: 0x0, symName: '-[TKGlassPopupController keyboardTop]', symObjAddr: 0x901C, symBinAddr: 0xD01C, symSize: 0x10 }
+  - { offset: 0xA6D9, size: 0x8, addend: 0x0, symName: '-[TKGlassPopupController setKeyboardTop:]', symObjAddr: 0x902C, symBinAddr: 0xD02C, symSize: 0x10 }
+  - { offset: 0xA713, size: 0x8, addend: 0x0, symName: '-[TKGlassPopupController closing]', symObjAddr: 0x903C, symBinAddr: 0xD03C, symSize: 0x10 }
+  - { offset: 0xA747, size: 0x8, addend: 0x0, symName: '-[TKGlassPopupController setClosing:]', symObjAddr: 0x904C, symBinAddr: 0xD04C, symSize: 0x10 }
+  - { offset: 0xA77E, size: 0x8, addend: 0x0, symName: '-[TKGlassPopupController .cxx_destruct]', symObjAddr: 0x905C, symBinAddr: 0xD05C, symSize: 0x68 }
+  - { offset: 0xA7AE, size: 0x8, addend: 0x0, symName: '-[TKVoiceListController init]', symObjAddr: 0x90C4, symBinAddr: 0xD0C4, symSize: 0x294 }
+  - { offset: 0xA82A, size: 0x8, addend: 0x0, symName: '___29-[TKVoiceListController init]_block_invoke', symObjAddr: 0x9358, symBinAddr: 0xD358, symSize: 0xBC }
+  - { offset: 0xA871, size: 0x8, addend: 0x0, symName: '___29-[TKVoiceListController init]_block_invoke_2', symObjAddr: 0x9414, symBinAddr: 0xD414, symSize: 0xBC }
+  - { offset: 0xA8B8, size: 0x8, addend: 0x0, symName: '-[TKVoiceListController numberOfSectionsInTableView:]', symObjAddr: 0x94D0, symBinAddr: 0xD4D0, symSize: 0x68 }
+  - { offset: 0xA900, size: 0x8, addend: 0x0, symName: '-[TKVoiceListController tableView:numberOfRowsInSection:]', symObjAddr: 0x9538, symBinAddr: 0xD538, symSize: 0xBC }
+  - { offset: 0xA952, size: 0x8, addend: 0x0, symName: '-[TKVoiceListController tableView:titleForHeaderInSection:]', symObjAddr: 0x95F4, symBinAddr: 0xD5F4, symSize: 0x1C }
+  - { offset: 0xA99A, size: 0x8, addend: 0x0, symName: '-[TKVoiceListController tableView:cellForRowAtIndexPath:]', symObjAddr: 0x9610, symBinAddr: 0xD610, symSize: 0x3A4 }
+  - { offset: 0xAA59, size: 0x8, addend: 0x0, symName: '-[TKVoiceListController tableView:didSelectRowAtIndexPath:]', symObjAddr: 0x99B4, symBinAddr: 0xD9B4, symSize: 0x2A4 }
+  - { offset: 0xAB3D, size: 0x8, addend: 0x0, symName: '-[TKVoiceListController voices]', symObjAddr: 0x9C58, symBinAddr: 0xDC58, symSize: 0x10 }
+  - { offset: 0xAB71, size: 0x8, addend: 0x0, symName: '-[TKVoiceListController setVoices:]', symObjAddr: 0x9C68, symBinAddr: 0xDC68, symSize: 0x14 }
+  - { offset: 0xABAE, size: 0x8, addend: 0x0, symName: '-[TKVoiceListController .cxx_destruct]', symObjAddr: 0x9C7C, symBinAddr: 0xDC7C, symSize: 0x14 }
+  - { offset: 0xABDE, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController init]', symObjAddr: 0x9C90, symBinAddr: 0xDC90, symSize: 0x104 }
+  - { offset: 0xAC12, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController close]', symObjAddr: 0x9D94, symBinAddr: 0xDD94, symSize: 0x2C }
+  - { offset: 0xAC4F, size: 0x8, addend: 0x0, symName: __ZL14TKStopSpeakingv, symObjAddr: 0x9DC0, symBinAddr: 0xDDC0, symSize: 0x50 }
+  - { offset: 0xAC68, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController viewDidLoad]', symObjAddr: 0x9E10, symBinAddr: 0xDE10, symSize: 0xBFC }
+  - { offset: 0xACFF, size: 0x8, addend: 0x0, symName: __ZL11TKVoiceRatev, symObjAddr: 0xAA0C, symBinAddr: 0xEA0C, symSize: 0xB4 }
+  - { offset: 0xADA2, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController viewDidLayoutSubviews]', symObjAddr: 0xAAC0, symBinAddr: 0xEAC0, symSize: 0x438 }
+  - { offset: 0xAEB6, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController refreshVoiceLabel]', symObjAddr: 0xAEF8, symBinAddr: 0xEEF8, symSize: 0x214 }
+  - { offset: 0xAF34, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController pickVoice]', symObjAddr: 0xB10C, symBinAddr: 0xF10C, symSize: 0x80 }
+  - { offset: 0xAF65, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController viewWillAppear:]', symObjAddr: 0xB18C, symBinAddr: 0xF18C, symSize: 0x48 }
+  - { offset: 0xAFA6, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController rateChanged]', symObjAddr: 0xB1D4, symBinAddr: 0xF1D4, symSize: 0xF4 }
+  - { offset: 0xB001, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController instrChanged]', symObjAddr: 0xB2C8, symBinAddr: 0xF2C8, symSize: 0xF0 }
+  - { offset: 0xB2E3, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController speakTap]', symObjAddr: 0xB3B8, symBinAddr: 0xF3B8, symSize: 0x86C }
+  - { offset: 0xB472, size: 0x8, addend: 0x0, symName: __ZL7TKAlertP8NSStringS0_, symObjAddr: 0xBC24, symBinAddr: 0xFC24, symSize: 0x158 }
+  - { offset: 0xB4CD, size: 0x8, addend: 0x0, symName: __ZL11TKSpeakTextP8NSString, symObjAddr: 0xC04C, symBinAddr: 0x1004C, symSize: 0x234 }
+  - { offset: 0xB5B8, size: 0x8, addend: 0x0, symName: '___34-[TKVoicePanelController speakTap]_block_invoke', symObjAddr: 0xBD7C, symBinAddr: 0xFD7C, symSize: 0xAC }
+  - { offset: 0xB603, size: 0x8, addend: 0x0, symName: '___34-[TKVoicePanelController speakTap]_block_invoke_2', symObjAddr: 0xBE28, symBinAddr: 0xFE28, symSize: 0x78 }
+  - { offset: 0xB62A, size: 0x8, addend: 0x0, symName: ___copy_helper_block_ea8_32s40w, symObjAddr: 0xBEA0, symBinAddr: 0xFEA0, symSize: 0x30 }
+  - { offset: 0xB650, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_ea8_32s40w, symObjAddr: 0xBED0, symBinAddr: 0xFED0, symSize: 0x28 }
+  - { offset: 0xB66D, size: 0x8, addend: 0x0, symName: '___34-[TKVoicePanelController speakTap]_block_invoke.665', symObjAddr: 0xBEF8, symBinAddr: 0xFEF8, symSize: 0xAC }
+  - { offset: 0xB6B8, size: 0x8, addend: 0x0, symName: '___34-[TKVoicePanelController speakTap]_block_invoke_2.666', symObjAddr: 0xBFA4, symBinAddr: 0xFFA4, symSize: 0xA8 }
+  - { offset: 0xB6DF, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController stopTap]', symObjAddr: 0xC280, symBinAddr: 0x10280, symSize: 0x58 }
+  - { offset: 0xB71D, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController copyTap]', symObjAddr: 0xC2D8, symBinAddr: 0x102D8, symSize: 0xE4 }
+  - { offset: 0xB74E, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController textView]', symObjAddr: 0xC3BC, symBinAddr: 0x103BC, symSize: 0x10 }
+  - { offset: 0xB782, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController setTextView:]', symObjAddr: 0xC3CC, symBinAddr: 0x103CC, symSize: 0x14 }
+  - { offset: 0xB7BF, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController voiceLabel]', symObjAddr: 0xC3E0, symBinAddr: 0x103E0, symSize: 0x10 }
+  - { offset: 0xB7F3, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController setVoiceLabel:]', symObjAddr: 0xC3F0, symBinAddr: 0x103F0, symSize: 0x14 }
+  - { offset: 0xB830, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController statusLabel]', symObjAddr: 0xC404, symBinAddr: 0x10404, symSize: 0x10 }
+  - { offset: 0xB864, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController setStatusLabel:]', symObjAddr: 0xC414, symBinAddr: 0x10414, symSize: 0x14 }
+  - { offset: 0xB8A1, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController rateCaption]', symObjAddr: 0xC428, symBinAddr: 0x10428, symSize: 0x10 }
+  - { offset: 0xB8D5, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController setRateCaption:]', symObjAddr: 0xC438, symBinAddr: 0x10438, symSize: 0x14 }
+  - { offset: 0xB912, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController rateSlider]', symObjAddr: 0xC44C, symBinAddr: 0x1044C, symSize: 0x10 }
+  - { offset: 0xB946, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController setRateSlider:]', symObjAddr: 0xC45C, symBinAddr: 0x1045C, symSize: 0x14 }
+  - { offset: 0xB983, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController instrField]', symObjAddr: 0xC470, symBinAddr: 0x10470, symSize: 0x10 }
+  - { offset: 0xB9B7, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController setInstrField:]', symObjAddr: 0xC480, symBinAddr: 0x10480, symSize: 0x14 }
+  - { offset: 0xB9F4, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController voicePickButton]', symObjAddr: 0xC494, symBinAddr: 0x10494, symSize: 0x10 }
+  - { offset: 0xBA28, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController setVoicePickButton:]', symObjAddr: 0xC4A4, symBinAddr: 0x104A4, symSize: 0x14 }
+  - { offset: 0xBA65, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController speakButton]', symObjAddr: 0xC4B8, symBinAddr: 0x104B8, symSize: 0x10 }
+  - { offset: 0xBA99, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController setSpeakButton:]', symObjAddr: 0xC4C8, symBinAddr: 0x104C8, symSize: 0x14 }
+  - { offset: 0xBAD6, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController stopButton]', symObjAddr: 0xC4DC, symBinAddr: 0x104DC, symSize: 0x10 }
+  - { offset: 0xBB0A, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController setStopButton:]', symObjAddr: 0xC4EC, symBinAddr: 0x104EC, symSize: 0x14 }
+  - { offset: 0xBB47, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController btnCopyText]', symObjAddr: 0xC500, symBinAddr: 0x10500, symSize: 0x10 }
+  - { offset: 0xBB7B, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController setBtnCopyText:]', symObjAddr: 0xC510, symBinAddr: 0x10510, symSize: 0x14 }
+  - { offset: 0xBBB8, size: 0x8, addend: 0x0, symName: '-[TKVoicePanelController .cxx_destruct]', symObjAddr: 0xC524, symBinAddr: 0x10524, symSize: 0xE0 }
+  - { offset: 0xBBE8, size: 0x8, addend: 0x0, symName: '-[TKAIChatController init]', symObjAddr: 0xC604, symBinAddr: 0x10604, symSize: 0x194 }
+  - { offset: 0xBC1D, size: 0x8, addend: 0x0, symName: '-[TKAIChatController openSettings]', symObjAddr: 0xC798, symBinAddr: 0x10798, symSize: 0x4 }
+  - { offset: 0xBC50, size: 0x8, addend: 0x0, symName: '-[TKAIChatController clearChat]', symObjAddr: 0xC79C, symBinAddr: 0x1079C, symSize: 0x6C }
+  - { offset: 0xBC62, size: 0x8, addend: 0x0, symName: '-[TKAIChatController clearChat]', symObjAddr: 0xC79C, symBinAddr: 0x1079C, symSize: 0x6C }
+  - { offset: 0xBC93, size: 0x8, addend: 0x0, symName: '-[TKAIChatController viewDidLoad]', symObjAddr: 0xC808, symBinAddr: 0x10808, symSize: 0x5EC }
+  - { offset: 0xBCD4, size: 0x8, addend: 0x0, symName: '-[TKAIChatController viewDidLayoutSubviews]', symObjAddr: 0xCDF4, symBinAddr: 0x10DF4, symSize: 0x22C }
+  - { offset: 0xBD45, size: 0x8, addend: 0x0, symName: '-[TKAIChatController keyboardChanged:]', symObjAddr: 0xD020, symBinAddr: 0x11020, symSize: 0x204 }
+  - { offset: 0xBDD6, size: 0x8, addend: 0x0, symName: '___38-[TKAIChatController keyboardChanged:]_block_invoke', symObjAddr: 0xD224, symBinAddr: 0x11224, symSize: 0x108 }
+  - { offset: 0xBE37, size: 0x8, addend: 0x0, symName: '-[TKAIChatController tableView:numberOfRowsInSection:]', symObjAddr: 0xD32C, symBinAddr: 0x1132C, symSize: 0x50 }
+  - { offset: 0xBE84, size: 0x8, addend: 0x0, symName: '-[TKAIChatController tableView:didSelectRowAtIndexPath:]', symObjAddr: 0xD6F4, symBinAddr: 0x116F4, symSize: 0x14C }
+  - { offset: 0xBEF8, size: 0x8, addend: 0x0, symName: '-[TKAIChatController reloadAndScroll]', symObjAddr: 0xD840, symBinAddr: 0x11840, symSize: 0x130 }
+  - { offset: 0xBF29, size: 0x8, addend: 0x0, symName: '-[TKAIChatController textFieldShouldReturn:]', symObjAddr: 0xD970, symBinAddr: 0x11970, symSize: 0x18 }
+  - { offset: 0xBF6A, size: 0x8, addend: 0x0, symName: '-[TKAIChatController sendTap]', symObjAddr: 0xD988, symBinAddr: 0x11988, symSize: 0x2DC }
+  - { offset: 0xBFC5, size: 0x8, addend: 0x0, symName: '-[TKAIChatController requestReply]', symObjAddr: 0xDC64, symBinAddr: 0x11C64, symSize: 0x694 }
+  - { offset: 0xC1DC, size: 0x8, addend: 0x0, symName: '___34-[TKAIChatController requestReply]_block_invoke', symObjAddr: 0xE2F8, symBinAddr: 0x122F8, symSize: 0xC8 }
+  - { offset: 0xC243, size: 0x8, addend: 0x0, symName: '___34-[TKAIChatController requestReply]_block_invoke_2', symObjAddr: 0xE3C0, symBinAddr: 0x123C0, symSize: 0x3E0 }
+  - { offset: 0xC2A6, size: 0x8, addend: 0x0, symName: ___copy_helper_block_ea8_32s40s48s, symObjAddr: 0xE7A0, symBinAddr: 0x127A0, symSize: 0x30 }
+  - { offset: 0xC2CC, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_ea8_32s40s48s, symObjAddr: 0xE7D0, symBinAddr: 0x127D0, symSize: 0x30 }
+  - { offset: 0xC2E9, size: 0x8, addend: 0x0, symName: '-[TKAIChatController fail:]', symObjAddr: 0xE800, symBinAddr: 0x12800, symSize: 0xD4 }
+  - { offset: 0xC338, size: 0x8, addend: 0x0, symName: '-[TKAIChatController tableView]', symObjAddr: 0xE8D4, symBinAddr: 0x128D4, symSize: 0x10 }
+  - { offset: 0xC36E, size: 0x8, addend: 0x0, symName: '-[TKAIChatController setTableView:]', symObjAddr: 0xE8E4, symBinAddr: 0x128E4, symSize: 0x14 }
+  - { offset: 0xC3AD, size: 0x8, addend: 0x0, symName: '-[TKAIChatController inputField]', symObjAddr: 0xE8F8, symBinAddr: 0x128F8, symSize: 0x10 }
+  - { offset: 0xC3E3, size: 0x8, addend: 0x0, symName: '-[TKAIChatController setInputField:]', symObjAddr: 0xE908, symBinAddr: 0x12908, symSize: 0x14 }
+  - { offset: 0xC422, size: 0x8, addend: 0x0, symName: '-[TKAIChatController sendButton]', symObjAddr: 0xE91C, symBinAddr: 0x1291C, symSize: 0x10 }
+  - { offset: 0xC458, size: 0x8, addend: 0x0, symName: '-[TKAIChatController setSendButton:]', symObjAddr: 0xE92C, symBinAddr: 0x1292C, symSize: 0x14 }
+  - { offset: 0xC497, size: 0x8, addend: 0x0, symName: '-[TKAIChatController barView]', symObjAddr: 0xE940, symBinAddr: 0x12940, symSize: 0x10 }
+  - { offset: 0xC4CD, size: 0x8, addend: 0x0, symName: '-[TKAIChatController setBarView:]', symObjAddr: 0xE950, symBinAddr: 0x12950, symSize: 0x14 }
+  - { offset: 0xC50C, size: 0x8, addend: 0x0, symName: '-[TKAIChatController spinner]', symObjAddr: 0xE964, symBinAddr: 0x12964, symSize: 0x10 }
+  - { offset: 0xC542, size: 0x8, addend: 0x0, symName: '-[TKAIChatController setSpinner:]', symObjAddr: 0xE974, symBinAddr: 0x12974, symSize: 0x14 }
+  - { offset: 0xC581, size: 0x8, addend: 0x0, symName: '-[TKAIChatController messages]', symObjAddr: 0xE988, symBinAddr: 0x12988, symSize: 0x10 }
+  - { offset: 0xC5B7, size: 0x8, addend: 0x0, symName: '-[TKAIChatController setMessages:]', symObjAddr: 0xE998, symBinAddr: 0x12998, symSize: 0x14 }
+  - { offset: 0xC5F6, size: 0x8, addend: 0x0, symName: '-[TKAIChatController waiting]', symObjAddr: 0xE9AC, symBinAddr: 0x129AC, symSize: 0x10 }
+  - { offset: 0xC62C, size: 0x8, addend: 0x0, symName: '-[TKAIChatController setWaiting:]', symObjAddr: 0xE9BC, symBinAddr: 0x129BC, symSize: 0x10 }
+  - { offset: 0xC665, size: 0x8, addend: 0x0, symName: '-[TKAIChatController .cxx_destruct]', symObjAddr: 0xE9CC, symBinAddr: 0x129CC, symSize: 0x90 }
+  - { offset: 0xC696, size: 0x8, addend: 0x0, symName: '-[TKVoiceAISettingsController init]', symObjAddr: 0xEA5C, symBinAddr: 0x12A5C, symSize: 0x78 }
+  - { offset: 0xC6CB, size: 0x8, addend: 0x0, symName: '-[TKVoiceAISettingsController numberOfSectionsInTableView:]', symObjAddr: 0xEAD4, symBinAddr: 0x12AD4, symSize: 0x8 }
+  - { offset: 0xC708, size: 0x8, addend: 0x0, symName: '-[TKVoiceAISettingsController tableView:titleForHeaderInSection:]', symObjAddr: 0xEADC, symBinAddr: 0x12ADC, symSize: 0x28 }
+  - { offset: 0xC755, size: 0x8, addend: 0x0, symName: '-[TKVoiceAISettingsController tableView:titleForFooterInSection:]', symObjAddr: 0xEB04, symBinAddr: 0x12B04, symSize: 0x24 }
+  - { offset: 0xC7A1, size: 0x8, addend: 0x0, symName: '-[TKVoiceAISettingsController tableView:numberOfRowsInSection:]', symObjAddr: 0xEB28, symBinAddr: 0x12B28, symSize: 0x5C }
+  - { offset: 0xC7EE, size: 0x8, addend: 0x0, symName: '-[TKVoiceAISettingsController tableView:cellForRowAtIndexPath:]', symObjAddr: 0xEB84, symBinAddr: 0x12B84, symSize: 0x80C }
+  - { offset: 0xC94F, size: 0x8, addend: 0x0, symName: '-[TKVoiceAISettingsController switchChanged:]', symObjAddr: 0xF390, symBinAddr: 0x13390, symSize: 0x17C }
+  - { offset: 0xCA00, size: 0x8, addend: 0x0, symName: '-[TKVoiceAISettingsController tableView:didSelectRowAtIndexPath:]', symObjAddr: 0xF50C, symBinAddr: 0x1350C, symSize: 0x5CC }
+  - { offset: 0xCB96, size: 0x8, addend: 0x0, symName: __ZL12TKEditStringP16UIViewControllerP8NSStringS2_S2_S2_14UIKeyboardTypebU13block_pointerFvS2_E, symObjAddr: 0xFAD8, symBinAddr: 0x13AD8, symSize: 0x304 }
+  - { offset: 0xCC37, size: 0x8, addend: 0x0, symName: '___65-[TKVoiceAISettingsController tableView:didSelectRowAtIndexPath:]_block_invoke', symObjAddr: 0xFDDC, symBinAddr: 0x13DDC, symSize: 0x8 }
+  - { offset: 0xCC6A, size: 0x8, addend: 0x0, symName: __ZL19TKTopViewControllerv, symObjAddr: 0x16244, symBinAddr: 0x1A244, symSize: 0x260 }
+  - { offset: 0xCCBB, size: 0x8, addend: 0x0, symName: '___65-[TKVoiceAISettingsController tableView:didSelectRowAtIndexPath:]_block_invoke.1039', symObjAddr: 0xFEB8, symBinAddr: 0x13EB8, symSize: 0x8 }
+  - { offset: 0xCCEE, size: 0x8, addend: 0x0, symName: '___65-[TKVoiceAISettingsController tableView:didSelectRowAtIndexPath:]_block_invoke_2', symObjAddr: 0xFEC0, symBinAddr: 0x13EC0, symSize: 0x8 }
+  - { offset: 0xCD21, size: 0x8, addend: 0x0, symName: '___65-[TKVoiceAISettingsController tableView:didSelectRowAtIndexPath:]_block_invoke_3', symObjAddr: 0xFEC8, symBinAddr: 0x13EC8, symSize: 0x8 }
+  - { offset: 0xCD54, size: 0x8, addend: 0x0, symName: '___65-[TKVoiceAISettingsController tableView:didSelectRowAtIndexPath:]_block_invoke_4', symObjAddr: 0xFED0, symBinAddr: 0x13ED0, symSize: 0x8 }
+  - { offset: 0xCD87, size: 0x8, addend: 0x0, symName: '___65-[TKVoiceAISettingsController tableView:didSelectRowAtIndexPath:]_block_invoke_5', symObjAddr: 0xFED8, symBinAddr: 0x13ED8, symSize: 0x8 }
+  - { offset: 0xCDBA, size: 0x8, addend: 0x0, symName: '___65-[TKVoiceAISettingsController tableView:didSelectRowAtIndexPath:]_block_invoke_6', symObjAddr: 0xFEE0, symBinAddr: 0x13EE0, symSize: 0x8 }
+  - { offset: 0xCDED, size: 0x8, addend: 0x0, symName: '___65-[TKVoiceAISettingsController tableView:didSelectRowAtIndexPath:]_block_invoke_7', symObjAddr: 0xFEE8, symBinAddr: 0x13EE8, symSize: 0x8 }
+  - { offset: 0xCE20, size: 0x8, addend: 0x0, symName: '+[TKBallTarget shared].cold.1', symObjAddr: 0x21980, symBinAddr: 0x25980, symSize: 0x14 }
+  - { offset: 0xCE3B, size: 0x8, addend: 0x0, symName: '+[TKBallTarget shared].cold.1', symObjAddr: 0x21980, symBinAddr: 0x25980, symSize: 0x14 }
+  - { offset: 0xCE4D, size: 0x8, addend: 0x0, symName: '___22+[TKBallTarget shared]_block_invoke', symObjAddr: 0xFF20, symBinAddr: 0x13F20, symSize: 0x2C }
+  - { offset: 0xCE9B, size: 0x8, addend: 0x0, symName: '-[TKBallTarget onBallTap:]', symObjAddr: 0xFF4C, symBinAddr: 0x13F4C, symSize: 0x2CC }
+  - { offset: 0xCFBC, size: 0x8, addend: 0x0, symName: '-[TKBallTarget onBallPan:]', symObjAddr: 0x10218, symBinAddr: 0x14218, symSize: 0x2A4 }
+  - { offset: 0xD0DE, size: 0x8, addend: 0x0, symName: '___28+[TIMCKGestureTarget shared]_block_invoke', symObjAddr: 0x10530, symBinAddr: 0x14530, symSize: 0x28 }
+  - { offset: 0xD105, size: 0x8, addend: 0x0, symName: '-[TIMCKGestureTarget isSettingsWindow:]', symObjAddr: 0x10558, symBinAddr: 0x14558, symSize: 0x228 }
+  - { offset: 0xD16C, size: 0x8, addend: 0x0, symName: '-[TIMCKGestureTarget onLongPress:]', symObjAddr: 0x10780, symBinAddr: 0x14780, symSize: 0x100 }
+  - { offset: 0xD1BA, size: 0x8, addend: 0x0, symName: __ZL17TKPresentSettingsP8UIWindow, symObjAddr: 0x10880, symBinAddr: 0x14880, symSize: 0x1B4 }
+  - { offset: 0xD209, size: 0x8, addend: 0x0, symName: '-[TIMCKGestureTarget messageCellAtView:]', symObjAddr: 0x10A34, symBinAddr: 0x14A34, symSize: 0xE4 }
+  - { offset: 0xD3E9, size: 0x8, addend: 0x0, symName: __ZL17TKFindCellAtPointP6UIView7CGPoint, symObjAddr: 0x11750, symBinAddr: 0x15750, symSize: 0x254 }
+  - { offset: 0xD4C2, size: 0x8, addend: 0x0, symName: __ZL15TKRecordForCellP6UIView, symObjAddr: 0x119A4, symBinAddr: 0x159A4, symSize: 0x2BC }
+  - { offset: 0xD67F, size: 0x8, addend: 0x0, symName: __ZL12TKCellRecordP6UIView, symObjAddr: 0x11C60, symBinAddr: 0x15C60, symSize: 0x68 }
+  - { offset: 0xD6C0, size: 0x8, addend: 0x0, symName: __ZL27TKRecordMatchingTextInCacheP6UIView, symObjAddr: 0x11CC8, symBinAddr: 0x15CC8, symSize: 0x7A0 }
+  - { offset: 0xD803, size: 0x8, addend: 0x0, symName: __ZL16TK_performObjectP11objc_objectP8NSString, symObjAddr: 0x150EC, symBinAddr: 0x190EC, symSize: 0x194 }
+  - { offset: 0xD8A0, size: 0x8, addend: 0x0, symName: __ZL11TKMethodABIP11objc_objectP13objc_selectorPKc, symObjAddr: 0x17BC8, symBinAddr: 0x1BBC8, symSize: 0x94 }
+  - { offset: 0xD948, size: 0x8, addend: 0x0, symName: __ZL8TKScalarP11objc_objectP8NSStringPKc, symObjAddr: 0x15A98, symBinAddr: 0x19A98, symSize: 0x188 }
+  - { offset: 0xDA2A, size: 0x8, addend: 0x0, symName: __ZL12TKObjectCallP11objc_objectP8NSString, symObjAddr: 0x15A7C, symBinAddr: 0x19A7C, symSize: 0x1C }
+  - { offset: 0xDA6C, size: 0x8, addend: 0x0, symName: __ZL14TKRepeatRecordP11objc_object, symObjAddr: 0x17C5C, symBinAddr: 0x1BC5C, symSize: 0x344 }
+  - { offset: 0xDC99, size: 0x8, addend: 0x0, symName: __ZL18TKStrongKnownFieldP11objc_objectPKc, symObjAddr: 0x17818, symBinAddr: 0x1B818, symSize: 0xE4 }
+  - { offset: 0xDD86, size: 0x8, addend: 0x0, symName: __ZL17TKFirstIvarOfKindP11objc_objectP10objc_class, symObjAddr: 0x178FC, symBinAddr: 0x1B8FC, symSize: 0x140 }
+  - { offset: 0xDED2, size: 0x8, addend: 0x0, symName: __ZL19TKIsUsableObjectPtrP11objc_object, symObjAddr: 0x17A3C, symBinAddr: 0x1BA3C, symSize: 0x88 }
+  - { offset: 0xDF63, size: 0x8, addend: 0x0, symName: __ZL15TKRecordForCellP6UIView.cold.1, symObjAddr: 0x21994, symBinAddr: 0x25994, symSize: 0x14 }
+  - { offset: 0xDF7E, size: 0x8, addend: 0x0, symName: __ZL15TKRecordForCellP6UIView.cold.1, symObjAddr: 0x21994, symBinAddr: 0x25994, symSize: 0x14 }
+  - { offset: 0xDF92, size: 0x8, addend: 0x0, symName: __ZL15TKRecordForCellP6UIView.cold.1, symObjAddr: 0x21994, symBinAddr: 0x25994, symSize: 0x14 }
+  - { offset: 0xE047, size: 0x8, addend: 0x0, symName: __ZL22TKRecordTextOfElementsP7NSArray, symObjAddr: 0x15D44, symBinAddr: 0x19D44, symSize: 0x404 }
+  - { offset: 0xE1C5, size: 0x8, addend: 0x0, symName: '-[TIMCKGestureTarget gestureRecognizer:shouldReceiveTouch:]', symObjAddr: 0x12468, symBinAddr: 0x16468, symSize: 0x2CC }
+  - { offset: 0xE273, size: 0x8, addend: 0x0, symName: '-[TIMCKGestureTarget gestureRecognizer:shouldRecognizeSimultaneouslyWithGestureRecognizer:]', symObjAddr: 0x12734, symBinAddr: 0x16734, symSize: 0x8 }
+  - { offset: 0xE2BC, size: 0x8, addend: 0x0, symName: __ZL9TIMCKInitv, symObjAddr: 0x1273C, symBinAddr: 0x1673C, symSize: 0xB0 }
+  - { offset: 0xE2F1, size: 0x8, addend: 0x0, symName: ____ZL9TIMCKInitv_block_invoke, symObjAddr: 0x127EC, symBinAddr: 0x167EC, symSize: 0x2C8 }
+  - { offset: 0xE3AD, size: 0x8, addend: 0x0, symName: __ZL21RegisterBusinessHooksv, symObjAddr: 0x12AB4, symBinAddr: 0x16AB4, symSize: 0xB64 }
+  - { offset: 0xE9CE, size: 0x8, addend: 0x0, symName: ____ZL9TIMCKInitv_block_invoke.cold.1, symObjAddr: 0x219A8, symBinAddr: 0x259A8, symSize: 0x14 }
+  - { offset: 0xE9E9, size: 0x8, addend: 0x0, symName: ____ZL9TIMCKInitv_block_invoke.cold.1, symObjAddr: 0x219A8, symBinAddr: 0x259A8, symSize: 0x14 }
+  - { offset: 0xE9FE, size: 0x8, addend: 0x0, symName: ____ZL9TIMCKInitv_block_invoke.cold.1, symObjAddr: 0x219A8, symBinAddr: 0x259A8, symSize: 0x14 }
+  - { offset: 0xEB59, size: 0x8, addend: 0x0, symName: __ZL11InstallHookP8NSStringP13objc_selectorPFvvEb, symObjAddr: 0x18468, symBinAddr: 0x1C468, symSize: 0x508 }
+  - { offset: 0xEEC2, size: 0x8, addend: 0x0, symName: __ZL15TKDrainRedQueuev, symObjAddr: 0x1C884, symBinAddr: 0x20884, symSize: 0x4E0 }
+  - { offset: 0xF0ED, size: 0x8, addend: 0x0, symName: __ZL14InstallGestureP8UIWindow, symObjAddr: 0x136D0, symBinAddr: 0x176D0, symSize: 0x1F4 }
+  - { offset: 0xF1A6, size: 0x8, addend: 0x0, symName: __ZL21RegisterBusinessHooksv.cold.1, symObjAddr: 0x219BC, symBinAddr: 0x259BC, symSize: 0x24 }
+  - { offset: 0xF1E8, size: 0x8, addend: 0x0, symName: ____ZL9TIMCKInitv_block_invoke_2, symObjAddr: 0x13618, symBinAddr: 0x17618, symSize: 0x4 }
+  - { offset: 0xF21E, size: 0x8, addend: 0x0, symName: ____ZL9TIMCKInitv_block_invoke_3, symObjAddr: 0x1361C, symBinAddr: 0x1761C, symSize: 0x4 }
+  - { offset: 0xF228, size: 0x8, addend: 0x0, symName: ____ZL9TIMCKInitv_block_invoke_3, symObjAddr: 0x1361C, symBinAddr: 0x1761C, symSize: 0x4 }
+  - { offset: 0xF25E, size: 0x8, addend: 0x0, symName: ____ZL9TIMCKInitv_block_invoke_4, symObjAddr: 0x13620, symBinAddr: 0x17620, symSize: 0xB0 }
+  - { offset: 0xF268, size: 0x8, addend: 0x0, symName: ____ZL9TIMCKInitv_block_invoke_4, symObjAddr: 0x13620, symBinAddr: 0x17620, symSize: 0xB0 }
+  - { offset: 0xF2D5, size: 0x8, addend: 0x0, symName: ____ZL9TIMCKInitv_block_invoke.1101, symObjAddr: 0x138C4, symBinAddr: 0x178C4, symSize: 0x4 }
+  - { offset: 0xF2FF, size: 0x8, addend: 0x0, symName: ____ZL9TIMCKInitv_block_invoke_2.1104, symObjAddr: 0x138C8, symBinAddr: 0x178C8, symSize: 0x64 }
+  - { offset: 0xF309, size: 0x8, addend: 0x0, symName: ____ZL9TIMCKInitv_block_invoke_2.1104, symObjAddr: 0x138C8, symBinAddr: 0x178C8, symSize: 0x64 }
+  - { offset: 0xF349, size: 0x8, addend: 0x0, symName: ____ZL14TKUIParseCentsP8NSStringPlPU15__autoreleasingS0__block_invoke, symObjAddr: 0x1392C, symBinAddr: 0x1792C, symSize: 0x44 }
+  - { offset: 0xF36E, size: 0x8, addend: 0x0, symName: ____ZL21TKRefreshRecallLabelsv_block_invoke, symObjAddr: 0x13970, symBinAddr: 0x17970, symSize: 0x4 }
+  - { offset: 0xF398, size: 0x8, addend: 0x0, symName: __ZL21TKCollectMessageCellsP6UIViewP14NSMutableArray, symObjAddr: 0x13974, symBinAddr: 0x17974, symSize: 0x1FC }
+  - { offset: 0xF3C9, size: 0x8, addend: 0x0, symName: __ZL20redElementFromRecordP11objc_object, symObjAddr: 0x1482C, symBinAddr: 0x1882C, symSize: 0x27C }
+  - { offset: 0xF4A3, size: 0x8, addend: 0x0, symName: __ZL23TKScanViewsForRedPacketP6UIViewPb, symObjAddr: 0x15280, symBinAddr: 0x19280, symSize: 0x23C }
+  - { offset: 0xF540, size: 0x8, addend: 0x0, symName: __ZL13TKWasRecalledP11objc_object, symObjAddr: 0x14AA8, symBinAddr: 0x18AA8, symSize: 0x2F8 }
+  - { offset: 0xF60C, size: 0x8, addend: 0x0, symName: __ZL19TKAntiRecallEnabledv, symObjAddr: 0x14DA0, symBinAddr: 0x18DA0, symSize: 0x38 }
+  - { offset: 0xF652, size: 0x8, addend: 0x0, symName: __ZL16TKLabelBriefTextP11objc_object, symObjAddr: 0x14F14, symBinAddr: 0x18F14, symSize: 0xF0 }
+  - { offset: 0xF6E6, size: 0x8, addend: 0x0, symName: __ZL24TKUpdateRecallLabelRetryP6UIView, symObjAddr: 0x15004, symBinAddr: 0x19004, symSize: 0xE8 }
+  - { offset: 0xF773, size: 0x8, addend: 0x0, symName: __ZL11TKLabelDiagP8NSString, symObjAddr: 0x14DD8, symBinAddr: 0x18DD8, symSize: 0x13C }
+  - { offset: 0xF828, size: 0x8, addend: 0x0, symName: __ZL21TKMessageIdentityKeysP11objc_object, symObjAddr: 0x154BC, symBinAddr: 0x194BC, symSize: 0x208 }
+  - { offset: 0xF920, size: 0x8, addend: 0x0, symName: __ZL17TKRecallStorePathv, symObjAddr: 0x15C20, symBinAddr: 0x19C20, symSize: 0x124 }
+  - { offset: 0xF992, size: 0x8, addend: 0x0, symName: ____ZL24TKUpdateRecallLabelRetryP6UIView_block_invoke, symObjAddr: 0x16148, symBinAddr: 0x1A148, symSize: 0x38 }
+  - { offset: 0xF9D2, size: 0x8, addend: 0x0, symName: __ZL9TKStrSafePKc, symObjAddr: 0x16180, symBinAddr: 0x1A180, symSize: 0x5C }
+  - { offset: 0xF9DC, size: 0x8, addend: 0x0, symName: ____ZL7TKAlertP8NSStringS0__block_invoke, symObjAddr: 0x161DC, symBinAddr: 0x1A1DC, symSize: 0x68 }
+  - { offset: 0xFA2B, size: 0x8, addend: 0x0, symName: ____ZL16TKQwenSynthesizeP8NSStringU13block_pointerFvS0_ES2__block_invoke, symObjAddr: 0x164A4, symBinAddr: 0x1A4A4, symSize: 0x42C }
+  - { offset: 0xFAFD, size: 0x8, addend: 0x0, symName: ____ZL16TKQwenSynthesizeP8NSStringU13block_pointerFvS0_ES2__block_invoke_2, symObjAddr: 0x168D0, symBinAddr: 0x1A8D0, symSize: 0x118 }
+  - { offset: 0xFB81, size: 0x8, addend: 0x0, symName: __ZL15TKPlayAudioDataP6NSData, symObjAddr: 0x169E8, symBinAddr: 0x1A9E8, symSize: 0x1B4 }
+  - { offset: 0xFBF6, size: 0x8, addend: 0x0, symName: ___copy_helper_block_ea8_32b40b, symObjAddr: 0x16B9C, symBinAddr: 0x1AB9C, symSize: 0x3C }
+  - { offset: 0xFC1C, size: 0x8, addend: 0x0, symName: ____ZL15TKPlayAudioDataP6NSData_block_invoke, symObjAddr: 0x16BD8, symBinAddr: 0x1ABD8, symSize: 0x8 }
+  - { offset: 0xFC44, size: 0x8, addend: 0x0, symName: ____ZL11TKSpeakTextP8NSString_block_invoke, symObjAddr: 0x16BE0, symBinAddr: 0x1ABE0, symSize: 0x8 }
+  - { offset: 0xFC4E, size: 0x8, addend: 0x0, symName: ____ZL11TKSpeakTextP8NSString_block_invoke, symObjAddr: 0x16BE0, symBinAddr: 0x1ABE0, symSize: 0x8 }
+  - { offset: 0xFC76, size: 0x8, addend: 0x0, symName: ____ZL12TKEditStringP16UIViewControllerP8NSStringS2_S2_S2_14UIKeyboardTypebU13block_pointerFvS2_E_block_invoke, symObjAddr: 0x16BE8, symBinAddr: 0x1ABE8, symSize: 0xBC }
+  - { offset: 0xFC80, size: 0x8, addend: 0x0, symName: ____ZL12TKEditStringP16UIViewControllerP8NSStringS2_S2_S2_14UIKeyboardTypebU13block_pointerFvS2_E_block_invoke, symObjAddr: 0x16BE8, symBinAddr: 0x1ABE8, symSize: 0xBC }
+  - { offset: 0xFCC2, size: 0x8, addend: 0x0, symName: ____ZL12TKEditStringP16UIViewControllerP8NSStringS2_S2_S2_14UIKeyboardTypebU13block_pointerFvS2_E_block_invoke.1426, symObjAddr: 0x16CA4, symBinAddr: 0x1ACA4, symSize: 0x1A0 }
+  - { offset: 0xFD41, size: 0x8, addend: 0x0, symName: ___copy_helper_block_ea8_32s40s48b, symObjAddr: 0x16E44, symBinAddr: 0x1AE44, symSize: 0x3C }
+  - { offset: 0xFD67, size: 0x8, addend: 0x0, symName: ____ZL27TKUpdateVoiceBallVisibilityv_block_invoke, symObjAddr: 0x16E80, symBinAddr: 0x1AE80, symSize: 0x7DC }
+  - { offset: 0xFE73, size: 0x8, addend: 0x0, symName: ____ZL15TKShowVoiceMenuv_block_invoke, symObjAddr: 0x1765C, symBinAddr: 0x1B65C, symSize: 0x90 }
+  - { offset: 0xFEEB, size: 0x8, addend: 0x0, symName: ____ZL15TKShowVoiceMenuv_block_invoke_2, symObjAddr: 0x176EC, symBinAddr: 0x1B6EC, symSize: 0x44 }
+  - { offset: 0xFF2B, size: 0x8, addend: 0x0, symName: ____ZL15TKShowVoiceMenuv_block_invoke_3, symObjAddr: 0x17730, symBinAddr: 0x1B730, symSize: 0x44 }
+  - { offset: 0xFF6B, size: 0x8, addend: 0x0, symName: ____ZL15TKShowVoiceMenuv_block_invoke_4, symObjAddr: 0x17774, symBinAddr: 0x1B774, symSize: 0x8 }
+  - { offset: 0xFFA2, size: 0x8, addend: 0x0, symName: ____ZL15TKShowVoiceMenuv_block_invoke_5, symObjAddr: 0x1777C, symBinAddr: 0x1B77C, symSize: 0x94 }
+  - { offset: 0xFFB2, size: 0x8, addend: 0x0, symName: ____ZL15TKShowVoiceMenuv_block_invoke_5, symObjAddr: 0x1777C, symBinAddr: 0x1B77C, symSize: 0x94 }
+  - { offset: 0x10031, size: 0x8, addend: 0x0, symName: ____ZL17TKPresentSettingsP8UIWindow_block_invoke, symObjAddr: 0x17810, symBinAddr: 0x1B810, symSize: 0x8 }
+  - { offset: 0x1005B, size: 0x8, addend: 0x0, symName: __ZL18TKStrongKnownFieldP11objc_objectPKc, symObjAddr: 0x17818, symBinAddr: 0x1B818, symSize: 0xE4 }
+  - { offset: 0x1011B, size: 0x8, addend: 0x0, symName: ____ZL18TKSwiftRecordFieldP11objc_object_block_invoke, symObjAddr: 0x17AC4, symBinAddr: 0x1BAC4, symSize: 0x104 }
+  - { offset: 0x102CE, size: 0x8, addend: 0x0, symName: __ZL15TKSameSignaturePKcS0_, symObjAddr: 0x17FA0, symBinAddr: 0x1BFA0, symSize: 0x154 }
+  - { offset: 0x10371, size: 0x8, addend: 0x0, symName: __ZL12TKTypesEqualPKcS0_, symObjAddr: 0x180F4, symBinAddr: 0x1C0F4, symSize: 0xE0 }
+  - { offset: 0x104A6, size: 0x8, addend: 0x0, symName: ____ZL20registerDefaultsOncev_block_invoke, symObjAddr: 0x181D4, symBinAddr: 0x1C1D4, symSize: 0x294 }
+  - { offset: 0x1053F, size: 0x8, addend: 0x0, symName: __ZL8TKRecordP8NSStringP13objc_selector, symObjAddr: 0x1CD64, symBinAddr: 0x20D64, symSize: 0x78 }
+  - { offset: 0x10742, size: 0x8, addend: 0x0, symName: __ZL16AR_setRecallTimeP11objc_objectP13objc_selectorx, symObjAddr: 0x18970, symBinAddr: 0x1C970, symSize: 0x9D0 }
+  - { offset: 0x10A6C, size: 0x8, addend: 0x0, symName: __ZL17TKMessageIdentityP11objc_object, symObjAddr: 0x1D1F8, symBinAddr: 0x211F8, symSize: 0x58 }
+  - { offset: 0x10AC0, size: 0x8, addend: 0x0, symName: __ZL23TKArchiveRecalledRecordP11objc_object, symObjAddr: 0x1D250, symBinAddr: 0x21250, symSize: 0x298 }
+  - { offset: 0x10B9E, size: 0x8, addend: 0x0, symName: __ZL14TKRecallTextOfP11objc_object, symObjAddr: 0x1CF14, symBinAddr: 0x20F14, symSize: 0x2E4 }
+  - { offset: 0x10C90, size: 0x8, addend: 0x0, symName: __ZL13TKRecallEventP8NSString, symObjAddr: 0x1CDDC, symBinAddr: 0x20DDC, symSize: 0x138 }
+  - { offset: 0x10CCB, size: 0x8, addend: 0x0, symName: __ZL13AR_recallTimeP11objc_objectP13objc_selector, symObjAddr: 0x19340, symBinAddr: 0x1D340, symSize: 0xB0 }
+  - { offset: 0x10DC2, size: 0x8, addend: 0x0, symName: __ZL15TKShouldProtectP11objc_object, symObjAddr: 0x1D898, symBinAddr: 0x21898, symSize: 0x26C }
+  - { offset: 0x10E69, size: 0x8, addend: 0x0, symName: __ZL18TKHasCachedContentP11objc_object, symObjAddr: 0x1DB04, symBinAddr: 0x21B04, symSize: 0x8C }
+  - { offset: 0x10EAD, size: 0x8, addend: 0x0, symName: __ZL16AR_includeDeleteP11objc_objectP13objc_selector, symObjAddr: 0x193F0, symBinAddr: 0x1D3F0, symSize: 0xB0 }
+  - { offset: 0x10F79, size: 0x8, addend: 0x0, symName: __ZL19AR_setIncludeDeleteP11objc_objectP13objc_selectorb, symObjAddr: 0x194A0, symBinAddr: 0x1D4A0, symSize: 0x90 }
+  - { offset: 0x11051, size: 0x8, addend: 0x0, symName: __ZL11AR_querySeqP11objc_objectP13objc_selectorS0_xibbS0_, symObjAddr: 0x19530, symBinAddr: 0x1D530, symSize: 0x108 }
+  - { offset: 0x11197, size: 0x8, addend: 0x0, symName: __ZL12AR_queryTimeP11objc_objectP13objc_selectorS0_xxibbbS0_, symObjAddr: 0x19638, symBinAddr: 0x1D638, symSize: 0x124 }
+  - { offset: 0x11305, size: 0x8, addend: 0x0, symName: __ZL8SP_modelP11objc_objectP13objc_selector, symObjAddr: 0x1975C, symBinAddr: 0x1D75C, symSize: 0xF4 }
+  - { offset: 0x113F7, size: 0x8, addend: 0x0, symName: __ZL17SP_localizedModelP11objc_objectP13objc_selector, symObjAddr: 0x19850, symBinAddr: 0x1D850, symSize: 0xF4 }
+  - { offset: 0x114E9, size: 0x8, addend: 0x0, symName: __ZL16RPkt_handleClickP11objc_objectP13objc_selectorS0_S0_S0_S0_, symObjAddr: 0x19944, symBinAddr: 0x1D944, symSize: 0x160 }
+  - { offset: 0x11656, size: 0x8, addend: 0x0, symName: __ZL19shouldSkipRedPacketP11objc_object, symObjAddr: 0x1DC30, symBinAddr: 0x21C30, symSize: 0xC14 }
+  - { offset: 0x11ABF, size: 0x8, addend: 0x0, symName: __ZL17RPkt_checkCanOpenP11objc_objectP13objc_selectorS0_PU15__autoreleasingP8NSString, symObjAddr: 0x19AA4, symBinAddr: 0x1DAA4, symSize: 0x118 }
+  - { offset: 0x11BFD, size: 0x8, addend: 0x0, symName: __ZL16RPkt_grabCommandP11objc_objectP13objc_selectorS0_, symObjAddr: 0x19BBC, symBinAddr: 0x1DBBC, symSize: 0xE8 }
+  - { offset: 0x11D21, size: 0x8, addend: 0x0, symName: __ZL21RPkt_shouldShowBubbleP11objc_objectP13objc_selectorS0_S0_, symObjAddr: 0x19CA4, symBinAddr: 0x1DCA4, symSize: 0xE0 }
+  - { offset: 0x11E0C, size: 0x8, addend: 0x0, symName: __ZL11AR_elementsP11objc_objectP13objc_selector, symObjAddr: 0x19D84, symBinAddr: 0x1DD84, symSize: 0x140 }
+  - { offset: 0x11F15, size: 0x8, addend: 0x0, symName: __ZL15TKCachedMessageP11objc_object, symObjAddr: 0x1DB90, symBinAddr: 0x21B90, symSize: 0xA0 }
+  - { offset: 0x11F79, size: 0x8, addend: 0x0, symName: __ZL14AR_setElementsP11objc_objectP13objc_selectorS0_, symObjAddr: 0x19EC4, symBinAddr: 0x1DEC4, symSize: 0x15C }
+  - { offset: 0x12088, size: 0x8, addend: 0x0, symName: __ZL10AR_msgTypeP11objc_objectP13objc_selector, symObjAddr: 0x1A020, symBinAddr: 0x1E020, symSize: 0x114 }
+  - { offset: 0x12195, size: 0x8, addend: 0x0, symName: __ZL13AR_setMsgTypeP11objc_objectP13objc_selectori, symObjAddr: 0x1A134, symBinAddr: 0x1E134, symSize: 0x114 }
+  - { offset: 0x122A4, size: 0x8, addend: 0x0, symName: __ZL17TKAutoOpenPreViewP11objc_objectP13objc_selector, symObjAddr: 0x1A248, symBinAddr: 0x1E248, symSize: 0x150 }
+  - { offset: 0x12505, size: 0x8, addend: 0x0, symName: __ZL15TKBridgeReceiveP11objc_objectP13objc_selectorS0_, symObjAddr: 0x1A398, symBinAddr: 0x1E398, symSize: 0x6C0 }
+  - { offset: 0x1279C, size: 0x8, addend: 0x0, symName: __ZL17TKRememberMessageP11objc_object, symObjAddr: 0x1FF3C, symBinAddr: 0x23F3C, symSize: 0x438 }
+  - { offset: 0x129C3, size: 0x8, addend: 0x0, symName: __ZL14TKBridgeRecallP11objc_objectP13objc_selectoriS0_y, symObjAddr: 0x1AA58, symBinAddr: 0x1EA58, symSize: 0x948 }
+  - { offset: 0x12D5A, size: 0x8, addend: 0x0, symName: __ZL12TKMarkRecallP11objc_object, symObjAddr: 0x20374, symBinAddr: 0x24374, symSize: 0x250 }
+  - { offset: 0x12DE6, size: 0x8, addend: 0x0, symName: __ZL14TKBridgeRecallP11objc_objectP13objc_selectoriS0_y.cold.1, symObjAddr: 0x219E0, symBinAddr: 0x259E0, symSize: 0x24 }
+  - { offset: 0x12F33, size: 0x8, addend: 0x0, symName: __ZL14TKBridgeUpdateP11objc_objectP13objc_selectorS0_, symObjAddr: 0x1B3A0, symBinAddr: 0x1F3A0, symSize: 0x994 }
+  - { offset: 0x13323, size: 0x8, addend: 0x0, symName: __ZL15TKRestoreRecordP11objc_object, symObjAddr: 0x20CF0, symBinAddr: 0x24CF0, symSize: 0x1A4 }
+  - { offset: 0x13469, size: 0x8, addend: 0x0, symName: __ZL14TKBridgeDeleteP11objc_objectP13objc_selectorS0_S0_, symObjAddr: 0x1BD34, symBinAddr: 0x1FD34, symSize: 0x400 }
+  - { offset: 0x1361D, size: 0x8, addend: 0x0, symName: __ZL10TKCellBindP11objc_objectP13objc_selectorS0_, symObjAddr: 0x1C134, symBinAddr: 0x20134, symSize: 0x1AC }
+  - { offset: 0x13789, size: 0x8, addend: 0x0, symName: __ZL12TKCellBindVMP11objc_objectP13objc_selectorS0_, symObjAddr: 0x1C2E0, symBinAddr: 0x202E0, symSize: 0x1EC }
+  - { offset: 0x13929, size: 0x8, addend: 0x0, symName: __ZL11TKCellClearP11objc_objectP13objc_selector, symObjAddr: 0x1C4CC, symBinAddr: 0x204CC, symSize: 0xFC }
+  - { offset: 0x13A95, size: 0x8, addend: 0x0, symName: __ZL12TKCellLayoutP11objc_objectP13objc_selector, symObjAddr: 0x1C5C8, symBinAddr: 0x205C8, symSize: 0x2BC }
+  - { offset: 0x13C81, size: 0x8, addend: 0x0, symName: __ZL10TKRedEventP8NSString, symObjAddr: 0x1E844, symBinAddr: 0x22844, symSize: 0x134 }
+  - { offset: 0x13CAA, size: 0x8, addend: 0x0, symName: ____ZL23TKArchiveRecalledRecordP11objc_object_block_invoke, symObjAddr: 0x1D4E8, symBinAddr: 0x214E8, symSize: 0x2E4 }
+  - { offset: 0x13D7A, size: 0x8, addend: 0x0, symName: ____ZL23TKArchiveRecalledRecordP11objc_object_block_invoke_2, symObjAddr: 0x1D7CC, symBinAddr: 0x217CC, symSize: 0xCC }
+  - { offset: 0x14035, size: 0x8, addend: 0x0, symName: __ZL20redPacketTotalAmountP11objc_object, symObjAddr: 0x1E978, symBinAddr: 0x22978, symSize: 0x600 }
+  - { offset: 0x1417A, size: 0x8, addend: 0x0, symName: __ZL9TKIntCallP11objc_objectP8NSString, symObjAddr: 0x1EF78, symBinAddr: 0x22F78, symSize: 0x214 }
+  - { offset: 0x145DA, size: 0x8, addend: 0x0, symName: ____ZL17TKAutoOpenPreViewP11objc_objectP13objc_selector_block_invoke, symObjAddr: 0x1F18C, symBinAddr: 0x2318C, symSize: 0x7D8 }
+  - { offset: 0x14881, size: 0x8, addend: 0x0, symName: __ZL18TKDeviceIdentifierP11objc_objectP13objc_selector, symObjAddr: 0x1F964, symBinAddr: 0x23964, symSize: 0xC0 }
+  - { offset: 0x14938, size: 0x8, addend: 0x0, symName: __ZL16TKDeviceOriginalP11objc_objectP13objc_selector, symObjAddr: 0x1FD94, symBinAddr: 0x23D94, symSize: 0x108 }
+  - { offset: 0x14A63, size: 0x8, addend: 0x0, symName: __ZL20TKDeviceFriendlyNameP11objc_objectP13objc_selector, symObjAddr: 0x1FA24, symBinAddr: 0x23A24, symSize: 0x9C }
+  - { offset: 0x14AFD, size: 0x8, addend: 0x0, symName: ____ZL20TKInstallDeviceHooksv_block_invoke, symObjAddr: 0x1FAC0, symBinAddr: 0x23AC0, symSize: 0x8C }
+  - { offset: 0x14BBA, size: 0x8, addend: 0x0, symName: __ZL14TKSysctlByNamePKcPvPmS1_m, symObjAddr: 0x1FB4C, symBinAddr: 0x23B4C, symSize: 0xF8 }
+  - { offset: 0x14C8A, size: 0x8, addend: 0x0, symName: __ZL19TKCopyHardwareValuePvPmPKc, symObjAddr: 0x1FE9C, symBinAddr: 0x23E9C, symSize: 0xA0 }
+  - { offset: 0x14D26, size: 0x8, addend: 0x0, symName: __ZL8TKSysctlPijPvPmS0_m, symObjAddr: 0x1FC44, symBinAddr: 0x23C44, symSize: 0xAC }
+  - { offset: 0x14DF1, size: 0x8, addend: 0x0, symName: __ZL7TKUnameP7utsname, symObjAddr: 0x1FCF0, symBinAddr: 0x23CF0, symSize: 0xA4 }
+  - { offset: 0x14EC5, size: 0x8, addend: 0x0, symName: __ZL20TKPromoteProvisionalP11objc_object, symObjAddr: 0x2079C, symBinAddr: 0x2479C, symSize: 0x554 }
+  - { offset: 0x14FE9, size: 0x8, addend: 0x0, symName: ____ZL22TKRecallFactsSaveAsyncv_block_invoke, symObjAddr: 0x205C4, symBinAddr: 0x245C4, symSize: 0x1B4 }
+  - { offset: 0x15040, size: 0x8, addend: 0x0, symName: ____ZL21TKRecordRecallTimeRawP11objc_object_block_invoke, symObjAddr: 0x20778, symBinAddr: 0x24778, symSize: 0x24 }
+  - { offset: 0x1509B, size: 0x8, addend: 0x0, symName: ____ZL16TKAttachListenerv_block_invoke, symObjAddr: 0x2100C, symBinAddr: 0x2500C, symSize: 0xDC }
+  - { offset: 0x150FD, size: 0x8, addend: 0x0, symName: ____ZL17TKReceiveMessagesP11objc_object_block_invoke, symObjAddr: 0x210E8, symBinAddr: 0x250E8, symSize: 0x158 }
+  - { offset: 0x15185, size: 0x8, addend: 0x0, symName: ____ZL16TKQueueRedPacketP11objc_object_block_invoke, symObjAddr: 0x21748, symBinAddr: 0x25748, symSize: 0x38 }
+  - { offset: 0x151C7, size: 0x8, addend: 0x0, symName: ____ZL15TKDrainRedQueuev_block_invoke, symObjAddr: 0x21780, symBinAddr: 0x25780, symSize: 0x90 }
+  - { offset: 0x151D1, size: 0x8, addend: 0x0, symName: ____ZL15TKDrainRedQueuev_block_invoke, symObjAddr: 0x21780, symBinAddr: 0x25780, symSize: 0x90 }
+  - { offset: 0x15228, size: 0x8, addend: 0x0, symName: ____ZL15TKDrainRedQueuev_block_invoke_2, symObjAddr: 0x21810, symBinAddr: 0x25810, symSize: 0xC4 }
+  - { offset: 0x15265, size: 0x8, addend: 0x0, symName: ____ZL15TKDrainRedQueuev_block_invoke_3, symObjAddr: 0x218D4, symBinAddr: 0x258D4, symSize: 0x4 }
+  - { offset: 0x1526F, size: 0x8, addend: 0x0, symName: ____ZL15TKDrainRedQueuev_block_invoke_3, symObjAddr: 0x218D4, symBinAddr: 0x258D4, symSize: 0x4 }
+  - { offset: 0x15299, size: 0x8, addend: 0x0, symName: ____ZL15TKDrainRedQueuev_block_invoke.1863, symObjAddr: 0x218D8, symBinAddr: 0x258D8, symSize: 0x7C }
+  - { offset: 0x152A3, size: 0x8, addend: 0x0, symName: ____ZL15TKDrainRedQueuev_block_invoke.1863, symObjAddr: 0x218D8, symBinAddr: 0x258D8, symSize: 0x7C }
+  - { offset: 0x152D7, size: 0x8, addend: 0x0, symName: ____ZL16TKInstallVoiceAIv_block_invoke, symObjAddr: 0x21954, symBinAddr: 0x25954, symSize: 0x4 }
+  - { offset: 0x1530D, size: 0x8, addend: 0x0, symName: ____ZL16TKInstallVoiceAIv_block_invoke_2, symObjAddr: 0x21958, symBinAddr: 0x25958, symSize: 0x14 }
+  - { offset: 0x15317, size: 0x8, addend: 0x0, symName: ____ZL16TKInstallVoiceAIv_block_invoke_2, symObjAddr: 0x21958, symBinAddr: 0x25958, symSize: 0x14 }
+  - { offset: 0x1534D, size: 0x8, addend: 0x0, symName: ____ZL16TKInstallVoiceAIv_block_invoke_2, symObjAddr: 0x21958, symBinAddr: 0x25958, symSize: 0x14 }
+  - { offset: 0x15362, size: 0x8, addend: 0x0, symName: __ZL14TKUIParseCentsP8NSStringPlPU15__autoreleasingS0_.cold.1, symObjAddr: 0x2196C, symBinAddr: 0x2596C, symSize: 0x14 }
+...

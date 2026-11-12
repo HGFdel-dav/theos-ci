@@ -1,0 +1,4 @@
+#!/bin/sh
+# 让 runningboardd 重新加载 ChoicySB（否则启动环境里的 safe mode 逻辑仍是旧代码）
+killall -9 runningboardd 2>/dev/null
+exit 0

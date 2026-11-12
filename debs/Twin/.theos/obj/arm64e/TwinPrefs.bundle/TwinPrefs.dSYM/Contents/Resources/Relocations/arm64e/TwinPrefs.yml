@@ -1,0 +1,571 @@
+---
+triple:          'arm64e-apple-darwin'
+binary-path:     '/Users/runner/work/theos-ci/theos-ci/debs/Twin/.theos/obj/arm64e/TwinPrefs.bundle/TwinPrefs'
+relocations:
+  - { offset: 0x1E, size: 0x8, addend: 0x0, symName: '-[TWRootListController tableView:willDisplayCell:forRowAtIndexPath:]', symObjAddr: 0x0, symBinAddr: 0x4000, symSize: 0xC8 }
+  - { offset: 0x28EE, size: 0x8, addend: 0x0, symName: '-[TWRootListController tableView:willDisplayCell:forRowAtIndexPath:]', symObjAddr: 0x0, symBinAddr: 0x4000, symSize: 0xC8 }
+  - { offset: 0x3702, size: 0x8, addend: 0x0, symName: '-[TWRootListController init]', symObjAddr: 0xC8, symBinAddr: 0x40C8, symSize: 0x5C }
+  - { offset: 0x3736, size: 0x8, addend: 0x0, symName: '-[TWRootListController twArcSummary]', symObjAddr: 0x124, symBinAddr: 0x4124, symSize: 0x210 }
+  - { offset: 0x37F7, size: 0x8, addend: 0x0, symName: '-[TWRootListController twCraneLabel]', symObjAddr: 0x334, symBinAddr: 0x4334, symSize: 0x68 }
+  - { offset: 0x3853, size: 0x8, addend: 0x0, symName: '-[TWRootListController twParallelXLabel]', symObjAddr: 0x39C, symBinAddr: 0x439C, symSize: 0x48 }
+  - { offset: 0x3890, size: 0x8, addend: 0x0, symName: '-[TWRootListController twTwinLabel]', symObjAddr: 0x3E4, symBinAddr: 0x43E4, symSize: 0x80 }
+  - { offset: 0x38C0, size: 0x8, addend: 0x0, symName: '-[TWRootListController twSystemLabel]', symObjAddr: 0x464, symBinAddr: 0x4464, symSize: 0x1E0 }
+  - { offset: 0x3A33, size: 0x8, addend: 0x0, symName: '-[TWRootListController tableView:heightForRowAtIndexPath:]', symObjAddr: 0x644, symBinAddr: 0x4644, symSize: 0x1EC }
+  - { offset: 0x3B2D, size: 0x8, addend: 0x0, symName: _TWDiagSpecSummary, symObjAddr: 0x830, symBinAddr: 0x4830, symSize: 0x228 }
+  - { offset: 0x3B83, size: 0x8, addend: 0x0, symName: '-[TWRootListController tableView:cellForRowAtIndexPath:]', symObjAddr: 0xA58, symBinAddr: 0x4A58, symSize: 0x404 }
+  - { offset: 0x3D8B, size: 0x8, addend: 0x0, symName: '-[TWRootListController specifiers]', symObjAddr: 0xE5C, symBinAddr: 0x4E5C, symSize: 0x84C }
+  - { offset: 0x41B7, size: 0x8, addend: 0x0, symName: '-[TWRootListController pxReadValue:]', symObjAddr: 0x16A8, symBinAddr: 0x56A8, symSize: 0x134 }
+  - { offset: 0x4238, size: 0x8, addend: 0x0, symName: '-[TWRootListController pxWriteValue:specifier:]', symObjAddr: 0x17DC, symBinAddr: 0x57DC, symSize: 0x114 }
+  - { offset: 0x42A5, size: 0x8, addend: 0x0, symName: '-[TWRootListController twOriginalArcController]', symObjAddr: 0x18F0, symBinAddr: 0x58F0, symSize: 0x25C }
+  - { offset: 0x4395, size: 0x8, addend: 0x0, symName: '-[TWRootListController twPXAppPickerController]', symObjAddr: 0x1B4C, symBinAddr: 0x5B4C, symSize: 0x250 }
+  - { offset: 0x4484, size: 0x8, addend: 0x0, symName: '-[TWRootListController controllerForSpecifier:]', symObjAddr: 0x1D9C, symBinAddr: 0x5D9C, symSize: 0x1EC }
+  - { offset: 0x45AB, size: 0x8, addend: 0x0, symName: _TWRuntimeLog, symObjAddr: 0x1F88, symBinAddr: 0x5F88, symSize: 0x410 }
+  - { offset: 0x47E4, size: 0x8, addend: 0x0, symName: '-[TWRootListController twRefreshHero]', symObjAddr: 0x2398, symBinAddr: 0x6398, symSize: 0x1E8 }
+  - { offset: 0x4831, size: 0x8, addend: 0x0, symName: '-[TWRootListController tableView:indentationLevelForRowAtIndexPath:]', symObjAddr: 0x2580, symBinAddr: 0x6580, symSize: 0x8 }
+  - { offset: 0x487A, size: 0x8, addend: 0x0, symName: '-[TWRootListController viewDidLoad]', symObjAddr: 0x2588, symBinAddr: 0x6588, symSize: 0x98 }
+  - { offset: 0x48AB, size: 0x8, addend: 0x0, symName: '-[TWRootListController viewWillAppear:]', symObjAddr: 0x2620, symBinAddr: 0x6620, symSize: 0x54 }
+  - { offset: 0x48EC, size: 0x8, addend: 0x0, symName: '-[TWRootListController viewDidLayoutSubviews]', symObjAddr: 0x2674, symBinAddr: 0x6674, symSize: 0xD0 }
+  - { offset: 0x491D, size: 0x8, addend: 0x0, symName: '-[TWRootListController reloadSpecifiers]', symObjAddr: 0x2744, symBinAddr: 0x6744, symSize: 0x58 }
+  - { offset: 0x494E, size: 0x8, addend: 0x0, symName: '-[TWRootListController readPreferenceValue:]', symObjAddr: 0x279C, symBinAddr: 0x679C, symSize: 0x16C }
+  - { offset: 0x49C9, size: 0x8, addend: 0x0, symName: '-[TWRootListController setPreferenceValue:specifier:]', symObjAddr: 0x2908, symBinAddr: 0x6908, symSize: 0x1B8 }
+  - { offset: 0x4A58, size: 0x8, addend: 0x0, symName: '-[TWRootListController twConfirmResetMemory:]', symObjAddr: 0x2AC0, symBinAddr: 0x6AC0, symSize: 0x198 }
+  - { offset: 0x4AB8, size: 0x8, addend: 0x0, symName: '___45-[TWRootListController twConfirmResetMemory:]_block_invoke', symObjAddr: 0x2C58, symBinAddr: 0x6C58, symSize: 0x48 }
+  - { offset: 0x4AFF, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32w, symObjAddr: 0x2CA0, symBinAddr: 0x6CA0, symSize: 0xC }
+  - { offset: 0x4B25, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_e8_32w, symObjAddr: 0x2CAC, symBinAddr: 0x6CAC, symSize: 0x8 }
+  - { offset: 0x4B42, size: 0x8, addend: 0x0, symName: '-[TWRootListController tableView:didSelectRowAtIndexPath:]', symObjAddr: 0x2CB4, symBinAddr: 0x6CB4, symSize: 0x158 }
+  - { offset: 0x4BB3, size: 0x8, addend: 0x0, symName: '-[TWRootListController .cxx_destruct]', symObjAddr: 0x2E0C, symBinAddr: 0x6E0C, symSize: 0x14 }
+  - { offset: 0x4EB2, size: 0x8, addend: 0x0, symName: _TWSuperControllerForSpecifier, symObjAddr: 0x0, symBinAddr: 0x6E20, symSize: 0xC0 }
+  - { offset: 0x4ECB, size: 0x8, addend: 0x0, symName: _TWPrefsBundleName, symObjAddr: 0x6860, symBinAddr: 0x40390, symSize: 0x0 }
+  - { offset: 0x4F52, size: 0x8, addend: 0x0, symName: _TWDiagLogPath, symObjAddr: 0x68C8, symBinAddr: 0x403F8, symSize: 0x0 }
+  - { offset: 0x4F5B, size: 0x8, addend: 0x0, symName: _TWDiagInstallUncaughtHandler, symObjAddr: 0x396C, symBinAddr: 0xA78C, symSize: 0x2C }
+  - { offset: 0x4F7E, size: 0x8, addend: 0x0, symName: _TWDiagInstallUncaughtHandler.onceToken, symObjAddr: 0x1C5F8, symBinAddr: 0x4FDF0, symSize: 0x0 }
+  - { offset: 0x69C8, size: 0x8, addend: 0x0, symName: _TWRememberSnapshot, symObjAddr: 0x17E4, symBinAddr: 0x8604, symSize: 0x6D8 }
+  - { offset: 0x6B2E, size: 0x8, addend: 0x0, symName: _TWRememberWipe, symObjAddr: 0x2198, symBinAddr: 0x8FB8, symSize: 0xB8 }
+  - { offset: 0x79CA, size: 0x8, addend: 0x0, symName: _TWSuperControllerForSpecifier, symObjAddr: 0x0, symBinAddr: 0x6E20, symSize: 0xC0 }
+  - { offset: 0x7A77, size: 0x8, addend: 0x0, symName: _TWGroupSpecifier, symObjAddr: 0xC0, symBinAddr: 0x6EE0, symSize: 0x90 }
+  - { offset: 0x7ABE, size: 0x8, addend: 0x0, symName: _TWIconTintColor, symObjAddr: 0x150, symBinAddr: 0x6F70, symSize: 0x228 }
+  - { offset: 0x7B04, size: 0x8, addend: 0x0, symName: _TWRowSpecifier, symObjAddr: 0x378, symBinAddr: 0x7198, symSize: 0x830 }
+  - { offset: 0x7D0B, size: 0x8, addend: 0x0, symName: _TWLinkRowSpecifier, symObjAddr: 0xBA8, symBinAddr: 0x79C8, symSize: 0x1B8 }
+  - { offset: 0x7DD2, size: 0x8, addend: 0x0, symName: _TWButtonRowSpecifier, symObjAddr: 0xD60, symBinAddr: 0x7B80, symSize: 0x1B8 }
+  - { offset: 0x7EAC, size: 0x8, addend: 0x0, symName: _TWControllerForSpecifier, symObjAddr: 0xF18, symBinAddr: 0x7D38, symSize: 0x6A0 }
+  - { offset: 0x8016, size: 0x8, addend: 0x0, symName: ___TWControllerForSpecifier_block_invoke, symObjAddr: 0x15B8, symBinAddr: 0x83D8, symSize: 0xE8 }
+  - { offset: 0x807C, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s40w, symObjAddr: 0x16A0, symBinAddr: 0x84C0, symSize: 0x44 }
+  - { offset: 0x80A2, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_e8_32s40w, symObjAddr: 0x16E4, symBinAddr: 0x8504, symSize: 0x3C }
+  - { offset: 0x80BF, size: 0x8, addend: 0x0, symName: ___TWControllerForSpecifier_block_invoke.143, symObjAddr: 0x1720, symBinAddr: 0x8540, symSize: 0xC4 }
+  - { offset: 0x8253, size: 0x8, addend: 0x0, symName: _TWSymbolVoid, symObjAddr: 0x1EBC, symBinAddr: 0x8CDC, symSize: 0x64 }
+  - { offset: 0x82B9, size: 0x8, addend: 0x0, symName: _TWRememberSnapshotCount, symObjAddr: 0x1F20, symBinAddr: 0x8D40, symSize: 0x40 }
+  - { offset: 0x82C3, size: 0x8, addend: 0x0, symName: _TWRectText, symObjAddr: 0x5168, symBinAddr: 0xBF88, symSize: 0x1E0 }
+  - { offset: 0x8344, size: 0x8, addend: 0x0, symName: _TWRememberSnapshotCount, symObjAddr: 0x1F20, symBinAddr: 0x8D40, symSize: 0x40 }
+  - { offset: 0x836C, size: 0x8, addend: 0x0, symName: _TWRememberDeleteState, symObjAddr: 0x1F60, symBinAddr: 0x8D80, symSize: 0x238 }
+  - { offset: 0x83E5, size: 0x8, addend: 0x0, symName: _TWCraneContainers, symObjAddr: 0x2250, symBinAddr: 0x9070, symSize: 0x71C }
+  - { offset: 0x852C, size: 0x8, addend: 0x0, symName: _TWPrefsAppName, symObjAddr: 0x296C, symBinAddr: 0x978C, symSize: 0x178 }
+  - { offset: 0x8620, size: 0x8, addend: 0x0, symName: _TWCraneContainerCount, symObjAddr: 0x2AE4, symBinAddr: 0x9904, symSize: 0x40 }
+  - { offset: 0x8648, size: 0x8, addend: 0x0, symName: _TWArcOrderList, symObjAddr: 0x2B24, symBinAddr: 0x9944, symSize: 0x378 }
+  - { offset: 0x8708, size: 0x8, addend: 0x0, symName: _TWSetArcOrderList, symObjAddr: 0x2E9C, symBinAddr: 0x9CBC, symSize: 0x1BC }
+  - { offset: 0x8862, size: 0x8, addend: 0x0, symName: _TWDiagLogPathResolve, symObjAddr: 0x3058, symBinAddr: 0x9E78, symSize: 0x5E0 }
+  - { offset: 0x899A, size: 0x8, addend: 0x0, symName: _TWJBRootSelfDerived, symObjAddr: 0x5348, symBinAddr: 0xC168, symSize: 0x114 }
+  - { offset: 0x8A5F, size: 0x8, addend: 0x0, symName: _TWDiagLog, symObjAddr: 0x3638, symBinAddr: 0xA458, symSize: 0x200 }
+  - { offset: 0x8B03, size: 0x8, addend: 0x0, symName: _TWDiagDumpException, symObjAddr: 0x3838, symBinAddr: 0xA658, symSize: 0x134 }
+  - { offset: 0x8C05, size: 0x8, addend: 0x0, symName: _TWDiagInstallUncaughtHandler.cold.1, symObjAddr: 0x560C, symBinAddr: 0x30A74, symSize: 0x14 }
+  - { offset: 0x8C20, size: 0x8, addend: 0x0, symName: _TWDiagInstallUncaughtHandler.cold.1, symObjAddr: 0x560C, symBinAddr: 0x30A74, symSize: 0x14 }
+  - { offset: 0x8C32, size: 0x8, addend: 0x0, symName: ___TWDiagInstallUncaughtHandler_block_invoke, symObjAddr: 0x3998, symBinAddr: 0xA7B8, symSize: 0x14 }
+  - { offset: 0x8C5C, size: 0x8, addend: 0x0, symName: _TWUncaughtHandler, symObjAddr: 0x39AC, symBinAddr: 0xA7CC, symSize: 0xC }
+  - { offset: 0x8D20, size: 0x8, addend: 0x0, symName: _TWUncaughtHandler, symObjAddr: 0x39AC, symBinAddr: 0xA7CC, symSize: 0xC }
+  - { offset: 0x8D48, size: 0x8, addend: 0x0, symName: '-[TWSliderProxy twUpdateLabel]', symObjAddr: 0x39B8, symBinAddr: 0xA7D8, symSize: 0x13C }
+  - { offset: 0x8D5A, size: 0x8, addend: 0x0, symName: '-[TWSliderProxy twUpdateLabel]', symObjAddr: 0x39B8, symBinAddr: 0xA7D8, symSize: 0x13C }
+  - { offset: 0x8D9B, size: 0x8, addend: 0x0, symName: '-[TWSliderProxy twChanged]', symObjAddr: 0x3AF4, symBinAddr: 0xA914, symSize: 0x1B0 }
+  - { offset: 0x8DDC, size: 0x8, addend: 0x0, symName: '-[TWSliderProxy twCommit]', symObjAddr: 0x3CA4, symBinAddr: 0xAAC4, symSize: 0x88 }
+  - { offset: 0x8E0D, size: 0x8, addend: 0x0, symName: '-[TWSliderProxy slider]', symObjAddr: 0x3D2C, symBinAddr: 0xAB4C, symSize: 0x2C }
+  - { offset: 0x8E42, size: 0x8, addend: 0x0, symName: '-[TWSliderProxy setSlider:]', symObjAddr: 0x3D58, symBinAddr: 0xAB78, symSize: 0xC }
+  - { offset: 0x8E80, size: 0x8, addend: 0x0, symName: '-[TWSliderProxy target]', symObjAddr: 0x3D64, symBinAddr: 0xAB84, symSize: 0x2C }
+  - { offset: 0x8EB5, size: 0x8, addend: 0x0, symName: '-[TWSliderProxy setTarget:]', symObjAddr: 0x3D90, symBinAddr: 0xABB0, symSize: 0xC }
+  - { offset: 0x8EF3, size: 0x8, addend: 0x0, symName: '-[TWSliderProxy setter]', symObjAddr: 0x3D9C, symBinAddr: 0xABBC, symSize: 0x8 }
+  - { offset: 0x8F28, size: 0x8, addend: 0x0, symName: '-[TWSliderProxy setSetter:]', symObjAddr: 0x3DA4, symBinAddr: 0xABC4, symSize: 0x8 }
+  - { offset: 0x8F62, size: 0x8, addend: 0x0, symName: '-[TWSliderProxy specifier]', symObjAddr: 0x3DAC, symBinAddr: 0xABCC, symSize: 0x2C }
+  - { offset: 0x8F97, size: 0x8, addend: 0x0, symName: '-[TWSliderProxy setSpecifier:]', symObjAddr: 0x3DD8, symBinAddr: 0xABF8, symSize: 0xC }
+  - { offset: 0x8FD5, size: 0x8, addend: 0x0, symName: '-[TWSliderProxy valueLabel]', symObjAddr: 0x3DE4, symBinAddr: 0xAC04, symSize: 0x2C }
+  - { offset: 0x900A, size: 0x8, addend: 0x0, symName: '-[TWSliderProxy setValueLabel:]', symObjAddr: 0x3E10, symBinAddr: 0xAC30, symSize: 0xC }
+  - { offset: 0x9048, size: 0x8, addend: 0x0, symName: '-[TWSliderProxy key]', symObjAddr: 0x3E1C, symBinAddr: 0xAC3C, symSize: 0x8 }
+  - { offset: 0x907D, size: 0x8, addend: 0x0, symName: '-[TWSliderProxy setKey:]', symObjAddr: 0x3E24, symBinAddr: 0xAC44, symSize: 0x8 }
+  - { offset: 0x90B9, size: 0x8, addend: 0x0, symName: '-[TWSliderProxy decimals]', symObjAddr: 0x3E2C, symBinAddr: 0xAC4C, symSize: 0x8 }
+  - { offset: 0x90EE, size: 0x8, addend: 0x0, symName: '-[TWSliderProxy setDecimals:]', symObjAddr: 0x3E34, symBinAddr: 0xAC54, symSize: 0x8 }
+  - { offset: 0x9128, size: 0x8, addend: 0x0, symName: '-[TWSliderProxy unit]', symObjAddr: 0x3E3C, symBinAddr: 0xAC5C, symSize: 0x8 }
+  - { offset: 0x915D, size: 0x8, addend: 0x0, symName: '-[TWSliderProxy setUnit:]', symObjAddr: 0x3E44, symBinAddr: 0xAC64, symSize: 0x8 }
+  - { offset: 0x9199, size: 0x8, addend: 0x0, symName: '-[TWSliderProxy .cxx_destruct]', symObjAddr: 0x3E4C, symBinAddr: 0xAC6C, symSize: 0x64 }
+  - { offset: 0x91CA, size: 0x8, addend: 0x0, symName: _TWStyleSliderCellIfNeeded, symObjAddr: 0x3EB0, symBinAddr: 0xACD0, symSize: 0xC6C }
+  - { offset: 0x958B, size: 0x8, addend: 0x0, symName: ___TWStyleSliderCellIfNeeded_block_invoke, symObjAddr: 0x4B1C, symBinAddr: 0xB93C, symSize: 0x13C }
+  - { offset: 0x9717, size: 0x8, addend: 0x0, symName: _TWDecorateCellIfNeeded, symObjAddr: 0x4C58, symBinAddr: 0xBA78, symSize: 0x478 }
+  - { offset: 0x982D, size: 0x8, addend: 0x0, symName: _TWDecorateCellIfNeeded.cold.1, symObjAddr: 0x5620, symBinAddr: 0x30A88, symSize: 0x14 }
+  - { offset: 0x9848, size: 0x8, addend: 0x0, symName: _TWDecorateCellIfNeeded.cold.1, symObjAddr: 0x5620, symBinAddr: 0x30A88, symSize: 0x14 }
+  - { offset: 0x985D, size: 0x8, addend: 0x0, symName: _TWDecorateCellIfNeeded.cold.1, symObjAddr: 0x5620, symBinAddr: 0x30A88, symSize: 0x14 }
+  - { offset: 0x9870, size: 0x8, addend: 0x0, symName: ___TWRememberStatesFromPrefs_block_invoke, symObjAddr: 0x50D0, symBinAddr: 0xBEF0, symSize: 0x98 }
+  - { offset: 0x991A, size: 0x8, addend: 0x0, symName: ___TWDecoIcon_block_invoke, symObjAddr: 0x545C, symBinAddr: 0xC27C, symSize: 0x48 }
+  - { offset: 0x995B, size: 0x8, addend: 0x0, symName: ___TWDecoIcon_block_invoke_2, symObjAddr: 0x54A4, symBinAddr: 0xC2C4, symSize: 0x158 }
+  - { offset: 0x99DB, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s, symObjAddr: 0x55FC, symBinAddr: 0xC41C, symSize: 0x8 }
+  - { offset: 0x99FF, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_e8_32s, symObjAddr: 0x5604, symBinAddr: 0xC424, symSize: 0x8 }
+  - { offset: 0xAFF3, size: 0x8, addend: 0x0, symName: '-[TWChoiceController initWithTitle:key:titles:values:]', symObjAddr: 0x0, symBinAddr: 0xC42C, symSize: 0x168 }
+  - { offset: 0xD91B, size: 0x8, addend: 0x0, symName: '-[TWChoiceController initWithTitle:key:titles:values:]', symObjAddr: 0x0, symBinAddr: 0xC42C, symSize: 0x168 }
+  - { offset: 0xD98B, size: 0x8, addend: 0x0, symName: '-[TWChoiceController specifiers]', symObjAddr: 0x168, symBinAddr: 0xC594, symSize: 0x1AC }
+  - { offset: 0xDA25, size: 0x8, addend: 0x0, symName: '-[TWChoiceController currentIndex]', symObjAddr: 0x314, symBinAddr: 0xC740, symSize: 0x174 }
+  - { offset: 0xDAAD, size: 0x8, addend: 0x0, symName: '-[TWChoiceController tableView:cellForRowAtIndexPath:]', symObjAddr: 0x488, symBinAddr: 0xC8B4, symSize: 0x15C }
+  - { offset: 0xDB1D, size: 0x8, addend: 0x0, symName: '-[TWChoiceController twSelectChoice:]', symObjAddr: 0x5E4, symBinAddr: 0xCA10, symSize: 0x194 }
+  - { offset: 0xDB8C, size: 0x8, addend: 0x0, symName: '-[TWChoiceController tableView:didSelectRowAtIndexPath:]', symObjAddr: 0x778, symBinAddr: 0xCBA4, symSize: 0x88 }
+  - { offset: 0xDBDA, size: 0x8, addend: 0x0, symName: '-[TWChoiceController readValue]', symObjAddr: 0x800, symBinAddr: 0xCC2C, symSize: 0x10 }
+  - { offset: 0xDC0E, size: 0x8, addend: 0x0, symName: '-[TWChoiceController setReadValue:]', symObjAddr: 0x810, symBinAddr: 0xCC3C, symSize: 0xC }
+  - { offset: 0xDC49, size: 0x8, addend: 0x0, symName: '-[TWChoiceController writeValue]', symObjAddr: 0x81C, symBinAddr: 0xCC48, symSize: 0x10 }
+  - { offset: 0xDC7D, size: 0x8, addend: 0x0, symName: '-[TWChoiceController setWriteValue:]', symObjAddr: 0x82C, symBinAddr: 0xCC58, symSize: 0xC }
+  - { offset: 0xDCB8, size: 0x8, addend: 0x0, symName: '-[TWChoiceController .cxx_destruct]', symObjAddr: 0x838, symBinAddr: 0xCC64, symSize: 0x90 }
+  - { offset: 0xEA4A, size: 0x8, addend: 0x0, symName: '-[TWOrigArcController init]', symObjAddr: 0x0, symBinAddr: 0xCCF4, symSize: 0x5C }
+  - { offset: 0x113B2, size: 0x8, addend: 0x0, symName: '-[TWOrigArcController init]', symObjAddr: 0x0, symBinAddr: 0xCCF4, symSize: 0x5C }
+  - { offset: 0x113E6, size: 0x8, addend: 0x0, symName: '-[TWOrigArcController viewDidLoad]', symObjAddr: 0x5C, symBinAddr: 0xCD50, symSize: 0x88 }
+  - { offset: 0x11556, size: 0x8, addend: 0x0, symName: '-[TWOrigArcController specifiers]', symObjAddr: 0xE4, symBinAddr: 0xCDD8, symSize: 0x102C }
+  - { offset: 0x11840, size: 0x8, addend: 0x0, symName: _TWJBRootSelfDerived, symObjAddr: 0x228C, symBinAddr: 0xEF70, symSize: 0x114 }
+  - { offset: 0x118D4, size: 0x8, addend: 0x0, symName: _TWRuntimeLog, symObjAddr: 0x1E78, symBinAddr: 0xEB5C, symSize: 0x414 }
+  - { offset: 0x11A4C, size: 0x8, addend: 0x0, symName: '___33-[TWOrigArcController specifiers]_block_invoke', symObjAddr: 0x1110, symBinAddr: 0xDE04, symSize: 0xBC }
+  - { offset: 0x11AA1, size: 0x8, addend: 0x0, symName: '-[TWOrigArcController readPreferenceValue:]', symObjAddr: 0x11DC, symBinAddr: 0xDEC0, symSize: 0x100 }
+  - { offset: 0x11B24, size: 0x8, addend: 0x0, symName: _TWOrigRead, symObjAddr: 0x12DC, symBinAddr: 0xDFC0, symSize: 0xBC }
+  - { offset: 0x11BE4, size: 0x8, addend: 0x0, symName: '-[TWOrigArcController setPreferenceValue:specifier:]', symObjAddr: 0x1398, symBinAddr: 0xE07C, symSize: 0x268 }
+  - { offset: 0x11CA8, size: 0x8, addend: 0x0, symName: _TWOrigWrite, symObjAddr: 0x1600, symBinAddr: 0xE2E4, symSize: 0xBC }
+  - { offset: 0x11DC4, size: 0x8, addend: 0x0, symName: '-[TWOrigArcController tableView:cellForRowAtIndexPath:]', symObjAddr: 0x16BC, symBinAddr: 0xE3A0, symSize: 0x1E0 }
+  - { offset: 0x11E6F, size: 0x8, addend: 0x0, symName: '-[TWOrigArcController tableView:heightForRowAtIndexPath:]', symObjAddr: 0x189C, symBinAddr: 0xE580, symSize: 0xC8 }
+  - { offset: 0x11ED0, size: 0x8, addend: 0x0, symName: '-[TWOrigArcController tableView:willDisplayCell:forRowAtIndexPath:]', symObjAddr: 0x1964, symBinAddr: 0xE648, symSize: 0x78 }
+  - { offset: 0x12C86, size: 0x8, addend: 0x0, symName: '-[TWOrigArcController tableView:didSelectRowAtIndexPath:]', symObjAddr: 0x19DC, symBinAddr: 0xE6C0, symSize: 0x3CC }
+  - { offset: 0x12D9B, size: 0x8, addend: 0x0, symName: '___57-[TWOrigArcController tableView:didSelectRowAtIndexPath:]_block_invoke', symObjAddr: 0x1DA8, symBinAddr: 0xEA8C, symSize: 0x48 }
+  - { offset: 0x12DCB, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s40s48s, symObjAddr: 0x1DF0, symBinAddr: 0xEAD4, symSize: 0x44 }
+  - { offset: 0x12DF1, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_e8_32s40s48s, symObjAddr: 0x1E34, symBinAddr: 0xEB18, symSize: 0x44 }
+  - { offset: 0x1368C, size: 0x8, addend: 0x0, symName: '-[TWLogController init]', symObjAddr: 0x0, symBinAddr: 0xF084, symSize: 0x5C }
+  - { offset: 0x15F12, size: 0x8, addend: 0x0, symName: '-[TWLogController init]', symObjAddr: 0x0, symBinAddr: 0xF084, symSize: 0x5C }
+  - { offset: 0x15F46, size: 0x8, addend: 0x0, symName: '-[TWLogController twReadLines]', symObjAddr: 0x5C, symBinAddr: 0xF0E0, symSize: 0x1D0 }
+  - { offset: 0x1602F, size: 0x8, addend: 0x0, symName: '-[TWLogController specifiers]', symObjAddr: 0x22C, symBinAddr: 0xF2B0, symSize: 0x224 }
+  - { offset: 0x160CD, size: 0x8, addend: 0x0, symName: '-[TWLogController viewDidLoad]', symObjAddr: 0x450, symBinAddr: 0xF4D4, symSize: 0x138 }
+  - { offset: 0x1610C, size: 0x8, addend: 0x0, symName: '-[TWLogController twReload]', symObjAddr: 0x588, symBinAddr: 0xF60C, symSize: 0x84 }
+  - { offset: 0x1613C, size: 0x8, addend: 0x0, symName: '-[TWLogController twCopyAll]', symObjAddr: 0x60C, symBinAddr: 0xF690, symSize: 0x10C }
+  - { offset: 0x1617B, size: 0x8, addend: 0x0, symName: '-[TWLogController tableView:cellForRowAtIndexPath:]', symObjAddr: 0x718, symBinAddr: 0xF79C, symSize: 0xE8 }
+  - { offset: 0x161DC, size: 0x8, addend: 0x0, symName: '-[TWLogController tableView:heightForRowAtIndexPath:]', symObjAddr: 0x800, symBinAddr: 0xF884, symSize: 0x1A4 }
+  - { offset: 0x16276, size: 0x8, addend: 0x0, symName: '-[TWLogController .cxx_destruct]', symObjAddr: 0x9A4, symBinAddr: 0xFA28, symSize: 0x14 }
+  - { offset: 0x170BA, size: 0x8, addend: 0x0, symName: '-[TWArcPanelController tableView:willDisplayCell:forRowAtIndexPath:]', symObjAddr: 0x0, symBinAddr: 0xFA3C, symSize: 0xBC }
+  - { offset: 0x19933, size: 0x8, addend: 0x0, symName: '-[TWArcPanelController tableView:willDisplayCell:forRowAtIndexPath:]', symObjAddr: 0x0, symBinAddr: 0xFA3C, symSize: 0xBC }
+  - { offset: 0x1A71B, size: 0x8, addend: 0x0, symName: '-[TWArcPanelController tableView:cellForRowAtIndexPath:]', symObjAddr: 0xBC, symBinAddr: 0xFAF8, symSize: 0x2D0 }
+  - { offset: 0x1A7DC, size: 0x8, addend: 0x0, symName: _TWRuntimeLog, symObjAddr: 0x38C, symBinAddr: 0xFDC8, symSize: 0x410 }
+  - { offset: 0x1AA9A, size: 0x8, addend: 0x0, symName: '-[TWArcPanelController init]', symObjAddr: 0x79C, symBinAddr: 0x101D8, symSize: 0x5C }
+  - { offset: 0x1AACE, size: 0x8, addend: 0x0, symName: '-[TWArcPanelController specifiers]', symObjAddr: 0x7F8, symBinAddr: 0x10234, symSize: 0x318 }
+  - { offset: 0x1ACC6, size: 0x8, addend: 0x0, symName: '-[TWArcPanelController controllerForSpecifier:]', symObjAddr: 0xB10, symBinAddr: 0x1054C, symSize: 0x98 }
+  - { offset: 0x1AD7D, size: 0x8, addend: 0x0, symName: '-[TWArcPanelController tableView:indentationLevelForRowAtIndexPath:]', symObjAddr: 0xBA8, symBinAddr: 0x105E4, symSize: 0x8 }
+  - { offset: 0x1ADC3, size: 0x8, addend: 0x0, symName: '-[TWArcPanelController tableView:heightForRowAtIndexPath:]', symObjAddr: 0xBB0, symBinAddr: 0x105EC, symSize: 0x154 }
+  - { offset: 0x1AE6F, size: 0x8, addend: 0x0, symName: '-[TWArcPanelController twAutoPushPicker]', symObjAddr: 0xD04, symBinAddr: 0x10740, symSize: 0xA8 }
+  - { offset: 0x1AEDC, size: 0x8, addend: 0x0, symName: '-[TWArcPanelController viewDidAppear:]', symObjAddr: 0xDAC, symBinAddr: 0x107E8, symSize: 0x12C }
+  - { offset: 0x1B013, size: 0x8, addend: 0x0, symName: '___38-[TWArcPanelController viewDidAppear:]_block_invoke', symObjAddr: 0xED8, symBinAddr: 0x10914, symSize: 0x8 }
+  - { offset: 0x1B038, size: 0x8, addend: 0x0, symName: '-[TWArcPanelController viewDidLoad]', symObjAddr: 0xEF0, symBinAddr: 0x1091C, symSize: 0x114 }
+  - { offset: 0x1B096, size: 0x8, addend: 0x0, symName: '-[TWArcPanelController viewWillAppear:]', symObjAddr: 0x1004, symBinAddr: 0x10A30, symSize: 0x4C }
+  - { offset: 0x1B0D5, size: 0x8, addend: 0x0, symName: '-[TWArcPanelController readPreferenceValue:]', symObjAddr: 0x1050, symBinAddr: 0x10A7C, symSize: 0x16C }
+  - { offset: 0x1B14B, size: 0x8, addend: 0x0, symName: '-[TWArcPanelController setPreferenceValue:specifier:]', symObjAddr: 0x11BC, symBinAddr: 0x10BE8, symSize: 0x128 }
+  - { offset: 0x1B1A8, size: 0x8, addend: 0x0, symName: '-[TWArcPanelController twCornerEnabled:]', symObjAddr: 0x12E4, symBinAddr: 0x10D10, symSize: 0xA4 }
+  - { offset: 0x1B205, size: 0x8, addend: 0x0, symName: '-[TWArcPanelController twCornerSetEnabled:specifier:]', symObjAddr: 0x1388, symBinAddr: 0x10DB4, symSize: 0x120 }
+  - { offset: 0x1B3CF, size: 0x8, addend: 0x0, symName: '-[TWContainerListController init]', symObjAddr: 0x0, symBinAddr: 0x10ED4, symSize: 0x5C }
+  - { offset: 0x1B3DC, size: 0x8, addend: 0x0, symName: _TWCraneContainerCache, symObjAddr: 0x2DE8, symBinAddr: 0x13CAC, symSize: 0xA0 }
+  - { offset: 0x1B402, size: 0x8, addend: 0x0, symName: _TWCraneContainerCache.cache, symObjAddr: 0x148F8, symBinAddr: 0x4FE08, symSize: 0x0 }
+  - { offset: 0x1B418, size: 0x8, addend: 0x0, symName: _TWCraneContainerCache.stamp, symObjAddr: 0x14900, symBinAddr: 0x4FE10, symSize: 0x0 }
+  - { offset: 0x1DA39, size: 0x8, addend: 0x0, symName: '-[TWContainerListController init]', symObjAddr: 0x0, symBinAddr: 0x10ED4, symSize: 0x5C }
+  - { offset: 0x1DB53, size: 0x8, addend: 0x0, symName: '-[TWContainerListController twLoadContainerRows]', symObjAddr: 0x5C, symBinAddr: 0x10F30, symSize: 0xC60 }
+  - { offset: 0x1DD8B, size: 0x8, addend: 0x0, symName: _TWCraneCall, symObjAddr: 0x2E88, symBinAddr: 0x13D4C, symSize: 0x400 }
+  - { offset: 0x1DEF9, size: 0x8, addend: 0x0, symName: '-[TWContainerListController specifiers]', symObjAddr: 0xCBC, symBinAddr: 0x11B90, symSize: 0x518 }
+  - { offset: 0x1E119, size: 0x8, addend: 0x0, symName: _TWAppIcon, symObjAddr: 0x11D4, symBinAddr: 0x120A8, symSize: 0x320 }
+  - { offset: 0x1E777, size: 0x8, addend: 0x0, symName: '-[TWContainerListController viewDidLoad]', symObjAddr: 0x14F4, symBinAddr: 0x123C8, symSize: 0xE0 }
+  - { offset: 0x1E7B8, size: 0x8, addend: 0x0, symName: '-[TWContainerListController viewWillAppear:]', symObjAddr: 0x15D4, symBinAddr: 0x124A8, symSize: 0xD0 }
+  - { offset: 0x1E971, size: 0x8, addend: 0x0, symName: '___44-[TWContainerListController viewWillAppear:]_block_invoke', symObjAddr: 0x16A4, symBinAddr: 0x12578, symSize: 0x8 }
+  - { offset: 0x1E998, size: 0x8, addend: 0x0, symName: '-[TWContainerListController reloadContainers]', symObjAddr: 0x16BC, symBinAddr: 0x12580, symSize: 0x84 }
+  - { offset: 0x1E9C9, size: 0x8, addend: 0x0, symName: '-[TWContainerListController readPreferenceValue:]', symObjAddr: 0x1740, symBinAddr: 0x12604, symSize: 0xE4 }
+  - { offset: 0x1EA74, size: 0x8, addend: 0x0, symName: '-[TWContainerListController setPreferenceValue:specifier:]', symObjAddr: 0x1824, symBinAddr: 0x126E8, symSize: 0x800 }
+  - { offset: 0x1EBBF, size: 0x8, addend: 0x0, symName: '-[TWContainerListController .cxx_destruct]', symObjAddr: 0x2024, symBinAddr: 0x12EE8, symSize: 0x14 }
+  - { offset: 0x1EBEF, size: 0x8, addend: 0x0, symName: '-[TWArcOrderController init]', symObjAddr: 0x2038, symBinAddr: 0x12EFC, symSize: 0x5C }
+  - { offset: 0x1EC24, size: 0x8, addend: 0x0, symName: '-[TWArcOrderController specifiers]', symObjAddr: 0x2094, symBinAddr: 0x12F58, symSize: 0x510 }
+  - { offset: 0x1EE2A, size: 0x8, addend: 0x0, symName: '-[TWArcOrderController viewDidLoad]', symObjAddr: 0x25A4, symBinAddr: 0x13468, symSize: 0x10C }
+  - { offset: 0x1EE5B, size: 0x8, addend: 0x0, symName: '-[TWArcOrderController viewWillAppear:]', symObjAddr: 0x26B0, symBinAddr: 0x13574, symSize: 0x4C }
+  - { offset: 0x1EE9C, size: 0x8, addend: 0x0, symName: '-[TWArcOrderController reloadApps]', symObjAddr: 0x26FC, symBinAddr: 0x135C0, symSize: 0xD0 }
+  - { offset: 0x1EEE7, size: 0x8, addend: 0x0, symName: '-[TWArcOrderController toggleEditing]', symObjAddr: 0x27CC, symBinAddr: 0x13690, symSize: 0xC4 }
+  - { offset: 0x1EF18, size: 0x8, addend: 0x0, symName: '-[TWArcOrderController toggleApplication:]', symObjAddr: 0x2890, symBinAddr: 0x13754, symSize: 0xDC }
+  - { offset: 0x1EF83, size: 0x8, addend: 0x0, symName: '-[TWArcOrderController tableView:didSelectRowAtIndexPath:]', symObjAddr: 0x296C, symBinAddr: 0x13830, symSize: 0xE8 }
+  - { offset: 0x1EFE4, size: 0x8, addend: 0x0, symName: '-[TWArcOrderController tableView:canEditRowAtIndexPath:]', symObjAddr: 0x2A54, symBinAddr: 0x13918, symSize: 0x6C }
+  - { offset: 0x1F035, size: 0x8, addend: 0x0, symName: '-[TWArcOrderController tableView:canMoveRowAtIndexPath:]', symObjAddr: 0x2AC0, symBinAddr: 0x13984, symSize: 0x6C }
+  - { offset: 0x1F086, size: 0x8, addend: 0x0, symName: '-[TWArcOrderController tableView:editingStyleForRowAtIndexPath:]', symObjAddr: 0x2B2C, symBinAddr: 0x139F0, symSize: 0x8 }
+  - { offset: 0x1F0CF, size: 0x8, addend: 0x0, symName: '-[TWArcOrderController tableView:shouldIndentWhileEditingRowAtIndexPath:]', symObjAddr: 0x2B34, symBinAddr: 0x139F8, symSize: 0x8 }
+  - { offset: 0x1F118, size: 0x8, addend: 0x0, symName: '-[TWArcOrderController tableView:targetIndexPathForMoveFromRowAtIndexPath:toProposedIndexPath:]', symObjAddr: 0x2B3C, symBinAddr: 0x13A00, symSize: 0xA0 }
+  - { offset: 0x1F1A1, size: 0x8, addend: 0x0, symName: '-[TWArcOrderController tableView:moveRowAtIndexPath:toIndexPath:]', symObjAddr: 0x2BDC, symBinAddr: 0x13AA0, symSize: 0x1B0 }
+  - { offset: 0x1F241, size: 0x8, addend: 0x0, symName: '___65-[TWArcOrderController tableView:moveRowAtIndexPath:toIndexPath:]_block_invoke', symObjAddr: 0x2D8C, symBinAddr: 0x13C50, symSize: 0x8 }
+  - { offset: 0x1F268, size: 0x8, addend: 0x0, symName: '-[TWArcOrderController .cxx_destruct]', symObjAddr: 0x2D94, symBinAddr: 0x13C58, symSize: 0x54 }
+  - { offset: 0x1F2F7, size: 0x8, addend: 0x0, symName: _TWJBRootPath, symObjAddr: 0x3288, symBinAddr: 0x1414C, symSize: 0x944 }
+  - { offset: 0x1F6DE, size: 0x8, addend: 0x0, symName: _TWJBRootSelfDerived, symObjAddr: 0x3BCC, symBinAddr: 0x14A90, symSize: 0x114 }
+  - { offset: 0x1F772, size: 0x8, addend: 0x0, symName: ___TWAppIcon_block_invoke, symObjAddr: 0x3CE0, symBinAddr: 0x14BA4, symSize: 0x1C }
+  - { offset: 0x1FA50, size: 0x8, addend: 0x0, symName: '-[TWRememberListController init]', symObjAddr: 0x0, symBinAddr: 0x14BC0, symSize: 0x60 }
+  - { offset: 0x22003, size: 0x8, addend: 0x0, symName: '-[TWRememberListController init]', symObjAddr: 0x0, symBinAddr: 0x14BC0, symSize: 0x60 }
+  - { offset: 0x22037, size: 0x8, addend: 0x0, symName: '-[TWRememberListController viewDidLoad]', symObjAddr: 0x60, symBinAddr: 0x14C20, symSize: 0x98 }
+  - { offset: 0x22067, size: 0x8, addend: 0x0, symName: '-[TWRememberListController viewWillAppear:]', symObjAddr: 0xF8, symBinAddr: 0x14CB8, symSize: 0x4C }
+  - { offset: 0x220A6, size: 0x8, addend: 0x0, symName: '-[TWRememberListController reloadEntries]', symObjAddr: 0x144, symBinAddr: 0x14D04, symSize: 0x70 }
+  - { offset: 0x220EE, size: 0x8, addend: 0x0, symName: '-[TWRememberListController boolPref:def:]', symObjAddr: 0x1B4, symBinAddr: 0x14D74, symSize: 0x74 }
+  - { offset: 0x2213C, size: 0x8, addend: 0x0, symName: '-[TWRememberListController setBoolPref:value:]', symObjAddr: 0x228, symBinAddr: 0x14DE8, symSize: 0x98 }
+  - { offset: 0x22186, size: 0x8, addend: 0x0, symName: '-[TWRememberListController switchChanged:]', symObjAddr: 0x2C0, symBinAddr: 0x14E80, symSize: 0xB4 }
+  - { offset: 0x221D0, size: 0x8, addend: 0x0, symName: '-[TWRememberListController segmentChanged:]', symObjAddr: 0x374, symBinAddr: 0x14F34, symSize: 0xA8 }
+  - { offset: 0x2220B, size: 0x8, addend: 0x0, symName: '-[TWRememberListController switchCell:key:def:tag:]', symObjAddr: 0x41C, symBinAddr: 0x14FDC, symSize: 0x138 }
+  - { offset: 0x22299, size: 0x8, addend: 0x0, symName: '-[TWRememberListController segmentCell:titles:selected:]', symObjAddr: 0x554, symBinAddr: 0x15114, symSize: 0x2D8 }
+  - { offset: 0x2236B, size: 0x8, addend: 0x0, symName: '-[TWRememberListController numberOfSectionsInTableView:]', symObjAddr: 0x82C, symBinAddr: 0x153EC, symSize: 0x8 }
+  - { offset: 0x223A6, size: 0x8, addend: 0x0, symName: '-[TWRememberListController tableView:numberOfRowsInSection:]', symObjAddr: 0x834, symBinAddr: 0x153F4, symSize: 0xB0 }
+  - { offset: 0x223F8, size: 0x8, addend: 0x0, symName: '-[TWRememberListController tableView:titleForHeaderInSection:]', symObjAddr: 0x8E4, symBinAddr: 0x154A4, symSize: 0x2C }
+  - { offset: 0x22441, size: 0x8, addend: 0x0, symName: '-[TWRememberListController tableView:titleForFooterInSection:]', symObjAddr: 0x910, symBinAddr: 0x154D0, symSize: 0x14 }
+  - { offset: 0x2248A, size: 0x8, addend: 0x0, symName: '-[TWRememberListController tableView:cellForRowAtIndexPath:]', symObjAddr: 0x924, symBinAddr: 0x154E4, symSize: 0x618 }
+  - { offset: 0x22571, size: 0x8, addend: 0x0, symName: '-[TWRememberListController tableView:canEditRowAtIndexPath:]', symObjAddr: 0xF3C, symBinAddr: 0x15AFC, symSize: 0xBC }
+  - { offset: 0x225BF, size: 0x8, addend: 0x0, symName: '-[TWRememberListController tableView:commitEditingStyle:forRowAtIndexPath:]', symObjAddr: 0xFF8, symBinAddr: 0x15BB8, symSize: 0x11C }
+  - { offset: 0x2264C, size: 0x8, addend: 0x0, symName: '-[TWRememberListController tableView:didSelectRowAtIndexPath:]', symObjAddr: 0x1114, symBinAddr: 0x15CD4, symSize: 0xE4 }
+  - { offset: 0x2269A, size: 0x8, addend: 0x0, symName: '-[TWRememberListController confirmWipe]', symObjAddr: 0x11F8, symBinAddr: 0x15DB8, symSize: 0x17C }
+  - { offset: 0x226E7, size: 0x8, addend: 0x0, symName: '___39-[TWRememberListController confirmWipe]_block_invoke', symObjAddr: 0x1374, symBinAddr: 0x15F34, symSize: 0x48 }
+  - { offset: 0x2272B, size: 0x8, addend: 0x0, symName: '-[TWRememberListController entries]', symObjAddr: 0x13D0, symBinAddr: 0x15F7C, symSize: 0x10 }
+  - { offset: 0x2275F, size: 0x8, addend: 0x0, symName: '-[TWRememberListController setEntries:]', symObjAddr: 0x13E0, symBinAddr: 0x15F8C, symSize: 0x14 }
+  - { offset: 0x2279C, size: 0x8, addend: 0x0, symName: '-[TWRememberListController .cxx_destruct]', symObjAddr: 0x13F4, symBinAddr: 0x15FA0, symSize: 0x14 }
+  - { offset: 0x23793, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController tableView:willDisplayCell:forRowAtIndexPath:]', symObjAddr: 0x0, symBinAddr: 0x15FB4, symSize: 0xBC }
+  - { offset: 0x2617E, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController tableView:willDisplayCell:forRowAtIndexPath:]', symObjAddr: 0x0, symBinAddr: 0x15FB4, symSize: 0xBC }
+  - { offset: 0x26F66, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController init]', symObjAddr: 0xBC, symBinAddr: 0x16070, symSize: 0x78 }
+  - { offset: 0x26F9A, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController twMigrateLauncherSideAlias]', symObjAddr: 0x134, symBinAddr: 0x160E8, symSize: 0x11C }
+  - { offset: 0x27057, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController setPageType:]', symObjAddr: 0x250, symBinAddr: 0x16204, symSize: 0x78 }
+  - { offset: 0x27096, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController twSyncTitle]', symObjAddr: 0x2C8, symBinAddr: 0x1627C, symSize: 0x50 }
+  - { offset: 0x270C6, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController tableView:indentationLevelForRowAtIndexPath:]', symObjAddr: 0x318, symBinAddr: 0x162CC, symSize: 0x8 }
+  - { offset: 0x2710C, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController tableView:heightForRowAtIndexPath:]', symObjAddr: 0x320, symBinAddr: 0x162D4, symSize: 0x1A0 }
+  - { offset: 0x271E6, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController viewDidLoad]', symObjAddr: 0x4C0, symBinAddr: 0x16474, symSize: 0x150 }
+  - { offset: 0x27244, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController viewWillAppear:]', symObjAddr: 0x610, symBinAddr: 0x165C4, symSize: 0x4C }
+  - { offset: 0x27283, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController pageTitle]', symObjAddr: 0x65C, symBinAddr: 0x16610, symSize: 0x30 }
+  - { offset: 0x272B7, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController specifiers]', symObjAddr: 0x68C, symBinAddr: 0x16640, symSize: 0x15C }
+  - { offset: 0x27308, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController buildWindowPage:]', symObjAddr: 0x7E8, symBinAddr: 0x1679C, symSize: 0x3D8 }
+  - { offset: 0x27377, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController buildKeyboardPage:]', symObjAddr: 0xBC0, symBinAddr: 0x16B74, symSize: 0x308 }
+  - { offset: 0x273DD, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController buildExternalPage:]', symObjAddr: 0xEC8, symBinAddr: 0x16E7C, symSize: 0x11C }
+  - { offset: 0x27429, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController buildSystemPage:]', symObjAddr: 0xFE4, symBinAddr: 0x16F98, symSize: 0x1D0 }
+  - { offset: 0x2748F, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController pxSwitch:key:def:symbol:color:]', symObjAddr: 0x11B4, symBinAddr: 0x17168, symSize: 0x1A0 }
+  - { offset: 0x27582, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController pxSlider:key:def:min:max:symbol:color:]', symObjAddr: 0x1354, symBinAddr: 0x17308, symSize: 0x1F0 }
+  - { offset: 0x2765A, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController buildLauncherPage:]', symObjAddr: 0x1544, symBinAddr: 0x174F8, symSize: 0x6F8 }
+  - { offset: 0x2776F, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController buildGesturesPage:]', symObjAddr: 0x1C3C, symBinAddr: 0x17BF0, symSize: 0x384 }
+  - { offset: 0x277D7, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController buildBackupPage:]', symObjAddr: 0x1FC0, symBinAddr: 0x17F74, symSize: 0x19C }
+  - { offset: 0x278E6, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController pxSegment:key:def:titles:symbol:color:]', symObjAddr: 0x215C, symBinAddr: 0x18110, symSize: 0x1C8 }
+  - { offset: 0x279B6, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController pxExport:]', symObjAddr: 0x2324, symBinAddr: 0x182D8, symSize: 0x124 }
+  - { offset: 0x27A81, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController pxImport:]', symObjAddr: 0x2448, symBinAddr: 0x183FC, symSize: 0x218 }
+  - { offset: 0x27B29, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController pxReset:]', symObjAddr: 0x2660, symBinAddr: 0x18614, symSize: 0x54 }
+  - { offset: 0x27B66, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController twToast:]', symObjAddr: 0x26B4, symBinAddr: 0x18668, symSize: 0xBC }
+  - { offset: 0x27BB7, size: 0x8, addend: 0x0, symName: '___33-[TWPXSubpageController twToast:]_block_invoke', symObjAddr: 0x2770, symBinAddr: 0x18724, symSize: 0xA8 }
+  - { offset: 0x27CC0, size: 0x8, addend: 0x0, symName: '___33-[TWPXSubpageController twToast:]_block_invoke_2', symObjAddr: 0x2818, symBinAddr: 0x187CC, symSize: 0x10 }
+  - { offset: 0x27CE7, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController pxSyncProgressiveRings]', symObjAddr: 0x2838, symBinAddr: 0x187DC, symSize: 0x100 }
+  - { offset: 0x27D70, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController pxReadValue:]', symObjAddr: 0x2938, symBinAddr: 0x188DC, symSize: 0x184 }
+  - { offset: 0x27DE5, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController setPreferenceValue:specifier:]', symObjAddr: 0x2ABC, symBinAddr: 0x18A60, symSize: 0x4 }
+  - { offset: 0x27E30, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController readPreferenceValue:]', symObjAddr: 0x2AC0, symBinAddr: 0x18A64, symSize: 0x4 }
+  - { offset: 0x27E71, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController pxWriteValue:specifier:]', symObjAddr: 0x2AC4, symBinAddr: 0x18A68, symSize: 0x350 }
+  - { offset: 0x27FDB, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController controllerForSpecifier:]', symObjAddr: 0x2E14, symBinAddr: 0x18DB8, symSize: 0x98 }
+  - { offset: 0x28095, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController pageType]', symObjAddr: 0x2EAC, symBinAddr: 0x18E50, symSize: 0x10 }
+  - { offset: 0x280C9, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController px]', symObjAddr: 0x2EBC, symBinAddr: 0x18E60, symSize: 0x10 }
+  - { offset: 0x280FD, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController setPx:]', symObjAddr: 0x2ECC, symBinAddr: 0x18E70, symSize: 0x14 }
+  - { offset: 0x2813A, size: 0x8, addend: 0x0, symName: '-[TWPXSubpageController .cxx_destruct]', symObjAddr: 0x2EE0, symBinAddr: 0x18E84, symSize: 0x14 }
+  - { offset: 0x283E9, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController init]', symObjAddr: 0x0, symBinAddr: 0x18E98, symSize: 0x98 }
+  - { offset: 0x2ABF0, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController init]', symObjAddr: 0x0, symBinAddr: 0x18E98, symSize: 0x98 }
+  - { offset: 0x2AC24, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController twPageTitle]', symObjAddr: 0x98, symBinAddr: 0x18F30, symSize: 0xF0 }
+  - { offset: 0x2AC58, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController twDataKey]', symObjAddr: 0x188, symBinAddr: 0x19020, symSize: 0x60 }
+  - { offset: 0x2AC8C, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController viewDidLoad]', symObjAddr: 0x1E8, symBinAddr: 0x19080, symSize: 0x88 }
+  - { offset: 0x2ACBC, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController viewWillAppear:]', symObjAddr: 0x270, symBinAddr: 0x19108, symSize: 0x4C }
+  - { offset: 0x2ACFB, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController twInvalidate]', symObjAddr: 0x2BC, symBinAddr: 0x19154, symSize: 0x64 }
+  - { offset: 0x2AD2B, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController twAlert:]', symObjAddr: 0x320, symBinAddr: 0x191B8, symSize: 0xB4 }
+  - { offset: 0x2AD82, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController twSave:key:]', symObjAddr: 0x3D4, symBinAddr: 0x1926C, symSize: 0xC0 }
+  - { offset: 0x2AE90, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController twAddButton:title:action:data:]', symObjAddr: 0x494, symBinAddr: 0x1932C, symSize: 0x9C }
+  - { offset: 0x2AF65, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController twAddLink:title:className:]', symObjAddr: 0x530, symBinAddr: 0x193C8, symSize: 0x90 }
+  - { offset: 0x2B02A, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController twTools]', symObjAddr: 0x5C0, symBinAddr: 0x19458, symSize: 0xC }
+  - { offset: 0x2B05A, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController twCatalogKey]', symObjAddr: 0x5CC, symBinAddr: 0x19464, symSize: 0x60 }
+  - { offset: 0x2B08E, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController twLoadCachedCatalog]', symObjAddr: 0x62C, symBinAddr: 0x194C4, symSize: 0x148 }
+  - { offset: 0x2B0CD, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController specifiers]', symObjAddr: 0x774, symBinAddr: 0x1960C, symSize: 0xAA0 }
+  - { offset: 0x2B308, size: 0x8, addend: 0x0, symName: _TWASArray, symObjAddr: 0x1214, symBinAddr: 0x1A0AC, symSize: 0x64 }
+  - { offset: 0x2B331, size: 0x8, addend: 0x0, symName: _TWASDictionary, symObjAddr: 0x1278, symBinAddr: 0x1A110, symSize: 0x64 }
+  - { offset: 0x2B35A, size: 0x8, addend: 0x0, symName: _TWASString, symObjAddr: 0x12DC, symBinAddr: 0x1A174, symSize: 0x64 }
+  - { offset: 0x2B383, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController controllerForSpecifier:]', symObjAddr: 0x1340, symBinAddr: 0x1A1D8, symSize: 0x98 }
+  - { offset: 0x2B553, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController twLoadCatalog:]', symObjAddr: 0x13D8, symBinAddr: 0x1A270, symSize: 0x74C }
+  - { offset: 0x2B81F, size: 0x8, addend: 0x0, symName: _TWJBRootSelfDerived, symObjAddr: 0x4AD8, symBinAddr: 0x1D8CC, symSize: 0x114 }
+  - { offset: 0x2B8C9, size: 0x8, addend: 0x0, symName: '___44-[TWActionSettingsController twLoadCatalog:]_block_invoke', symObjAddr: 0x1B24, symBinAddr: 0x1A9BC, symSize: 0xC4 }
+  - { offset: 0x2B911, size: 0x8, addend: 0x0, symName: '___44-[TWActionSettingsController twLoadCatalog:]_block_invoke_2', symObjAddr: 0x1BE8, symBinAddr: 0x1AA80, symSize: 0x230 }
+  - { offset: 0x2B960, size: 0x8, addend: 0x0, symName: '___44-[TWActionSettingsController twLoadCatalog:]_block_invoke.270', symObjAddr: 0x1EAC, symBinAddr: 0x1ACB0, symSize: 0x58 }
+  - { offset: 0x2B9A8, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32b, symObjAddr: 0x1F04, symBinAddr: 0x1AD08, symSize: 0x10 }
+  - { offset: 0x2B9CE, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController twPickCatalog:]', symObjAddr: 0x1F1C, symBinAddr: 0x1AD18, symSize: 0x260 }
+  - { offset: 0x2BA77, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController twToggleTool:]', symObjAddr: 0x217C, symBinAddr: 0x1AF78, symSize: 0x230 }
+  - { offset: 0x2BB12, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController twSetMembership:identifier:key:]', symObjAddr: 0x23AC, symBinAddr: 0x1B1A8, symSize: 0x120 }
+  - { offset: 0x2BB8F, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController twFind:key:]', symObjAddr: 0x24CC, symBinAddr: 0x1B2C8, symSize: 0x1FC }
+  - { offset: 0x2BC32, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController twReplace:key:isNew:]', symObjAddr: 0x26C8, symBinAddr: 0x1B4C4, symSize: 0x220 }
+  - { offset: 0x2BCDA, size: 0x8, addend: 0x0, symName: '___50-[TWActionSettingsController twReplace:key:isNew:]_block_invoke', symObjAddr: 0x28E8, symBinAddr: 0x1B6E4, symSize: 0x8C }
+  - { offset: 0x2BD46, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController twAddURL:]', symObjAddr: 0x297C, symBinAddr: 0x1B770, symSize: 0x18 }
+  - { offset: 0x2BD81, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController twEdit:]', symObjAddr: 0x2994, symBinAddr: 0x1B788, symSize: 0xF4 }
+  - { offset: 0x2BDEF, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController twPresentEditor:newItem:key:]', symObjAddr: 0x2A88, symBinAddr: 0x1B87C, symSize: 0x4E8 }
+  - { offset: 0x2BEB2, size: 0x8, addend: 0x0, symName: '___58-[TWActionSettingsController twPresentEditor:newItem:key:]_block_invoke', symObjAddr: 0x2F70, symBinAddr: 0x1BD64, symSize: 0x9C }
+  - { offset: 0x2BEF2, size: 0x8, addend: 0x0, symName: '___58-[TWActionSettingsController twPresentEditor:newItem:key:]_block_invoke.320', symObjAddr: 0x300C, symBinAddr: 0x1BE00, symSize: 0xC0 }
+  - { offset: 0x2BF32, size: 0x8, addend: 0x0, symName: '___58-[TWActionSettingsController twPresentEditor:newItem:key:]_block_invoke_2', symObjAddr: 0x30CC, symBinAddr: 0x1BEC0, symSize: 0xAC }
+  - { offset: 0x2BF72, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s40s, symObjAddr: 0x3178, symBinAddr: 0x1BF6C, symSize: 0x3C }
+  - { offset: 0x2BF98, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_e8_32s40s, symObjAddr: 0x31B4, symBinAddr: 0x1BFA8, symSize: 0x3C }
+  - { offset: 0x2BFB5, size: 0x8, addend: 0x0, symName: '___58-[TWActionSettingsController twPresentEditor:newItem:key:]_block_invoke.336', symObjAddr: 0x31F0, symBinAddr: 0x1BFE4, symSize: 0x578 }
+  - { offset: 0x2C083, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s40s48s56s64w, symObjAddr: 0x3768, symBinAddr: 0x1C55C, symSize: 0x5C }
+  - { offset: 0x2C0A9, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_e8_32s40s48s56s64w, symObjAddr: 0x37C4, symBinAddr: 0x1C5B8, symSize: 0x54 }
+  - { offset: 0x2C0C6, size: 0x8, addend: 0x0, symName: '___58-[TWActionSettingsController twPresentEditor:newItem:key:]_block_invoke.362', symObjAddr: 0x3818, symBinAddr: 0x1C60C, symSize: 0x48 }
+  - { offset: 0x2C0F9, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s40s48w, symObjAddr: 0x3860, symBinAddr: 0x1C654, symSize: 0x4C }
+  - { offset: 0x2C11F, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_e8_32s40s48w, symObjAddr: 0x38AC, symBinAddr: 0x1C6A0, symSize: 0x44 }
+  - { offset: 0x2C13C, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController twPresentPlacement:key:]', symObjAddr: 0x38F0, symBinAddr: 0x1C6E4, symSize: 0x630 }
+  - { offset: 0x2C208, size: 0x8, addend: 0x0, symName: '___53-[TWActionSettingsController twPresentPlacement:key:]_block_invoke', symObjAddr: 0x3F20, symBinAddr: 0x1CD14, symSize: 0xA4 }
+  - { offset: 0x2C23B, size: 0x8, addend: 0x0, symName: '___53-[TWActionSettingsController twPresentPlacement:key:]_block_invoke.407', symObjAddr: 0x3FC4, symBinAddr: 0x1CDB8, symSize: 0x310 }
+  - { offset: 0x2C322, size: 0x8, addend: 0x0, symName: '___53-[TWActionSettingsController twPresentPlacement:key:]_block_invoke_2', symObjAddr: 0x42D4, symBinAddr: 0x1D0C8, symSize: 0x8C }
+  - { offset: 0x2C393, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s40s48s56w, symObjAddr: 0x4360, symBinAddr: 0x1D154, symSize: 0x54 }
+  - { offset: 0x2C3B9, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_e8_32s40s48s56w, symObjAddr: 0x43B4, symBinAddr: 0x1D1A8, symSize: 0x4C }
+  - { offset: 0x2C3D6, size: 0x8, addend: 0x0, symName: '___53-[TWActionSettingsController twPresentPlacement:key:]_block_invoke.414', symObjAddr: 0x4400, symBinAddr: 0x1D1F4, symSize: 0x48 }
+  - { offset: 0x2C409, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController twConfirmDelete:key:]', symObjAddr: 0x4448, symBinAddr: 0x1D23C, symSize: 0x1E0 }
+  - { offset: 0x2C479, size: 0x8, addend: 0x0, symName: '___50-[TWActionSettingsController twConfirmDelete:key:]_block_invoke', symObjAddr: 0x4628, symBinAddr: 0x1D41C, symSize: 0x340 }
+  - { offset: 0x2C556, size: 0x8, addend: 0x0, symName: '___50-[TWActionSettingsController twConfirmDelete:key:]_block_invoke_2', symObjAddr: 0x4968, symBinAddr: 0x1D75C, symSize: 0x8C }
+  - { offset: 0x2C5C7, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController px]', symObjAddr: 0x49F4, symBinAddr: 0x1D7E8, symSize: 0x10 }
+  - { offset: 0x2C5FB, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController setPx:]', symObjAddr: 0x4A04, symBinAddr: 0x1D7F8, symSize: 0x14 }
+  - { offset: 0x2C638, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController catalog]', symObjAddr: 0x4A18, symBinAddr: 0x1D80C, symSize: 0x10 }
+  - { offset: 0x2C66C, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController setCatalog:]', symObjAddr: 0x4A28, symBinAddr: 0x1D81C, symSize: 0xC }
+  - { offset: 0x2C6A7, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController catalogStatus]', symObjAddr: 0x4A34, symBinAddr: 0x1D828, symSize: 0x10 }
+  - { offset: 0x2C6DB, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController setCatalogStatus:]', symObjAddr: 0x4A44, symBinAddr: 0x1D838, symSize: 0xC }
+  - { offset: 0x2C716, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController catalogLoading]', symObjAddr: 0x4A50, symBinAddr: 0x1D844, symSize: 0x10 }
+  - { offset: 0x2C74A, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController setCatalogLoading:]', symObjAddr: 0x4A60, symBinAddr: 0x1D854, symSize: 0x10 }
+  - { offset: 0x2C782, size: 0x8, addend: 0x0, symName: '-[TWActionSettingsController .cxx_destruct]', symObjAddr: 0x4A70, symBinAddr: 0x1D864, symSize: 0x68 }
+  - { offset: 0x2D9CE, size: 0x8, addend: 0x0, symName: '-[TWSplitSettingsController init]', symObjAddr: 0x0, symBinAddr: 0x1D9E0, symSize: 0x80 }
+  - { offset: 0x302DE, size: 0x8, addend: 0x0, symName: '-[TWSplitSettingsController init]', symObjAddr: 0x0, symBinAddr: 0x1D9E0, symSize: 0x80 }
+  - { offset: 0x30312, size: 0x8, addend: 0x0, symName: '-[TWSplitSettingsController viewDidLoad]', symObjAddr: 0x80, symBinAddr: 0x1DA60, symSize: 0x88 }
+  - { offset: 0x30342, size: 0x8, addend: 0x0, symName: '-[TWSplitSettingsController viewWillAppear:]', symObjAddr: 0x108, symBinAddr: 0x1DAE8, symSize: 0x70 }
+  - { offset: 0x30381, size: 0x8, addend: 0x0, symName: '-[TWSplitSettingsController twSwitch:key:native:fallback:]', symObjAddr: 0x178, symBinAddr: 0x1DB58, symSize: 0x118 }
+  - { offset: 0x30473, size: 0x8, addend: 0x0, symName: '-[TWSplitSettingsController twSlider:key:minimum:maximum:fallback:]', symObjAddr: 0x290, symBinAddr: 0x1DC70, symSize: 0x1A8 }
+  - { offset: 0x30501, size: 0x8, addend: 0x0, symName: '-[TWSplitSettingsController specifiers]', symObjAddr: 0x438, symBinAddr: 0x1DE18, symSize: 0x540 }
+  - { offset: 0x30604, size: 0x8, addend: 0x0, symName: '-[TWSplitSettingsController controllerForSpecifier:]', symObjAddr: 0x978, symBinAddr: 0x1E358, symSize: 0x98 }
+  - { offset: 0x306BB, size: 0x8, addend: 0x0, symName: '-[TWSplitSettingsController readPreferenceValue:]', symObjAddr: 0xA10, symBinAddr: 0x1E3F0, symSize: 0x19C }
+  - { offset: 0x30734, size: 0x8, addend: 0x0, symName: '-[TWSplitSettingsController setPreferenceValue:specifier:]', symObjAddr: 0xBAC, symBinAddr: 0x1E58C, symSize: 0x228 }
+  - { offset: 0x30842, size: 0x8, addend: 0x0, symName: '-[TWSplitSettingsController editURLExclusions:]', symObjAddr: 0xDD4, symBinAddr: 0x1E7B4, symSize: 0x390 }
+  - { offset: 0x308D9, size: 0x8, addend: 0x0, symName: '___47-[TWSplitSettingsController editURLExclusions:]_block_invoke', symObjAddr: 0x1164, symBinAddr: 0x1EB44, symSize: 0x98 }
+  - { offset: 0x30909, size: 0x8, addend: 0x0, symName: '___47-[TWSplitSettingsController editURLExclusions:]_block_invoke.167', symObjAddr: 0x120C, symBinAddr: 0x1EBDC, symSize: 0x364 }
+  - { offset: 0x309BB, size: 0x8, addend: 0x0, symName: '-[TWSplitSettingsController tableView:willDisplayCell:forRowAtIndexPath:]', symObjAddr: 0x15F0, symBinAddr: 0x1EF40, symSize: 0x78 }
+  - { offset: 0x31780, size: 0x8, addend: 0x0, symName: '-[TWSplitSettingsController px]', symObjAddr: 0x1668, symBinAddr: 0x1EFB8, symSize: 0x10 }
+  - { offset: 0x317B4, size: 0x8, addend: 0x0, symName: '-[TWSplitSettingsController setPx:]', symObjAddr: 0x1678, symBinAddr: 0x1EFC8, symSize: 0x14 }
+  - { offset: 0x317F1, size: 0x8, addend: 0x0, symName: '-[TWSplitSettingsController .cxx_destruct]', symObjAddr: 0x168C, symBinAddr: 0x1EFDC, symSize: 0x14 }
+  - { offset: 0x31821, size: 0x8, addend: 0x0, symName: '-[TWURLExcludedAppsController init]', symObjAddr: 0x16A0, symBinAddr: 0x1EFF0, symSize: 0x80 }
+  - { offset: 0x31855, size: 0x8, addend: 0x0, symName: '-[TWURLExcludedAppsController specifiers]', symObjAddr: 0x1720, symBinAddr: 0x1F070, symSize: 0x218 }
+  - { offset: 0x31954, size: 0x8, addend: 0x0, symName: '-[TWURLExcludedAppsController readPreferenceValue:]', symObjAddr: 0x1938, symBinAddr: 0x1F288, symSize: 0x10C }
+  - { offset: 0x319A6, size: 0x8, addend: 0x0, symName: '-[TWURLExcludedAppsController setPreferenceValue:specifier:]', symObjAddr: 0x1A44, symBinAddr: 0x1F394, symSize: 0x170 }
+  - { offset: 0x31A21, size: 0x8, addend: 0x0, symName: '-[TWURLExcludedAppsController .cxx_destruct]', symObjAddr: 0x1BB4, symBinAddr: 0x1F504, symSize: 0x14 }
+  - { offset: 0x31F19, size: 0x8, addend: 0x0, symName: _TWInstalledAppIdentifiers, symObjAddr: 0x0, symBinAddr: 0x1F518, symSize: 0xCC4 }
+  - { offset: 0x32171, size: 0x8, addend: 0x0, symName: _TWInstalledAppIdentifiers, symObjAddr: 0x0, symBinAddr: 0x1F518, symSize: 0xCC4 }
+  - { offset: 0x324CF, size: 0x8, addend: 0x0, symName: _TWACString, symObjAddr: 0xCC4, symBinAddr: 0x201DC, symSize: 0x5C }
+  - { offset: 0x324F8, size: 0x8, addend: 0x0, symName: _TWACVisible, symObjAddr: 0xD20, symBinAddr: 0x20238, symSize: 0xEC }
+  - { offset: 0x32530, size: 0x8, addend: 0x0, symName: _TWJBRootSelfDerived, symObjAddr: 0x1004, symBinAddr: 0x2051C, symSize: 0x114 }
+  - { offset: 0x325C4, size: 0x8, addend: 0x0, symName: _TWACBundle, symObjAddr: 0xE0C, symBinAddr: 0x20324, symSize: 0x1F8 }
+  - { offset: 0x32B0D, size: 0x8, addend: 0x0, symName: _TWPublishContainerActions, symObjAddr: 0x0, symBinAddr: 0x20630, symSize: 0xE9C }
+  - { offset: 0x32C6A, size: 0x8, addend: 0x0, symName: _TWPublishContainerActions, symObjAddr: 0x0, symBinAddr: 0x20630, symSize: 0xE9C }
+  - { offset: 0x32ED4, size: 0x8, addend: 0x0, symName: _TWCPArray, symObjAddr: 0xE9C, symBinAddr: 0x214CC, symSize: 0x64 }
+  - { offset: 0x32EFD, size: 0x8, addend: 0x0, symName: ___TWPublishContainerActions_block_invoke, symObjAddr: 0xF00, symBinAddr: 0x21530, symSize: 0x64 }
+  - { offset: 0x330C4, size: 0x8, addend: 0x0, symName: '-[TWPXPrefs parallelXFilePath]', symObjAddr: 0x0, symBinAddr: 0x21594, symSize: 0x2BC }
+  - { offset: 0x332C7, size: 0x8, addend: 0x0, symName: '-[TWPXPrefs parallelXFilePath]', symObjAddr: 0x0, symBinAddr: 0x21594, symSize: 0x2BC }
+  - { offset: 0x333A7, size: 0x8, addend: 0x0, symName: _TWJBRootCandidates, symObjAddr: 0xCE4, symBinAddr: 0x22278, symSize: 0x3D8 }
+  - { offset: 0x33497, size: 0x8, addend: 0x0, symName: _TWJBRootPath, symObjAddr: 0x11D0, symBinAddr: 0x22764, symSize: 0x5F4 }
+  - { offset: 0x33660, size: 0x8, addend: 0x0, symName: '-[TWPXPrefs available]', symObjAddr: 0x2BC, symBinAddr: 0x21850, symSize: 0x8 }
+  - { offset: 0x33690, size: 0x8, addend: 0x0, symName: '-[TWPXPrefs __pxDiskCopy]', symObjAddr: 0x2C4, symBinAddr: 0x21858, symSize: 0x1A4 }
+  - { offset: 0x337C9, size: 0x8, addend: 0x0, symName: '-[TWPXPrefs objectForKey:defaultValue:]', symObjAddr: 0x468, symBinAddr: 0x219FC, symSize: 0xCC }
+  - { offset: 0x3382A, size: 0x8, addend: 0x0, symName: '-[TWPXPrefs boolForKey:defaultValue:]', symObjAddr: 0x534, symBinAddr: 0x21AC8, symSize: 0x64 }
+  - { offset: 0x3388B, size: 0x8, addend: 0x0, symName: '-[TWPXPrefs integerForKey:defaultValue:]', symObjAddr: 0x598, symBinAddr: 0x21B2C, symSize: 0x64 }
+  - { offset: 0x338EC, size: 0x8, addend: 0x0, symName: '-[TWPXPrefs floatForKey:defaultValue:]', symObjAddr: 0x5FC, symBinAddr: 0x21B90, symSize: 0x6C }
+  - { offset: 0x3394D, size: 0x8, addend: 0x0, symName: '-[TWPXPrefs setObject:forKey:]', symObjAddr: 0x668, symBinAddr: 0x21BFC, symSize: 0xD8 }
+  - { offset: 0x33A06, size: 0x8, addend: 0x0, symName: _TWRuntimeLog, symObjAddr: 0x740, symBinAddr: 0x21CD4, symSize: 0x410 }
+  - { offset: 0x33BC4, size: 0x8, addend: 0x0, symName: '-[TWPXPrefs allValues]', symObjAddr: 0xB50, symBinAddr: 0x220E4, symSize: 0x68 }
+  - { offset: 0x33C07, size: 0x8, addend: 0x0, symName: '-[TWPXPrefs removeAll]', symObjAddr: 0xBB8, symBinAddr: 0x2214C, symSize: 0xEC }
+  - { offset: 0x33C4C, size: 0x8, addend: 0x0, symName: '-[TWPXPrefs synchronize]', symObjAddr: 0xCA4, symBinAddr: 0x22238, symSize: 0x4 }
+  - { offset: 0x33C78, size: 0x8, addend: 0x0, symName: '-[TWPXPrefs postRefresh]', symObjAddr: 0xCA8, symBinAddr: 0x2223C, symSize: 0x3C }
+  - { offset: 0x33CB4, size: 0x8, addend: 0x0, symName: _TWJBRootCandidates, symObjAddr: 0xCE4, symBinAddr: 0x22278, symSize: 0x3D8 }
+  - { offset: 0x33D34, size: 0x8, addend: 0x0, symName: _TWJBRootSelfDerived, symObjAddr: 0x10BC, symBinAddr: 0x22650, symSize: 0x114 }
+  - { offset: 0x3408A, size: 0x8, addend: 0x0, symName: '-[TWBaseCell initWithStyle:reuseIdentifier:specifier:]', symObjAddr: 0x0, symBinAddr: 0x22D58, symSize: 0x10C }
+  - { offset: 0x36ADA, size: 0x8, addend: 0x0, symName: '-[TWBaseCell initWithStyle:reuseIdentifier:specifier:]', symObjAddr: 0x0, symBinAddr: 0x22D58, symSize: 0x10C }
+  - { offset: 0x36B3B, size: 0x8, addend: 0x0, symName: '-[TWBaseCell twBuild]', symObjAddr: 0x10C, symBinAddr: 0x22E64, symSize: 0x23C }
+  - { offset: 0x36B6B, size: 0x8, addend: 0x0, symName: '-[TWBaseCell twKey]', symObjAddr: 0x348, symBinAddr: 0x230A0, symSize: 0x60 }
+  - { offset: 0x36B9F, size: 0x8, addend: 0x0, symName: '-[TWBaseCell twRowColor]', symObjAddr: 0x3A8, symBinAddr: 0x23100, symSize: 0x14C }
+  - { offset: 0x36BF1, size: 0x8, addend: 0x0, symName: '-[TWBaseCell twApplyRowColor:]', symObjAddr: 0x4F4, symBinAddr: 0x2324C, symSize: 0x4 }
+  - { offset: 0x36C28, size: 0x8, addend: 0x0, symName: '-[TWBaseCell twUsesWideLayout]', symObjAddr: 0x4F8, symBinAddr: 0x23250, symSize: 0x68 }
+  - { offset: 0x36C5C, size: 0x8, addend: 0x0, symName: '-[TWBaseCell twApplyAppearance]', symObjAddr: 0x560, symBinAddr: 0x232B8, symSize: 0x290 }
+  - { offset: 0x36CE2, size: 0x8, addend: 0x0, symName: '-[TWBaseCell layoutSubviews]', symObjAddr: 0x7F0, symBinAddr: 0x23548, symSize: 0x174 }
+  - { offset: 0x36D9E, size: 0x8, addend: 0x0, symName: '-[TWBaseCell twLayoutControlInHeight:width:]', symObjAddr: 0x964, symBinAddr: 0x236BC, symSize: 0x8 }
+  - { offset: 0x36DE4, size: 0x8, addend: 0x0, symName: '-[TWBaseCell twSaveObject:forKey:]', symObjAddr: 0x96C, symBinAddr: 0x236C4, symSize: 0xB0 }
+  - { offset: 0x36E2E, size: 0x8, addend: 0x0, symName: '-[TWBaseCell twNotifyHostReload]', symObjAddr: 0xA1C, symBinAddr: 0x23774, symSize: 0x74 }
+  - { offset: 0x36E6D, size: 0x8, addend: 0x0, symName: '-[TWBaseCell value]', symObjAddr: 0xA90, symBinAddr: 0x237E8, symSize: 0x8 }
+  - { offset: 0x36E9D, size: 0x8, addend: 0x0, symName: '-[TWBaseCell setValue:]', symObjAddr: 0xA98, symBinAddr: 0x237F0, symSize: 0x4 }
+  - { offset: 0x36ED4, size: 0x8, addend: 0x0, symName: '-[TWBaseCell setValues:titles:]', symObjAddr: 0xA9C, symBinAddr: 0x237F4, symSize: 0x4 }
+  - { offset: 0x36F16, size: 0x8, addend: 0x0, symName: '-[TWBaseCell .cxx_destruct]', symObjAddr: 0xAA0, symBinAddr: 0x237F8, symSize: 0x7C }
+  - { offset: 0x36F46, size: 0x8, addend: 0x0, symName: '-[TWSwitchCell twBuild]', symObjAddr: 0xB1C, symBinAddr: 0x23874, symSize: 0xE4 }
+  - { offset: 0x36F76, size: 0x8, addend: 0x0, symName: '-[TWSwitchCell twBit]', symObjAddr: 0xC00, symBinAddr: 0x23958, symSize: 0x78 }
+  - { offset: 0x36FB9, size: 0x8, addend: 0x0, symName: '-[TWSwitchCell twMaskValue]', symObjAddr: 0xC78, symBinAddr: 0x239D0, symSize: 0x104 }
+  - { offset: 0x36FFC, size: 0x8, addend: 0x0, symName: '-[TWSwitchCell twToggleChanged]', symObjAddr: 0xD7C, symBinAddr: 0x23AD4, symSize: 0x110 }
+  - { offset: 0x37067, size: 0x8, addend: 0x0, symName: '-[TWSwitchCell twApplyRowColor:]', symObjAddr: 0xE8C, symBinAddr: 0x23BE4, symSize: 0x8C }
+  - { offset: 0x370A6, size: 0x8, addend: 0x0, symName: '-[TWSwitchCell twLayoutControlInHeight:width:]', symObjAddr: 0xF18, symBinAddr: 0x23C70, symSize: 0x98 }
+  - { offset: 0x37107, size: 0x8, addend: 0x0, symName: '-[TWSwitchCell refreshCellContentsWithSpecifier:]', symObjAddr: 0xFB0, symBinAddr: 0x23D08, symSize: 0x1AC }
+  - { offset: 0x37190, size: 0x8, addend: 0x0, symName: '-[TWSwitchCell .cxx_destruct]', symObjAddr: 0x115C, symBinAddr: 0x23EB4, symSize: 0x14 }
+  - { offset: 0x371C0, size: 0x8, addend: 0x0, symName: '-[TWSliderCell twBuild]', symObjAddr: 0x1170, symBinAddr: 0x23EC8, symSize: 0x230 }
+  - { offset: 0x371F0, size: 0x8, addend: 0x0, symName: '-[TWSliderCell twCurrentValue]', symObjAddr: 0x13A0, symBinAddr: 0x240F8, symSize: 0x120 }
+  - { offset: 0x37242, size: 0x8, addend: 0x0, symName: '-[TWSliderCell twHasDerivedOffset]', symObjAddr: 0x14C0, symBinAddr: 0x24218, symSize: 0x70 }
+  - { offset: 0x37276, size: 0x8, addend: 0x0, symName: '-[TWSliderCell twValueText:]', symObjAddr: 0x1530, symBinAddr: 0x24288, symSize: 0x204 }
+  - { offset: 0x37321, size: 0x8, addend: 0x0, symName: '-[TWSliderCell twApplyRowColor:]', symObjAddr: 0x1734, symBinAddr: 0x2448C, symSize: 0xAC }
+  - { offset: 0x37372, size: 0x8, addend: 0x0, symName: '-[TWSliderCell twSliderMoved]', symObjAddr: 0x17E0, symBinAddr: 0x24538, symSize: 0xF8 }
+  - { offset: 0x373E1, size: 0x8, addend: 0x0, symName: '-[TWSliderCell twSliderCommitted]', symObjAddr: 0x18D8, symBinAddr: 0x24630, symSize: 0xA0 }
+  - { offset: 0x37412, size: 0x8, addend: 0x0, symName: '-[TWSliderCell layoutSubviews]', symObjAddr: 0x1978, symBinAddr: 0x246D0, symSize: 0x1D4 }
+  - { offset: 0x374A3, size: 0x8, addend: 0x0, symName: '-[TWSliderCell refreshCellContentsWithSpecifier:]', symObjAddr: 0x1B4C, symBinAddr: 0x248A4, symSize: 0x1A4 }
+  - { offset: 0x37504, size: 0x8, addend: 0x0, symName: '-[TWSliderCell .cxx_destruct]', symObjAddr: 0x1CF0, symBinAddr: 0x24A48, symSize: 0x54 }
+  - { offset: 0x37534, size: 0x8, addend: 0x0, symName: '-[TWSegmentCell twBuild]', symObjAddr: 0x1D44, symBinAddr: 0x24A9C, symSize: 0xDC }
+  - { offset: 0x37565, size: 0x8, addend: 0x0, symName: '-[TWSegmentCell twSegmentChanged]', symObjAddr: 0x1E20, symBinAddr: 0x24B78, symSize: 0xA0 }
+  - { offset: 0x37596, size: 0x8, addend: 0x0, symName: '-[TWSegmentCell twApplyRowColor:]', symObjAddr: 0x1EC0, symBinAddr: 0x24C18, symSize: 0x98 }
+  - { offset: 0x375E7, size: 0x8, addend: 0x0, symName: '-[TWSegmentCell layoutSubviews]', symObjAddr: 0x1F58, symBinAddr: 0x24CB0, symSize: 0x1BC }
+  - { offset: 0x37707, size: 0x8, addend: 0x0, symName: '-[TWSegmentCell twLayoutControlInHeight:width:]', symObjAddr: 0x2114, symBinAddr: 0x24E6C, symSize: 0x144 }
+  - { offset: 0x37835, size: 0x8, addend: 0x0, symName: '-[TWSegmentCell refreshCellContentsWithSpecifier:]', symObjAddr: 0x2258, symBinAddr: 0x24FB0, symSize: 0x22C }
+  - { offset: 0x378D4, size: 0x8, addend: 0x0, symName: '-[TWSegmentCell .cxx_destruct]', symObjAddr: 0x2484, symBinAddr: 0x251DC, symSize: 0x14 }
+  - { offset: 0x37905, size: 0x8, addend: 0x0, symName: '-[TWActionCell twBuild]', symObjAddr: 0x2498, symBinAddr: 0x251F0, symSize: 0x114 }
+  - { offset: 0x37936, size: 0x8, addend: 0x0, symName: '-[TWActionCell twLayoutControlInHeight:width:]', symObjAddr: 0x25AC, symBinAddr: 0x25304, symSize: 0x120 }
+  - { offset: 0x379EE, size: 0x8, addend: 0x0, symName: '-[TWActionCell twApplyRowColor:]', symObjAddr: 0x26CC, symBinAddr: 0x25424, symSize: 0xF0 }
+  - { offset: 0x37A2B, size: 0x8, addend: 0x0, symName: '-[TWActionCell refreshCellContentsWithSpecifier:]', symObjAddr: 0x27BC, symBinAddr: 0x25514, symSize: 0x1CC }
+  - { offset: 0x37A7C, size: 0x8, addend: 0x0, symName: '-[TWActionCell .cxx_destruct]', symObjAddr: 0x2988, symBinAddr: 0x256E0, symSize: 0x14 }
+  - { offset: 0x37AAD, size: 0x8, addend: 0x0, symName: '-[TWStatusCell twBuild]', symObjAddr: 0x299C, symBinAddr: 0x256F4, symSize: 0xD8 }
+  - { offset: 0x37ADE, size: 0x8, addend: 0x0, symName: '-[TWStatusCell twLayoutControlInHeight:width:]', symObjAddr: 0x2A74, symBinAddr: 0x257CC, symSize: 0xAC }
+  - { offset: 0x37B76, size: 0x8, addend: 0x0, symName: '-[TWStatusCell twApplyRowColor:]', symObjAddr: 0x2B20, symBinAddr: 0x25878, symSize: 0xB0 }
+  - { offset: 0x37BB7, size: 0x8, addend: 0x0, symName: '-[TWStatusCell refreshCellContentsWithSpecifier:]', symObjAddr: 0x2BD0, symBinAddr: 0x25928, symSize: 0x17C }
+  - { offset: 0x37C18, size: 0x8, addend: 0x0, symName: '-[TWStatusCell .cxx_destruct]', symObjAddr: 0x2D4C, symBinAddr: 0x25AA4, symSize: 0x14 }
+  - { offset: 0x37CAE, size: 0x8, addend: 0x0, symName: '-[TWIconCell layoutSubviews]', symObjAddr: 0x0, symBinAddr: 0x25AB8, symSize: 0x2CC }
+  - { offset: 0x39ECD, size: 0x8, addend: 0x0, symName: '-[TWIconCell layoutSubviews]', symObjAddr: 0x0, symBinAddr: 0x25AB8, symSize: 0x2CC }
+  - { offset: 0x39FC3, size: 0x8, addend: 0x0, symName: '-[TWChipView setChipColor:]', symObjAddr: 0x2CC, symBinAddr: 0x25D84, symSize: 0xEC }
+  - { offset: 0x3A00D, size: 0x8, addend: 0x0, symName: '-[TWChipView initWithFrame:]', symObjAddr: 0x3B8, symBinAddr: 0x25E70, symSize: 0x1D8 }
+  - { offset: 0x3A050, size: 0x8, addend: 0x0, symName: '-[TWChipView setSymbolNamed:fallbackText:]', symObjAddr: 0x590, symBinAddr: 0x26048, symSize: 0x1B4 }
+  - { offset: 0x3A0AD, size: 0x8, addend: 0x0, symName: '-[TWChipView glyphView]', symObjAddr: 0x744, symBinAddr: 0x261FC, symSize: 0x10 }
+  - { offset: 0x3A0E1, size: 0x8, addend: 0x0, symName: '-[TWChipView fallbackLabel]', symObjAddr: 0x754, symBinAddr: 0x2620C, symSize: 0x10 }
+  - { offset: 0x3A115, size: 0x8, addend: 0x0, symName: '-[TWChipView chipColor]', symObjAddr: 0x764, symBinAddr: 0x2621C, symSize: 0x10 }
+  - { offset: 0x3A149, size: 0x8, addend: 0x0, symName: '-[TWChipView .cxx_destruct]', symObjAddr: 0x774, symBinAddr: 0x2622C, symSize: 0x68 }
+  - { offset: 0x3A179, size: 0x8, addend: 0x0, symName: '+[TWStyle accent]', symObjAddr: 0x7DC, symBinAddr: 0x26294, symSize: 0x30 }
+  - { offset: 0x3A1AC, size: 0x8, addend: 0x0, symName: _TWAdaptive, symObjAddr: 0x80C, symBinAddr: 0x262C4, symSize: 0x138 }
+  - { offset: 0x3A1B6, size: 0x8, addend: 0x0, symName: _TWAdaptive, symObjAddr: 0x80C, symBinAddr: 0x262C4, symSize: 0x138 }
+  - { offset: 0x3A248, size: 0x8, addend: 0x0, symName: '+[TWStyle accentAlt]', symObjAddr: 0x944, symBinAddr: 0x263FC, symSize: 0x30 }
+  - { offset: 0x3A27B, size: 0x8, addend: 0x0, symName: '+[TWStyle accentSoft]', symObjAddr: 0x974, symBinAddr: 0x2642C, symSize: 0x60 }
+  - { offset: 0x3A285, size: 0x8, addend: 0x0, symName: '+[TWStyle accentSoft]', symObjAddr: 0x974, symBinAddr: 0x2642C, symSize: 0x60 }
+  - { offset: 0x3A2B9, size: 0x8, addend: 0x0, symName: '+[TWStyle danger]', symObjAddr: 0x9D4, symBinAddr: 0x2648C, symSize: 0xC }
+  - { offset: 0x3A2E9, size: 0x8, addend: 0x0, symName: '+[TWStyle gradientColors]', symObjAddr: 0x9E0, symBinAddr: 0x26498, symSize: 0xCC }
+  - { offset: 0x3A31D, size: 0x8, addend: 0x0, symName: '+[TWStyle palette]', symObjAddr: 0xAAC, symBinAddr: 0x26564, symSize: 0x37C }
+  - { offset: 0x3A3CF, size: 0x8, addend: 0x0, symName: '+[TWStyle paletteColorAtIndex:]', symObjAddr: 0xE28, symBinAddr: 0x268E0, symSize: 0xAC }
+  - { offset: 0x3A430, size: 0x8, addend: 0x0, symName: '+[TWStyle chipColorForIdentifier:]', symObjAddr: 0xED4, symBinAddr: 0x2698C, symSize: 0x110 }
+  - { offset: 0x3A49F, size: 0x8, addend: 0x0, symName: '+[TWStyle rowTitleFont]', symObjAddr: 0xFE4, symBinAddr: 0x26A9C, symSize: 0x1C }
+  - { offset: 0x3A4CF, size: 0x8, addend: 0x0, symName: '+[TWStyle rowValueFont]', symObjAddr: 0x1000, symBinAddr: 0x26AB8, symSize: 0x88 }
+  - { offset: 0x3A50E, size: 0x8, addend: 0x0, symName: '+[TWStyle heroTitleFont]', symObjAddr: 0x1088, symBinAddr: 0x26B40, symSize: 0x1C }
+  - { offset: 0x3A53E, size: 0x8, addend: 0x0, symName: '+[TWStyle heroSubtitleFont]', symObjAddr: 0x10A4, symBinAddr: 0x26B5C, symSize: 0x1C }
+  - { offset: 0x3A56E, size: 0x8, addend: 0x0, symName: '+[TWStyle chipWithSymbol:fallback:]', symObjAddr: 0x10C0, symBinAddr: 0x26B78, symSize: 0x9C }
+  - { offset: 0x3A5CB, size: 0x8, addend: 0x0, symName: '+[TWStyle heroHeaderWithTitle:subtitle:statusText:enabled:width:]', symObjAddr: 0x115C, symBinAddr: 0x26C14, symSize: 0xCCC }
+  - { offset: 0x3A7F6, size: 0x8, addend: 0x0, symName: ___TWAdaptive_block_invoke, symObjAddr: 0x1E28, symBinAddr: 0x278E0, symSize: 0x4C }
+  - { offset: 0x3A99D, size: 0x8, addend: 0x0, symName: _TWIconCellClass, symObjAddr: 0x0, symBinAddr: 0x2792C, symSize: 0xFC }
+  - { offset: 0x3A9B7, size: 0x8, addend: 0x0, symName: _gTWIconCache, symObjAddr: 0x9848, symBinAddr: 0x4FE40, symSize: 0x0 }
+  - { offset: 0x3AA3C, size: 0x8, addend: 0x0, symName: _TWSliderCellClass, symObjAddr: 0x6D0, symBinAddr: 0x27FFC, symSize: 0x98 }
+  - { offset: 0x3AA62, size: 0x8, addend: 0x0, symName: _TWSliderCellClass.cls, symObjAddr: 0x9850, symBinAddr: 0x4FE48, symSize: 0x0 }
+  - { offset: 0x3C632, size: 0x8, addend: 0x0, symName: _TWIconCellClass, symObjAddr: 0x0, symBinAddr: 0x2792C, symSize: 0xFC }
+  - { offset: 0x3C7FD, size: 0x8, addend: 0x0, symName: _TWIconLayoutSubviews, symObjAddr: 0xFC, symBinAddr: 0x27A28, symSize: 0x5D4 }
+  - { offset: 0x3CA75, size: 0x8, addend: 0x0, symName: _TWSliderLayoutSubviews, symObjAddr: 0x768, symBinAddr: 0x28094, symSize: 0x254 }
+  - { offset: 0x3CB63, size: 0x8, addend: 0x0, symName: ___TWIconImage_block_invoke, symObjAddr: 0x9BC, symBinAddr: 0x282E8, symSize: 0x148 }
+  - { offset: 0x3CD9B, size: 0x8, addend: 0x0, symName: '+[TWPrefs shared]', symObjAddr: 0x0, symBinAddr: 0x28430, symSize: 0xA0 }
+  - { offset: 0x3CE0B, size: 0x8, addend: 0x0, symName: '+[TWPrefs shared]', symObjAddr: 0x0, symBinAddr: 0x28430, symSize: 0xA0 }
+  - { offset: 0x3CE35, size: 0x8, addend: 0x0, symName: _shared.instance, symObjAddr: 0xC348, symBinAddr: 0x4FE50, symSize: 0x0 }
+  - { offset: 0x3CE4B, size: 0x8, addend: 0x0, symName: _shared.once, symObjAddr: 0xC350, symBinAddr: 0x4FE58, symSize: 0x0 }
+  - { offset: 0x3D173, size: 0x8, addend: 0x0, symName: '___17+[TWPrefs shared]_block_invoke', symObjAddr: 0xA0, symBinAddr: 0x284D0, symSize: 0x3C }
+  - { offset: 0x3D1B6, size: 0x8, addend: 0x0, symName: '-[TWPrefs init]', symObjAddr: 0xDC, symBinAddr: 0x2850C, symSize: 0x1B0 }
+  - { offset: 0x3D2F1, size: 0x8, addend: 0x0, symName: '___15-[TWPrefs init]_block_invoke', symObjAddr: 0x28C, symBinAddr: 0x286BC, symSize: 0x40 }
+  - { offset: 0x3D321, size: 0x8, addend: 0x0, symName: '-[TWPrefs dealloc]', symObjAddr: 0x2E0, symBinAddr: 0x286FC, symSize: 0x78 }
+  - { offset: 0x3D589, size: 0x8, addend: 0x0, symName: '-[TWPrefs reload]', symObjAddr: 0x358, symBinAddr: 0x28774, symSize: 0x11C0 }
+  - { offset: 0x3D847, size: 0x8, addend: 0x0, symName: _TWReadDomain, symObjAddr: 0x1518, symBinAddr: 0x29934, symSize: 0x1A4 }
+  - { offset: 0x3D8FB, size: 0x8, addend: 0x0, symName: _TWJBRootCandidates, symObjAddr: 0x2F28, symBinAddr: 0x2B334, symSize: 0x3D8 }
+  - { offset: 0x3DA26, size: 0x8, addend: 0x0, symName: _TWRuntimeLog, symObjAddr: 0x16BC, symBinAddr: 0x29AD8, symSize: 0x414 }
+  - { offset: 0x3DC2F, size: 0x8, addend: 0x0, symName: '-[TWPrefs objectForKey:]', symObjAddr: 0x1AD0, symBinAddr: 0x29EEC, symSize: 0xC4 }
+  - { offset: 0x3DC72, size: 0x8, addend: 0x0, symName: '-[TWPrefs boolForKey:defaultValue:]', symObjAddr: 0x1B94, symBinAddr: 0x29FB0, symSize: 0x80 }
+  - { offset: 0x3DCD3, size: 0x8, addend: 0x0, symName: '-[TWPrefs integerForKey:defaultValue:]', symObjAddr: 0x1C14, symBinAddr: 0x2A030, symSize: 0x80 }
+  - { offset: 0x3DD34, size: 0x8, addend: 0x0, symName: '-[TWPrefs floatForKey:defaultValue:]', symObjAddr: 0x1C94, symBinAddr: 0x2A0B0, symSize: 0x88 }
+  - { offset: 0x3DD95, size: 0x8, addend: 0x0, symName: '-[TWPrefs setObject:forKey:]', symObjAddr: 0x1D1C, symBinAddr: 0x2A138, symSize: 0x130 }
+  - { offset: 0x3DDE3, size: 0x8, addend: 0x0, symName: '-[TWPrefs setBool:forKey:]', symObjAddr: 0x1E4C, symBinAddr: 0x2A268, symSize: 0x84 }
+  - { offset: 0x3DE31, size: 0x8, addend: 0x0, symName: '-[TWPrefs setInteger:forKey:]', symObjAddr: 0x1ED0, symBinAddr: 0x2A2EC, symSize: 0x84 }
+  - { offset: 0x3DE7F, size: 0x8, addend: 0x0, symName: '-[TWPrefs setFloat:forKey:]', symObjAddr: 0x1F54, symBinAddr: 0x2A370, symSize: 0x8C }
+  - { offset: 0x3DECD, size: 0x8, addend: 0x0, symName: '-[TWPrefs synchronize]', symObjAddr: 0x1FE0, symBinAddr: 0x2A3FC, symSize: 0x52C }
+  - { offset: 0x3E022, size: 0x8, addend: 0x0, symName: '-[TWPrefs craneApps]', symObjAddr: 0x250C, symBinAddr: 0x2A928, symSize: 0x84 }
+  - { offset: 0x3E065, size: 0x8, addend: 0x0, symName: '-[TWPrefs setCraneApp:forBundleID:]', symObjAddr: 0x2590, symBinAddr: 0x2A9AC, symSize: 0x11C }
+  - { offset: 0x3E0D1, size: 0x8, addend: 0x0, symName: '-[TWPrefs removeCraneAppForBundleID:]', symObjAddr: 0x26AC, symBinAddr: 0x2AAC8, symSize: 0x9C }
+  - { offset: 0x3E11F, size: 0x8, addend: 0x0, symName: '-[TWPrefs rememberedFrameForBundleID:]', symObjAddr: 0x2748, symBinAddr: 0x2AB64, symSize: 0x2A0 }
+  - { offset: 0x3E1CB, size: 0x8, addend: 0x0, symName: '-[TWPrefs setRememberedFrame:forBundleID:]', symObjAddr: 0x29E8, symBinAddr: 0x2AE04, symSize: 0x244 }
+  - { offset: 0x3E2FF, size: 0x8, addend: 0x0, symName: '-[TWPrefs clearRememberedFrames]', symObjAddr: 0x2C2C, symBinAddr: 0x2B048, symSize: 0x44 }
+  - { offset: 0x3E330, size: 0x8, addend: 0x0, symName: '-[TWPrefs .cxx_destruct]', symObjAddr: 0x2C70, symBinAddr: 0x2B08C, symSize: 0x44 }
+  - { offset: 0x3E360, size: 0x8, addend: 0x0, symName: _TWArcOrigNumber, symObjAddr: 0x2CB4, symBinAddr: 0x2B0D0, symSize: 0x104 }
+  - { offset: 0x3E4EB, size: 0x8, addend: 0x0, symName: _TWArcOrigBool, symObjAddr: 0x2DB8, symBinAddr: 0x2B1D4, symSize: 0x24 }
+  - { offset: 0x3E53B, size: 0x8, addend: 0x0, symName: ___TWMigrateIfNeeded_block_invoke, symObjAddr: 0x2DDC, symBinAddr: 0x2B1F8, symSize: 0x13C }
+  - { offset: 0x3E5A6, size: 0x8, addend: 0x0, symName: _TWJBRootSelfDerived, symObjAddr: 0x3300, symBinAddr: 0x2B70C, symSize: 0x114 }
+  - { offset: 0x3EB0D, size: 0x8, addend: 0x0, symName: '+[TWCraneBridge isCraneAvailable]', symObjAddr: 0x0, symBinAddr: 0x2B820, symSize: 0x20 }
+  - { offset: 0x3F0C0, size: 0x8, addend: 0x0, symName: '+[TWCraneBridge isCraneAvailable]', symObjAddr: 0x0, symBinAddr: 0x2B820, symSize: 0x20 }
+  - { offset: 0x3F0FD, size: 0x8, addend: 0x0, symName: _CraneManagerClass, symObjAddr: 0x20, symBinAddr: 0x2B840, symSize: 0x22C }
+  - { offset: 0x3F1D6, size: 0x8, addend: 0x0, symName: _TWJBRootPath, symObjAddr: 0x27E8, symBinAddr: 0x2DF70, symSize: 0x944 }
+  - { offset: 0x3F45F, size: 0x8, addend: 0x0, symName: '+[TWCraneBridge sharedManager]', symObjAddr: 0x24C, symBinAddr: 0x2BA6C, symSize: 0x84 }
+  - { offset: 0x3F50D, size: 0x8, addend: 0x0, symName: _TWSignature, symObjAddr: 0x2D0, symBinAddr: 0x2BAF0, symSize: 0x180 }
+  - { offset: 0x3F60A, size: 0x8, addend: 0x0, symName: _TWMsgSend, symObjAddr: 0x450, symBinAddr: 0x2BC70, symSize: 0x48 }
+  - { offset: 0x3F6B2, size: 0x8, addend: 0x0, symName: '+[TWCraneBridge isApplicationSupportedByCrane:]', symObjAddr: 0x498, symBinAddr: 0x2BCB8, symSize: 0xB8 }
+  - { offset: 0x3F745, size: 0x8, addend: 0x0, symName: '+[TWCraneBridge activeContainerForBundleID:]', symObjAddr: 0x550, symBinAddr: 0x2BD70, symSize: 0x10C }
+  - { offset: 0x3F7FC, size: 0x8, addend: 0x0, symName: _TWMsgSendStr, symObjAddr: 0x65C, symBinAddr: 0x2BE7C, symSize: 0x48 }
+  - { offset: 0x3F84E, size: 0x8, addend: 0x0, symName: '+[TWCraneBridge prepareLaunchForBundleID:completion:]', symObjAddr: 0x6A4, symBinAddr: 0x2BEC4, symSize: 0xDC }
+  - { offset: 0x3F93E, size: 0x8, addend: 0x0, symName: '___53+[TWCraneBridge prepareLaunchForBundleID:completion:]_block_invoke', symObjAddr: 0x780, symBinAddr: 0x2BFA0, symSize: 0x1C4 }
+  - { offset: 0x3F9B7, size: 0x8, addend: 0x0, symName: _TWCraneNotice, symObjAddr: 0x944, symBinAddr: 0x2C164, symSize: 0x29C }
+  - { offset: 0x3FA2B, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s40b, symObjAddr: 0xBE0, symBinAddr: 0x2C400, symSize: 0x48 }
+  - { offset: 0x3FA51, size: 0x8, addend: 0x0, symName: '+[TWCraneBridge prepareLaunchForBundleID:containerID:completion:]', symObjAddr: 0xC64, symBinAddr: 0x2C448, symSize: 0x144 }
+  - { offset: 0x3FAC2, size: 0x8, addend: 0x0, symName: '___65+[TWCraneBridge prepareLaunchForBundleID:containerID:completion:]_block_invoke', symObjAddr: 0xDA8, symBinAddr: 0x2C58C, symSize: 0x124 }
+  - { offset: 0x3FB1C, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s40s48b, symObjAddr: 0xECC, symBinAddr: 0x2C6B0, symSize: 0x50 }
+  - { offset: 0x3FB42, size: 0x8, addend: 0x0, symName: '+[TWCraneBridge switchBundleID:toContainer:completion:]', symObjAddr: 0xF60, symBinAddr: 0x2C700, symSize: 0x178 }
+  - { offset: 0x3FBCA, size: 0x8, addend: 0x0, symName: '___55+[TWCraneBridge switchBundleID:toContainer:completion:]_block_invoke', symObjAddr: 0x10D8, symBinAddr: 0x2C878, symSize: 0x730 }
+  - { offset: 0x3FEFD, size: 0x8, addend: 0x0, symName: _TWRuntimeLog, symObjAddr: 0x1808, symBinAddr: 0x2CFA8, symSize: 0x414 }
+  - { offset: 0x40148, size: 0x8, addend: 0x0, symName: '___55+[TWCraneBridge switchBundleID:toContainer:completion:]_block_invoke_2', symObjAddr: 0x1C1C, symBinAddr: 0x2D3BC, symSize: 0x14 }
+  - { offset: 0x4017F, size: 0x8, addend: 0x0, symName: '___55+[TWCraneBridge switchBundleID:toContainer:completion:]_block_invoke.82', symObjAddr: 0x1C48, symBinAddr: 0x2D3D0, symSize: 0x84 }
+  - { offset: 0x401E8, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32b40r, symObjAddr: 0x1CCC, symBinAddr: 0x2D454, symSize: 0x50 }
+  - { offset: 0x4020E, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_e8_32s40r, symObjAddr: 0x1D1C, symBinAddr: 0x2D4A4, symSize: 0x40 }
+  - { offset: 0x4022B, size: 0x8, addend: 0x0, symName: '___55+[TWCraneBridge switchBundleID:toContainer:completion:]_block_invoke.84', symObjAddr: 0x1D5C, symBinAddr: 0x2D4E4, symSize: 0x30 }
+  - { offset: 0x40252, size: 0x8, addend: 0x0, symName: '___55+[TWCraneBridge switchBundleID:toContainer:completion:]_block_invoke.90', symObjAddr: 0x1D8C, symBinAddr: 0x2D514, symSize: 0xC4 }
+  - { offset: 0x40262, size: 0x8, addend: 0x0, symName: '___55+[TWCraneBridge switchBundleID:toContainer:completion:]_block_invoke.90', symObjAddr: 0x1D8C, symBinAddr: 0x2D514, symSize: 0xC4 }
+  - { offset: 0x402AA, size: 0x8, addend: 0x0, symName: '___55+[TWCraneBridge switchBundleID:toContainer:completion:]_block_invoke_2.91', symObjAddr: 0x1E50, symBinAddr: 0x2D5D8, symSize: 0xA4 }
+  - { offset: 0x402E6, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s40s48b56r, symObjAddr: 0x1EF4, symBinAddr: 0x2D67C, symSize: 0x60 }
+  - { offset: 0x402F0, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s40s48b56r, symObjAddr: 0x1EF4, symBinAddr: 0x2D67C, symSize: 0x60 }
+  - { offset: 0x40316, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_e8_32s40s48s56r, symObjAddr: 0x1F54, symBinAddr: 0x2D6DC, symSize: 0x50 }
+  - { offset: 0x40333, size: 0x8, addend: 0x0, symName: '+[TWCraneBridge containersForBundleID:]', symObjAddr: 0x1FA4, symBinAddr: 0x2D72C, symSize: 0x3B8 }
+  - { offset: 0x40475, size: 0x8, addend: 0x0, symName: '+[TWCraneBridge applicationsWithNonDefaultContainers]', symObjAddr: 0x235C, symBinAddr: 0x2DAE4, symSize: 0x1F4 }
+  - { offset: 0x4054C, size: 0x8, addend: 0x0, symName: '+[TWCraneBridge displayNameForContainer:bundleID:]', symObjAddr: 0x2550, symBinAddr: 0x2DCD8, symSize: 0x288 }
+  - { offset: 0x40679, size: 0x8, addend: 0x0, symName: '+[TWCraneBridge setContainer:forBundleID:]', symObjAddr: 0x27D8, symBinAddr: 0x2DF60, symSize: 0x8 }
+  - { offset: 0x406C2, size: 0x8, addend: 0x0, symName: '+[TWCraneBridge applyContainerIfConfiguredForBundleID:]', symObjAddr: 0x27E0, symBinAddr: 0x2DF68, symSize: 0x8 }
+  - { offset: 0x408A5, size: 0x8, addend: 0x0, symName: _TWJBRootSelfDerived, symObjAddr: 0x312C, symBinAddr: 0x2E8B4, symSize: 0x114 }
+  - { offset: 0x42506, size: 0x8, addend: 0x0, symName: _TWLocalizedNameForBundleID, symObjAddr: 0x0, symBinAddr: 0x2E9C8, symSize: 0x104 }
+  - { offset: 0x45631, size: 0x8, addend: 0x0, symName: _TWLocalizedNameForBundleID, symObjAddr: 0x0, symBinAddr: 0x2E9C8, symSize: 0x104 }
+  - { offset: 0x456F1, size: 0x8, addend: 0x0, symName: '-[TWAppPickerController init]', symObjAddr: 0x104, symBinAddr: 0x2EACC, symSize: 0x9C }
+  - { offset: 0x45725, size: 0x8, addend: 0x0, symName: '-[TWAppPickerController loadApps]', symObjAddr: 0x1A0, symBinAddr: 0x2EB68, symSize: 0x2C8 }
+  - { offset: 0x45812, size: 0x8, addend: 0x0, symName: '___33-[TWAppPickerController loadApps]_block_invoke', symObjAddr: 0x468, symBinAddr: 0x2EE30, symSize: 0x98 }
+  - { offset: 0x45859, size: 0x8, addend: 0x0, symName: '-[TWAppPickerController viewDidLoad]', symObjAddr: 0x500, symBinAddr: 0x2EEC8, symSize: 0x120 }
+  - { offset: 0x45889, size: 0x8, addend: 0x0, symName: '-[TWAppPickerController tableView:numberOfRowsInSection:]', symObjAddr: 0x620, symBinAddr: 0x2EFE8, symSize: 0x10 }
+  - { offset: 0x458D3, size: 0x8, addend: 0x0, symName: '-[TWAppPickerController tableView:cellForRowAtIndexPath:]', symObjAddr: 0x630, symBinAddr: 0x2EFF8, symSize: 0x168 }
+  - { offset: 0x45943, size: 0x8, addend: 0x0, symName: '-[TWAppPickerController tableView:didSelectRowAtIndexPath:]', symObjAddr: 0x798, symBinAddr: 0x2F160, symSize: 0x300 }
+  - { offset: 0x459DC, size: 0x8, addend: 0x0, symName: '___59-[TWAppPickerController tableView:didSelectRowAtIndexPath:]_block_invoke', symObjAddr: 0xA98, symBinAddr: 0x2F460, symSize: 0x64 }
+  - { offset: 0x45A0C, size: 0x8, addend: 0x0, symName: '___59-[TWAppPickerController tableView:didSelectRowAtIndexPath:]_block_invoke.62', symObjAddr: 0xB0C, symBinAddr: 0x2F4C4, symSize: 0x15C }
+  - { offset: 0x45A59, size: 0x8, addend: 0x0, symName: '-[TWAppPickerController updateSearchResultsForSearchController:]', symObjAddr: 0xCF0, symBinAddr: 0x2F620, symSize: 0x180 }
+  - { offset: 0x45AC4, size: 0x8, addend: 0x0, symName: '-[TWAppPickerController .cxx_destruct]', symObjAddr: 0xE70, symBinAddr: 0x2F7A0, symSize: 0x68 }
+  - { offset: 0x45AF4, size: 0x8, addend: 0x0, symName: '-[TWCraneAppsController init]', symObjAddr: 0xED8, symBinAddr: 0x2F808, symSize: 0x60 }
+  - { offset: 0x45B28, size: 0x8, addend: 0x0, symName: '-[TWCraneAppsController viewDidLoad]', symObjAddr: 0xF38, symBinAddr: 0x2F868, symSize: 0x128 }
+  - { offset: 0x45B58, size: 0x8, addend: 0x0, symName: '-[TWCraneAppsController reloadData]', symObjAddr: 0x1060, symBinAddr: 0x2F990, symSize: 0xB0 }
+  - { offset: 0x45B88, size: 0x8, addend: 0x0, symName: '-[TWCraneAppsController tableView:numberOfRowsInSection:]', symObjAddr: 0x1110, symBinAddr: 0x2FA40, symSize: 0x10 }
+  - { offset: 0x45BD2, size: 0x8, addend: 0x0, symName: '-[TWCraneAppsController tableView:titleForFooterInSection:]', symObjAddr: 0x1120, symBinAddr: 0x2FA50, symSize: 0xC }
+  - { offset: 0x45C18, size: 0x8, addend: 0x0, symName: '-[TWCraneAppsController tableView:cellForRowAtIndexPath:]', symObjAddr: 0x112C, symBinAddr: 0x2FA5C, symSize: 0x1E4 }
+  - { offset: 0x45CAB, size: 0x8, addend: 0x0, symName: '-[TWCraneAppsController tableView:didSelectRowAtIndexPath:]', symObjAddr: 0x1310, symBinAddr: 0x2FC40, symSize: 0x2D4 }
+  - { offset: 0x45D42, size: 0x8, addend: 0x0, symName: '___59-[TWCraneAppsController tableView:didSelectRowAtIndexPath:]_block_invoke', symObjAddr: 0x15E4, symBinAddr: 0x2FF14, symSize: 0x64 }
+  - { offset: 0x45D72, size: 0x8, addend: 0x0, symName: '___59-[TWCraneAppsController tableView:didSelectRowAtIndexPath:]_block_invoke_2', symObjAddr: 0x1648, symBinAddr: 0x2FF78, symSize: 0x138 }
+  - { offset: 0x45DBF, size: 0x8, addend: 0x0, symName: '-[TWCraneAppsController tableView:canEditRowAtIndexPath:]', symObjAddr: 0x1780, symBinAddr: 0x300B0, symSize: 0x8 }
+  - { offset: 0x45E05, size: 0x8, addend: 0x0, symName: '-[TWCraneAppsController tableView:commitEditingStyle:forRowAtIndexPath:]', symObjAddr: 0x1788, symBinAddr: 0x300B8, symSize: 0xA4 }
+  - { offset: 0x45E7B, size: 0x8, addend: 0x0, symName: '-[TWCraneAppsController addTapped]', symObjAddr: 0x182C, symBinAddr: 0x3015C, symSize: 0x6C }
+  - { offset: 0x45EBA, size: 0x8, addend: 0x0, symName: '-[TWCraneAppsController .cxx_destruct]', symObjAddr: 0x1898, symBinAddr: 0x301C8, symSize: 0x14 }
+  - { offset: 0x46A10, size: 0x8, addend: 0x0, symName: '-[TWRememberAppsController init]', symObjAddr: 0x0, symBinAddr: 0x301DC, symSize: 0x128 }
+  - { offset: 0x48F5C, size: 0x8, addend: 0x0, symName: '-[TWRememberAppsController init]', symObjAddr: 0x0, symBinAddr: 0x301DC, symSize: 0x128 }
+  - { offset: 0x48F90, size: 0x8, addend: 0x0, symName: '-[TWRememberAppsController viewWillAppear:]', symObjAddr: 0x128, symBinAddr: 0x30304, symSize: 0x70 }
+  - { offset: 0x48FCF, size: 0x8, addend: 0x0, symName: '-[TWRememberAppsController viewWillDisappear:]', symObjAddr: 0x198, symBinAddr: 0x30374, symSize: 0x68 }
+  - { offset: 0x4900E, size: 0x8, addend: 0x0, symName: '-[TWRememberAppsController reloadFrames]', symObjAddr: 0x200, symBinAddr: 0x303DC, symSize: 0x120 }
+  - { offset: 0x4905C, size: 0x8, addend: 0x0, symName: '-[TWRememberAppsController clearAllTapped]', symObjAddr: 0x320, symBinAddr: 0x304FC, symSize: 0x58 }
+  - { offset: 0x4908C, size: 0x8, addend: 0x0, symName: '-[TWRememberAppsController numberOfSectionsInTableView:]', symObjAddr: 0x378, symBinAddr: 0x30554, symSize: 0x8 }
+  - { offset: 0x490C7, size: 0x8, addend: 0x0, symName: '-[TWRememberAppsController tableView:numberOfRowsInSection:]', symObjAddr: 0x380, symBinAddr: 0x3055C, symSize: 0x44 }
+  - { offset: 0x49111, size: 0x8, addend: 0x0, symName: '-[TWRememberAppsController tableView:titleForFooterInSection:]', symObjAddr: 0x3C4, symBinAddr: 0x305A0, symSize: 0xC }
+  - { offset: 0x49157, size: 0x8, addend: 0x0, symName: '-[TWRememberAppsController tableView:cellForRowAtIndexPath:]', symObjAddr: 0x3D0, symBinAddr: 0x305AC, symSize: 0x28C }
+  - { offset: 0x491F4, size: 0x8, addend: 0x0, symName: '-[TWRememberAppsController tableView:canEditRowAtIndexPath:]', symObjAddr: 0x65C, symBinAddr: 0x30838, symSize: 0x44 }
+  - { offset: 0x4923E, size: 0x8, addend: 0x0, symName: '-[TWRememberAppsController tableView:commitEditingStyle:forRowAtIndexPath:]', symObjAddr: 0x6A0, symBinAddr: 0x3087C, symSize: 0x1C0 }
+  - { offset: 0x492B5, size: 0x8, addend: 0x0, symName: '-[TWRememberAppsController bundleIDs]', symObjAddr: 0x860, symBinAddr: 0x30A3C, symSize: 0x10 }
+  - { offset: 0x492E9, size: 0x8, addend: 0x0, symName: '-[TWRememberAppsController setBundleIDs:]', symObjAddr: 0x870, symBinAddr: 0x30A4C, symSize: 0x14 }
+  - { offset: 0x49326, size: 0x8, addend: 0x0, symName: '-[TWRememberAppsController .cxx_destruct]', symObjAddr: 0x884, symBinAddr: 0x30A60, symSize: 0x14 }
+...

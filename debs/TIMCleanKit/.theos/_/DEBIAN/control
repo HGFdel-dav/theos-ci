@@ -1,0 +1,10 @@
+Package: com.nanaminis.timcleankit
+Name: TIMCleanKit
+Description: Frosted glass popup, editable packet range and keywords, kernel recall bridge and bubble repeat.
+Author: TIMCleanKit
+Section: Tweaks
+Depends: mobilesubstrate
+Maintainer: TIMCleanKit <maintainer@localhost>
+Architecture: iphoneos-arm64e
+Version: 2.2.1
+Installed-Size: 648

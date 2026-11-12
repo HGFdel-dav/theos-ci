@@ -1,0 +1,122 @@
+---
+triple:          'arm64e-apple-darwin'
+binary-path:     '/Users/runner/work/theos-ci/theos-ci/debs/ChoicyWhitelist/.theos/obj/arm64e/ChoicyWhitelistSB.dylib'
+relocations:
+  - { offset: 0x1E, size: 0x8, addend: 0x0, symName: _choicy_initRunningBoardd, symObjAddr: 0x0, symBinAddr: 0x4000, symSize: 0x84 }
+  - { offset: 0x45, size: 0x8, addend: 0x0, symName: '__logos_orig$_ungrouped$RBProcessManager$executeLaunchRequest$withError$', symObjAddr: 0x1408, symBinAddr: 0x105B8, symSize: 0x0 }
+  - { offset: 0x2D6, size: 0x8, addend: 0x0, symName: '__logos_orig$_ungrouped$RBProcessManager$executeLaunchRequest$withCompletion$', symObjAddr: 0x1410, symBinAddr: 0x105C0, symSize: 0x0 }
+  - { offset: 0x2F5, size: 0x8, addend: 0x0, symName: _choicy_initRunningBoardd, symObjAddr: 0x0, symBinAddr: 0x4000, symSize: 0x84 }
+  - { offset: 0x345, size: 0x8, addend: 0x0, symName: '__logos_method$_ungrouped$RBProcessManager$executeLaunchRequest$withError$', symObjAddr: 0x84, symBinAddr: 0x4084, symSize: 0xA4 }
+  - { offset: 0x387, size: 0x8, addend: 0x0, symName: '__logos_method$_ungrouped$RBProcessManager$executeLaunchRequest$withError$', symObjAddr: 0x84, symBinAddr: 0x4084, symSize: 0xA4 }
+  - { offset: 0x41B, size: 0x8, addend: 0x0, symName: '__logos_method$_ungrouped$RBProcessManager$executeLaunchRequest$withCompletion$', symObjAddr: 0x128, symBinAddr: 0x4128, symSize: 0xA4 }
+  - { offset: 0x4C0, size: 0x8, addend: 0x0, symName: _choicy_shouldShow3DTouchOptionForDisableTweakInjectionState, symObjAddr: 0x0, symBinAddr: 0x41CC, symSize: 0x98 }
+  - { offset: 0x545, size: 0x8, addend: 0x0, symName: _CHBundle, symBinAddr: 0x10650, symSize: 0x0 }
+  - { offset: 0xA19, size: 0x8, addend: 0x0, symName: '__logos_orig$_ungrouped$FBProcessManager$_bootstrapProcessWithExecutionContext$synchronously$error$', symObjAddr: 0x8E58, symBinAddr: 0x105C8, symSize: 0x0 }
+  - { offset: 0xAFD, size: 0x8, addend: 0x0, symName: '__logos_orig$_ungrouped$FBProcessManager$_createProcessWithExecutionContext$', symObjAddr: 0x8E60, symBinAddr: 0x105D0, symSize: 0x0 }
+  - { offset: 0xB2C, size: 0x8, addend: 0x0, symName: '__logos_orig$_ungrouped$FBProcessManager$createApplicationProcessForBundleID$withExecutionContext$', symObjAddr: 0x8E68, symBinAddr: 0x105D8, symSize: 0x0 }
+  - { offset: 0xB60, size: 0x8, addend: 0x0, symName: '__logos_orig$Shortcut_iOS13Up$SBIconView$applicationShortcutItems', symObjAddr: 0x8E70, symBinAddr: 0x105E0, symSize: 0x0 }
+  - { offset: 0xBA4, size: 0x8, addend: 0x0, symName: '__logos_meta_orig$Shortcut_iOS13Up$SBIconView$activateShortcut$withBundleIdentifier$forIconView$', symObjAddr: 0x8E78, symBinAddr: 0x105E8, symSize: 0x0 }
+  - { offset: 0xC5D, size: 0x8, addend: 0x0, symName: '__logos_orig$Shortcut_iOS12Down$SBUIAppIconForceTouchControllerDataProvider$applicationShortcutItems', symObjAddr: 0x8E80, symBinAddr: 0x105F0, symSize: 0x0 }
+  - { offset: 0xCA1, size: 0x8, addend: 0x0, symName: '__logos_orig$Shortcut_iOS12Down$SBUIAppIconForceTouchController$appIconForceTouchShortcutViewController$activateApplicationShortcutItem$', symObjAddr: 0x8E88, symBinAddr: 0x105F8, symSize: 0x0 }
+  - { offset: 0xCE1, size: 0x8, addend: 0x0, symName: '__logos_orig$Shortcut_iOS12Down$SBUIAction$initWithTitle$subtitle$image$badgeView$handler$', symObjAddr: 0x8E90, symBinAddr: 0x10600, symSize: 0x0 }
+  - { offset: 0xD23, size: 0x8, addend: 0x0, symName: _CHPendingLaunchModes, symObjAddr: 0xF9C, symBinAddr: 0x5168, symSize: 0x44 }
+  - { offset: 0xD48, size: 0x8, addend: 0x0, symName: _CHPendingLaunchModes.modes, symObjAddr: 0x8E98, symBinAddr: 0x10608, symSize: 0x0 }
+  - { offset: 0xD5D, size: 0x8, addend: 0x0, symName: _CHPendingLaunchModes.once, symObjAddr: 0x8EA0, symBinAddr: 0x10610, symSize: 0x0 }
+  - { offset: 0x1015, size: 0x8, addend: 0x0, symName: _choicy_shouldShow3DTouchOptionForDisableTweakInjectionState, symObjAddr: 0x0, symBinAddr: 0x41CC, symSize: 0x98 }
+  - { offset: 0x107A, size: 0x8, addend: 0x0, symName: _respring, symObjAddr: 0x98, symBinAddr: 0x4264, symSize: 0x14 }
+  - { offset: 0x10CA, size: 0x8, addend: 0x0, symName: ___respring_block_invoke, symObjAddr: 0xAC, symBinAddr: 0x4278, symSize: 0x168 }
+  - { offset: 0x115C, size: 0x8, addend: 0x0, symName: ___respring_block_invoke, symObjAddr: 0xAC, symBinAddr: 0x4278, symSize: 0x168 }
+  - { offset: 0x1273, size: 0x8, addend: 0x0, symName: _choicy_initSpringBoard, symObjAddr: 0x214, symBinAddr: 0x43E0, symSize: 0x2D4 }
+  - { offset: 0x1591, size: 0x8, addend: 0x0, symName: '__logos_method$_ungrouped$FBProcessManager$choicy_handleEnvironmentChangesForExecutionContext$forAppWithBundleIdentifier$', symObjAddr: 0x4E8, symBinAddr: 0x46B4, symSize: 0xF4 }
+  - { offset: 0x168D, size: 0x8, addend: 0x0, symName: '__logos_method$_ungrouped$FBProcessManager$_bootstrapProcessWithExecutionContext$synchronously$error$', symObjAddr: 0x5DC, symBinAddr: 0x47A8, symSize: 0xD8 }
+  - { offset: 0x171C, size: 0x8, addend: 0x0, symName: '__logos_method$_ungrouped$FBProcessManager$_createProcessWithExecutionContext$', symObjAddr: 0x6B4, symBinAddr: 0x4880, symSize: 0xC0 }
+  - { offset: 0x1781, size: 0x8, addend: 0x0, symName: '__logos_method$_ungrouped$FBProcessManager$createApplicationProcessForBundleID$withExecutionContext$', symObjAddr: 0x774, symBinAddr: 0x4940, symSize: 0xA4 }
+  - { offset: 0x17FB, size: 0x8, addend: 0x0, symName: _restartSpringBoard, symObjAddr: 0x818, symBinAddr: 0x49E4, symSize: 0x2C }
+  - { offset: 0x185E, size: 0x8, addend: 0x0, symName: '__logos_method$Shortcut_iOS13Up$SBIconView$applicationShortcutItems', symObjAddr: 0x844, symBinAddr: 0x4A10, symSize: 0x290 }
+  - { offset: 0x18CD, size: 0x8, addend: 0x0, symName: '__logos_method$Shortcut_iOS13Up$SBIconView$applicationShortcutItems', symObjAddr: 0x844, symBinAddr: 0x4A10, symSize: 0x290 }
+  - { offset: 0x1A07, size: 0x8, addend: 0x0, symName: _CHSavedInjectionEnabled, symObjAddr: 0x1020, symBinAddr: 0x51EC, symSize: 0x70 }
+  - { offset: 0x2024, size: 0x8, addend: 0x0, symName: '__logos_meta_method$Shortcut_iOS13Up$SBIconView$activateShortcut$withBundleIdentifier$forIconView$', symObjAddr: 0xAD4, symBinAddr: 0x4CA0, symSize: 0xAC }
+  - { offset: 0x20C3, size: 0x8, addend: 0x0, symName: _CHPrepareShortcutLaunch, symObjAddr: 0x1090, symBinAddr: 0x525C, symSize: 0x1A4 }
+  - { offset: 0x2154, size: 0x8, addend: 0x0, symName: '__logos_method$Shortcut_iOS12Down$SBUIAppIconForceTouchControllerDataProvider$applicationShortcutItems', symObjAddr: 0xB80, symBinAddr: 0x4D4C, symSize: 0x1B8 }
+  - { offset: 0x2233, size: 0x8, addend: 0x0, symName: '__logos_method$Shortcut_iOS12Down$SBUIAppIconForceTouchController$appIconForceTouchShortcutViewController$activateApplicationShortcutItem$', symObjAddr: 0xD38, symBinAddr: 0x4F04, symSize: 0xB0 }
+  - { offset: 0x22C3, size: 0x8, addend: 0x0, symName: '__logos_method$Shortcut_iOS12Down$SBUIAction$initWithTitle$subtitle$image$badgeView$handler$', symObjAddr: 0xDE8, symBinAddr: 0x4FB4, symSize: 0x1B4 }
+  - { offset: 0x23BA, size: 0x8, addend: 0x0, symName: _CHPendingLaunchModes.cold.1, symObjAddr: 0x1234, symBinAddr: 0x8744, symSize: 0x14 }
+  - { offset: 0x23D5, size: 0x8, addend: 0x0, symName: _CHPendingLaunchModes.cold.1, symObjAddr: 0x1234, symBinAddr: 0x8744, symSize: 0x14 }
+  - { offset: 0x23E6, size: 0x8, addend: 0x0, symName: ___CHPendingLaunchModes_block_invoke, symObjAddr: 0xFE0, symBinAddr: 0x51AC, symSize: 0x40 }
+  - { offset: 0x256A, size: 0x8, addend: 0x0, symName: _safe_getExecutablePath, symObjAddr: 0x0, symBinAddr: 0x5400, symSize: 0x38 }
+  - { offset: 0x2583, size: 0x8, addend: 0x0, symName: _gIsSpringBoard, symObjAddr: 0x3B3A, symBinAddr: 0x10648, symSize: 0x0 }
+  - { offset: 0x25AA, size: 0x8, addend: 0x0, symName: _preferences, symBinAddr: 0x10658, symSize: 0x0 }
+  - { offset: 0x2700, size: 0x8, addend: 0x0, symName: _safe_getExecutablePath, symObjAddr: 0x0, symBinAddr: 0x5400, symSize: 0x38 }
+  - { offset: 0x271D, size: 0x8, addend: 0x0, symName: _choicy_reloadPreferences, symObjAddr: 0x38, symBinAddr: 0x5438, symSize: 0x4B4 }
+  - { offset: 0x28DA, size: 0x8, addend: 0x0, symName: _choicy_applyEnvironmentChanges, symObjAddr: 0x4EC, symBinAddr: 0x58EC, symSize: 0x600 }
+  - { offset: 0x2C4B, size: 0x8, addend: 0x0, symName: _choicy_applyEnvironmentChangesToLaunchContext, symObjAddr: 0xAEC, symBinAddr: 0x5EEC, symSize: 0xFC }
+  - { offset: 0x2C93, size: 0x8, addend: 0x0, symName: _choicy_applyEnvironmentChangesToExecutionContext, symObjAddr: 0xBE8, symBinAddr: 0x5FE8, symSize: 0x9C }
+  - { offset: 0x2CF8, size: 0x8, addend: 0x0, symName: __logosLocalCtor_8f53295a, symObjAddr: 0xC84, symBinAddr: 0x6084, symSize: 0x190 }
+  - { offset: 0x2FFD, size: 0x8, addend: 0x0, symName: '+[ChoicyOverrideManager sharedManager]', symObjAddr: 0x0, symBinAddr: 0x6214, symSize: 0x44 }
+  - { offset: 0x300A, size: 0x8, addend: 0x0, symName: '+[ChoicyOverrideManager sharedManager]', symObjAddr: 0x0, symBinAddr: 0x6214, symSize: 0x44 }
+  - { offset: 0x3033, size: 0x8, addend: 0x0, symName: _sharedManager.sharedManager, symObjAddr: 0x3D68, symBinAddr: 0x10628, symSize: 0x0 }
+  - { offset: 0x3048, size: 0x8, addend: 0x0, symName: _sharedManager.onceToken, symObjAddr: 0x3D70, symBinAddr: 0x10630, symSize: 0x0 }
+  - { offset: 0x31D4, size: 0x8, addend: 0x0, symName: '+[ChoicyOverrideManager sharedManager].cold.1', symObjAddr: 0xB30, symBinAddr: 0x8758, symSize: 0x14 }
+  - { offset: 0x31EF, size: 0x8, addend: 0x0, symName: '+[ChoicyOverrideManager sharedManager].cold.1', symObjAddr: 0xB30, symBinAddr: 0x8758, symSize: 0x14 }
+  - { offset: 0x3200, size: 0x8, addend: 0x0, symName: '___38+[ChoicyOverrideManager sharedManager]_block_invoke', symObjAddr: 0x44, symBinAddr: 0x6258, symSize: 0x40 }
+  - { offset: 0x3225, size: 0x8, addend: 0x0, symName: '-[ChoicyOverrideManager init]', symObjAddr: 0x84, symBinAddr: 0x6298, symSize: 0x64 }
+  - { offset: 0x3259, size: 0x8, addend: 0x0, symName: '-[ChoicyOverrideManager registerOverrideProvider:]', symObjAddr: 0xE8, symBinAddr: 0x62FC, symSize: 0x8 }
+  - { offset: 0x3296, size: 0x8, addend: 0x0, symName: '-[ChoicyOverrideManager unregisterOverrideProvider:]', symObjAddr: 0xF0, symBinAddr: 0x6304, symSize: 0x8 }
+  - { offset: 0x32D3, size: 0x8, addend: 0x0, symName: '-[ChoicyOverrideManager disableTweakInjectionOverrideForApplication:overrideExists:]', symObjAddr: 0xF8, symBinAddr: 0x630C, symSize: 0x138 }
+  - { offset: 0x334D, size: 0x8, addend: 0x0, symName: '___84-[ChoicyOverrideManager disableTweakInjectionOverrideForApplication:overrideExists:]_block_invoke', symObjAddr: 0x230, symBinAddr: 0x6444, symSize: 0x98 }
+  - { offset: 0x33B4, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s40r48r, symObjAddr: 0x2C8, symBinAddr: 0x64DC, symSize: 0x58 }
+  - { offset: 0x33DA, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_e8_32s40r48r, symObjAddr: 0x320, symBinAddr: 0x6534, symSize: 0x4C }
+  - { offset: 0x33F7, size: 0x8, addend: 0x0, symName: '-[ChoicyOverrideManager customTweakConfigurationEnabledOverwriteForApplication:overrideExists:]', symObjAddr: 0x36C, symBinAddr: 0x6580, symSize: 0x138 }
+  - { offset: 0x3471, size: 0x8, addend: 0x0, symName: '___95-[ChoicyOverrideManager customTweakConfigurationEnabledOverwriteForApplication:overrideExists:]_block_invoke', symObjAddr: 0x4A4, symBinAddr: 0x66B8, symSize: 0x98 }
+  - { offset: 0x34D8, size: 0x8, addend: 0x0, symName: '-[ChoicyOverrideManager customTweakConfigurationAllowDenyModeOverrideForApplication:overrideExists:]', symObjAddr: 0x53C, symBinAddr: 0x6750, symSize: 0x138 }
+  - { offset: 0x3552, size: 0x8, addend: 0x0, symName: '___100-[ChoicyOverrideManager customTweakConfigurationAllowDenyModeOverrideForApplication:overrideExists:]_block_invoke', symObjAddr: 0x674, symBinAddr: 0x6888, symSize: 0x98 }
+  - { offset: 0x35B9, size: 0x8, addend: 0x0, symName: '-[ChoicyOverrideManager customTweakConfigurationAllowOrDenyListOverrideForApplication:overrideExists:]', symObjAddr: 0x70C, symBinAddr: 0x6920, symSize: 0x184 }
+  - { offset: 0x3633, size: 0x8, addend: 0x0, symName: ___Block_byref_object_copy_, symObjAddr: 0x890, symBinAddr: 0x6AA4, symSize: 0x10 }
+  - { offset: 0x3655, size: 0x8, addend: 0x0, symName: ___Block_byref_object_dispose_, symObjAddr: 0x8A0, symBinAddr: 0x6AB4, symSize: 0x8 }
+  - { offset: 0x3672, size: 0x8, addend: 0x0, symName: '___102-[ChoicyOverrideManager customTweakConfigurationAllowOrDenyListOverrideForApplication:overrideExists:]_block_invoke', symObjAddr: 0x8A8, symBinAddr: 0x6ABC, symSize: 0xAC }
+  - { offset: 0x36D9, size: 0x8, addend: 0x0, symName: '-[ChoicyOverrideManager overwriteGlobalConfigurationOverrideForApplication:overrideExists:]', symObjAddr: 0x954, symBinAddr: 0x6B68, symSize: 0x138 }
+  - { offset: 0x3753, size: 0x8, addend: 0x0, symName: '___91-[ChoicyOverrideManager overwriteGlobalConfigurationOverrideForApplication:overrideExists:]_block_invoke', symObjAddr: 0xA8C, symBinAddr: 0x6CA0, symSize: 0x98 }
+  - { offset: 0x37BA, size: 0x8, addend: 0x0, symName: '-[ChoicyOverrideManager .cxx_destruct]', symObjAddr: 0xB24, symBinAddr: 0x6D38, symSize: 0xC }
+  - { offset: 0x3C46, size: 0x8, addend: 0x0, symName: _CHPreferencesPath, symObjAddr: 0x0, symBinAddr: 0x6D44, symSize: 0xC }
+  - { offset: 0x3C53, size: 0x8, addend: 0x0, symName: _localize, symObjAddr: 0xB04, symBinAddr: 0x7848, symSize: 0x194 }
+  - { offset: 0x3C78, size: 0x8, addend: 0x0, symName: _localize.CHBundle, symObjAddr: 0x4BF0, symBinAddr: 0x10638, symSize: 0x0 }
+  - { offset: 0x3C8D, size: 0x8, addend: 0x0, symName: _localize.englishLocalizations, symObjAddr: 0x4BF8, symBinAddr: 0x10640, symSize: 0x0 }
+  - { offset: 0x4224, size: 0x8, addend: 0x0, symName: _CHPreferencesPath, symObjAddr: 0x0, symBinAddr: 0x6D44, symSize: 0xC }
+  - { offset: 0x4241, size: 0x8, addend: 0x0, symName: _CHPrivatePath, symObjAddr: 0xC, symBinAddr: 0x6D50, symSize: 0xA0 }
+  - { offset: 0x424B, size: 0x8, addend: 0x0, symName: _CHPrivatePath, symObjAddr: 0xC, symBinAddr: 0x6D50, symSize: 0xA0 }
+  - { offset: 0x42A5, size: 0x8, addend: 0x0, symName: _CHProcessCachePath, symObjAddr: 0xAC, symBinAddr: 0x6DF0, symSize: 0xC }
+  - { offset: 0x42C2, size: 0x8, addend: 0x0, symName: _CHExecutablePathForApplication, symObjAddr: 0xB8, symBinAddr: 0x6DFC, symSize: 0x170 }
+  - { offset: 0x42CC, size: 0x8, addend: 0x0, symName: _CHExecutablePathForApplication, symObjAddr: 0xB8, symBinAddr: 0x6DFC, symSize: 0x170 }
+  - { offset: 0x4304, size: 0x8, addend: 0x0, symName: _CHIsJailbreakApp, symObjAddr: 0x228, symBinAddr: 0x6F6C, symSize: 0x17C }
+  - { offset: 0x43BD, size: 0x8, addend: 0x0, symName: _CHInjectionIsForced, symObjAddr: 0x3A4, symBinAddr: 0x70E8, symSize: 0x118 }
+  - { offset: 0x4505, size: 0x8, addend: 0x0, symName: _CHApplicationSupportsPrivilege, symObjAddr: 0x4BC, symBinAddr: 0x7200, symSize: 0x374 }
+  - { offset: 0x45FC, size: 0x8, addend: 0x0, symName: _CHApplicationHasHiddenTags, symObjAddr: 0xDA8, symBinAddr: 0x7AEC, symSize: 0x174 }
+  - { offset: 0x463A, size: 0x8, addend: 0x0, symName: _CHInjectionEnabled, symObjAddr: 0x830, symBinAddr: 0x7574, symSize: 0x214 }
+  - { offset: 0x4730, size: 0x8, addend: 0x0, symName: _parseNumberBool, symObjAddr: 0xA44, symBinAddr: 0x7788, symSize: 0x60 }
+  - { offset: 0x4773, size: 0x8, addend: 0x0, symName: _parseNumberInteger, symObjAddr: 0xAA4, symBinAddr: 0x77E8, symSize: 0x60 }
+  - { offset: 0x47B6, size: 0x8, addend: 0x0, symName: _processPreferencesForApplication, symObjAddr: 0xC98, symBinAddr: 0x79DC, symSize: 0x88 }
+  - { offset: 0x47FD, size: 0x8, addend: 0x0, symName: _processPreferencesForDaemon, symObjAddr: 0xD20, symBinAddr: 0x7A64, symSize: 0x88 }
+  - { offset: 0x4B9C, size: 0x8, addend: 0x0, symName: _renameKey, symObjAddr: 0x0, symBinAddr: 0x7C60, symSize: 0xBC }
+  - { offset: 0x4BD3, size: 0x8, addend: 0x0, symName: _renameKey, symObjAddr: 0x0, symBinAddr: 0x7C60, symSize: 0xBC }
+  - { offset: 0x4C25, size: 0x8, addend: 0x0, symName: _renameKeys, symObjAddr: 0xBC, symBinAddr: 0x7D1C, symSize: 0xA4 }
+  - { offset: 0x4C59, size: 0x8, addend: 0x0, symName: ___renameKeys_block_invoke, symObjAddr: 0x160, symBinAddr: 0x7DC0, symSize: 0x8 }
+  - { offset: 0x4CA2, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s, symObjAddr: 0x168, symBinAddr: 0x7DC8, symSize: 0x8 }
+  - { offset: 0x4CBB, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s, symObjAddr: 0x168, symBinAddr: 0x7DC8, symSize: 0x8 }
+  - { offset: 0x4CDF, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_e8_32s, symObjAddr: 0x170, symBinAddr: 0x7DD0, symSize: 0x8 }
+  - { offset: 0x4CFC, size: 0x8, addend: 0x0, symName: _removeKeys, symObjAddr: 0x178, symBinAddr: 0x7DD8, symSize: 0xA4 }
+  - { offset: 0x4D30, size: 0x8, addend: 0x0, symName: ___removeKeys_block_invoke, symObjAddr: 0x21C, symBinAddr: 0x7E7C, symSize: 0xC }
+  - { offset: 0x4D76, size: 0x8, addend: 0x0, symName: '+[ChoicyPrefsMigrator preferencesNeedMigration:]', symObjAddr: 0x228, symBinAddr: 0x7E88, symSize: 0x54 }
+  - { offset: 0x4E1E, size: 0x8, addend: 0x0, symName: '+[ChoicyPrefsMigrator migratePreferences:]', symObjAddr: 0x27C, symBinAddr: 0x7EDC, symSize: 0x304 }
+  - { offset: 0x4F42, size: 0x8, addend: 0x0, symName: '___42+[ChoicyPrefsMigrator migratePreferences:]_block_invoke', symObjAddr: 0x580, symBinAddr: 0x81E0, symSize: 0x154 }
+  - { offset: 0x4FFB, size: 0x8, addend: 0x0, symName: '___42+[ChoicyPrefsMigrator migratePreferences:]_block_invoke_2', symObjAddr: 0x6D4, symBinAddr: 0x8334, symSize: 0x24 }
+  - { offset: 0x5042, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s40b, symObjAddr: 0x6F8, symBinAddr: 0x8358, symSize: 0x48 }
+  - { offset: 0x5062, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s40b, symObjAddr: 0x6F8, symBinAddr: 0x8358, symSize: 0x48 }
+  - { offset: 0x5088, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_e8_32s40s, symObjAddr: 0x740, symBinAddr: 0x83A0, symSize: 0x3C }
+  - { offset: 0x50A5, size: 0x8, addend: 0x0, symName: '___42+[ChoicyPrefsMigrator migratePreferences:]_block_invoke.55', symObjAddr: 0x77C, symBinAddr: 0x83DC, symSize: 0x24 }
+  - { offset: 0x50EC, size: 0x8, addend: 0x0, symName: '+[ChoicyPrefsMigrator updatePreferenceVersion:]', symObjAddr: 0x7A0, symBinAddr: 0x8400, symSize: 0x18 }
+  - { offset: 0x510C, size: 0x8, addend: 0x0, symName: '+[ChoicyPrefsMigrator updatePreferenceVersion:]', symObjAddr: 0x7A0, symBinAddr: 0x8400, symSize: 0x18 }
+  - { offset: 0x552C, size: 0x8, addend: 0x0, symName: _CHEnvironmentForPrivilegeScope, symObjAddr: 0x0, symBinAddr: 0x8418, symSize: 0xD0 }
+  - { offset: 0x5566, size: 0x8, addend: 0x0, symName: _CHEnvironmentForPrivilegeScope, symObjAddr: 0x0, symBinAddr: 0x8418, symSize: 0xD0 }
+  - { offset: 0x55BC, size: 0x8, addend: 0x0, symName: _CHConsumePendingLaunchMode, symObjAddr: 0xD0, symBinAddr: 0x84E8, symSize: 0xE0 }
+  - { offset: 0x5609, size: 0x8, addend: 0x0, symName: _CHEnvironmentForLaunchMode, symObjAddr: 0x1B0, symBinAddr: 0x85C8, symSize: 0x17C }
+...
