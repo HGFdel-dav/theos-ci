@@ -21,6 +21,42 @@ static NSURL *RDValidatedWebURL(NSString *text) {
     if (!RDWebScheme(scheme) || !parts.host.length || parts.user.length || parts.password.length) return nil;
     return parts.URL;
 }
+/* Telegram does not claim t.me as a Universal Link in this WebView path, so
+   translate the public link forms into Telegram's own scheme. Only exact
+   t.me paths are mapped; everything else keeps its original navigation. */
+static NSURL *RDTelegramAppTarget(NSURL *webURL) {
+    if (!webURL || ![webURL.host.lowercaseString isEqualToString:@"t.me"]) return nil;
+    NSMutableArray<NSString *> *parts = [[webURL.pathComponents filteredArrayUsingPredicate:
+        [NSPredicate predicateWithBlock:^BOOL(NSString *value, NSDictionary *bindings) {
+            return value.length > 0 && ![value isEqualToString:@"/"];
+        }]] mutableCopy];
+    if (!parts.count || [parts[0] isEqualToString:@"s"]) return nil;
+    NSString *invite = nil;
+    NSString *username = parts[0];
+    if ([username hasPrefix:@"+"]) {
+        invite = [username substringFromIndex:1];
+    } else if ([username isEqualToString:@"joinchat"] && parts.count > 1) {
+        invite = parts[1];
+    }
+    NSURLComponents *out = [NSURLComponents new];
+    out.scheme = @"tg";
+    NSMutableArray<NSURLQueryItem *> *items = [NSMutableArray array];
+    if (invite.length) {
+        out.host = @"join";
+        [items addObject:[NSURLQueryItem queryItemWithName:@"invite" value:invite]];
+    } else {
+        out.host = @"resolve";
+        [items addObject:[NSURLQueryItem queryItemWithName:@"domain" value:username]];
+        if (parts.count > 1 && [parts[1] integerValue] > 0)
+            [items addObject:[NSURLQueryItem queryItemWithName:@"post" value:parts[1]]];
+    }
+    for (NSURLQueryItem *item in [NSURLComponents componentsWithURL:webURL resolvingAgainstBaseURL:NO].queryItems) {
+        if ([item.name isEqualToString:@"start"] && item.value.length)
+            [items addObject:item];
+    }
+    out.queryItems = items;
+    return out.URL;
+}
 
 @interface RDRouteReply : NSObject {
     BOOL _finished;
@@ -157,7 +193,8 @@ static BOOL RDHandleClickNavigation(id dispatcher, NSString *type,
                                     id<RDEventCallback> callback) {
     BOOL isRequest = [type isEqualToString:@"GeckoView:OnPreNavigation"] ||
                      [type isEqualToString:@"GeckoView:OnLoadRequest"];
-    if (!isRequest || ![payload isKindOfClass:[NSDictionary class]] ||
+    BOOL isNewSession = [type isEqualToString:@"GeckoView:OnNewSession"];
+    if ((!isRequest && !isNewSession) || ![payload isKindOfClass:[NSDictionary class]] ||
         ![callback respondsToSelector:@selector(sendSuccess:)]) {
         RDLog(@"route reject reason=event-or-payload event=%@", type);
         return NO;
@@ -183,6 +220,20 @@ static BOOL RDHandleClickNavigation(id dispatcher, NSString *type,
           type, scheme, gesture, trigger ?: @"<none>", topLevel, flags, foreground, enabled, eligible);
     RDRouteReply *reply = [RDRouteReply new];
     reply.callback = callback;
+
+    /* A link with target=_blank/window.open reaches OnNewSession in the main
+       app; this is the one click path that does not need a content process. */
+    if (isNewSession) {
+        if (!enabled || !foreground) return NO;
+        NSURL *target = RDWebScheme(scheme) ? RDValidatedWebURL(uri) : RDNormalizedAppTarget(uri);
+        if (!target) return NO;
+        RDOpenOperation *operation = [RDOpenOperation new];
+        operation.webURL = RDWebScheme(scheme) ? target : nil;
+        operation.appURL = RDWebScheme(scheme) ? RDTelegramAppTarget(target) : target;
+        operation.completion = ^(BOOL handled) { [reply finish:handled]; };
+        [operation start];
+        return YES;
+    }
 
     /* Custom protocols are handled exclusively by RDNativeOnLinkClick. This
        GeckoView notification path is only used for HTTP(S) Universal Links. */
@@ -216,6 +267,7 @@ static BOOL RDHandleClickNavigation(id dispatcher, NSString *type,
     if (!attempt) return YES;
     RDOpenOperation *operation = [RDOpenOperation new];
     operation.webURL = webURL;
+    operation.appURL = RDTelegramAppTarget(webURL);
     operation.completion = ^(BOOL handled) { RDFinishWebAttempt(attempt, handled); };
     [operation start];
     return YES;
