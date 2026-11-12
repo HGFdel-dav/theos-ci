@@ -284,7 +284,6 @@ static BOOL RDHandleClickNavigation(id dispatcher, NSString *type,
     }
 
     if (!webTarget || !appTarget) { RDLog(@"route reject reason=not-app-link"); return NO; }
-    NSURL *webURL = webTarget;
     if (trigger.length && parts.fragment.length) {
         NSURLComponents *from = [NSURLComponents componentsWithString:trigger];
         NSURLComponents *to = [parts copy];
