@@ -42,6 +42,9 @@ assert 'RDExternalHook' in external and 'RD_EXTERNAL_RECV_LOAD_URI_EXTERNAL' in 
 assert 'RD_EXTERNAL_HANDLER_EXISTS 0x27647a4ULL' in external
 assert 'RDExternalHandlerExistsHook' in external and 'external handler hook installed' in external
 assert 'external IPC suppressed' in external and 'external handler override' in external
+assert 'RD_EXTERNAL_LOAD_URI 0x2764be4ULL' in external
+assert 'RDExternalLoadURIHook' in external and 'external LoadURI hook installed' in external
+assert 'external LoadURI' in external and 'RDExternalTopLevelRaw' in external
 assert 'RDUnwrapMaybeDiscardedContext' in external and 'RD_EXTERNAL_CONTEXT_DISCARDED_OFFSET' in external
 assert 'RD_EXTERNAL_XUL_UUID_BYTES' in external and 'gRDExternalOriginal' in external
 assert 'RDNativePublishExternalURL' not in entry and 'pendingExternalHandoff' not in entry
