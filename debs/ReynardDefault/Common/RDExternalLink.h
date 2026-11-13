@@ -8,6 +8,7 @@
 #import <substrate.h>
 #import <atomic>
 #include <cstdint>
+#include <unistd.h>
 #import <cstdlib>
 #import <cstring>
 #import "Common/Common.h"
@@ -23,6 +24,7 @@ struct RDExternalMaybeDiscardedContext { uint64_t id; void *context; };
 static_assert(sizeof(RDExternalMaybeDiscardedContext)==16,"MaybeDiscarded ABI changed");
 #define RD_EXTERNAL_GET_PARENT 0x5d1b678ULL
 #define RD_EXTERNAL_HANDLER_EXISTS 0x27647a4ULL
+#define RD_EXTERNAL_LOAD_URI 0x2764be4ULL
 static uintptr_t gRDExternalGetParent = 0;
 
 /* IPCResult is a one-byte value object in Firefox's ProtocolUtils.h.  The
@@ -113,6 +115,13 @@ static BOOL RDExternalTopLevel(void *maybeContext) {
     if (state & RD_EXTERNAL_CONTEXT_DISCARDED_BIT) return NO;
     return RDGeckoCallUnsignedMethod0((void *)context,gRDExternalGetParent)==NULL;
 }
+static BOOL RDExternalTopLevelRaw(void *context) {
+    if (!gRDExternalGetParent || !context) return NO;
+    uint16_t state=0;
+    memcpy(&state,(const uint8_t *)context+RD_EXTERNAL_CONTEXT_DISCARDED_OFFSET,sizeof(state));
+    if (state & RD_EXTERNAL_CONTEXT_DISCARDED_BIT) return NO;
+    return RDGeckoCallUnsignedMethod0(context,gRDExternalGetParent)==NULL;
+}
 static RDExternalIPCResult RDExternalHook(void *self, void *uri, void *principal,
     void *redirectPrincipal, void *browsingContext, bool externallyTriggered,
     bool userGesture, bool newWindowTarget) {
@@ -166,10 +175,49 @@ static int32_t RDExternalHandlerExistsHook(void *self, const char *scheme, bool 
     }
     // Firefox iOS answers this question with NSWorkspace, which is a macOS
     // API and yields no handler on iOS. Report a handler for every custom
-    // scheme; the parent IPC hook below remains the sole opener and applies
+    // scheme; the two opener hooks below remain the sole openers and apply
     // the click/top-level/foreground gate.
     *exists = true;
     RDLog(@"external handler override scheme=%@", value.lowercaseString);
+    return 0;
+}
+typedef int32_t (*RDExternalLoadURIFn)(void *, void *, void *, void *, void *,
+                                       bool, bool, bool);
+static RDExternalLoadURIFn gRDExternalLoadURIOriginal = nullptr;
+static std::atomic_bool gRDExternalLoadURIInstalled{false};
+static std::atomic_bool gRDExternalLoadURIRejected{false};
+static int32_t RDExternalLoadURIHook(void *self, void *uri, void *principal,
+    void *redirectPrincipal, void *browsingContext, bool externallyTriggered,
+    bool userGesture, bool newWindowTarget) {
+    if (!gRDExternalLoadURIOriginal) return -1;
+    NSString *spec = RDExternalSpec(uri);
+    NSURL *url = RDExternalURL(spec);
+    NSString *bundle = [NSBundle mainBundle].bundleIdentifier;
+    UIApplication *app = [UIApplication sharedApplication];
+    BOOL enabled = [bundle isEqualToString:@"com.minh-ton.Reynard"] &&
+        RDReadBoolPref(kEnabledKey, YES) && RDReadBoolPref(kHandoffKey, YES);
+    BOOL eligible = url && enabled && app &&
+        app.applicationState == UIApplicationStateActive &&
+        [NSThread isMainThread] && !externallyTriggered && userGesture &&
+        RDExternalTopLevelRaw(browsingContext);
+    RDLog(@"external LoadURI scheme=%@ gesture=%d ext=%d top=%d app=%d state=%ld eligible=%d pid=%d",
+          url.scheme ?: spec, userGesture, externallyTriggered,
+          RDExternalTopLevelRaw(browsingContext), app != nil,
+          app ? (long)app.applicationState : -1L, eligible, getpid());
+    if (!eligible) {
+        // In the app process, a custom scheme that fails the click gate must
+        // not fall through to the old platform opener. In a content process
+        // there is no UIApplication; let the original path send IPC instead.
+        if (app && url && enabled) {
+            RDLog(@"external LoadURI suppressed scheme=%@", url.scheme);
+            return 0;
+        }
+        return gRDExternalLoadURIOriginal(self, uri, principal, redirectPrincipal,
+                                          browsingContext, externallyTriggered,
+                                          userGesture, newWindowTarget);
+    }
+    if (RDExternalOpen(url)) return 0;
+    RDLog(@"external LoadURI open rejected scheme=%@", url.scheme);
     return 0;
 }
 static BOOL RDExternalHeaderMatches(const struct mach_header_64 *header) {
@@ -190,6 +238,7 @@ static BOOL RDExternalHeaderMatches(const struct mach_header_64 *header) {
     uint64_t end=RD_EXTERNAL_RECV_LOAD_URI_EXTERNAL+24;
     if (end<RD_EXTERNAL_GET_PARENT+16) end=RD_EXTERNAL_GET_PARENT+16;
     if (end<RD_EXTERNAL_HANDLER_EXISTS+24) end=RD_EXTERNAL_HANDLER_EXISTS+24;
+    if (end<RD_EXTERNAL_LOAD_URI+24) end=RD_EXTERNAL_LOAD_URI+24;
     return uuid && textSize > end;
 }
 static void RDExternalTryInstall(void);
@@ -226,6 +275,19 @@ static void RDExternalTryInstall(void) {
             if (gRDExternalHandlerOriginal) {
                 gRDExternalHandlerInstalled.store(true, std::memory_order_release);
                 RDLog(@"external handler hook installed");
+            }
+        }
+        uintptr_t load=(uintptr_t)_dyld_get_image_vmaddr_slide(i)+RD_EXTERNAL_LOAD_URI;
+        const uint32_t expectedLoad[6]={0xa9ba6ffc,0xa90167fa,0xa9025ff8,0xa90357f6,0xa9044ff4,0xa9057bfd};
+        if (memcmp((const void *)load, expectedLoad, sizeof(expectedLoad)) != 0) {
+            gRDExternalLoadURIRejected.store(true, std::memory_order_release);
+            RDLog(@"external LoadURI prologue mismatch");
+        } else {
+            MSHookFunction((void *)load, (void *)&RDExternalLoadURIHook,
+                           (void **)&gRDExternalLoadURIOriginal);
+            if (gRDExternalLoadURIOriginal) {
+                gRDExternalLoadURIInstalled.store(true, std::memory_order_release);
+                RDLog(@"external LoadURI hook installed");
             }
         }
         return;
