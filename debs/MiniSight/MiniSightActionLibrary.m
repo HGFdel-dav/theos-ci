@@ -573,11 +573,20 @@ static MSALState * _Nullable MSALLoadState(NSString * _Nullable path, NSError * 
         for (MSALFrame *frame in clip.frames) [sources addObject:frame->source];
     NSUInteger totalBytes = data.length, sourceFrames = 0;
     for (MSALSource *source in sources) {
+        // NSError ** is autoreleasing. A strong owner OUTSIDE this inner pool
+        // must retain failures before its drain, then forward them afterwards.
+        NSError *sourceError = nil;
+        BOOL sourceOK = NO;
         @autoreleasepool {
             NSUInteger remaining = MSALInputBytes - totalBytes;
-            NSData *input = MSALRead(root, source->file, MIN(MSALSourceBytes, remaining), NULL, &source->identity, error);
-            if (!input || !MSALInspectSource(source, input, &sourceFrames, error)) { close(root); return nil; }
-            totalBytes += input.length;
+            NSData *input = MSALRead(root, source->file, MIN(MSALSourceBytes, remaining), NULL, &source->identity, &sourceError);
+            sourceOK = input && MSALInspectSource(source, input, &sourceFrames, &sourceError);
+            if (sourceOK) totalBytes += input.length;
+        }
+        if (!sourceOK) {
+            close(root);
+            if (error) *error = sourceError;
+            return nil;
         }
     }
     close(root);

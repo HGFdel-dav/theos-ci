@@ -265,6 +265,15 @@ class StaticContract(unittest.TestCase):
         for forbidden in ("NSURLSession", "dataWithContentsOfURL", "imageNamed:", "animatedImageWithImages:", "NSLog("):
             self.assertNotIn(forbidden, SOURCE)
 
+    def test_error_ownership_crosses_inner_pool(self):
+        # Source conformance only; real invalid-source cases + ASan execute this.
+        loop = SOURCE.split('for (MSALSource *source in sources) {', 1)[1]
+        self.assertLess(loop.index('NSError *sourceError = nil;'), loop.index('@autoreleasepool'))
+        self.assertIn('&source->identity, &sourceError', loop)
+        self.assertIn('MSALInspectSource(source, input, &sourceFrames, &sourceError)', loop)
+        self.assertLess(loop.index('@autoreleasepool'), loop.index('if (!sourceOK)'))
+        self.assertIn('if (error) *error = sourceError;', loop)
+
     def test_main_boundary_and_epoch_guards(self):
         self.assertEqual(SOURCE.count("[UIImage imageWithCGImage:"), 1)
         finish = SOURCE.split("- (void)finishFrame:(MSALBitmap * _Nullable)bitmap epoch:(uint64_t)epoch {", 1)[1]
