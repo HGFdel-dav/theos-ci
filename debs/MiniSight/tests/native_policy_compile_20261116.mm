@@ -25,6 +25,7 @@ void MSNativePolicyCompileFixture(void) {
     MSPetResidentTransition transition = MSPetResidentUnchanged;
     MiniSightPetMotionLockReason reason = MiniSightPetMotionLockHost;
     (void)transition; (void)reason;
+    (void)MSApprovalDescribe("true");
     (void)MSNWReadyMayConsume(true, false, 1, true, true, false);
     (void)MSNameWakeMayStartInput(1, 1, 1, true, true, false, false, false, false);
 }

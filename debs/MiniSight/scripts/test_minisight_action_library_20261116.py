@@ -267,7 +267,7 @@ class StaticContract(unittest.TestCase):
 
     def test_main_boundary_and_epoch_guards(self):
         self.assertEqual(SOURCE.count("[UIImage imageWithCGImage:"), 1)
-        finish = SOURCE.split("- (void)finishFrame:(MSALBitmap *)bitmap epoch:(uint64_t)epoch {", 1)[1]
+        finish = SOURCE.split("- (void)finishFrame:(MSALBitmap * _Nullable)bitmap epoch:(uint64_t)epoch {", 1)[1]
         self.assertIn("NSThread.isMainThread", finish)
         self.assertIn("UIImage *image = bitmap", finish)
         self.assertIn("__weak MiniSightActionLibrary *weakSelf", SOURCE)

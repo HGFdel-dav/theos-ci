@@ -41,7 +41,7 @@ static BOOL MSNWWriteVerified(NSString *container, NSString *name, NSDictionary 
     int dir = MSBridgeDirectory(container); if (dir < 0) return NO;
     struct stat st;
     int result = fstatat(dir, name.fileSystemRepresentation, &st, AT_SYMLINK_NOFOLLOW);
-    BOOL safe = result == 0 ? (S_ISREG(st.st_mode) && st.st_size >= 0 && st.st_size <= MSNWLimit) : errno == ENOENT;
+    BOOL safe = result == 0 ? (S_ISREG(st.st_mode) && st.st_size >= 0 && (uint64_t)st.st_size <= MSNWLimit) : errno == ENOENT;
     close(dir);
     return safe && MSBridgeWrite(container, name, value) &&
         [MSBridgeRead(container, name, MSNWLimit) isEqualToDictionary:value];

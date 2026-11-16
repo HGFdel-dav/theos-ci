@@ -118,7 +118,8 @@ static inline MSChatFloatingFrames MSChatFloatingLayoutWithComposer(
 typedef struct { MSRect field, more, mic, send; int hasMore, hasMic; } MSChatComposerFrames;
 static inline MSChatComposerFrames MSChatComposerLayout(double width, double height, int sending) {
     double w = fmax(0., MSFinite(width, 0.)), h = fmax(0., MSFinite(height, 0.));
-    MSChatComposerFrames f = {0};
+    MSChatComposerFrames f = {{0., 0., 0., 0.}, {0., 0., 0., 0.},
+                              {0., 0., 0., 0.}, {0., 0., 0., 0.}, 0, 0};
     double edge = fmin(5., w * .04), right = fmax(edge, w - edge);
     double sendW = fmin(34., fmax(0., right - edge));
     double sendH = fmin(26., h);

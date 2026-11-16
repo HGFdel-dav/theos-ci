@@ -9,6 +9,8 @@
 #import <stdlib.h>
 #import <stdint.h>
 
+NS_ASSUME_NONNULL_BEGIN
+
 // Original implementation; no third-party animation/runtime code or artwork.
 // ImageIO performs bounded thumbnail decoding. Only the MAIN delivery boundary
 // creates UIImage; metadata, worker jobs and NSCache own Foundation/CG objects.
@@ -33,23 +35,23 @@ static NSError *MSALError(NSInteger code, NSString *reason) {
     return [NSError errorWithDomain:@"MiniSightActionLibrary" code:code
                            userInfo:@{NSLocalizedDescriptionKey: reason}];
 }
-static BOOL MSALFail(NSError **error, NSInteger code, NSString *reason) {
+static BOOL MSALFail(NSError * _Nullable * _Nullable error, NSInteger code, NSString *reason) {
     if (error) *error = MSALError(code, reason);
     return NO;
 }
-static BOOL MSALNumber(id value, double minimum, double maximum, BOOL integer) {
+static BOOL MSALNumber(id _Nullable value, double minimum, double maximum, BOOL integer) {
     if (![value isKindOfClass:NSNumber.class] ||
         CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID()) return NO;
     double n = [value doubleValue];
     return isfinite(n) && n >= minimum && n <= maximum && (!integer || floor(n) == n);
 }
-static BOOL MSALKeys(id value, NSArray<NSString *> *required, NSArray<NSString *> *optional) {
+static BOOL MSALKeys(id _Nullable value, NSArray<NSString *> *required, NSArray<NSString *> *optional) {
     if (![value isKindOfClass:NSDictionary.class]) return NO;
     for (NSString *key in required) if (!value[key]) return NO;
     for (id key in value) if (![required containsObject:key] && ![optional containsObject:key]) return NO;
     return YES;
 }
-static BOOL MSALSafeID(id value) {
+static BOOL MSALSafeID(id _Nullable value) {
     if (![value isKindOfClass:NSString.class] || ![value length] || [value length] > 64) return NO;
     for (NSUInteger i = 0; i < [value length]; i++) {
         unichar c = [value characterAtIndex:i];
@@ -58,7 +60,7 @@ static BOOL MSALSafeID(id value) {
     }
     return YES;
 }
-static BOOL MSALRelativePath(id value) {
+static BOOL MSALRelativePath(id _Nullable value) {
     if (![value isKindOfClass:NSString.class] || ![value length] ||
         ![value canBeConvertedToEncoding:NSUTF8StringEncoding] ||
         [value lengthOfBytesUsingEncoding:NSUTF8StringEncoding] > 512 || [value hasPrefix:@"/"]) return NO;
@@ -131,8 +133,8 @@ static int MSALOpenDirectory(NSString *path) {
 }
 // Descriptor-relative traversal rejects ALL symlinks inside a pack, including
 // benign ones. O_NONBLOCK avoids hanging on FIFOs before the regular-file test.
-static NSData *MSALRead(int root, NSString *relative, NSUInteger limit,
-                       const struct stat *expected, struct stat *identity, NSError **error) {
+static NSData * _Nullable MSALRead(int root, NSString *relative, NSUInteger limit,
+                       const struct stat * _Nullable expected, struct stat * _Nullable identity, NSError * _Nullable * _Nullable error) {
     NSCAssert(!NSThread.isMainThread, @"File I/O must stay off main.");
     if (!MSALRelativePath(relative)) { MSALFail(error, 3, @"Unsafe relative source path."); return nil; }
     NSArray<NSString *> *parts = [relative componentsSeparatedByString:@"/"];
@@ -215,10 +217,10 @@ static NSData *MSALRead(int root, NSString *relative, NSUInteger limit,
     CGImageRef image;
     NSUInteger cost;
 }
-- (instancetype)initTakingImage:(CGImageRef)value;
+- (nullable instancetype)initTakingImage:(CGImageRef)value;
 @end
 @implementation MSALBitmap
-- (instancetype)initTakingImage:(CGImageRef)value {
+- (nullable instancetype)initTakingImage:(CGImageRef)value {
     if ((self = [super init])) {
         image = value; cost = CGImageGetBytesPerRow(value) * CGImageGetHeight(value);
     } else if (value) {
@@ -254,7 +256,7 @@ static NSUInteger MSALCacheCost;
 }
 - (uint64_t)advancePurging:(BOOL)purge;
 - (BOOL)isCurrent:(uint64_t)epoch;
-- (MSALBitmap *)cached:(NSString *)key epoch:(uint64_t)epoch;
+- (nullable MSALBitmap *)cached:(NSString *)key epoch:(uint64_t)epoch;
 - (void)store:(MSALBitmap *)bitmap key:(NSString *)key epoch:(uint64_t)epoch;
 @end
 @implementation MSALState
@@ -285,7 +287,7 @@ static NSUInteger MSALCacheCost;
 - (BOOL)isCurrent:(uint64_t)epoch {
     [_lock lock]; BOOL result = epoch == _epoch; [_lock unlock]; return result;
 }
-- (MSALBitmap *)cached:(NSString *)key epoch:(uint64_t)epoch {
+- (nullable MSALBitmap *)cached:(NSString *)key epoch:(uint64_t)epoch {
     key = [_cachePrefix stringByAppendingString:key];
     [_lock lock]; MSALBitmap *bitmap = nil;
     if (epoch == _epoch) {
@@ -330,11 +332,11 @@ static NSString *MSALKey(MiniSightActionClip *clip, NSUInteger index) {
 static NSDictionary *MSALSourceOptions(void) {
     return @{(id)kCGImageSourceShouldCache: @NO, (id)kCGImageSourceShouldAllowFloat: @NO};
 }
-static BOOL MSALAllowedType(CFStringRef type) {
+static BOOL MSALAllowedType(CFStringRef _Nullable type) {
     return type && (CFEqual(type, CFSTR("public.png")) || CFEqual(type, CFSTR("public.jpeg")) ||
                     CFEqual(type, CFSTR("com.compuserve.gif")));
 }
-static BOOL MSALInspectSource(MSALSource *info, NSData *data, NSUInteger *totalFrames, NSError **error) {
+static BOOL MSALInspectSource(MSALSource *info, NSData *data, NSUInteger *totalFrames, NSError * _Nullable * _Nullable error) {
     CGImageSourceRef source = CGImageSourceCreateWithData((__bridge CFDataRef)data,
         (__bridge CFDictionaryRef)MSALSourceOptions());
     if (!source) return MSALFail(error, 4, @"Image source cannot be opened.");
@@ -374,7 +376,7 @@ static CGSize MSALSize(MSALSource *source, NSUInteger index) {
     [source->sizes[index] getValue:&size size:sizeof(size)];
     return size;
 }
-static int MSALOpenRoot(MSALState *state, NSError **error) {
+static int MSALOpenRoot(MSALState *state, NSError * _Nullable * _Nullable error) {
     int fd = MSALOpenDirectory(state->rootPath);
     struct stat identity = {0};
     if (fd < 0 || fstat(fd, &identity) || !S_ISDIR(identity.st_mode) ||
@@ -397,7 +399,7 @@ static CGRect MSALOrientedRect(CGRect r, NSUInteger orientation) {
         default: return r;
     }
 }
-static MSALBitmap *MSALDecode(MSALState *state, MSALFrame *frame, uint64_t epoch, NSError **error) {
+static MSALBitmap * _Nullable MSALDecode(MSALState *state, MSALFrame *frame, uint64_t epoch, NSError * _Nullable * _Nullable error) {
     NSCAssert(!NSThread.isMainThread, @"Image decoding must stay off main.");
     if (![state isCurrent:epoch]) return nil;
     int root = MSALOpenRoot(state, error);
@@ -461,18 +463,18 @@ typedef void (^MSALFrameCompletion)(UIImage * _Nullable);
 @interface MiniSightActionLibrary () {
     MSALState *_state;
     BOOL _busy;
-    MSALFrame *_pendingFrame;
-    NSString *_pendingKey;
+    MSALFrame * _Nullable _pendingFrame;
+    NSString * _Nullable _pendingKey;
     uint64_t _pendingEpoch;
-    MSALFrameCompletion _pendingCompletion;
-    MSALFrameCompletion _activeCompletion;
+    MSALFrameCompletion _Nullable _pendingCompletion;
+    MSALFrameCompletion _Nullable _activeCompletion;
 }
 - (instancetype)initWithState:(MSALState *)state;
 - (void)startNextFrame;
-- (void)finishFrame:(MSALBitmap *)bitmap epoch:(uint64_t)epoch;
+- (void)finishFrame:(MSALBitmap * _Nullable)bitmap epoch:(uint64_t)epoch;
 @end
 
-static MSALState *MSALParse(NSDictionary *json, NSError **error) {
+static MSALState * _Nullable MSALParse(NSDictionary *json, NSError * _Nullable * _Nullable error) {
     id packID = json[@"id"], records = json[@"clips"];
     NSUUID *uuid = [packID isKindOfClass:NSString.class] && [packID length] == 36 ?
         [[NSUUID alloc] initWithUUIDString:packID] : nil;
@@ -544,7 +546,7 @@ static double MSALFrameAspect(MSALFrame *frame) {
     if (w < 1 || h < 1) return 0;
     return frame->source->orientations[frame->index].unsignedIntegerValue >= 5 ? h / w : w / h;
 }
-static MSALState *MSALLoadState(NSString *path, NSError **error) {
+static MSALState * _Nullable MSALLoadState(NSString * _Nullable path, NSError * _Nullable * _Nullable error) {
     if (![path isKindOfClass:NSString.class] || ![path hasPrefix:@"/"] ||
         ![path.lastPathComponent isEqual:@"actions.json"] ||
         !MSALRelativePath([path substringFromIndex:1])) {
@@ -658,7 +660,7 @@ static MSALState *MSALLoadState(NSString *path, NSError **error) {
         }
     });
 }
-- (void)finishFrame:(MSALBitmap *)bitmap epoch:(uint64_t)epoch {
+- (void)finishFrame:(MSALBitmap * _Nullable)bitmap epoch:(uint64_t)epoch {
     NSAssert(NSThread.isMainThread, @"Frame delivery belongs on main.");
     MSALFrameCompletion completion = [_state isCurrent:epoch] ? _activeCompletion : nil;
     _activeCompletion = nil; _busy = NO;
@@ -683,3 +685,5 @@ static MSALState *MSALLoadState(NSString *path, NSError **error) {
     [_state advancePurging:YES];
 }
 @end
+
+NS_ASSUME_NONNULL_END
