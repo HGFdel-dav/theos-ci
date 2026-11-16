@@ -4,8 +4,13 @@ from pathlib import Path
 import sys
 P = Path(__file__).resolve().parents[1]
 strict_native = '--strict-native' in sys.argv[1:]
-paths = [argument for argument in sys.argv[1:] if argument != '--strict-native']
-A = Path(paths[0]) if paths else Path('/var/minis/shared/openminis/minisight-workbuddy-trae-20261112/src/ios/MiniSightCore')
+plugin_only = '--plugin-only' in sys.argv[1:]
+paths = [argument for argument in sys.argv[1:] if argument not in ('--strict-native', '--plugin-only')]
+if plugin_only and paths:
+    raise SystemExit('--plugin-only cannot masquerade as an App mirror check')
+A = None if plugin_only else (Path(paths[0]) if paths else Path('/var/minis/shared/openminis/minisight-workbuddy-trae-20261112/src/ios/MiniSightCore'))
+if A is not None and A.resolve() == P.resolve():
+    raise SystemExit('App mirror must be a distinct tree; use --plugin-only in plugin CI')
 host = (P / 'MiniSightNameWakeHost.h').read_text()
 bridge = (P / 'MiniSightNameWakeBridge.m').read_text()
 tweak = (P / 'Tweak.xm').read_text()
@@ -44,7 +49,7 @@ check('!same || gMSNWReadyConsumed' in ready and 'MSNWReadyMayConsume' in ready,
 cancel = host.split('static void MiniSightNameWakeCancel(',1)[1].split('static void MiniSightNameWakeUpdate(',1)[0]
 check(cancel.index('gMSNWRequest = nil') < cancel.index('cancelNameWakeRequestForToken') < cancel.index('state:@"cancelled"'), 'clear ownership before cancellation and response')
 check('reason:@""' not in host, 'nonempty reason compatible with App decoder')
-for root in (P,A):
+for root in ((P,) if plugin_only else (P, A)):
     panel = (root / 'MiniSightChatPanel.m').read_text()
     header = (root / 'MiniSightChatPanel.h').read_text()
     for symbol in ('nameWakeRequestToken', 'currentVoiceGeneration', 'cancelNameWakeRequestForToken', 'nameWakeVoiceRequestDeferred'):
@@ -55,9 +60,17 @@ for root in (P,A):
     owned = panel.split('- (BOOL)cancelNameWakeRequestForToken:',1)[1].split('- (BOOL)beginNameWakeVoiceInputForGeneration:',1)[0]
     check('isEqualToString:self.nameWakeRequestToken' in owned and '[self close]' not in owned and '[self.ai cancel]' not in owned, 'cancel cannot steal manual UI/network')
     check('@"minisight.wake.enabled": @"wakeEnabled"' in (root / 'MiniSightResources.m').read_text(), 'opt-in setting passthrough')
-check((P/'MiniSightChatPanel.h').read_bytes() == (A/'MiniSightChatPanel.h').read_bytes(), 'public headers identical')
-# Existing App/plugin presentation differences must remain, never whole-file sync.
-check('CGFloat panelBoost' in (P/'MiniSightChatPanel.m').read_text() and 'CGFloat panelBoost' not in (A/'MiniSightChatPanel.m').read_text(), 'old independent panel layout retained')
+# Existing plugin presentation behavior must remain even in single-tree CI.
+plugin_panel = (P / 'MiniSightChatPanel.m').read_text()
+check('CGFloat panelBoost' in plugin_panel and 'self.panelBoost > 1. ? 1. : 1.35' in plugin_panel
+      and '* self.panelBoost' in plugin_panel and 'MIN(self.panelBoost, 1.2)' in plugin_panel,
+      'old plugin panel boost behavior retained')
+if A is not None:
+    check((P/'MiniSightChatPanel.h').read_bytes() == (A/'MiniSightChatPanel.h').read_bytes(), 'public headers identical')
+    # Never replace either whole panel file to make shared interfaces agree.
+    check('CGFloat panelBoost' not in (A/'MiniSightChatPanel.m').read_text(), 'old independent App panel layout retained')
+else:
+    print('SKIP App mirror parity: explicitly plugin-only CI; plugin layout guards remain active')
 print(f'PASS source/wire integration: {checks} assertions')
 print('SKIP native Foundation/UIKit/SpringBoard/audio/device: not executed; portable/source checks are not runtime proof')
 if strict_native:

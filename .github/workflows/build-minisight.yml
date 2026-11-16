@@ -30,7 +30,8 @@ jobs:
           set -euo pipefail
           python3 tools/check_host.py
           python3 tools/check_repairs_20261107.py
-          python3 tests/check_name_wake_remote_20261116.py .
+          python3 tests/check_name_wake_remote_20261116.py --plugin-only
+          python3 tests/test_name_wake_source_guards_20261116.py
           clang -std=c11 -O2 -Wall -Wextra -Werror tests/name_wake_remote_20261116.c -o "$RUNNER_TEMP/ms-name-wake"
           "$RUNNER_TEMP/ms-name-wake"
           python3 tools/test_approval_summary.py --cc clang
