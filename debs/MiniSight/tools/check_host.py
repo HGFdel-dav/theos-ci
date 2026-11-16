@@ -237,8 +237,9 @@ callback = tweak[tweak.index('static void MiniSightDarwinCallback('):]
 callback = callback[:callback.index('\n}\n')]
 confirm = tweak[tweak.index('static void MiniSightShowConfirm(void) {'):]
 confirm = confirm[:confirm.index('\n}\n')]
-ok(bool(re.search(r'if \(!MiniSightAlwaysShow\(\) && !gMiniSightBurst\) \{[^}]*return;', show_body)),
-   '11a 调用模式 show 缺少活动门禁')
+ok('if (!MiniSightAlwaysShow() && !gMiniSightBurst && !gMiniSightNameWakeToken.length && !gMiniSightNameWakePresentationHeld)' in show_body
+   and 'MiniSightTracePresentationGate(@"idle_call_mode"); return;' in show_body,
+   '11a 调用模式 show 必须限定真实活动或名字对话')
 ok('BOOL shouldShow = gMiniSightBurst || MiniSightAlwaysShow();' in reload_body and 'MiniSightShow();' in reload_body,
    '11b 切换常驻后未主动显示')
 ok('if (!MiniSightShown() || (!MiniSightAlwaysShow() && !gMiniSightBurst)) {' in confirm

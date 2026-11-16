@@ -18,6 +18,7 @@ static UIImage *MSAtlas;
         @"minisight.gesture.long": @"longPress", @"minisight.activity": @"activity",
         @"minisight.activity.interval": @"activityInterval", @"minisight.frameLimit": @"frameLimit",
         @"minisight.dragResponse": @"dragResponse", @"minisight.petSound": @"sound",
+        @"minisight.music.lyrics": @"lyricsEnabled", @"minisight.music.motion": @"musicMotion",
         @"minisight.bottomGap": @"bottomGap", @"minisight.pet.tint": @"tint",
         @"minisight.pet.costume": @"costume", @"minisight.ai.supplier": @"supplier",
         @"minisight.asset.source": @"downloadSource", @"minisight.darkMode": @"darkMode",
@@ -32,7 +33,8 @@ static UIImage *MSAtlas;
         @"minisight.quick.lines": @"quickLines", @"minisight.quick.order": @"quickOrder",
         @"minisight.record": @"record", @"minisight.longPress": @"longPressRecord",
         @"minisight.diagnostics": @"diagnostics", @"minisight.shown": @"shown",
-        @"minisight.settings.revision": @"revision"
+        @"minisight.settings.revision": @"revision",
+        @"minisight.wake.enabled": @"wakeEnabled"
     }; });
     return fields;
 }
@@ -233,8 +235,14 @@ static UIImage *MSLoadAtlas(NSString *path, BOOL single, BOOL key) {
             // (3/4) and a pack (0) are keyed; 245 stored photos as layout 3.
             BOOL key = !(single && [petMeta[@"layoutVersion"] integerValue] < 3);
             UIImage *atlas = petPath ? MSLoadAtlas(petPath, single, key) : nil;
-            NSDictionary *snapshot = [self mergedPreferencesWithContainer:container preferences:filtered];
-            dispatch_async(dispatch_get_main_queue(), ^{ if (completion) completion(container, snapshot, ![shown isEqual:@"0"], atlas); });
+            NSMutableDictionary *snapshot = [[self mergedPreferencesWithContainer:container preferences:filtered] mutableCopy];
+            NSString *action = [petMeta[@"actionPack"] isKindOfClass:NSString.class] ? petMeta[@"actionPack"] : nil;
+            NSArray *parts = [action componentsSeparatedByString:@"/"];
+            if (parts.count == 3 && [parts[0] isEqualToString:@"actionpacks"] &&
+                [[NSUUID alloc] initWithUUIDString:parts[1]] && [parts[2] isEqualToString:@"actions.json"]) {
+                snapshot[@"_minisightActionManifest"] = [[container stringByAppendingPathComponent:@"Documents/MiniSight"] stringByAppendingPathComponent:action];
+            }
+            dispatch_async(dispatch_get_main_queue(), ^{ if (completion) completion(container, snapshot.copy, ![shown isEqual:@"0"], atlas); });
         }
     });
 }

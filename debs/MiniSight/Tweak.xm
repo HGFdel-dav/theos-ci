@@ -35,6 +35,8 @@
 #import "MiniSightLog.h"
 #import "MiniSightRuntimeConfig.h"
 #import "MiniSightBlip.h"
+#import "MiniSightMusicMonitor.h"
+#import "MiniSightNameWakeBridge.h"
 #import <Photos/Photos.h>
 #import <notify.h>
 #import <signal.h>
@@ -64,13 +66,24 @@ static void MiniSightPlaceBubble(CGFloat w, CGFloat h);
 static void MiniSightDestroyUI(void);
 static void MiniSightBringMinisFront(void);
 static BOOL MiniSightMinisIsFrontmost(void);
+static void MiniSightUpdateMusic(void);
+static BOOL MiniSightReadScreenState(void);
 
 // Immutable main-thread snapshot. Resource refresh owns ALL directory/plist/image I/O.
 static NSString *gMiniSightContainer;
 static NSDictionary *gMiniSightPreferences;
 static UIImage *gMiniSightAtlas;
+static NSString *gMiniSightActionManifest;
 static BOOL gMiniSightShown = NO, gMiniSightResourcesReady = NO;
 static BOOL gMiniSightResourceLoading = NO;
+static NSString *gMiniSightNameWakeToken;
+// Dictation may finish before the user sends the draft. This UI lease is
+// separate from the single-use audio request and ends on an actual panel close.
+static BOOL gMiniSightNameWakePresentationHeld = NO;
+static BOOL gMiniSightNameWakeCancelling = NO;
+static void MiniSightNameWakeUpdate(void);
+static void MiniSightNameWakeReadRequest(void);
+static void MiniSightNameWakeCancel(NSString *reason, BOOL cancelPanel);
 static BOOL gMiniSightResourceRefreshAgain = NO;
 static NSMutableArray *gMiniSightResourceCompletions;
 static void MiniSightReloadSettings(void);
@@ -144,7 +157,8 @@ static BOOL MiniSightShown(void) { return gMiniSightShown; }
 static BOOL MiniSightAppOwnsPresentation(void) {
     // Renderer is an explicit global choice, not a foreground-window heuristic.
     // If App mode is selected, SpringBoard never paints a duplicate pet.
-    return MiniSightRenderer() == 1 && MiniSightStyle() == 1 && MiniSightShown();
+    return MiniSightRenderer() == 1 && MiniSightStyle() == 1 && MiniSightShown() &&
+        !(gMiniSightNameWakeToken.length || gMiniSightNameWakePresentationHeld);
 }
 
 /// Presentation is main-thread owned. App ownership is read live from SBWorkspace
@@ -172,8 +186,13 @@ static void MiniSightReplyToPluginProbe(void) {
 
 static void MiniSightReconcileAppPresentation(void) {
     NSCAssert([NSThread isMainThread], @"MiniSight presentation is main-thread owned");
+    MiniSightUpdateMusic();
+    MiniSightNameWakeUpdate();
+    if (!MiniSightChatPanel.existingPanel.isVisible && !gMiniSightNameWakeToken.length)
+        gMiniSightNameWakePresentationHeld = NO;
     BOOL appOwns = MiniSightAppOwnsPresentation();
-    BOOL wantsOverlay = MiniSightShown() && (MiniSightAlwaysShow() || gMiniSightBurst);
+    BOOL wantsOverlay = MiniSightShown() && (MiniSightAlwaysShow() || gMiniSightBurst ||
+        gMiniSightNameWakeToken.length || gMiniSightNameWakePresentationHeld);
     if (appOwns) {
         MiniSightStopGravity();
         [[MiniSightChatPanel existingPanel] hideWithoutKey];
@@ -195,6 +214,9 @@ static void MiniSightStartPresentationTimer(void) {
 }
 
 static void MiniSightUserHide(void) {
+    gMiniSightNameWakePresentationHeld = NO;
+    MiniSightNameWakeCancel(@"user_hidden", YES);
+    gMiniSightNameWakePresentationHeld = NO;
     gMiniSightShown = NO;
     gMiniSightUserHidden = YES;
     MSMiniSightSetPreference(@"MiniSightUserHidden", @YES);
@@ -278,6 +300,7 @@ static void MiniSightInstallRecorderCallbacks(void) {
                               MiniSightRecorderIssue issue, BOOL quarantined) {
         __strong MiniSightRecorder *strongRecorder = weakRecorder;
         if (!strongRecorder) return;
+        MiniSightNameWakeUpdate();
         MSDiag(@"recorder state=%ld owner=%ld issue=%ld quarantined=%d", (long)state, (long)owner, (long)issue, quarantined);
         MSDiagEvent(@"recording", @"state", quarantined || issue != MiniSightRecorderIssueNone ? @"failed" : @"pending", @{ @"source": @"plugin", @"mode": @(owner), @"value": @(state), @"issue": @(issue), @"reason": quarantined ? @"quarantined" : @"controller_state" });
         if (quarantined) { MiniSightSay(@"录屏状态待系统确认，暂不允许再次启动"); return; }
@@ -669,7 +692,7 @@ static NSString *const kMiniSightCenterY   = @"MiniSightCenterY";
 static NSString *const kMiniSightText      = @"Minis 操作中";
 // 版本号：与 DEBIAN/control 的 Version 同步。诊断日志会打印它，
 // 便于装机后确认跑的是哪一版（strings MiniSight.dylib | grep 也能看到）。
-static NSString *const kMiniSightVersion   = @"0.8.3";
+static NSString *const kMiniSightVersion   = @"0.8.44";
 
 #pragma mark - 全局状态
 
@@ -762,6 +785,28 @@ static void MiniSightLoadCostume(NSString *file) {
 
 static UIInterfaceOrientation MiniSightOrientation(void);
 static void MiniSightUpdateGeometry(void);
+
+static void MiniSightUpdateMusic(void) {
+    BOOL lyrics = [MiniSightPref(@"minisight.music.lyrics") boolValue];
+    BOOL motion = [MiniSightPref(@"minisight.music.motion") boolValue];
+    if (lyrics || motion) MiniSightReadScreenState(); // No CoreMotion/microphone start.
+    MiniSightMusicMonitor *monitor = MiniSightMusicMonitor.shared;
+    if (!monitor.updateHandler) monitor.updateHandler = ^(NSDictionary *snapshot) {
+        gMiniSightPet.lyricsLine = [snapshot[@"line"] isKindOfClass:NSString.class] ? snapshot[@"line"] : nil;
+        gMiniSightPet.musicPlaying = [snapshot[@"playing"] boolValue] && [snapshot[@"motionEnabled"] boolValue];
+        gMiniSightPet.lyricsSuppressed = gMiniSightBubbleShown || gMiniSightConfirming ||
+            MiniSightChatPanel.existingPanel.isVisible || gMiniSightBurst;
+    };
+    BOOL visible = gMiniSightWindow && !gMiniSightWindow.hidden && gMiniSightPet && gMiniSightWindow.alpha > .01;
+    if (MiniSightAppOwnsPresentation()) visible = MiniSightMinisIsFrontmost() && (MiniSightAlwaysShow() || gMiniSightActivityExecuting);
+    BOOL allowed = MiniSightShown() && MiniSightStyle() == 1 && visible && gMiniSightScreenKnown &&
+        !gMiniSightScreenBlanked && [MiniSightMusicMonitor deviceIsUnlocked];
+    [monitor configureAllowed:allowed lyrics:lyrics motion:motion container:gMiniSightContainer];
+    NSDictionary *snapshot = monitor.snapshot;
+    gMiniSightPet.lyricsLine = lyrics && allowed ? snapshot[@"line"] : nil;
+    gMiniSightPet.musicPlaying = motion && allowed && [snapshot[@"playing"] boolValue];
+    gMiniSightPet.lyricsSuppressed = gMiniSightBubbleShown || gMiniSightConfirming || MiniSightChatPanel.existingPanel.isVisible || gMiniSightBurst;
+}
 
 static BOOL MiniSightGravityEnabled(void) {
     return gMiniSightPet != nil && gMiniSightGravityConfigured;
@@ -858,7 +903,7 @@ static void MiniSightApplyGravitySample(double gx, double gy,
             (unsigned long)gMiniSightGravitySampleCount,
             (long)orientation, projected.x, gMiniSightGravityRoll, magnitude]);
     }
-    if (MSGravityShakeShouldTrigger(magnitude, gMiniSightGravityShakeLatched) &&
+    if (MiniSightRuntimeConfig.shared.gravityShake && MSGravityShakeShouldTrigger(magnitude, gMiniSightGravityShakeLatched) &&
         now - gMiniSightGravityLastImpulseTime > 0.75) {
         CGFloat direction = gMiniSightGravityRoll;
         if (fabs(direction) < 0.08) direction = (ux >= 0.0 ? 1.0 : -1.0);
@@ -868,7 +913,7 @@ static void MiniSightApplyGravitySample(double gx, double gy,
         gMiniSightGravityLastImpulseTime = now;
         MiniSightGravityDiagnostic(@"shake", [NSString stringWithFormat:@"g=%.2f", magnitude]);
         [MiniSightBlip playIfEnabled:MiniSightRuntimeConfig.shared.sound];
-    } else if (MSGravityShakeShouldReset(magnitude, gMiniSightGravityShakeLatched)) {
+    } else if (!MiniSightRuntimeConfig.shared.gravityShake || MSGravityShakeShouldReset(magnitude, gMiniSightGravityShakeLatched)) {
         gMiniSightGravityShakeLatched = NO;
     }
 }
@@ -1233,6 +1278,7 @@ static void MiniSightInteractionBegin(void) {
 static void MiniSightInteractionEnd(void) {
     gMiniSightPet.interactionActive = NO;
     gMiniSightPet.roamingPaused = NO;
+    MiniSightNameWakeUpdate();
 }
 
 /// 取一个「不会跟着浮窗一起动」的参照视图，用来换算拖拽位移
@@ -1359,20 +1405,21 @@ static void MiniSightRunGesture(NSString *action, BOOL allowSecondTap) {
             gMiniSightDragOrigin = origin;
             gMiniSightDragOriginValid = YES;
             gMiniSightDragging = YES;
+            MiniSightNameWakeCancel(@"drag", YES);
+            MiniSightNameWakeUpdate();
             [MiniSightBlip playIfEnabled:MiniSightRuntimeConfig.shared.sound];
-            if (gMiniSightPet) [gMiniSightPet beginDraggingWithDirection:1];
+            if (gMiniSightPet) [gMiniSightPet beginDraggingAtPoint:[pan locationInView:gMiniSightPet]];
             MSDiagEvent(@"drag", @"begin", @"ok", @{ @"source": @"plugin", @"x": @(origin.x), @"y": @(origin.y) });
             MiniSightInteractionBegin();
             break;
         }
         case UIGestureRecognizerStateChanged: {
             if (!gMiniSightDragOriginValid) break; // 防御异常的无 Began 回调
-            if (gMiniSightPet && fabs(translation.x) > 4)
-                [gMiniSightPet beginDraggingWithDirection:translation.x];
             CGFloat gain = MiniSightRuntimeConfig.shared.dragResponse ? 1.0 : 0.20;
             CGPoint want = CGPointMake(gMiniSightDragOrigin.x + translation.x * gain,
                                        gMiniSightDragOrigin.y + translation.y * gain);
-            MiniSightSetAnchor(want, NO);
+            if (gMiniSightPet) [gMiniSightPet updateDraggingTarget:want];
+            else MiniSightSetAnchor(want, NO);
             break;
         }
         case UIGestureRecognizerStateEnded: {
@@ -1382,20 +1429,26 @@ static void MiniSightRunGesture(NSString *action, BOOL allowSecondTap) {
                 CGFloat gain = MiniSightRuntimeConfig.shared.dragResponse ? 1.0 : 0.20;
                 CGPoint want = CGPointMake(gMiniSightDragOrigin.x + translation.x * gain,
                                            gMiniSightDragOrigin.y + translation.y * gain);
-                // 保持 dragging 到 SetAnchor 完成，避免气泡让位把刚拖到的中心改掉。
-                MiniSightSetAnchor(want, YES); // 只有用户拖动才写盘
+                if (gMiniSightPet) [gMiniSightPet updateDraggingTarget:want];
+                // Sample the final pointer target but preserve the real damped position.
+                // Save the actual damped position, never snap to the pointer on release.
+                if (!gMiniSightPet) MiniSightSetAnchor(want, YES);
+                else {
+                    MSMiniSightSetPreference(kMiniSightCenterX, @(gMiniSightPet.center.x));
+                    MSMiniSightSetPreference(kMiniSightCenterY, @(gMiniSightPet.center.y));
+                }
                 MSDiagEvent(@"drag", @"end", @"ok", @{ @"source": @"plugin", @"x": @(gMiniSightAnchor.x), @"y": @(gMiniSightAnchor.y) });
             }
             gMiniSightDragOriginValid = NO;
             gMiniSightDragging = NO;
-            [gMiniSightPet endDragging];
             MiniSightInteractionEnd();
+            [gMiniSightPet endDraggingCancelled:NO];
             break;
         }
-        default:   // Cancelled / Failed：当前位置保留，但本次不写盘
+        default:   // Cancelled / Failed：当前位置保留，但本次不写盘也不抛掷
             gMiniSightDragOriginValid = NO;
             gMiniSightDragging = NO;
-            [gMiniSightPet endDragging];
+            [gMiniSightPet endDraggingCancelled:YES];
             MiniSightInteractionEnd();
             break;
     }
@@ -1614,6 +1667,9 @@ static void MiniSightRequestResources(BOOL force, void (^completion)(void)) {
         gMiniSightShown = shown;
         gMiniSightAtlas = atlas;
         gMiniSightTintBase = atlas;
+        gMiniSightActionManifest = [preferences[@"_minisightActionManifest"] isKindOfClass:NSString.class]
+            ? [preferences[@"_minisightActionManifest"] copy] : nil;
+        gMiniSightPet.actionManifestPath = gMiniSightActionManifest;
         NSInteger spriteLayout = MiniSightSpriteLayoutForContainer(container);
         MSDiagEvent(@"assets", @"layout", @"ok", @{ @"source": @"plugin", @"layout": @(spriteLayout), @"container": @(container.length > 0) });
         if (gMiniSightPet) {
@@ -1639,6 +1695,7 @@ static void MiniSightRequestResources(BOOL force, void (^completion)(void)) {
         NSArray *pending = [gMiniSightResourceCompletions copy];
         [gMiniSightResourceCompletions removeAllObjects];
         for (void (^block)(void) in pending) block();
+        MiniSightNameWakeUpdate();
     }];
 }
 
@@ -1795,6 +1852,7 @@ static void MiniSightBuildUI(void) {
         gMiniSightPet.longPressEnabled = MiniSightLongPressEnabled();
         NSInteger builtLayout = MiniSightSpriteLayoutForContainer(gMiniSightContainer);
         gMiniSightPet.spriteLayout = builtLayout;
+        gMiniSightPet.actionManifestPath = gMiniSightActionManifest;
         MSDiagEvent(@"assets", @"layout", @"ok", @{ @"source": @"plugin", @"layout": @(builtLayout), @"reason": @"build" });
         NSString *variantPath = [gMiniSightContainer stringByAppendingPathComponent:@"Documents/MiniSight/variant"];
         gMiniSightPet.variantIndex = [[NSString stringWithContentsOfFile:variantPath encoding:NSUTF8StringEncoding error:nil] integerValue];
@@ -1864,7 +1922,7 @@ static void MiniSightTracePresentationGate(NSString *reason) {
 static void MiniSightShow(void) {
     // Call mode is driven only by an active MCP-owned burst. A stray show
     // notification or stale status must never wake the pet while idle.
-    if (!MiniSightAlwaysShow() && !gMiniSightBurst) { MiniSightTracePresentationGate(@"idle_call_mode"); return; }
+    if (!MiniSightAlwaysShow() && !gMiniSightBurst && !gMiniSightNameWakeToken.length && !gMiniSightNameWakePresentationHeld) { MiniSightTracePresentationGate(@"idle_call_mode"); return; }
     if (!gMiniSightResourcesReady) {
         MiniSightRequestResources(NO, ^{ MiniSightShow(); });
         return;
@@ -1885,7 +1943,7 @@ static void MiniSightShowAfterOwnershipCheck(void) {
     if (!MiniSightShown()) { MiniSightTracePresentationGate(@"user_hidden"); return; }
     // Call mode is driven only by an active MCP-owned burst. A stray show
     // notification or stale status must never wake the pet while idle.
-    if (!MiniSightAlwaysShow() && !gMiniSightBurst) { MiniSightTracePresentationGate(@"idle_call_mode"); return; }
+    if (!MiniSightAlwaysShow() && !gMiniSightBurst && !gMiniSightNameWakeToken.length && !gMiniSightNameWakePresentationHeld) { MiniSightTracePresentationGate(@"idle_call_mode"); return; }
     if (!gMiniSightResourcesReady) {
         MiniSightRequestResources(NO, ^{ MiniSightShow(); });
         return;
@@ -1938,10 +1996,11 @@ static void MiniSightShowAfterOwnershipCheck(void) {
                                  UIViewAnimationOptionBeginFromCurrentState)
                      animations:^{
         gMiniSightWindow.alpha = 1.0;
-    } completion:nil];
+    } completion:^(BOOL finished) { (void)finished; MiniSightUpdateMusic(); }];
 }
 
 static void MiniSightHide(void) {
+    if (gMiniSightNameWakeToken.length && !gMiniSightNameWakeCancelling) return;
     if (gMiniSightConfirming) return;   // 等问题回答完再收，否则气泡跟着窗口一起没
     MiniSightHideBubble();
     if (MiniSightAlwaysShow() && !gMiniSightUserHidden) {
@@ -1966,12 +2025,15 @@ static void MiniSightHide(void) {
             MiniSightStopPulse();
             gMiniSightPet.activityActive = NO;
             [gMiniSightPet stopPlaying];
+            MiniSightUpdateMusic();
         }
     }];
 }
 
 /// 彻底拆掉浮窗（设置变更时重建用）
 static void MiniSightDestroyUI(void) {
+    MiniSightNameWakeCancel(@"host_teardown", YES);
+    [MiniSightMusicMonitor.shared configureAllowed:NO lyrics:NO motion:NO container:gMiniSightContainer];
     MiniSightStopGravity();
     [[MiniSightChatPanel existingPanel] hideWithoutKey];
     MiniSightChatPanel.existingPanel.anchorView = nil;
@@ -2002,6 +2064,7 @@ static void MiniSightDestroyUI(void) {
 
 /// 设置变了：按新设置重建（样式/常驻立即生效，不用注销）
 static void MiniSightApplySettingsLive(void) {
+    MiniSightUpdateMusic();
     if (!gMiniSightWindow) {
         if (MiniSightShown() && !MiniSightAppOwnsPresentation()) MiniSightShow();
         return;
@@ -2075,6 +2138,7 @@ static void MiniSightReloadSettings(void) {
             return;
         }
         MiniSightApplySettingsLive();
+        MiniSightNameWakeUpdate();
     }];
 }
 
@@ -2085,6 +2149,7 @@ static void MiniSightHideBubble(void) {
     gMiniSightBubble.hidden = YES;
     gMiniSightBubbleShown = NO;
     gMiniSightBubbleExpanded = NO;
+    MiniSightUpdateMusic();
 }
 
 /// 纯文字气泡：动态深浅色、小尾巴指向指示器，最多 20 字。
@@ -2231,6 +2296,7 @@ static void MiniSightShowBubbleWidth(NSString *raw, CGFloat maxW, NSUInteger cap
 
     gMiniSightBubble.hidden = NO;
     gMiniSightBubbleShown = YES;
+    gMiniSightPet.lyricsSuppressed = YES;
     gMiniSightBubble.backgroundColor = [UIColor systemBackgroundColor];
     gMiniSightBubbleLabel.textColor = [UIColor labelColor];
     gMiniSightBubbleTail.fillColor = [UIColor systemBackgroundColor].CGColor;
@@ -2498,6 +2564,8 @@ static BOOL MiniSightOpenChat(void) {
     return opened;
 }
 
+#include "MiniSightNameWakeHost.h"
+
 #pragma mark - Darwin 通知
 
 /// 注意：Darwin 通知的回调线程不保证是主线程，所有 UI 操作统一切回主线程
@@ -2508,6 +2576,10 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
                                     CFDictionaryRef userInfo) {
     NSString *note = (__bridge NSString *)name;
     if (note.length == 0) return;
+    if ([note isEqualToString:MSNWRequestNote]) {
+        dispatch_async(dispatch_get_main_queue(), ^{ MiniSightNameWakeReadRequest(); });
+        return;
+    }
 
     if ([note isEqualToString:kMiniSightShow]) {
         dispatch_async(dispatch_get_main_queue(), ^{ MiniSightShow(); });
@@ -2544,6 +2616,8 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
         // Notifications may merge or repeat. Always read the current system value.
         dispatch_async(dispatch_get_main_queue(), ^{
             MiniSightReadScreenState();
+            MiniSightNameWakeUpdate();
+            MiniSightUpdateMusic();
             MSDiagEvent(@"screen", @"state", gMiniSightScreenKnown ? @"ok" : @"failed", @{ @"source": @"plugin", @"enabled": @(!gMiniSightScreenBlanked), @"valid": @(gMiniSightScreenKnown) });
             if (!gMiniSightScreenKnown || gMiniSightScreenBlanked) {
                 [[MiniSightChatPanel existingPanel] hideWithoutKey];
@@ -2570,6 +2644,7 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
     if ([note isEqualToString:kMiniSightResourcesChanged]) {
         dispatch_async(dispatch_get_main_queue(), ^{
             BOOL visible = gMiniSightWindow && !gMiniSightWindow.hidden;
+            MiniSightNameWakeCancel(@"resources_changed", YES);
             [MiniSightResources releaseCachedAtlas];
             gMiniSightResourcesReady = NO;
             MiniSightRequestResources(YES, ^{
@@ -2589,6 +2664,8 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
     dispatch_async(dispatch_get_main_queue(), ^{
         if (shouldShow) {
             gMiniSightBurst = YES;
+            MiniSightNameWakeCancel(@"tool_busy", YES);
+            MiniSightNameWakeUpdate();
             if (gMiniSightPendingHide) { dispatch_block_cancel(gMiniSightPendingHide); gMiniSightPendingHide = nil; }
             MiniSightArmIdleHide();
             MiniSightShow();
@@ -2660,6 +2737,9 @@ static void MiniSightBringMinisFront(void) {
 
         // 立刻注册 Darwin 通知：回调里会懒加载 UI，不会漏掉启动早期的事件
         CFNotificationCenterRef center = CFNotificationCenterGetDarwinNotifyCenter();
+        CFNotificationCenterAddObserver(center, (__bridge const void *)MSNWRequestNote,
+            MiniSightDarwinCallback, (__bridge CFStringRef)MSNWRequestNote, NULL,
+            CFNotificationSuspensionBehaviorDeliverImmediately);
         CFNotificationCenterAddObserver(center,
                                         (__bridge const void *)kMiniSightStarted,
                                         MiniSightDarwinCallback,
