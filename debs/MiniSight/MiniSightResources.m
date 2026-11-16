@@ -1,5 +1,6 @@
 #import "MiniSightResources.h"
 #import "MiniSightBridgeIO.h"
+#import "MiniSightShownReadback.h"
 #import <ImageIO/ImageIO.h>
 #import <math.h>
 
@@ -57,6 +58,11 @@ static UIImage *MSAtlas;
         for (NSString *key in canonical) if ([self.runtimeFields objectForKey:key] &&
             ![canonical[key] isKindOfClass:NSNull.class]) merged[key] = canonical[key];
     }
+    id runtimeShown = merged[@"minisight.shown"];
+    NSDictionary *evidence = MSMusicShownEvidence(container, runtimeShown);
+    [merged addEntriesFromDictionary:evidence];
+    // Missing/invalid file is closed, even when runtime/plist still says ON.
+    merged[@"minisight.shown"] = evidence[@"_minisightShown"];
     return [merged copy];
 }
 static dispatch_queue_t MSResourceQueue(void) {
@@ -198,14 +204,16 @@ static UIImage *MSLoadAtlas(NSString *path, BOOL single, BOOL key) {
         @autoreleasepool {
             NSString *container = MSFindContainer();
             NSString *path = [container stringByAppendingPathComponent:@"Documents/MiniSight/runtime.json"];
-            NSData *data = [NSData dataWithContentsOfFile:path];
-            NSDictionary *json = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+            (void)path;
+            NSDictionary *json = MSBridgeRead(container, @"runtime.json", 1024 * 1024);
             NSDictionary *bag = [json[@"preferences"] isKindOfClass:NSDictionary.class] ? json[@"preferences"] : nil;
             NSMutableDictionary *filtered = [NSMutableDictionary dictionary];
             for (NSString *key in bag) {
                 if ([key isKindOfClass:NSString.class] && [key hasPrefix:@"minisight."]) filtered[key] = bag[key];
             }
             if ([json[@"revision"] isKindOfClass:NSString.class]) filtered[@"minisight.settings.revision"] = json[@"revision"];
+            [filtered addEntriesFromDictionary:MSMusicShownEvidence(container, filtered[@"minisight.shown"])];
+            filtered[@"minisight.shown"] = filtered[@"_minisightShown"];
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (completion) completion(container, filtered.copy);
             });
@@ -224,8 +232,6 @@ static UIImage *MSLoadAtlas(NSString *path, BOOL single, BOOL key) {
             for (NSString *key in prefs) {
                 if ([key isKindOfClass:NSString.class] && [key hasPrefix:@"minisight."]) filtered[key] = prefs[key];
             }
-            NSString *shownPath = [container stringByAppendingPathComponent:@"Documents/MiniSight/shown"];
-            NSString *shown = shownPath ? [NSString stringWithContentsOfFile:shownPath encoding:NSUTF8StringEncoding error:nil] : nil;
             NSString *petPath = [container stringByAppendingPathComponent:@"Documents/MiniSight/pet.png"];
             NSData *metaData = [NSData dataWithContentsOfFile:[container stringByAppendingPathComponent:@"Documents/MiniSight/pet.json"]];
             NSDictionary *petMeta = metaData ? [NSJSONSerialization JSONObjectWithData:metaData options:0 error:nil] : nil;
@@ -242,18 +248,26 @@ static UIImage *MSLoadAtlas(NSString *path, BOOL single, BOOL key) {
                 [[NSUUID alloc] initWithUUIDString:parts[1]] && [parts[2] isEqualToString:@"actions.json"]) {
                 snapshot[@"_minisightActionManifest"] = [[container stringByAppendingPathComponent:@"Documents/MiniSight"] stringByAppendingPathComponent:action];
             }
-            dispatch_async(dispatch_get_main_queue(), ^{ if (completion) completion(container, snapshot.copy, ![shown isEqual:@"0"], atlas); });
+            dispatch_async(dispatch_get_main_queue(), ^{ if (completion) completion(container, snapshot.copy, [snapshot[@"_minisightShown"] boolValue], atlas); });
         }
     });
 }
 + (void)writeShown:(BOOL)shown container:(NSString *)container {
-    if (!container) return;
+    [self writeShown:shown container:container completion:nil];
+}
++ (void)writeShown:(BOOL)shown container:(NSString *)container completion:(void (^)(BOOL))completion {
+    [self writeShown:shown container:container verifiedReadback:^(BOOL verified, NSString *previousIdentity) {
+        (void)previousIdentity; if (completion) completion(verified);
+    }];
+}
++ (void)writeShown:(BOOL)shown container:(NSString *)container verifiedReadback:(void (^)(BOOL, NSString *))completion {
+    NSString *target = [container copy];
     dispatch_async(MSResourceQueue(), ^{
-        NSString *dir = [container stringByAppendingPathComponent:@"Documents/MiniSight"];
-        [NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
-        NSString *value = shown ? @"1" : @"0";
-        [[value dataUsingEncoding:NSUTF8StringEncoding]
-            writeToFile:[dir stringByAppendingPathComponent:@"shown"] atomically:YES];
+        NSString *previousIdentity = MSMusicShownEvidence(target, nil)[@"_minisightShownIdentity"] ?: @"";
+        BOOL verified = MSMusicWriteShownVerified(shown, target);
+        // save -> exact readback -> notification; failure is reported, never announced as ON.
+        if (verified) MSBridgePost(@"com.openminis.minisight.settings");
+        dispatch_async(dispatch_get_main_queue(), ^{ if (completion) completion(verified, previousIdentity); });
     });
 }
 + (void)releaseCachedAtlas { dispatch_async(MSResourceQueue(), ^{ MSAtlas = nil; MSAtlasIdentity = nil; }); }

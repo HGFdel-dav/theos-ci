@@ -31,7 +31,7 @@ class SourceGuardTests(unittest.TestCase):
             root = Path(temporary) / 'plugin'
             (root / 'tests').mkdir(parents=True)
             shutil.copy2(GUARD, root / 'tests' / GUARD.name)
-            for name in ('MiniSightNameWakeHost.h', 'MiniSightNameWakeBridge.m', 'Tweak.xm',
+            for name in ('MiniSightNameWakeHost.h', 'MiniSightNameWakeBridge.m', 'MiniSightNameWakeState.h', 'Tweak.xm',
                          'Makefile', 'MiniSightChatPanel.m', 'MiniSightChatPanel.h', 'MiniSightResources.m'):
                 shutil.copy2(P / name, root / name)
             script = root / 'tests' / GUARD.name

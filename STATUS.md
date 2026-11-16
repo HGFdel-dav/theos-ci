@@ -1,4 +1,19 @@
-# 当前：MiniSight 0.8.44 跨 App 名字唤醒插件（2026-11-16，已获推送/CI授权）
+# 当前：MiniSight0.8.45 当批推送与GitHub编译（2026-11-17，未安装）
+
+- 用户本批明确“推送”，分别发布App与MiniSight0.8.45；插件获准本批提交、普通推送、GitHub CI、按真实构建错误窄修重推及双架构静态验包，**不包含安装、设备操作、开麦、注销、重启或真实歌词查询**。基线HEAD为8d433c122f5735b4acf44fd66bc98e5f3f14b842，本地分支minisight-0.8.40-20261110；唯一目标HGFdel-dav/theos-ci的refs/heads/minisight-0.8.45-20261116，不force、不覆盖旧版本。
+- 插件凭据仅GITHUB_TOKEN_QQ；App由父代理独立处理，本代理不改App树/PBX/余额/名字Swift/音频。基线、diff、新文件来源、原STATUS、本批STATE和共享变更记录保存到shared/MiniSight-releases/MiniSight-0.8.45-20261117/work/。当前尚未提交与构建，尚无0.8.45包；实装仍为已确认0.8.44/App304。
+- 固定GitHub CI iPhoneOS15.5.sdk，RootHide arm64e/rootless arm64，FINALPACKAGE=1。iSH仅本地源码/便携检查与静态验包，不能编iOS。原生strict、baseline和unsafe负例不得绕过；每次真实失败日志和修法分别归档。任何共享模块/头或测试夹具窄修立即写SHARED-CHANGES.json，供父局部同步。
+- 生产名字状态组包共用MiniSightNameWakeState.h，BOOL明确序列化；App真实reader严格兼容旧整数0/1，未知状态不假锁。SB不录音、不TTS、不拉App。正常语音结束保草稿、锁屏/OFF保护与原手动流程不删。
+- 音乐准入/保存链：真实shown文件有界1字节读回与事务身份、异步写成功反馈及通知，旧runtimeON不复活显式hide；过期settings重读、resource尾重判renderer/style保queuedcallbacks、淡入淡出有代次。App已选前台快照通路保留而非伪造SB可见，未知锁屏仍关。
+- 两端MusicMonitor.m/.h及策略/ShownReadback共用头一致，v1+additive证据与BOOL一致；播放与歌词样本分离，不因无词随便停律动；MediaRemote判型与CF借用复制未改。真实19:28失败根因仍未知，没有强制常驻/真实歌曲请求。
+- 本地源码/便携C、原129宿主、录屏/聊天/素材等守卫；新5个Tweak生产函数及3个资源writer摘录Foundation行为与负例已接严格native门槛，但iSH没有AppleSDK，原生/设备仍SKIP。细节见App docs/minisight-304-regression-local-20261116.md和workspace/minisight-304-local-20261116/。
+- 本批推送前仅插件重跑20入口均exit0（含原129宿主、录屏/聊天/素材/音乐策略等），2项插件strict缺Apple SDK明确非零拒放；此前两树44入口exit0、7项strict拒放、36项字节完整性无失败证据已独立归档，不假称本代理重跑App。原生仍待GitHub runner执行。
+- 本批已获上方推送许可，插件只用GITHUB_TOKEN_QQ；CI/验包/安装加载/功能验收分别记录，不能只编译成功就称名字歌词已好。
+
+---
+以下当批授权已经用于发布0.8.44（CI43800730733两scheme成功）且用户自行安装，不延续到新候选。
+
+# 历史：MiniSight 0.8.44 跨 App 名字唤醒插件（2026-11-16，当批已获推送/CI授权）
 
 - 用户明确要求 App 和插件分开推送、分开监控；编译失败可在本批范围内修复重推，不包含安装/注销/重启。本插件使用 `GITHUB_TOKEN_QQ`；实际远端是 `HGFdel-dav/theos-ci`（旧配置 `Niubiprass/theos-ci` 当前API404），目标新分支 `minisight-0.8.44-20261116`，不覆盖旧基线。
 - 已接通 SpringBoard 安全心跳、同 host/revision/token 的 hit→accepted→ready→voice_requested，以及关闭/锁定/新资源取消。插件不采音、不拉 App 前台；真实后台音频由 App 用户授权后持有。两端需配套更新。

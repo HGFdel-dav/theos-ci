@@ -13,6 +13,7 @@ if A is not None and A.resolve() == P.resolve():
     raise SystemExit('App mirror must be a distinct tree; use --plugin-only in plugin CI')
 host = (P / 'MiniSightNameWakeHost.h').read_text()
 bridge = (P / 'MiniSightNameWakeBridge.m').read_text()
+state_writer = (P / 'MiniSightNameWakeState.h').read_text()
 tweak = (P / 'Tweak.xm').read_text()
 checks = 0
 def check(value, label):
@@ -24,7 +25,11 @@ for name in ('namewake-state.json', 'namewake-request.json', 'namewake-response.
 for suffix in ('request', 'response', 'state'):
     check('com.openminis.minisight.namewake.' + suffix in bridge, 'notification ' + suffix)
 for field in ('schema', 'clock', 'host', 'revision', 'token', 'action', 'responseGeneration', 'voiceGeneration', 'reason', 'unlocked', 'allowed', 'busy'):
-    check('@"' + field + '"' in bridge, 'wire field ' + field)
+    check('@"' + field + '"' in bridge + state_writer, 'wire field ' + field)
+check('#import "MiniSightNameWakeState.h"' in bridge and 'MSNameWakeStateMessage(' in bridge,
+      'production writer uses exact same builder as native roundtrip')
+for field in ('unlocked', 'allowed', 'busy'):
+    check('@"' + field + '": @((BOOL)' in state_writer, 'true JSON Boolean ' + field)
 check('request.count != 6' in bridge and 'MSNWLimit = 8191' in bridge, 'strict small fixed envelope')
 check('MSNWClockFresh' in bridge and 'systemUptime' in bridge and 'NSDate' not in bridge, 'boot clock')
 check('MSNWContainerValid' in bridge and 'AT_SYMLINK_NOFOLLOW' in bridge and 'S_ISREG' in bridge, 'current safe container')

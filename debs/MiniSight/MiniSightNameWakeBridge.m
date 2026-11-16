@@ -1,4 +1,5 @@
 #import "MiniSightNameWakeBridge.h"
+#import "MiniSightNameWakeState.h"
 #import "MiniSightBridgeIO.h"
 NSString *const MSNWRequestNote = @"com.openminis.minisight.namewake.request";
 NSString *const MSNWResponseNote = @"com.openminis.minisight.namewake.response";
@@ -75,8 +76,8 @@ static BOOL MSNWWriteVerified(NSString *container, NSString *name, NSDictionary 
 - (void)publishContainer:(NSString *)container revision:(NSString *)revision unlocked:(BOOL)unlocked allowed:(BOOL)allowed busy:(BOOL)busy {
     NSAssert(NSThread.isMainThread, @"Name wake host state is main-thread owned");
     container = [container copy]; revision = [revision copy] ?: @"";
-    NSDictionary *entry = @{@"schema": @1, @"clock": @(NSProcessInfo.processInfo.systemUptime), @"host": self.host,
-        @"revision": revision, @"unlocked": @(unlocked), @"allowed": @(allowed && unlocked && revision.length > 0 && revision.length <= 128), @"busy": @(busy)};
+    NSDictionary *entry = MSNameWakeStateMessage(self.host, revision, unlocked, allowed, busy,
+        NSProcessInfo.processInfo.systemUptime);
     __block NSUInteger ticket; @synchronized (self) { ticket = ++_stateTicket; }
     dispatch_async(_queue, ^{
         @synchronized (self) { if (ticket != self->_stateTicket) return; }

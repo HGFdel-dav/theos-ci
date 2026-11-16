@@ -102,7 +102,8 @@ ok('allowableMovement = 10.0' in tweak, '4i 长按允许位移未设置（会跟
 header_api = set(re.findall(r'@property[^;]*?\)\s*(?:nullable\s+)?[\w<>* ]*?(\w+);', pet_h))
 header_api |= set(re.findall(r'-\s*\((?:instancetype|void|BOOL)\)\s*(\w+)', pet_h))
 header_api |= set(re.findall(r'\^\)?\s*(\w+)\)', pet_h))
-header_api |= {'center','bounds','frame','hidden','superview','layer','centerBounds'}
+# UIView's actual inherited presentation properties are part of the API too.
+header_api |= {'center','bounds','frame','hidden','superview','layer','window','alpha','centerBounds'}
 used = set(re.findall(r'gMiniSightPet\.(\w+)\s*=', tweak))
 used |= set(re.findall(r'\[\s*gMiniSightPet\s+(\w+)\]', tweak))
 used |= set(re.findall(r'\[\s*\[\s*MiniSightPetView\s+alloc\]\s+(\w+):', tweak))
@@ -240,8 +241,12 @@ confirm = confirm[:confirm.index('\n}\n')]
 ok('if (!MiniSightAlwaysShow() && !gMiniSightBurst && !gMiniSightNameWakeToken.length && !gMiniSightNameWakePresentationHeld)' in show_body
    and 'MiniSightTracePresentationGate(@"idle_call_mode"); return;' in show_body,
    '11a 调用模式 show 必须限定真实活动或名字对话')
-ok('BOOL shouldShow = gMiniSightBurst || MiniSightAlwaysShow();' in reload_body and 'MiniSightShow();' in reload_body,
-   '11b 切换常驻后未主动显示')
+converge_body = tweak[tweak.index('static void MiniSightConvergeSettings(BOOL resourcesFresh) {'):]
+converge_body = converge_body[:converge_body.index('\n}\n')]
+ok('MiniSightConvergeSettings(NO);' in reload_body and 'MiniSightConvergeSettings(YES);' in tweak and
+   'if (gMiniSightBurst || MiniSightAlwaysShow()) MiniSightShow();' in converge_body and
+   'if (MiniSightShown() && !MiniSightAppOwnsPresentation())' in converge_body,
+   '11b 切换常驻需在最新资源完成后主动显示，并保留隐藏与 App 呈现门禁')
 ok('if (!MiniSightShown() || (!MiniSightAlwaysShow() && !gMiniSightBurst)) {' in confirm
    and '@"not_burst" : @"pet_hidden"' in confirm and 'MiniSightShow();' in confirm,
    '11c 空闲确认通知仍可唤醒窗口')

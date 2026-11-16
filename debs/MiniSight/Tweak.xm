@@ -36,6 +36,7 @@
 #import "MiniSightRuntimeConfig.h"
 #import "MiniSightBlip.h"
 #import "MiniSightMusicMonitor.h"
+#import "MiniSightMusicPresentationPolicy.h"
 #import "MiniSightNameWakeBridge.h"
 #import <Photos/Photos.h>
 #import <notify.h>
@@ -68,6 +69,7 @@ static void MiniSightBringMinisFront(void);
 static BOOL MiniSightMinisIsFrontmost(void);
 static void MiniSightUpdateMusic(void);
 static BOOL MiniSightReadScreenState(void);
+static CGRect MiniSightScreenRect(void);
 
 // Immutable main-thread snapshot. Resource refresh owns ALL directory/plist/image I/O.
 static NSString *gMiniSightContainer;
@@ -75,7 +77,13 @@ static NSDictionary *gMiniSightPreferences;
 static UIImage *gMiniSightAtlas;
 static NSString *gMiniSightActionManifest;
 static BOOL gMiniSightShown = NO, gMiniSightResourcesReady = NO;
+static uint64_t gMiniSightSettingsEpoch = 0, gMiniSightPreferencesEpoch = 0, gMiniSightFadeEpoch = 0;
 static BOOL gMiniSightResourceLoading = NO;
+static BOOL gMiniSightSettingsLoading = NO, gMiniSightSettingsRefreshAgain = NO;
+static BOOL gMiniSightShownWritePending = NO, gMiniSightHideObservedOff = NO;
+static uint64_t gMiniSightShownWriteEpoch = 0;
+static NSString *gMiniSightHidePreviousShownIdentity;
+static void MiniSightConvergeSettings(BOOL resourcesFresh);
 static NSString *gMiniSightNameWakeToken;
 // Dictation may finish before the user sends the draft. This UI lease is
 // separate from the single-use audio request and ends on an actual panel close.
@@ -153,7 +161,32 @@ static CGFloat MiniSightPetSize(void) {
     return v ? MSClamp([v doubleValue], 36., 140.) : 96.;
 }
 static BOOL MiniSightAlwaysShow(void) { return [MiniSightPref(@"minisight.mode") integerValue] == 1; }
-static BOOL MiniSightShown(void) { return gMiniSightShown; }
+static BOOL MiniSightShown(void) { return gMiniSightShown && !gMiniSightUserHidden; }
+
+static void MiniSightApplyShownReadback(void) {
+    BOOL known = [MiniSightPref(@"_minisightShownKnown") boolValue];
+    BOOL shown = known && [MiniSightPref(@"_minisightShown") boolValue];
+    if (known && !shown && !gMiniSightShownWritePending) gMiniSightHideObservedOff = YES;
+    if (gMiniSightUserHidden) {
+        NSString *identity = [MiniSightPref(@"_minisightShownIdentity") isKindOfClass:NSString.class]
+            ? MiniSightPref(@"_minisightShownIdentity") : @"";
+        if (!gMiniSightHidePreviousShownIdentity.length && identity.length && !gMiniSightShownWritePending) {
+            // A restarted host first anchors the already-present ON without
+            // un-hiding. Only a later distinct file transaction may release it.
+            gMiniSightHidePreviousShownIdentity = [identity copy];
+        }
+        BOOL changed = identity.length && ![identity isEqualToString:gMiniSightHidePreviousShownIdentity];
+        // Runtime ON alone never releases a menu hide. Require observed OFF
+        // or a NEW atomic shown-file write relative to the failed hide's file.
+        if (MSMusicShownMayReleaseHidden(known, shown, gMiniSightShownWritePending,
+                gMiniSightHideObservedOff, gMiniSightHidePreviousShownIdentity.length > 0, changed)) {
+            gMiniSightUserHidden = NO;
+            gMiniSightHidePreviousShownIdentity = nil;
+            MSMiniSightSetPreference(@"MiniSightUserHidden", @NO);
+        } else shown = NO;
+    }
+    gMiniSightShown = shown;
+}
 static BOOL MiniSightAppOwnsPresentation(void) {
     // Renderer is an explicit global choice, not a foreground-window heuristic.
     // If App mode is selected, SpringBoard never paints a duplicate pet.
@@ -202,6 +235,7 @@ static void MiniSightReconcileAppPresentation(void) {
     } else if (gMiniSightWindow && !gMiniSightWindow.hidden) {
         MiniSightHide();
     }
+    MiniSightUpdateMusic(); // eligibility follows the actual host mutation, not its old frame
 }
 
 static void MiniSightStartPresentationTimer(void) {
@@ -220,10 +254,27 @@ static void MiniSightUserHide(void) {
     gMiniSightShown = NO;
     gMiniSightUserHidden = YES;
     MSMiniSightSetPreference(@"MiniSightUserHidden", @YES);
-    // Both transports: the App switch and every runtime reader see the hide,
-    // not only the plugin's in-memory gMiniSightShown flag.
-    MSMiniSightSetPreference(@"minisight.shown", @NO);
-    [MiniSightResources writeShown:NO container:gMiniSightContainer];
+    // The preference helper owns only position/UserHidden; minisight.shown
+    // was a no-op there. Preserve the authoritative hide file, never force
+    // runtime.json ON over it. Fence any delayed old resource/settings read.
+    MSMusicNextEpoch(&gMiniSightSettingsEpoch);
+    MSMusicNextEpoch(&gMiniSightFadeEpoch);
+    gMiniSightShownWritePending = YES;
+    gMiniSightHideObservedOff = NO;
+    gMiniSightHidePreviousShownIdentity = nil;
+    uint64_t writeEpoch = MSMusicNextEpoch(&gMiniSightShownWriteEpoch);
+    NSString *hideContainer = [gMiniSightContainer copy];
+    [MiniSightResources writeShown:NO container:hideContainer verifiedReadback:^(BOOL verified, NSString *previousIdentity) {
+        if (!MSMusicEpochIsCurrent(gMiniSightShownWriteEpoch, writeEpoch)) return;
+        gMiniSightShownWritePending = NO;
+        BOOL sameContainer = [hideContainer isEqualToString:gMiniSightContainer];
+        gMiniSightHidePreviousShownIdentity = sameContainer ? [previousIdentity copy] : nil;
+        gMiniSightHideObservedOff = verified && sameContainer;
+        MSDiagEvent(@"settings", @"shown_save", verified ? @"ok" : @"failed",
+            @{ @"source": @"plugin", @"shown": @NO, @"reason": verified ? @"verified_readback" : @"write_or_readback_failed" });
+        MiniSightReloadSettings(); // same queue: readback -> notify -> latest apply
+    }];
+    MiniSightUpdateMusic();
     [[MiniSightChatPanel existingPanel] close];
     MiniSightCancelConfirm(); // hide must not be blocked by an approval bubble
     MiniSightHide();
@@ -692,7 +743,7 @@ static NSString *const kMiniSightCenterY   = @"MiniSightCenterY";
 static NSString *const kMiniSightText      = @"Minis 操作中";
 // 版本号：与 DEBIAN/control 的 Version 同步。诊断日志会打印它，
 // 便于装机后确认跑的是哪一版（strings MiniSight.dylib | grep 也能看到）。
-static NSString *const kMiniSightVersion   = @"0.8.44";
+static NSString *const kMiniSightVersion   = @"0.8.45";
 
 #pragma mark - 全局状态
 
@@ -739,6 +790,8 @@ static BOOL gMiniSightLastAccelerationValid = NO;
 static BOOL gMiniSightScreenBlanked = YES;
 static BOOL gMiniSightScreenKnown = NO;
 static int gMiniSightScreenToken = -1;
+static uint64_t gMiniSightScreenRaw = UINT64_MAX;
+static uint32_t gMiniSightScreenStatus = NOTIFY_STATUS_FAILED;
 static MSMotionAttempt gMiniSightMotionAttempt = { 0, MSMotionSourceNone, 0 };
 static dispatch_block_t gMiniSightFirstSampleWatchdog;
 static CGFloat gMiniSightGravityRoll = 0.0;
@@ -786,6 +839,55 @@ static void MiniSightLoadCostume(NSString *file) {
 static UIInterfaceOrientation MiniSightOrientation(void);
 static void MiniSightUpdateGeometry(void);
 
+static NSDictionary *MiniSightMusicPresentation(void) {
+    MiniSightReadScreenState(); // Diagnostics only; never starts audio/media polling.
+    BOOL lockKnown = NO;
+    BOOL unlocked = [MiniSightMusicMonitor deviceIsUnlockedWithKnown:&lockKnown];
+    CALayer *rendered = (CALayer *)gMiniSightWindow.layer.presentationLayer;
+    double renderAlpha = rendered ? rendered.opacity : gMiniSightWindow.layer.opacity;
+    CGRect frame = gMiniSightPet ? [gMiniSightPet convertRect:gMiniSightPet.bounds toView:gMiniSightWindow] : CGRectZero;
+    BOOL finiteFrame = isfinite(frame.origin.x) && isfinite(frame.origin.y) &&
+        isfinite(frame.size.width) && isfinite(frame.size.height) && frame.size.width > 0 && frame.size.height > 0;
+    BOOL frameVisible = finiteFrame && gMiniSightPet.window == gMiniSightWindow &&
+        !CGRectIsEmpty(CGRectIntersection(frame, gMiniSightWindow.bounds)) &&
+        !CGRectIsEmpty(CGRectIntersection(gMiniSightWindow.frame, MiniSightScreenRect()));
+    MSMusicPresentation s = {
+        .shownKnown = [MiniSightPref(@"_minisightShownKnown") boolValue] || gMiniSightUserHidden,
+        .shown = MiniSightShown() && !gMiniSightUserHidden,
+        .lyrics = [MiniSightPref(@"minisight.music.lyrics") boolValue],
+        .motion = [MiniSightPref(@"minisight.music.motion") boolValue],
+        .petStyle = MiniSightStyle() == 1, .appOwned = MiniSightAppOwnsPresentation(),
+        .appFrontmost = MiniSightMinisIsFrontmost(),
+        .windowExists = gMiniSightWindow != nil, .windowHidden = gMiniSightWindow.hidden,
+        .petExists = gMiniSightPet != nil, .petHidden = gMiniSightPet.hidden, .frameVisible = frameVisible,
+        .windowAlpha = gMiniSightWindow.alpha, .renderedAlpha = renderAlpha, .petAlpha = gMiniSightPet.alpha,
+        .screenKnown = gMiniSightScreenKnown, .screenBlanked = gMiniSightScreenBlanked,
+        .lockKnown = lockKnown, .unlocked = unlocked, .containerKnown = gMiniSightContainer.length > 0
+    };
+    MSMusicGateReason reason = MSMusicPresentationReason(s);
+    return @{@"allowed": @((BOOL)(reason == MSMusicGateOpen)),
+        @"stopReason": [NSString stringWithUTF8String:MSMusicGateReasonName(reason)],
+        @"shownKnown": @((BOOL)s.shownKnown), @"shown": @((BOOL)s.shown), @"userHidden": @((BOOL)gMiniSightUserHidden),
+        @"shownFileKnown": @((BOOL)[MiniSightPref(@"_minisightShownKnown") boolValue]),
+        @"shownFile": @((BOOL)[MiniSightPref(@"_minisightShown") boolValue]),
+        @"runtimeShownKnown": @((BOOL)[MiniSightPref(@"_minisightRuntimeShownKnown") boolValue]),
+        @"runtimeShown": @((BOOL)[MiniSightPref(@"_minisightRuntimeShown") boolValue]),
+        @"appOwned": @((BOOL)s.appOwned), @"appFrontmost": @((BOOL)s.appFrontmost),
+        @"visibilityEvidence": s.appOwned ? @"selected_app_frontmost_proxy" : @"springboard_rendered_frame",
+        @"windowExists": @((BOOL)s.windowExists), @"windowHidden": @((BOOL)s.windowHidden),
+        @"petExists": @((BOOL)s.petExists), @"petHidden": @((BOOL)s.petHidden), @"frameVisible": @((BOOL)s.frameVisible),
+        @"windowAlpha": @(isfinite(s.windowAlpha) ? s.windowAlpha : 0),
+        @"renderedAlpha": @(isfinite(s.renderedAlpha) ? s.renderedAlpha : 0), @"petAlpha": @(isfinite(s.petAlpha) ? s.petAlpha : 0),
+        @"x": @(finiteFrame ? frame.origin.x : 0), @"y": @(finiteFrame ? frame.origin.y : 0),
+        @"w": @(finiteFrame ? frame.size.width : 0), @"h": @(finiteFrame ? frame.size.height : 0),
+        @"screenKnown": @((BOOL)s.screenKnown), @"screenBlanked": @((BOOL)s.screenBlanked),
+        @"screenRaw": @(gMiniSightScreenRaw), @"screenNotifyStatus": @(gMiniSightScreenStatus),
+        @"lyricsSetting": @((BOOL)s.lyrics), @"motionSetting": @((BOOL)s.motion),
+        @"lockKnown": @((BOOL)s.lockKnown), @"unlocked": @((BOOL)s.unlocked),
+        @"renderer": @(MiniSightRenderer()), @"style": @(MiniSightStyle()), @"mode": @(MiniSightAlwaysShow() ? 1 : 0),
+        @"settingsEpoch": @(gMiniSightSettingsEpoch), @"fadeEpoch": @(gMiniSightFadeEpoch),
+        @"revision": [MiniSightPref(@"minisight.settings.revision") isKindOfClass:NSString.class] ? MiniSightPref(@"minisight.settings.revision") : @"legacy"};
+}
 static void MiniSightUpdateMusic(void) {
     BOOL lyrics = [MiniSightPref(@"minisight.music.lyrics") boolValue];
     BOOL motion = [MiniSightPref(@"minisight.music.motion") boolValue];
@@ -797,11 +899,10 @@ static void MiniSightUpdateMusic(void) {
         gMiniSightPet.lyricsSuppressed = gMiniSightBubbleShown || gMiniSightConfirming ||
             MiniSightChatPanel.existingPanel.isVisible || gMiniSightBurst;
     };
-    BOOL visible = gMiniSightWindow && !gMiniSightWindow.hidden && gMiniSightPet && gMiniSightWindow.alpha > .01;
-    if (MiniSightAppOwnsPresentation()) visible = MiniSightMinisIsFrontmost() && (MiniSightAlwaysShow() || gMiniSightActivityExecuting);
-    BOOL allowed = MiniSightShown() && MiniSightStyle() == 1 && visible && gMiniSightScreenKnown &&
-        !gMiniSightScreenBlanked && [MiniSightMusicMonitor deviceIsUnlocked];
-    [monitor configureAllowed:allowed lyrics:lyrics motion:motion container:gMiniSightContainer];
+    if (!monitor.presentationHandler) monitor.presentationHandler = ^{ return MiniSightMusicPresentation(); };
+    NSDictionary *presentation = MiniSightMusicPresentation();
+    BOOL allowed = [presentation[@"allowed"] boolValue];
+    [monitor configureAllowed:allowed lyrics:lyrics motion:motion container:gMiniSightContainer presentation:presentation];
     NSDictionary *snapshot = monitor.snapshot;
     gMiniSightPet.lyricsLine = lyrics && allowed ? snapshot[@"line"] : nil;
     gMiniSightPet.musicPlaying = motion && allowed && [snapshot[@"playing"] boolValue];
@@ -869,6 +970,8 @@ static BOOL MiniSightReadScreenState(void) {
             gMiniSightScreenToken = -1;
         }
     }
+    gMiniSightScreenRaw = raw;
+    gMiniSightScreenStatus = status;
     MSScreenState state = MSScreenReadResult(status == NOTIFY_STATUS_OK, raw);
     const BOOL changed = gMiniSightScreenKnown != state.known || gMiniSightScreenBlanked != state.blanked;
     gMiniSightScreenKnown = state.known;
@@ -1657,10 +1760,17 @@ static void MiniSightRequestResources(BOOL force, void (^completion)(void)) {
         return;
     }
     gMiniSightResourceLoading = YES;
+    uint64_t epoch = MSMusicNextEpoch(&gMiniSightSettingsEpoch);
     [MiniSightResources refresh:^(NSString *container, NSDictionary *preferences, BOOL shown, UIImage *atlas) {
         gMiniSightResourceLoading = NO;
+        if (!MSMusicEpochIsCurrent(gMiniSightSettingsEpoch, epoch)) {
+            gMiniSightResourceRefreshAgain = NO;
+            MiniSightRequestResources(YES, nil); // latest read after any queued user hide
+            return;
+        }
         gMiniSightContainer = [container copy];
         gMiniSightPreferences = [preferences copy] ?: @{};
+        gMiniSightPreferencesEpoch = epoch;
         MiniSightChatPanel *panel = MiniSightChatPanel.existingPanel;
         panel.containerPath = gMiniSightContainer;
         panel.appearancePreferences = gMiniSightPreferences;
@@ -1686,15 +1796,18 @@ static void MiniSightRequestResources(BOOL force, void (^completion)(void)) {
         gMiniSightResourcesReady = YES;
         MiniSightConfigureRecorder();
         MiniSightReadActivitySnapshot();
-        if (!gMiniSightShown) MiniSightDestroyUI();
         if (gMiniSightResourceRefreshAgain) {
             gMiniSightResourceRefreshAgain = NO;
             MiniSightRequestResources(YES, nil);
             return;
         }
+        MiniSightConvergeSettings(YES);
+        if (!MiniSightShown()) MiniSightDestroyUI();
+        if (gMiniSightResourceLoading) return; // preserve queued callbacks for the current resource pass
         NSArray *pending = [gMiniSightResourceCompletions copy];
         [gMiniSightResourceCompletions removeAllObjects];
         for (void (^block)(void) in pending) block();
+        MiniSightUpdateMusic();
         MiniSightNameWakeUpdate();
     }];
 }
@@ -1715,9 +1828,10 @@ static void MiniSightStartSettingsWatch(void) {
         NSString *revision = [snap[@"revision"] isKindOfClass:NSString.class] ? snap[@"revision"] : nil;
         NSString *shownPath = [gMiniSightContainer stringByAppendingPathComponent:@"Documents/MiniSight/shown"];
         NSString *shownText = [NSString stringWithContentsOfFile:shownPath encoding:NSUTF8StringEncoding error:nil];
-        BOOL shown = ![shownText isEqualToString:@"0"];
+        BOOL shown = [shownText isEqualToString:@"1"];
         if (!gMiniSightWatchedRevision.length) {
             gMiniSightWatchedRevision = [revision copy];
+            if (shown != gMiniSightShown) MiniSightReloadSettings();
             return;
         }
         BOOL revisionChanged = revision && ![revision isEqualToString:gMiniSightWatchedRevision];
@@ -1948,10 +2062,7 @@ static void MiniSightShowAfterOwnershipCheck(void) {
         MiniSightRequestResources(NO, ^{ MiniSightShow(); });
         return;
     }
-    if (gMiniSightUserHidden) {
-        gMiniSightUserHidden = NO;
-        MSMiniSightSetPreference(@"MiniSightUserHidden", @NO);
-    }
+    // UserHidden is released only by the verified shown readback convergence.
     MiniSightBuildUI();
     if (!gMiniSightWindow) { MiniSightTracePresentationGate(@"host_build_failed"); return; }
 
@@ -1978,6 +2089,9 @@ static void MiniSightShowAfterOwnershipCheck(void) {
     [gMiniSightPet startPlaying];
     MiniSightInstallRecorderCallbacks();
 
+    // Every fade completion is tied to this host and this latest intent.
+    uint64_t fadeEpoch = MSMusicNextEpoch(&gMiniSightFadeEpoch);
+    UIWindow *window = gMiniSightWindow;
     // 先透明再取消 hidden，然后 0.18s 淡入
     gMiniSightWindow.alpha = 0.0;
     MSDiagEvent(@"runtime", @"show", @"ok", @{ @"source": @"plugin", @"size": @(MiniSightPetSize()), @"layout": @(gMiniSightPet.spriteLayout) });
@@ -1995,45 +2109,54 @@ static void MiniSightShowAfterOwnershipCheck(void) {
                         options:(UIViewAnimationOptionCurveEaseOut |
                                  UIViewAnimationOptionBeginFromCurrentState)
                      animations:^{
-        gMiniSightWindow.alpha = 1.0;
-    } completion:^(BOOL finished) { (void)finished; MiniSightUpdateMusic(); }];
+        window.alpha = 1.0;
+    } completion:^(BOOL finished) {
+        (void)finished;
+        if (window == gMiniSightWindow && MSMusicEpochIsCurrent(gMiniSightFadeEpoch, fadeEpoch)) MiniSightUpdateMusic();
+    }];
 }
 
 static void MiniSightHide(void) {
     if (gMiniSightNameWakeToken.length && !gMiniSightNameWakeCancelling) return;
     if (gMiniSightConfirming) return;   // 等问题回答完再收，否则气泡跟着窗口一起没
     MiniSightHideBubble();
-    if (MiniSightAlwaysShow() && !gMiniSightUserHidden) {
+    if (MiniSightAlwaysShow() && MiniSightShown() && !gMiniSightUserHidden && !MiniSightAppOwnsPresentation()) {
         if (gMiniSightWindow && !gMiniSightWindow.hidden) MiniSightStartGravity();
         return;   // 常驻桌宠仍可见，重力采样不能被 stopped 错误关掉
     }
     MiniSightStopGravity();
     [[MiniSightChatPanel existingPanel] hideWithoutKey];
-    if (!gMiniSightWindow || gMiniSightWindow.hidden) return;
+    if (!gMiniSightWindow || gMiniSightWindow.hidden) { MiniSightUpdateMusic(); return; }
+    uint64_t fadeEpoch = MSMusicNextEpoch(&gMiniSightFadeEpoch);
+    UIWindow *window = gMiniSightWindow;
 
     [UIView animateWithDuration:0.18
                           delay:0.0
                         options:(UIViewAnimationOptionCurveEaseOut |
                                  UIViewAnimationOptionBeginFromCurrentState)
                      animations:^{
-        gMiniSightWindow.alpha = 0.0;
+        window.alpha = 0.0;
     } completion:^(BOOL finished) {
-        // 动画结束后才真正隐藏窗口
-        if (finished && gMiniSightWindow.alpha < 0.01) {
-            gMiniSightWindow.hidden = YES;
-            gMiniSightWindow.alpha = 1.0; // 下次显示从 0 开始淡入
+        if (window != gMiniSightWindow || !MSMusicEpochIsCurrent(gMiniSightFadeEpoch, fadeEpoch)) return;
+        // 动画结束后才真正隐藏窗口，旧淡出不能藏掉新淡入的窗口。
+        if (finished && window.alpha < 0.01) {
+            window.hidden = YES;
+            window.alpha = 1.0; // 下次显示从 0 开始淡入
             MiniSightStopPulse();
             gMiniSightPet.activityActive = NO;
             [gMiniSightPet stopPlaying];
-            MiniSightUpdateMusic();
         }
+        MiniSightUpdateMusic();
     }];
 }
 
 /// 彻底拆掉浮窗（设置变更时重建用）
 static void MiniSightDestroyUI(void) {
+    MSMusicNextEpoch(&gMiniSightFadeEpoch);
     MiniSightNameWakeCancel(@"host_teardown", YES);
-    [MiniSightMusicMonitor.shared configureAllowed:NO lyrics:NO motion:NO container:gMiniSightContainer];
+    NSMutableDictionary *closed = [MiniSightMusicPresentation() mutableCopy];
+    closed[@"allowed"] = @NO; closed[@"stopReason"] = @"host_teardown";
+    [MiniSightMusicMonitor.shared configureAllowed:NO lyrics:NO motion:NO container:gMiniSightContainer presentation:closed];
     MiniSightStopGravity();
     [[MiniSightChatPanel existingPanel] hideWithoutKey];
     MiniSightChatPanel.existingPanel.anchorView = nil;
@@ -2064,15 +2187,18 @@ static void MiniSightDestroyUI(void) {
 
 /// 设置变了：按新设置重建（样式/常驻立即生效，不用注销）
 static void MiniSightApplySettingsLive(void) {
+    // Use the same serial resource readback as the settings, not a second
+    // independently timed shown-file read after music has already configured.
+    if (!MSMusicEpochIsCurrent(gMiniSightSettingsEpoch, gMiniSightPreferencesEpoch)) {
+        MiniSightUpdateMusic(); // explicit hide stays in force while the latest read is pending
+        MiniSightReloadSettings();
+        return;
+    }
+    MiniSightApplyShownReadback();
     MiniSightUpdateMusic();
     if (!gMiniSightWindow) {
         if (MiniSightShown() && !MiniSightAppOwnsPresentation()) MiniSightShow();
         return;
-    }
-    if (gMiniSightContainer.length) {
-        NSString *shownPath = [gMiniSightContainer stringByAppendingPathComponent:@"Documents/MiniSight/shown"];
-        NSString *t = [NSString stringWithContentsOfFile:shownPath encoding:NSUTF8StringEncoding error:nil];
-        gMiniSightShown = ![t isEqualToString:@"0"];
     }
     NSInteger appearanceMode = MiniSightRuntimeConfig.shared.darkMode;
     gMiniSightWindow.overrideUserInterfaceStyle =
@@ -2105,40 +2231,63 @@ static void MiniSightApplySettingsLive(void) {
     MiniSightRefreshChatAnchor();
 }
 
-static void MiniSightReloadSettings(void) {
-    // Preferences-only refresh. The old path forced a full atlas request and
-    // destroyed the window before a rebuild, which is what made every switch
-    // take 10+ seconds. Only a renderer/style change needs that rebuild.
-    [MiniSightResources refreshPreferences:^(NSString *container, NSDictionary *preferences) {
-        if (container.length) gMiniSightContainer = [container copy];
-        gMiniSightPreferences = [preferences copy] ?: @{};
-        if (container.length) {
-            NSString *shownPath = [container stringByAppendingPathComponent:@"Documents/MiniSight/shown"];
-            NSString *shownText = [NSString stringWithContentsOfFile:shownPath encoding:NSUTF8StringEncoding error:nil];
-            gMiniSightShown = ![shownText isEqualToString:@"0"];
+static void MiniSightConvergeSettings(BOOL resourcesFresh) {
+    NSCAssert(NSThread.isMainThread, @"Latest settings convergence is main-thread owned");
+    if (!MSMusicEpochIsCurrent(gMiniSightSettingsEpoch, gMiniSightPreferencesEpoch)) {
+        MiniSightReloadSettings();
+        return;
+    }
+    BOOL wasUserHidden = gMiniSightUserHidden;
+    MiniSightApplyShownReadback();
+    NSInteger renderer = MiniSightRenderer(), style = MiniSightStyle();
+    BOOL structural = renderer != gMiniSightAppliedRenderer || style != gMiniSightAppliedStyle;
+    if (structural) {
+        MiniSightStopGravity();
+        MiniSightDestroyUI();
+        if (!resourcesFresh) { MiniSightRequestResources(YES, nil); return; }
+        // Re-evaluate at the RESOURCE tail, not from an old settings completion.
+        gMiniSightAppliedRenderer = renderer;
+        gMiniSightAppliedStyle = style;
+        if (MiniSightShown() && !MiniSightAppOwnsPresentation()) {
+            if (gMiniSightBurst || MiniSightAlwaysShow()) MiniSightShow();
+            else MiniSightBuildUI(); // hidden call-mode host, never force show
         }
+    } else {
+        if (wasUserHidden && !gMiniSightUserHidden) MiniSightShow(); // fences an old hide fade
+        MiniSightApplySettingsLive();
+    }
+    MiniSightUpdateMusic();
+    MiniSightNameWakeUpdate();
+}
+
+static void MiniSightReloadSettings(void) {
+    NSCAssert(NSThread.isMainThread, @"Settings requests are main-thread owned");
+    uint64_t epoch = MSMusicNextEpoch(&gMiniSightSettingsEpoch);
+    if (gMiniSightResourceLoading) {
+        gMiniSightResourceRefreshAgain = YES;
+        return; // the resource tail will read and apply the latest full state
+    }
+    if (gMiniSightSettingsLoading) {
+        gMiniSightSettingsRefreshAgain = YES;
+        return;
+    }
+    gMiniSightSettingsLoading = YES;
+    gMiniSightSettingsRefreshAgain = NO;
+    [MiniSightResources refreshPreferences:^(NSString *container, NSDictionary *preferences) {
+        gMiniSightSettingsLoading = NO;
+        if (!MSMusicEpochIsCurrent(gMiniSightSettingsEpoch, epoch) || gMiniSightSettingsRefreshAgain) {
+            gMiniSightSettingsRefreshAgain = NO;
+            MiniSightReloadSettings(); // stale completion cannot swallow the last requested apply
+            return;
+        }
+        gMiniSightContainer = [container copy];
+        gMiniSightPreferences = [preferences copy] ?: @{};
+        gMiniSightPreferencesEpoch = epoch;
         [MiniSightRuntimeConfig.shared reloadWithContainer:gMiniSightContainer];
         MiniSightConfigureRecorder();
         MSDiagSettingsSnapshot(@"receive", @"plugin", gMiniSightPreferences);
         MSDiagEvent(@"settings", @"reload", @"ok", @{ @"source": @"plugin", @"reason": @"darwin_notification" });
-
-        NSInteger renderer = MiniSightRenderer();
-        NSInteger style = MiniSightStyle();
-        BOOL structural = renderer != gMiniSightAppliedRenderer || style != gMiniSightAppliedStyle;
-        if (structural) {
-            gMiniSightAppliedRenderer = renderer;
-            gMiniSightAppliedStyle = style;
-            BOOL shouldShow = gMiniSightBurst || MiniSightAlwaysShow();
-            MiniSightStopGravity();
-            MiniSightDestroyUI();
-            MiniSightRequestResources(YES, ^{
-                if (!MiniSightShown() || MiniSightAppOwnsPresentation()) return;
-                if (shouldShow) MiniSightShow(); else MiniSightBuildUI();
-            });
-            return;
-        }
-        MiniSightApplySettingsLive();
-        MiniSightNameWakeUpdate();
+        MiniSightConvergeSettings(NO);
     }];
 }
 

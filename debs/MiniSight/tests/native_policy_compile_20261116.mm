@@ -13,6 +13,9 @@
 #include "MiniSightLiveliness.h"
 #include "MiniSightNameWakeGate.h"
 #include "MiniSightNameWakeProtocol.h"
+#include "MiniSightNameWakeState.h"
+#include "MiniSightMusicPresentationPolicy.h"
+#include "MiniSightShownReadback.h"
 #include "MiniSightApprovalSummaryCore.h"
 #include "tools/recorder/MiniSightRecorderCore.h"
 
