@@ -148,7 +148,10 @@
     NSArray<MiniSightActionClip *> *pool = _library.roles[wanted];
     NSString *actual = wanted;
     NSPredicate *usable = [NSPredicate predicateWithBlock:^BOOL(id item, NSDictionary *bindings) {
-        (void)bindings; return ![self->_failedClips containsObject:item.identifier];
+        (void)bindings;
+        if (![item isKindOfClass:MiniSightActionClip.class]) return NO;
+        MiniSightActionClip *clip = item;
+        return ![self->_failedClips containsObject:clip.identifier];
     }];
     pool = [pool filteredArrayUsingPredicate:usable];
     if (!pool.count) { pool = [_library.roles[@"idle"] filteredArrayUsingPredicate:usable]; actual = @"idle"; }
