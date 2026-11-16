@@ -385,8 +385,29 @@ def native_tests():
         subprocess.run(command, check=True, timeout=120)
         plan = build_plan(directory)
         subprocess.run([str(executable), str(plan)], check=True, timeout=240)
-        # Prove probe-pool scoping did not weaken immediate cancellation. The
-        # same real harness must reject a production copy that keeps its block.
+        # Ownership control: the previous production -copy path with this same
+        # isolated caller proves whether the old failure was a fixture owner or
+        # an extra production copy owner. Only its known !weakPending failure is
+        # accepted as a historical reproduction; CURRENT source must pass above.
+        assert SOURCE.count('_pendingCompletion = completion;') == 1
+        legacy = directory / 'legacy-copy-owner'
+        legacy.mkdir()
+        (legacy / 'MiniSightActionLibrary.m').write_text(SOURCE.replace(
+            '_pendingCompletion = completion;', '_pendingCompletion = [completion copy];', 1))
+        legacy_executable = directory / 'legacy-copy-owner-tests'
+        legacy_command = command.copy()
+        at = legacy_command.index(str(CORE)) - 1
+        legacy_command[at:at] = ['-I', str(legacy)]
+        legacy_command[legacy_command.index(str(executable))] = str(legacy_executable)
+        subprocess.run(legacy_command, check=True, timeout=120)
+        ownership = subprocess.run([str(legacy_executable), str(plan)], capture_output=True, text=True, timeout=240)
+        if ownership.returncode == 0:
+            print('NATIVE PASS ownership control: legacy -copy also releases once CALLER ownership ends', flush=True)
+        elif 'FAIL line' in ownership.stderr and '!weakPending' in ownership.stderr:
+            print('NATIVE ownership control: legacy -copy reproduced retained pending callback; ARC store fixed it', flush=True)
+        else:
+            raise AssertionError('Unexpected legacy ownership-control failure:\n' + ownership.stdout + ownership.stderr)
+        # The same real harness must still reject missing production cancellation.
         start = SOURCE.index('- (void)cancelPendingFrameRequests {')
         end = SOURCE.index('- (void)purgeFrames {', start)
         cancel = SOURCE[start:end]

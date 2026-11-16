@@ -153,6 +153,24 @@ static void CacheTests(void) {
     [state advancePurging:YES]; CHECK(!weakBitmap);
 }
 
+// A direct block literal in SchedulerTests can keep its stack capture alive
+// beyond an ARC-optimized lexical scope. Give the CALLER's ownership a precise
+// lifetime in a non-inlined call, so only the production callback slots remain
+// when the exact same immediate-release assertions run. No worker is drained.
+__attribute__((noinline))
+static void RequestOwnedFrame(MiniSightActionLibrary *library, MiniSightActionClip *clip,
+                              NSUInteger index, NSObject * __weak *probe,
+                              MSALFrameCompletion completion) {
+    @autoreleasepool {
+        __attribute__((objc_precise_lifetime)) NSObject *owner = [NSObject new];
+        *probe = owner;
+        __attribute__((objc_precise_lifetime)) MSALFrameCompletion callback = ^(UIImage *image) {
+            CHECK(owner); completion(image);
+        };
+        [library requestFrameForClip:clip index:index completion:callback];
+    }
+}
+
 static void SchedulerTests(NSString *path) {
     NSError *error = nil; MiniSightActionLibrary *library = Load(path, &error); CHECK(library && !error);
     MiniSightActionClip *idle = library.roles[@"idle"].firstObject;
@@ -178,25 +196,38 @@ static void SchedulerTests(NSString *path) {
         dispatch_semaphore_t capturedGate = gate;
         dispatch_async(MSALQueue(), ^{ dispatch_semaphore_wait(capturedGate, DISPATCH_TIME_FOREVER); });
         __weak NSObject *weakActive, *weakPending;
-        @autoreleasepool {
-            NSObject *active = [NSObject new]; weakActive = active;
-            [library requestFrameForClip:idle index:1 completion:^(UIImage *image) {
-                (void)image; CHECK(active); delivered++;
-            }];
-        }
+        RequestOwnedFrame(library, idle, 1, &weakActive, ^(UIImage *image) {
+            (void)image; delivered++;
+        });
         @autoreleasepool { CHECK(weakActive); }
-        @autoreleasepool {
-            NSObject *pending = [NSObject new]; weakPending = pending;
-            [library requestFrameForClip:idle index:1 completion:^(UIImage *image) {
-                (void)image; CHECK(pending); delivered++;
-            }];
-        }
+        RequestOwnedFrame(library, idle, 1, &weakPending, ^(UIImage *image) {
+            (void)image; delivered++;
+        });
         @autoreleasepool { CHECK(!weakActive && weakPending); } // Drain weak-load temporary ownership.
         if (purge) [library purgeFrames]; else [library cancelPendingFrameRequests];
         CHECK(!weakPending); // Cancellation drops the retained callback immediately.
         dispatch_semaphore_signal(gate); DrainWorker();
         CHECK(delivered == 1 && [[state valueForKey:@"cost"] unsignedIntegerValue] == 0);
     }
+    // Cancel an active worker, then admit a new request before its stale finish.
+    // The stale finish must neither deliver the old callback nor erase the new one.
+    [library purgeFrames]; gate = dispatch_semaphore_create(0);
+    dispatch_semaphore_t restartGate = gate;
+    dispatch_async(MSALQueue(), ^{ dispatch_semaphore_wait(restartGate, DISPATCH_TIME_FOREVER); });
+    __weak NSObject *weakRestart;
+    RequestOwnedFrame(library, idle, 1, &weakRestart, ^(UIImage *image) {
+        (void)image; CHECK(NO);
+    });
+    @autoreleasepool { CHECK(weakRestart); }
+    [library cancelPendingFrameRequests]; CHECK(!weakRestart);
+    __block BOOL restarted = NO;
+    [library requestFrameForClip:idle index:1 completion:^(UIImage *image) {
+        CheckImage(image, @[@384,@192], @[@0,@0,@255], NO); restarted = YES;
+    }];
+    CHECK(!restarted); dispatch_semaphore_signal(gate);
+    Wait(^BOOL { return restarted; }); DrainWorker();
+    CHECK(delivered == 1 && [[state valueForKey:@"lru"] count] <= 1);
+    fprintf(stderr, "NATIVE PASS ownership: isolated caller, cancel/purge pending, active cancel + new job\n");
     // Primed first frame is independent of subsequent filesystem availability.
     library = Load(path, &error); CHECK(library); idle = library.roles[@"idle"].firstObject;
     NSString *file = [path.stringByDeletingLastPathComponent stringByAppendingPathComponent:@"pixels.png"];

@@ -343,6 +343,7 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
 static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
                                  CFNotificationName name, const void *object,
                                  CFDictionaryRef userInfo) {
+    (void)center; (void)name; (void)object; (void)userInfo;
     MiniSightChatPanel *panel = (__bridge MiniSightChatPanel *)observer;
     dispatch_async(dispatch_get_main_queue(), ^{ [panel voiceResultArrived]; });
 }
