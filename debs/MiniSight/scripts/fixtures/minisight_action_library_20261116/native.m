@@ -153,10 +153,10 @@ static void CacheTests(void) {
     [state advancePurging:YES]; CHECK(!weakBitmap);
 }
 
-// A direct block literal in SchedulerTests can keep its stack capture alive
-// beyond an ARC-optimized lexical scope. Give the CALLER's ownership a precise
-// lifetime in a non-inlined call, so only the production callback slots remain
-// when the exact same immediate-release assertions run. No worker is drained.
+// Exact weak** rejects a mistakenly strong probe (the second declarator of
+// '__weak NSObject *a, *b' is STRONG). Give the caller's object/block ownership
+// precise lifetimes in a non-inlined call; after return only production's
+// callback slots retain the owner. No worker is drained before release checks.
 __attribute__((noinline))
 static void RequestOwnedFrame(MiniSightActionLibrary *library, MiniSightActionClip *clip,
                               NSUInteger index, NSObject * __weak *probe,
@@ -195,7 +195,8 @@ static void SchedulerTests(NSString *path) {
         [library purgeFrames]; gate = dispatch_semaphore_create(0);
         dispatch_semaphore_t capturedGate = gate;
         dispatch_async(MSALQueue(), ^{ dispatch_semaphore_wait(capturedGate, DISPATCH_TIME_FOREVER); });
-        __weak NSObject *weakActive, *weakPending;
+        __weak NSObject *weakActive;
+        __weak NSObject *weakPending;
         RequestOwnedFrame(library, idle, 1, &weakActive, ^(UIImage *image) {
             (void)image; delivered++;
         });
