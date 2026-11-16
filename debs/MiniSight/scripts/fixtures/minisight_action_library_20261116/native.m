@@ -147,7 +147,10 @@ static void CacheTests(void) {
         MSALBitmap *owned = TestBitmap(); weakBitmap = owned;
         [state store:owned key:@"release" epoch:releaseEpoch];
     }
-    CHECK(weakBitmap); [state advancePurging:YES]; CHECK(!weakBitmap);
+    // A weak read can autorelease a temporary strong owner. Drain that probe
+    // BEFORE testing production's immediate release; keep the same assertions.
+    @autoreleasepool { CHECK(weakBitmap); }
+    [state advancePurging:YES]; CHECK(!weakBitmap);
 }
 
 static void SchedulerTests(NSString *path) {
@@ -181,14 +184,14 @@ static void SchedulerTests(NSString *path) {
                 (void)image; CHECK(active); delivered++;
             }];
         }
-        CHECK(weakActive);
+        @autoreleasepool { CHECK(weakActive); }
         @autoreleasepool {
             NSObject *pending = [NSObject new]; weakPending = pending;
             [library requestFrameForClip:idle index:1 completion:^(UIImage *image) {
                 (void)image; CHECK(pending); delivered++;
             }];
         }
-        CHECK(!weakActive && weakPending); // Superseding releases the active block.
+        @autoreleasepool { CHECK(!weakActive && weakPending); } // Drain weak-load temporary ownership.
         if (purge) [library purgeFrames]; else [library cancelPendingFrameRequests];
         CHECK(!weakPending); // Cancellation drops the retained callback immediately.
         dispatch_semaphore_signal(gate); DrainWorker();

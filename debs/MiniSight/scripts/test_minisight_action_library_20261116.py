@@ -385,6 +385,26 @@ def native_tests():
         subprocess.run(command, check=True, timeout=120)
         plan = build_plan(directory)
         subprocess.run([str(executable), str(plan)], check=True, timeout=240)
+        # Prove probe-pool scoping did not weaken immediate cancellation. The
+        # same real harness must reject a production copy that keeps its block.
+        start = SOURCE.index('- (void)cancelPendingFrameRequests {')
+        end = SOURCE.index('- (void)purgeFrames {', start)
+        cancel = SOURCE[start:end]
+        assert cancel.count('_pendingCompletion = nil;') == 1
+        mutant = directory / 'retained-callback'
+        mutant.mkdir()
+        (mutant / 'MiniSightActionLibrary.m').write_text(SOURCE[:start] +
+            cancel.replace('_pendingCompletion = nil;', '', 1) + SOURCE[end:])
+        mutant_executable = directory / 'retained-callback-tests'
+        mutant_command = command.copy()
+        at = mutant_command.index(str(CORE)) - 1
+        mutant_command[at:at] = ['-I', str(mutant)]
+        mutant_command[mutant_command.index(str(executable))] = str(mutant_executable)
+        subprocess.run(mutant_command, check=True, timeout=120)
+        killed = subprocess.run([str(mutant_executable), str(plan)], capture_output=True, text=True, timeout=240)
+        if killed.returncode == 0 or 'FAIL line' not in killed.stderr or '!weakPending' not in killed.stderr:
+            raise AssertionError('Native cancellation mutant not assertion-killed:\n' + killed.stdout + killed.stderr)
+        print('NATIVE PASS mutation: cancellation releases pending callback immediately', flush=True)
     print("Native tests used actual production code; only UIImage delivery was shimmed on macOS")
 
 
