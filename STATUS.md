@@ -1,7 +1,22 @@
-# 当前：MiniSight0.8.45 当批推送与GitHub编译（2026-11-17，未安装）
+# 当前：MiniSight0.8.45 真实CI／双DEB静态核验PASS（2026-11-17，未安装）
+
+- 本轮用户明确覆盖旧“仅重试一次后停”的限制，授权当前版本继续编译／真实CI错误窄修／普通push与双架构验包。已在预算内达到真实编译与验包终态；不包含安装、设备配置、开麦、真实歌词请求、注销或重启。
+- 最终本地／远端HEAD `fd321d3a374cfce99aafb652830b9d63ad998f6d`；HGFdel-dav/theos-ci，minisight-0.8.45-20261116，run124／43923925319 attempt1；RootHide与rootless全部步骤逐项completed/success。固定macos-15-intel、Xcode16.4、iPhoneOS15.5.sdk、FINALPACKAGE=1，不换runner／SDK／门槛，不在iSH编iOS。
+- 原run123 attempt1/2 hosted runner未领取、steps0，父新授权attempt3获runner后实际执行。两架构Theos成功，但原生baseline夹具runtime.m:66推断int block与BOOL签名不符，native_checks=1／theos_build=0，artifact0；全失败日志与官方注解保留。
+- 仅将共享夹具 `scripts/fixtures/minisight_presentation_readback_20261116/runtime.m` 一行改显式 `Wait(^BOOL(void) { return !gMiniSightShownWritePending; });` 后普通push；未改生产Tweak／Resources／UI、literal inc／manifest、原生guard或App。共享窄修先记录通知父，父已局部同步；原5共用模块＋9夹具／测试镜像只读14/14一致，本地待同步为空，App新提交／CI仍由父独立处理。
+- 新run的固定15.5 arm64/arm64e生产.m、ObjC/ObjC++策略、MusicMonitor／Lyrics／ImageIO-ASan／PetEffects及5真实Tweak函数（含UserHide）＋3资源writer原生门槛通过。新presentation baseline先真实编译运行，两个unsafe变异编译成功后运行拒绝；不是compilefail冒充负例，macOS依赖替身测试也不当真机UIKit结果。
+- RootHide DEB SHA256：`2a242a51a84d5c3fc5a390ef7ee1db761a997f8046cb2ba5b0d0dcb6eaaaec6b`；rootless：`53e8311b04d4e812ded0696728baf3d6099b07ee93f4c19e000a6e97257e1130`。包身份／版本／架构、CI manifest、官方artifact ZIP SHA／CRC、当前attempt上传ID均核实；仅dylib0755＋SpringBoard filter0644，无维护脚本或额外载荷。
+- Mach-O SDK15.5、minOS15.0；arm64e subtype0x80000002、PAC1820条，rootless普通arm64。CodeDirectory SHA-1/SHA-256：RootHide各159页、rootless各155页及特殊槽2哈希全部通过；两架构代码页1篡改负例均被拒，原文件未改。静态签名完整性不代表签名信任／安装加载。
+- 最终准确源码ZIP：108文件逐字对照git blob、提交注释／CRC通过，排除.git/.theos/packages/out/logs/凭据，SHA256 `2ac7bdd115b25130946773359d05c8af13496da7b01e33298b8ed58acbd52b57`。双包／源码／SHA256SUMS／完整报告与全CI证据存attachments/MiniSight-0.8.45-20261117及shared/MiniSight-releases同名目录；旧真实失败交付18文件保存在两目录previous-blocked-attempt2，不拿旧包冒充成功。
+- 本终态STATUS仍只本地dirty，未再次提交／push。原后台、锁屏／OFF、draft／手动、录屏／素材、ChatPanel／Key及署名义务未删改；未安装／加载／开麦／真实歌词查询／改设备／注销重启；19:28真机原因仍未知，不称原功能已好。旧AE086F89未恢复／重派；插件无仍运行CI。
+
+---
+# 历史：0.8.45 初次推送停在attempt2的原始记录（已被上方新授权续跑覆盖）
 
 - 用户本批明确“推送”，分别发布App与MiniSight0.8.45；插件获准本批提交、普通推送、GitHub CI、按真实构建错误窄修重推及双架构静态验包，**不包含安装、设备操作、开麦、注销、重启或真实歌词查询**。基线HEAD为8d433c122f5735b4acf44fd66bc98e5f3f14b842，本地分支minisight-0.8.40-20261110；唯一目标HGFdel-dav/theos-ci的refs/heads/minisight-0.8.45-20261116，不force、不覆盖旧版本。
-- 插件凭据仅GITHUB_TOKEN_QQ；App由父代理独立处理，本代理不改App树/PBX/余额/名字Swift/音频。基线、diff、新文件来源、原STATUS、本批STATE和共享变更记录保存到shared/MiniSight-releases/MiniSight-0.8.45-20261117/work/。当前尚未提交与构建，尚无0.8.45包；实装仍为已确认0.8.44/App304。
+- 插件已使用GITHUB_TOKEN_QQ普通推送；本地与远端HEAD均为9a3d38427aa1fd6dce1ebb41aebb67208703c5fb。App由父代理独立处理，本代理没有修改App树/PBX/余额/名字Swift/音频。基线、diff、新文件来源、原STATUS、本批STATE和共享变更记录保存在shared/MiniSight-releases/MiniSight-0.8.45-20261117/work/。
+- GitHub run123/43914589598的attempt1与同提交唯一一次attempt2均已终结failure；每次RootHide、rootless job都cancelled、steps0。两次官方注解均为“The job was not acquired by Runner of type hosted even after multiple attempts”。完整日志各为22字节空ZIP（CRC通过、0日志文件），artifact0；**从未开始编译或执行原生检查，不是源码/native已失败或通过**。
+- 无0.8.45 DEB、包hash、Mach-O/PAC/签名/载荷验包结果；不使用0.8.44旧包冒充。实装仍为已确认0.8.44/App304，本代理未安装/操作设备。按父当批纠正，只收完attempt2，未再rerun/push、未换runner/SDK、未猜测修源码/放宽门槛；本最终STATUS仅本地回写，未再次提交推送。
 - 固定GitHub CI iPhoneOS15.5.sdk，RootHide arm64e/rootless arm64，FINALPACKAGE=1。iSH仅本地源码/便携检查与静态验包，不能编iOS。原生strict、baseline和unsafe负例不得绕过；每次真实失败日志和修法分别归档。任何共享模块/头或测试夹具窄修立即写SHARED-CHANGES.json，供父局部同步。
 - 生产名字状态组包共用MiniSightNameWakeState.h，BOOL明确序列化；App真实reader严格兼容旧整数0/1，未知状态不假锁。SB不录音、不TTS、不拉App。正常语音结束保草稿、锁屏/OFF保护与原手动流程不删。
 - 音乐准入/保存链：真实shown文件有界1字节读回与事务身份、异步写成功反馈及通知，旧runtimeON不复活显式hide；过期settings重读、resource尾重判renderer/style保queuedcallbacks、淡入淡出有代次。App已选前台快照通路保留而非伪造SB可见，未知锁屏仍关。
@@ -59,3 +74,13 @@
 - 本机 host 回归：宠物状态 27433、面板 110336、跟随 5732、屏幕几何 1600001、重力 40015、聊天核心 233；ApprovalSummary 13 项、诊断 11 项及 strict C/C++ 检查通过。App/插件 macOS CI 也成功。
 - 验证与交付文件位于 `/var/minis/attachments/MiniSight-0.8.42-20261111/`，包括双架构 DEB、App IPA、准确提交源码 ZIP、SHA256SUMS、VERIFY-REPORT.md。
 - 未安装/加载、未真机验证宠物动作/键盘跟随/面板和视频流程；未注销、未重启、未改设备配置。CI/DEB 核验不能代替真机结果。
+
+## 2026-11-17 MiniSight 0.8.46 最终本地候选与独立推送授权
+
+- 本批基线fd321d3a374cfce99aafb652830b9d63ad998f6d（0.8.45上一批CI双包通过但build308 App真机余额回归已另定位）。用户新“推送”覆盖本批两端提交/CI，不沿用旧许可，不含安装/注销/重启/开麦或任何设备操作。
+- Resources仅局部新增严格shownEvidence/saveShown，成熟单字节/原子写入/精确读回实现共用；保存验证后才交付，App无关设置退出不写cachedON。原P资源分支/刷新/Pet/Panel/Music差异保留，不整覆盖App。
+- NameWakeHost沿可信deviceIsUnlockedWithKnown读取锁事实，schema2新增BOOL lockKnown/screenKnown/screenOff；trusted lock及screenOff硬停，unknown安全关闭但不伪报locked。request/result仍schema1；token/revision/busy/聊天审批/已有后台实现保留。
+- 本人版本control和Tweak诊断升0.8.46；实际Tweak/Pet源码除版本外逐字同基线，Panel/Music零diff。完整NameWakeState、20新测试fixture及2App音频测试源码镜像同SHA。音频镜像不含App src，不能从插件树执行，只由App CI运行；没有新Plugin音频生产。
+- 本地新shown入口4source PASS/2native SKIP，required2缺工具FAIL非零拒绝；host129、repairs、name60、guards3、approval13通过。两端diffcheck通过，无Swift/AppleFoundation，尚未新CI/DEB。新版tools保留全部旧门槛并新增shown/name --require-native。
+- App最终34普通入口exit0(21含nativeSKIP)、6required缺工具硬拒，不当native通过。4真实final已冻结，旧test适配与全部来源、相邻保护报告保留；准备按授权提交新分支minisight-0.8.46-20261117，用GITHUB_TOKEN_QQ，与App token隔离。
+- 交付前仍需双scheme完整CI/native、DEB载荷/维护脚本/Mach-O代码页/CRC/SHA检查；安装加载、SpringBoard真实显示/锁屏/音乐/后台音频均未验证。证据shared/openminis/local-reviews/model-picker-watchdog-20261117及shared/openminis/releases/Minis-0.8.46-20261117。

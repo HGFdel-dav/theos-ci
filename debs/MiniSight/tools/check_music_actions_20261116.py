@@ -59,6 +59,7 @@ checked('native ActionLibrary', ['python3','scripts/test_minisight_action_librar
 checked('native Foundation lyrics', ['python3','scripts/test_minisight_lyrics_20261116.py','--require-native'], 300)
 checked('native Foundation music', ['python3','scripts/test_minisight_music_monitor_20261116.py','--require-native'], 150)
 checked('native presentation readback', ['python3','scripts/test_minisight_presentation_readback_20261116.py','--require-native'], 300)
+checked('native shown/name state chain', ['python3','scripts/test_minisight_shown_name_20261117.py','--require-native'], 360)
 checked('native PetEffects', ['python3','scripts/test_minisight_effects_runtime_20261116.py','--root',str(ROOT),'--require-native'], 180)
 if failures:
     raise SystemExit('FAIL closed before package: ' + '; '.join(failures))

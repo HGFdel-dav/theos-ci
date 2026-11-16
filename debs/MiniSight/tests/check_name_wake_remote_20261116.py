@@ -43,7 +43,10 @@ check('#include "MiniSightNameWakeHost.h"' in tweak and 'MiniSightNameWakeBridge
 check('isEqualToString:MSNWRequestNote' in tweak and '(__bridge const void *)MSNWRequestNote' in tweak, 'request observer and routing')
 check('MiniSightRequestResources(NO,' in host and 'refreshPreferences' not in host, 'single lazy resource path, not polling directories')
 check('timerWithTimeInterval:1.0' in host and 'else if (!enabled && gMSNWPulse)' in host, 'opt-in heartbeat stops OFF')
-check('MSNWAllowed(' in host and 'MSNWBusy(' in host and '[MiniSightMusicMonitor deviceIsUnlocked]' in host, 'production safe gates and existing lock ABI')
+check('MSNWAllowed(' in host and 'MSNWBusy(' in host and '[MiniSightMusicMonitor deviceIsUnlockedWithKnown:&lockKnown]' in host, 'production safe gates and existing known-lock ABI')
+for field in ('lockKnown', 'screenKnown', 'screenOff'):
+    check('@"' + field + '": @((BOOL)' in state_writer and field + ':' in host, 'separate safety BOOL and host producer ' + field)
+check('lockKnown && unlocked && screenKnown && !screenOff' in state_writer, 'unknown/off never grant readiness')
 check('!(gMiniSightNameWakeToken.length || gMiniSightNameWakePresentationHeld)' in tweak, 'named request or user draft owns overlay')
 check('gMiniSightNameWakePresentationHeld = panel.isVisible' in host and 'nameWakeVoiceFinishedHandler' in host, 'natural final retains draft without cancellation')
 check('gMiniSightNameWakePresentationHeld = NO' in tweak and 'MiniSightChatPanel.existingPanel.isVisible' in tweak, 'close ends draft presentation')

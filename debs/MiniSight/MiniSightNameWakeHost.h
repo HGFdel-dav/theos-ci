@@ -17,10 +17,12 @@ static BOOL MiniSightNameWakeEnabled(void) {
     id value = MiniSightPref(@"minisight.wake.enabled");
     return [value isKindOfClass:NSNumber.class] && [value boolValue];
 }
-static BOOL MiniSightNameWakeSafe(BOOL *unlockedOut) {
+static BOOL MiniSightNameWakeSafe(BOOL *unlockedOut, BOOL *lockKnownOut) {
     MiniSightReadScreenState();
-    BOOL unlocked = gMiniSightScreenKnown && !gMiniSightScreenBlanked && [MiniSightMusicMonitor deviceIsUnlocked];
+    BOOL lockKnown = NO;
+    BOOL unlocked = [MiniSightMusicMonitor deviceIsUnlockedWithKnown:&lockKnown];
     if (unlockedOut) *unlockedOut = unlocked;
+    if (lockKnownOut) *lockKnownOut = lockKnown;
     id shownPref = MiniSightPref(@"minisight.shown");
     BOOL shown = MiniSightShown() && (!shownPref || ([shownPref isKindOfClass:NSNumber.class] && [shownPref boolValue]));
     return MSNWAllowed(MiniSightNameWakeEnabled(), shown, MiniSightStyle() == 1,
@@ -60,7 +62,8 @@ static void MiniSightNameWakeCancel(NSString *reason, BOOL cancelPanel) {
 }
 static void MiniSightNameWakeUpdate(void) {
     NSCAssert(NSThread.isMainThread, @"Name wake host is main-thread owned");
-    BOOL unlocked = NO, allowed = MiniSightNameWakeSafe(&unlocked);
+    BOOL unlocked = NO, lockKnown = NO;
+    BOOL allowed = MiniSightNameWakeSafe(&unlocked, &lockKnown);
     if (gMSNWRequest) {
         BOOL context = [gMSNWRequestContainer isEqualToString:gMiniSightContainer] &&
             [gMSNWRequest[@"revision"] isEqualToString:MiniSightNameWakeRevision()];
@@ -80,12 +83,15 @@ static void MiniSightNameWakeUpdate(void) {
         [NSRunLoop.mainRunLoop addTimer:gMSNWPulse forMode:NSRunLoopCommonModes];
     } else if (!enabled && gMSNWPulse) { [gMSNWPulse invalidate]; gMSNWPulse = nil; }
     NSDictionary *state = @{@"container": gMiniSightContainer ?: @"", @"revision": MiniSightNameWakeRevision(),
-        @"unlocked": @(unlocked), @"allowed": @(allowed), @"busy": @(MiniSightNameWakeBusy(NO))};
+        @"lockKnown": @((BOOL)lockKnown), @"unlocked": @((BOOL)unlocked),
+        @"screenKnown": @((BOOL)gMiniSightScreenKnown), @"screenOff": @((BOOL)gMiniSightScreenBlanked),
+        @"allowed": @((BOOL)allowed), @"busy": @((BOOL)MiniSightNameWakeBusy(NO))};
     NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
     if ([state isEqualToDictionary:gMSNWLastState] && (!enabled || now - gMSNWLastPublish < 1.0)) return;
     gMSNWLastState = state; gMSNWLastPublish = now;
     [MiniSightNameWakeBridge.sharedBridge publishContainer:gMiniSightContainer revision:MiniSightNameWakeRevision()
-        unlocked:unlocked allowed:allowed busy:[state[@"busy"] boolValue]];
+        lockKnown:lockKnown unlocked:unlocked screenKnown:gMiniSightScreenKnown screenOff:gMiniSightScreenBlanked
+        allowed:allowed busy:[state[@"busy"] boolValue]];
 }
 static void MiniSightNameWakeDecline(NSDictionary *request, NSString *reason) {
     [MiniSightNameWakeBridge.sharedBridge replyToRequest:request container:gMiniSightContainer state:@"declined"
@@ -103,7 +109,7 @@ static void MiniSightNameWakeHandle(NSDictionary *request) {
         if (!same || gMSNWReadyConsumed) return; // Cannot resurrect another lifecycle or replay input.
         MiniSightChatPanel *panel = MiniSightChatPanel.existingPanel;
         if (!MSNWReadyMayConsume(same, gMSNWReadyConsumed, gMSNWResponseGeneration,
-            [panel isNameWakeResponseCurrent:gMSNWResponseGeneration], MiniSightNameWakeSafe(NULL), MiniSightNameWakeBusy(YES))) {
+            [panel isNameWakeResponseCurrent:gMSNWResponseGeneration], MiniSightNameWakeSafe(NULL, NULL), MiniSightNameWakeBusy(YES))) {
             MiniSightNameWakeCancel(@"ready_not_current", YES); return;
         }
         gMSNWReadyConsumed = YES; // Consume BEFORE calling UI/transport callbacks.
@@ -123,7 +129,7 @@ static void MiniSightNameWakeHandle(NSDictionary *request) {
     if ([gMSNWSeenTokens containsObject:token]) return; // Duplicate hit never replays text.
     [gMSNWSeenTokens addObject:token];
     if (gMSNWSeenTokens.count > 64) [gMSNWSeenTokens removeObjectAtIndex:0];
-    if (gMSNWRequest || !MiniSightNameWakeSafe(NULL) || MiniSightNameWakeBusy(NO)) {
+    if (gMSNWRequest || !MiniSightNameWakeSafe(NULL, NULL) || MiniSightNameWakeBusy(NO)) {
         MiniSightNameWakeDecline(request, @"unsafe_or_busy"); return;
     }
     gMSNWRequest = [request copy]; gMSNWRequestContainer = [gMiniSightContainer copy];
