@@ -83,6 +83,7 @@ static void Prepare(NSDictionary *entry) {
 }
 static void Fixture(NSDictionary *entry) {
     @autoreleasepool {
+        fprintf(stderr, "NATIVE fixture: %s\n", [entry[@"name"] UTF8String]);
         Prepare(entry);
         NSError *error = nil; MiniSightActionLibrary *library = Load(entry[@"path"], &error);
         BOOL expected = [entry[@"valid"] boolValue];
@@ -229,7 +230,9 @@ int main(int argc, const char *argv[]) {
         NSData *data = [NSData dataWithContentsOfFile:[NSString stringWithUTF8String:argv[1]]]; CHECK(data);
         NSDictionary *plan = [NSJSONSerialization JSONObjectWithData:data options:0 error:NULL]; CHECK(plan);
         for (NSDictionary *entry in plan[@"cases"]) Fixture(entry);
-        CacheTests(); SchedulerTests(plan[@"runtime"]); LoadAdmissionTests(plan[@"runtime"]);
+        fprintf(stderr, "NATIVE group: cache\n"); CacheTests();
+        fprintf(stderr, "NATIVE group: scheduler\n"); SchedulerTests(plan[@"runtime"]);
+        fprintf(stderr, "NATIVE group: admission\n"); LoadAdmissionTests(plan[@"runtime"]);
         printf("PASS native: %lu real parser/source fixtures + cache/epoch/coalescing/admission/lifetime assertions\n",
                (unsigned long)[plan[@"cases"] count]);
     }

@@ -74,9 +74,15 @@ jobs:
           if [ -z "$SDK_PATH" ]; then echo 'SDK not found:'; ls -la "$HOME/sdks"; exit 1; fi
           mkdir -p "$HOME/theos/sdks"
           cp -R "$SDK_PATH" "$HOME/theos/sdks/"
-          python3 tools/check_music_actions_20261116.py --ci --ios-sdk "$SDK_PATH"
-          make clean || true
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=${{ matrix.scheme }}
+          checks_status=0
+          python3 tools/check_music_actions_20261116.py --ci --ios-sdk "$SDK_PATH" || checks_status=$?
+          make clean
+          build_status=0
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=${{ matrix.scheme }} || build_status=$?
+          if [ "$checks_status" -ne 0 ] || [ "$build_status" -ne 0 ]; then
+            echo "FAIL closed: native_checks=$checks_status theos_build=$build_status; no release artifact"
+            exit 1
+          fi
           mkdir -p out
           cp packages/*.deb out/
           (cd out && shasum -a 256 *.deb > SHA256SUMS)

@@ -369,6 +369,7 @@ def native_tests():
         directory = Path(temporary)
         executable = directory / "action-library-tests"
         command = ["xcrun", "--sdk", "macosx", "clang", "-std=gnu11", "-fobjc-arc", "-fblocks",
+                   "-g", "-O1", "-fsanitize=address", "-fno-omit-frame-pointer",
                    "-Wall", "-Wextra", "-Werror", "-I", str(FIXTURES), "-I", str(CORE),
                    str(FIXTURES / "native.m"), "-framework", "Foundation", "-framework", "ImageIO",
                    "-framework", "CoreGraphics", "-o", str(executable)]
