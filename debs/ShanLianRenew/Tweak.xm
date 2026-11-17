@@ -311,17 +311,12 @@ static void SLInitBody(void) {
     SLState *st = [SLState load];
     BOOL fresh = ![SL_VER isEqualToString:(st.ver ?: @"")];
     if (fresh) {
-        // 首次安装或升级：立刻完整跑一轮，作为验证
         st.ver = SL_VER;
-        st.phase = SLPhaseResetting;
+        st.phase = SLPhaseIdle;
         st.attempt = 0;
         st.lastError = @"";
-        st.snapPrefs = nil;
-        st.snapToken = nil;
         [st save];
-        SLLog(@"fresh install %@ -> test run", SL_VER);
-        SLPerformReset(st);
-        return;
+        SLLog(@"fresh %@ state=%@ logdir=%@", SL_VER, SLStatePath(), SLLogDir());
     }
 
     BOOL busy = (st.phase == SLPhaseNeedFill || st.phase == SLPhaseResetting);
