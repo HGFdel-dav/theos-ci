@@ -19,9 +19,8 @@ NSString *SLJbRoot(void);
 NSString *SLStatePath(void);
 NSString *SLStateDir(void);
 NSString *SLAppGroupPrefsPath(void);
+void SLLog(NSString *fmt, ...);
 
 #ifdef __cplusplus
 }
 #endif
-
-void SLLog(NSString *fmt, ...);
