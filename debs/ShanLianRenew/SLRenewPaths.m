@@ -1,10 +1,37 @@
 #import "SLRenewPaths.h"
-#import <notify.h>
+#import <dlfcn.h>
 #import <stdio.h>
 #import <stdarg.h>
+#import <unistd.h>
 
 static NSString *g_root = nil;
+static BOOL g_rootDone = NO;
 static NSString *g_stateDir = nil;
+static NSString *g_logDir = nil;
+
+#pragma mark - 日志
+
+static BOOL SLDirWritable(NSString *d) {
+    if (!d.length) return NO;
+    return access(d.fileSystemRepresentation, W_OK) == 0;
+}
+
+NSString *SLLogDir(void) {
+    if (g_logDir) return g_logDir;
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSMutableArray *cands = [NSMutableArray array];
+    NSString *r = SLJbRoot();
+    if (r.length) [cands addObject:[r stringByAppendingPathComponent:@"var/mobile/Library/Preferences"]];
+    [cands addObject:@"/var/mobile/Library/Preferences"];
+    [cands addObject:NSTemporaryDirectory()];
+    for (NSString *d in cands) {
+        if (!d.length) continue;
+        [fm createDirectoryAtPath:d withIntermediateDirectories:YES attributes:nil error:NULL];
+        if (SLDirWritable(d)) { g_logDir = d; break; }
+    }
+    if (!g_logDir) g_logDir = NSTemporaryDirectory();
+    return g_logDir;
+}
 
 void SLLog(NSString *fmt, ...) {
     va_list ap; va_start(ap, fmt);
@@ -16,54 +43,74 @@ void SLLog(NSString *fmt, ...) {
     NSString *line = [NSString stringWithFormat:@"%@ %@\n", [f stringFromDate:[NSDate date]], s];
 
     NSLog(@"[SLRenew] %@", s);
-
-    static NSString *file = nil;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{ file = [SLStateDir() stringByAppendingPathComponent:@"com.minis.shanlianrenew.log"]; });
-
-    NSFileManager *fm = [NSFileManager defaultManager];
-    NSDictionary *a = [fm attributesOfItemAtPath:file error:NULL];
-    if ([a fileSize] > 256 * 1024) {
-        [fm removeItemAtPath:[file stringByAppendingString:@".1"] error:NULL];
-        [fm moveItemAtPath:file toPath:[file stringByAppendingString:@".1"] error:NULL];
-    }
-    FILE *fp = fopen(file.UTF8String, "a");
-    if (fp) { fputs(line.UTF8String, fp); fclose(fp); }
+    @try {
+        NSString *file = [SLLogDir() stringByAppendingPathComponent:@"com.minis.shanlianrenew.log"];
+        NSFileManager *fm = [NSFileManager defaultManager];
+        NSDictionary *a = [fm attributesOfItemAtPath:file error:NULL];
+        if ([a fileSize] > 256 * 1024) {
+            [fm removeItemAtPath:[file stringByAppendingString:@".1"] error:NULL];
+            [fm moveItemAtPath:file toPath:[file stringByAppendingString:@".1"] error:NULL];
+        }
+        FILE *fp = fopen(file.UTF8String, "a");
+        if (fp) { fputs(line.UTF8String, fp); fclose(fp); }
+    } @catch (__unused NSException *e) {}
 }
 
+#pragma mark - 隐根
+
+static NSString *SLTrimSlash(NSString *r) {
+    if (r.length > 1 && [r hasSuffix:@"/"]) return [r substringToIndex:r.length - 1];
+    return r;
+}
+
+// 优先系统 jbroot()，否则扫描真实位置
 NSString *SLJbRoot(void) {
-    if (g_root) return g_root;
-    NSFileManager *fm = [NSFileManager defaultManager];
-    NSString *base = @"/var/mobile/Containers/Shared/AppGroup";
-    NSMutableArray *cands = [NSMutableArray array];
-    for (NSString *n in [fm contentsOfDirectoryAtPath:base error:NULL]) {
-        if (![n hasPrefix:@".jbroot-"]) continue;
-        NSString *p = [base stringByAppendingPathComponent:n];
-        BOOL isDir = NO;
-        if (![fm fileExistsAtPath:[p stringByAppendingPathComponent:@"usr/lib"] isDirectory:&isDir] || !isDir) continue;
-        [cands addObject:p];
+    if (g_rootDone) return g_root;
+    g_rootDone = YES;
+
+    static NSString *(*fn)(NSString *);
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ fn = (NSString *(*)(NSString *))dlsym(RTLD_DEFAULT, "jbroot"); });
+    if (fn) {
+        @try {
+            NSString *r = SLTrimSlash(fn(@"/"));
+            if (r.length > 1) { g_root = r; return g_root; }
+        } @catch (__unused NSException *e) {}
     }
-    // 优先含本插件 dylib 的根，其次含 Library/MobileSubstrate，同分取最新
+
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSMutableArray *cands = [NSMutableArray array];
+    for (NSString *base in @[@"/var/containers/Bundle/Application",
+                             @"/var/mobile/Containers/Shared/AppGroup"]) {
+        for (NSString *n in [fm contentsOfDirectoryAtPath:base error:NULL]) {
+            if (![n hasPrefix:@".jbroot-"]) continue;
+            NSString *p = [base stringByAppendingPathComponent:n];
+            BOOL isDir = NO;
+            if (![fm fileExistsAtPath:[p stringByAppendingPathComponent:@"usr/lib"] isDirectory:&isDir] || !isDir) continue;
+            [cands addObject:p];
+        }
+    }
     NSString *best = nil; int bestScore = -1; NSTimeInterval bestT = 0;
     for (NSString *p in cands) {
-        int score = 0;
+        int score = 1;
         if ([fm fileExistsAtPath:[p stringByAppendingPathComponent:@"Library/MobileSubstrate"]]) score += 2;
-        if ([fm fileExistsAtPath:[p stringByAppendingPathComponent:@"usr/lib/shanlianrenew.dylib"]]) score += 1;
+        if ([fm fileExistsAtPath:[p stringByAppendingPathComponent:
+              @"Library/MobileSubstrate/DynamicLibraries/ShanLianRenew.dylib"]]) score += 3;
         NSDictionary *a = [fm attributesOfItemAtPath:p error:NULL];
         NSTimeInterval t = [a fileModificationDate].timeIntervalSince1970;
         if (score > bestScore || (score == bestScore && t > bestT)) { best = p; bestScore = score; bestT = t; }
     }
     if (!best && [fm fileExistsAtPath:@"/var/jb/usr/lib"]) best = @"/var/jb";
-    if (!best) best = @"";
-    g_root = best;
+    g_root = best ?: @"";
     return g_root;
 }
 
 NSString *SLStateDir(void) {
     if (g_stateDir) return g_stateDir;
     NSString *r = SLJbRoot();
-    NSString *p = r.length ? [r stringByAppendingPathComponent:@"var/mobile/Library/Preferences"]
-                           : @"/var/mobile/Library/Preferences";
+    NSString *p = nil;
+    if (r.length) p = [r stringByAppendingPathComponent:@"var/mobile/Library/Preferences"];
+    if (!p.length || !SLDirWritable(p)) p = @"/var/mobile/Library/Preferences";
     [[NSFileManager defaultManager] createDirectoryAtPath:p withIntermediateDirectories:YES
                              attributes:nil error:NULL];
     g_stateDir = p;
@@ -74,18 +121,33 @@ NSString *SLStatePath(void) {
     return [SLStateDir() stringByAppendingPathComponent:SL_STATE_NAME];
 }
 
+#pragma mark - 应用组
+
+NSString *SLAppGroup(void) { return SL_APP_GROUP; }
+
+static NSString *SLFindGroupPrefs(NSString *group) {
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSMutableArray *bases = [NSMutableArray array];
+    NSString *r = SLJbRoot();
+    if (r.length) [bases addObject:[r stringByAppendingPathComponent:@"var/mobile/Containers/Shared/AppGroup"]];
+    [bases addObject:@"/var/mobile/Containers/Shared/AppGroup"];
+    NSString *name = [group stringByAppendingString:@".plist"];
+    for (NSString *base in bases) {
+        for (NSString *n in [fm contentsOfDirectoryAtPath:base error:NULL]) {
+            NSString *f = [[[base stringByAppendingPathComponent:n]
+                            stringByAppendingPathComponent:@"Library/Preferences"]
+                           stringByAppendingPathComponent:name];
+            if ([fm fileExistsAtPath:f]) return f;
+        }
+    }
+    return @"";
+}
+
 NSString *SLAppGroupPrefsPath(void) {
     static NSString *p = nil;
     if (p) return p;
-    NSFileManager *fm = [NSFileManager defaultManager];
-    NSString *base = @"/var/mobile/Containers/Shared/AppGroup";
-    for (NSString *n in [fm contentsOfDirectoryAtPath:base error:NULL]) {
-        NSString *c = [[base stringByAppendingPathComponent:n]
-                       stringByAppendingPathComponent:@"Library/Preferences"];
-        NSString *f = [c stringByAppendingPathComponent:
-                       [SL_APP_GROUP stringByAppendingString:@".plist"]];
-        if ([fm fileExistsAtPath:f]) { p = f; break; }
-    }
+    p = SLFindGroupPrefs(SL_APP_GROUP);
+    if (!p.length) p = SLFindGroupPrefs(SL_APP_GROUP_OLD);
     if (!p) p = @"";
     return p;
 }

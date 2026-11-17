@@ -47,7 +47,10 @@ static NSUUID *SLHookAdid(id self, SEL _cmd) {
 static NSString *SLNewUUID(void) { return [[NSUUID UUID].UUIDString uppercaseString]; }
 
 static NSUserDefaults *SLDefaults(void) {
-    return [[NSUserDefaults alloc] initWithSuiteName:SL_APP_GROUP];
+    NSUserDefaults *d = [[NSUserDefaults alloc] initWithSuiteName:SL_APP_GROUP];
+    if (!d) d = [[NSUserDefaults alloc] initWithSuiteName:SL_APP_GROUP_OLD];
+    if (!d) d = [NSUserDefaults standardUserDefaults];
+    return d;
 }
 
 static BOOL SLLooksLikeToken(id v) {
@@ -69,6 +72,7 @@ static BOOL SLAccountKey(NSString *k, id v) {
 
 static void SLPerformReset(SLState *st) {
     NSUserDefaults *d = SLDefaults();
+    if (!d) d = [NSUserDefaults standardUserDefaults];
     NSDictionary *snap = [d dictionaryRepresentation] ?: @{};
     st.snapPrefs = snap;
     st.snapToken = [SLHttp currentToken];
@@ -86,8 +90,11 @@ static void SLPerformReset(SLState *st) {
     [d synchronize];
     SLLog(@"reset done id=%@ snap=%lu cleared=%d", g_fakeId, (unsigned long)snap.count, cleared);
 
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)),
+    // 主队列正常退出；主线程若被卡住，全局队列兜底
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{ exit(0); });
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.5 * NSEC_PER_SEC)),
+                   dispatch_get_global_queue(0, 0), ^{ exit(0); });
 }
 
 #pragma mark - 填码
@@ -229,15 +236,7 @@ static BOOL SLScreenLocked(void) {
     return NO;
 }
 
-static BOOL SLAppRunning(void) {
-    Class c = NSClassFromString(@"SBApplicationController");
-    if (!c) return NO;
-    id sh = ((id (*)(id, SEL))objc_msgSend)(c, sel_registerName("sharedInstance"));
-    if (!sh) return NO;
-    id app = ((id (*)(id, SEL, id))objc_msgSend)(sh,
-        sel_registerName("applicationWithBundleIdentifier:"), SL_APP_ID);
-    return app != nil;
-}
+static BOOL SLAppRunning(void) { return NO; }   // 一律直接调起，重复调用无害
 
 static void SLOpenApp(void) {
     Class c = NSClassFromString(@"LSApplicationWorkspace");
@@ -277,7 +276,13 @@ static void SLTick(void) {
 
 #pragma mark - 注入
 
+static void SLInitBody(void);
 __attribute__((constructor)) static void SLInit(void) {
+    @try { SLInitBody(); }
+    @catch (NSException *e) { SLLog(@"ctor exception %@: %@", e.name, e.reason); }
+}
+
+static void SLInitBody(void) {
     NSString *bid = [NSBundle mainBundle].bundleIdentifier;
     BOOL isApp = [bid isEqualToString:SL_APP_ID];
     BOOL isSB  = [bid isEqualToString:SL_SB_ID];
