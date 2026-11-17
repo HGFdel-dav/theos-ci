@@ -1,0 +1,11 @@
+Package: com.niubiprass.minisagentd
+Name: Minis Agent Daemon
+Version: 0.2.0
+Architecture: iphoneos-arm64e
+Description: Privileged post-install worker for Minis tweak development.
+ Installs a verified deb, optionally resprings and reports the result.
+ Builds nothing.
+Maintainer: niubiprass
+Author: niubiprass
+Section: Development
+Depends: firmware (>= 15.0)

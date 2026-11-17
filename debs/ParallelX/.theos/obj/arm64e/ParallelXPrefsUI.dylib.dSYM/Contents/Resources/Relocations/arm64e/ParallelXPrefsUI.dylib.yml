@@ -1,0 +1,137 @@
+---
+triple:          'arm64e-apple-darwin'
+binary-path:     '/Users/runner/work/theos-ci/theos-ci/debs/ParallelX/.theos/obj/arm64e/ParallelXPrefsUI.dylib'
+relocations:
+  - { offset: 0x1E, size: 0x8, addend: 0x0, symName: '-[PXCloneAccountsController init]', symObjAddr: 0x0, symBinAddr: 0x4000, symSize: 0x5C }
+  - { offset: 0x23FE, size: 0x8, addend: 0x0, symName: '-[PXCloneAccountsController init]', symObjAddr: 0x0, symBinAddr: 0x4000, symSize: 0x5C }
+  - { offset: 0x2432, size: 0x8, addend: 0x0, symName: '-[PXCloneAccountsController groupNamed:footer:]', symObjAddr: 0x5C, symBinAddr: 0x405C, symSize: 0x8C }
+  - { offset: 0x248F, size: 0x8, addend: 0x0, symName: '-[PXCloneAccountsController switchForBundle:container:name:]', symObjAddr: 0xE8, symBinAddr: 0x40E8, symSize: 0x1D8 }
+  - { offset: 0x24FF, size: 0x8, addend: 0x0, symName: '-[PXCloneAccountsController buildSpecifiers]', symObjAddr: 0x2C0, symBinAddr: 0x42C0, symSize: 0x55C }
+  - { offset: 0x25F8, size: 0x8, addend: 0x0, symName: '-[PXCloneAccountsController specifiers]', symObjAddr: 0x81C, symBinAddr: 0x481C, symSize: 0x78 }
+  - { offset: 0x262C, size: 0x8, addend: 0x0, symName: '-[PXCloneAccountsController refreshCatalog]', symObjAddr: 0x894, symBinAddr: 0x4894, symSize: 0xE8 }
+  - { offset: 0x2679, size: 0x8, addend: 0x0, symName: '___43-[PXCloneAccountsController refreshCatalog]_block_invoke', symObjAddr: 0x97C, symBinAddr: 0x497C, symSize: 0xF4 }
+  - { offset: 0x26D5, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32w, symObjAddr: 0xA70, symBinAddr: 0x4A70, symSize: 0xC }
+  - { offset: 0x26FB, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_e8_32w, symObjAddr: 0xA7C, symBinAddr: 0x4A7C, symSize: 0x8 }
+  - { offset: 0x2718, size: 0x8, addend: 0x0, symName: '-[PXCloneAccountsController rebuildAndReload]', symObjAddr: 0xA84, symBinAddr: 0x4A84, symSize: 0x64 }
+  - { offset: 0x2757, size: 0x8, addend: 0x0, symName: '-[PXCloneAccountsController viewWillAppear:]', symObjAddr: 0xAE8, symBinAddr: 0x4AE8, symSize: 0x118 }
+  - { offset: 0x27B3, size: 0x8, addend: 0x0, symName: '___44-[PXCloneAccountsController viewWillAppear:]_block_invoke', symObjAddr: 0xC00, symBinAddr: 0x4C00, symSize: 0xC8 }
+  - { offset: 0x280F, size: 0x8, addend: 0x0, symName: '-[PXCloneAccountsController viewWillDisappear:]', symObjAddr: 0xCC8, symBinAddr: 0x4CC8, symSize: 0x6C }
+  - { offset: 0x284E, size: 0x8, addend: 0x0, symName: '-[PXCloneAccountsController identityForSpecifier:]', symObjAddr: 0xD34, symBinAddr: 0x4D34, symSize: 0x7C }
+  - { offset: 0x289C, size: 0x8, addend: 0x0, symName: '-[PXCloneAccountsController visibleForSpecifier:]', symObjAddr: 0xDB0, symBinAddr: 0x4DB0, symSize: 0x114 }
+  - { offset: 0x290C, size: 0x8, addend: 0x0, symName: '-[PXCloneAccountsController setVisible:forSpecifier:]', symObjAddr: 0xEC4, symBinAddr: 0x4EC4, symSize: 0x214 }
+  - { offset: 0x29BF, size: 0x8, addend: 0x0, symName: '___53-[PXCloneAccountsController setVisible:forSpecifier:]_block_invoke', symObjAddr: 0x10D8, symBinAddr: 0x50D8, symSize: 0x194 }
+  - { offset: 0x2A4B, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32w40w, symObjAddr: 0x126C, symBinAddr: 0x526C, symSize: 0x50 }
+  - { offset: 0x2A71, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_e8_32w40w, symObjAddr: 0x12BC, symBinAddr: 0x52BC, symSize: 0x44 }
+  - { offset: 0x2A8E, size: 0x8, addend: 0x0, symName: '-[PXCloneAccountsController .cxx_destruct]', symObjAddr: 0x1300, symBinAddr: 0x5300, symSize: 0x5C }
+  - { offset: 0x2D6C, size: 0x8, addend: 0x0, symName: '+[PXCloneCrane prepareManager]', symObjAddr: 0x0, symBinAddr: 0x535C, symSize: 0x40 }
+  - { offset: 0x2D85, size: 0x8, addend: 0x0, symName: _PXCloneErrorDomain, symObjAddr: 0x24F0, symBinAddr: 0x10288, symSize: 0x0 }
+  - { offset: 0x2DFD, size: 0x8, addend: 0x0, symName: _PXCatalog, symObjAddr: 0x7848, symBinAddr: 0x14820, symSize: 0x0 }
+  - { offset: 0x2F44, size: 0x8, addend: 0x0, symName: '+[PXCloneCrane prepareManager]', symObjAddr: 0x0, symBinAddr: 0x535C, symSize: 0x40 }
+  - { offset: 0x2F81, size: 0x8, addend: 0x0, symName: _PXSharedManager, symObjAddr: 0x40, symBinAddr: 0x539C, symSize: 0x4AC }
+  - { offset: 0x336D, size: 0x8, addend: 0x0, symName: _PXSharedManager.cold.1, symObjAddr: 0x1A6C, symBinAddr: 0xAC60, symSize: 0x30 }
+  - { offset: 0x33D8, size: 0x8, addend: 0x0, symName: '+[PXCloneCrane cachedCatalog]', symObjAddr: 0x4EC, symBinAddr: 0x5848, symSize: 0x74 }
+  - { offset: 0x340C, size: 0x8, addend: 0x0, symName: '+[PXCloneCrane refreshCatalogWithCompletion:]', symObjAddr: 0x560, symBinAddr: 0x58BC, symSize: 0xD4 }
+  - { offset: 0x34CC, size: 0x8, addend: 0x0, symName: '___45+[PXCloneCrane refreshCatalogWithCompletion:]_block_invoke', symObjAddr: 0x634, symBinAddr: 0x5990, symSize: 0x108 }
+  - { offset: 0x3522, size: 0x8, addend: 0x0, symName: '___45+[PXCloneCrane refreshCatalogWithCompletion:]_block_invoke_2', symObjAddr: 0x73C, symBinAddr: 0x5A98, symSize: 0x18 }
+  - { offset: 0x3548, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s40b, symObjAddr: 0x754, symBinAddr: 0x5AB0, symSize: 0x50 }
+  - { offset: 0x3558, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s40b, symObjAddr: 0x754, symBinAddr: 0x5AB0, symSize: 0x50 }
+  - { offset: 0x357E, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_e8_32s40s, symObjAddr: 0x7A4, symBinAddr: 0x5B00, symSize: 0x44 }
+  - { offset: 0x359B, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32b, symObjAddr: 0x7E8, symBinAddr: 0x5B44, symSize: 0x10 }
+  - { offset: 0x35C1, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_e8_32s, symObjAddr: 0x7F8, symBinAddr: 0x5B54, symSize: 0x8 }
+  - { offset: 0x3728, size: 0x8, addend: 0x0, symName: '+[PXCloneCrane buildCatalog]', symObjAddr: 0x800, symBinAddr: 0x5B5C, symSize: 0x784 }
+  - { offset: 0x3A37, size: 0x8, addend: 0x0, symName: _PXStringArrayResult, symObjAddr: 0xF84, symBinAddr: 0x62E0, symSize: 0x240 }
+  - { offset: 0x3B2D, size: 0x8, addend: 0x0, symName: _PXSupported, symObjAddr: 0x11C4, symBinAddr: 0x6520, symSize: 0xA4 }
+  - { offset: 0x3C4A, size: 0x8, addend: 0x0, symName: '+[PXCloneCrane activeContainerForBundle:]', symObjAddr: 0x1268, symBinAddr: 0x65C4, symSize: 0x13C }
+  - { offset: 0x3D1A, size: 0x8, addend: 0x0, symName: '+[PXCloneCrane selectContainer:forBundle:error:]', symObjAddr: 0x13A4, symBinAddr: 0x6700, symSize: 0x334 }
+  - { offset: 0x3E7F, size: 0x8, addend: 0x0, symName: _PXCraneError, symObjAddr: 0x16D8, symBinAddr: 0x6A34, symSize: 0x108 }
+  - { offset: 0x3EB7, size: 0x8, addend: 0x0, symName: '+[PXCloneCrane requestReloadForBundle:error:]', symObjAddr: 0x17E0, symBinAddr: 0x6B3C, symSize: 0x1A4 }
+  - { offset: 0x3FD8, size: 0x8, addend: 0x0, symName: ___PXCandidateLibraries_block_invoke, symObjAddr: 0x1984, symBinAddr: 0x6CE0, symSize: 0x98 }
+  - { offset: 0x4029, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s, symObjAddr: 0x1A1C, symBinAddr: 0x6D78, symSize: 0x8 }
+  - { offset: 0x407B, size: 0x8, addend: 0x0, symName: ___PXCloneJBROOT_block_invoke, symObjAddr: 0x1A24, symBinAddr: 0x6D80, symSize: 0x48 }
+  - { offset: 0x4465, size: 0x8, addend: 0x0, symName: _PXCloneValidateRoot, symObjAddr: 0x0, symBinAddr: 0x6DC8, symSize: 0x174 }
+  - { offset: 0x447E, size: 0x8, addend: 0x0, symName: _PXClonePathsErrorDomain, symObjAddr: 0x1328, symBinAddr: 0x10360, symSize: 0x0 }
+  - { offset: 0x4572, size: 0x8, addend: 0x0, symName: _PXCloneValidateRoot, symObjAddr: 0x0, symBinAddr: 0x6DC8, symSize: 0x174 }
+  - { offset: 0x489F, size: 0x8, addend: 0x0, symName: _PXCanonical, symObjAddr: 0x280, symBinAddr: 0x7048, symSize: 0x12C }
+  - { offset: 0x494B, size: 0x8, addend: 0x0, symName: _PXSetError, symObjAddr: 0x174, symBinAddr: 0x6F3C, symSize: 0x10C }
+  - { offset: 0x4C0E, size: 0x8, addend: 0x0, symName: _PXCloneActiveRoot, symObjAddr: 0x3AC, symBinAddr: 0x7174, symSize: 0x100 }
+  - { offset: 0x4CD3, size: 0x8, addend: 0x0, symName: _PXCloneActiveRoot.cold.1, symObjAddr: 0xE00, symBinAddr: 0xAC90, symSize: 0x14 }
+  - { offset: 0x4CEE, size: 0x8, addend: 0x0, symName: _PXCloneActiveRoot.cold.1, symObjAddr: 0xE00, symBinAddr: 0xAC90, symSize: 0x14 }
+  - { offset: 0x4D02, size: 0x8, addend: 0x0, symName: _PXCloneActiveRoot.cold.1, symObjAddr: 0xE00, symBinAddr: 0xAC90, symSize: 0x14 }
+  - { offset: 0x4D14, size: 0x8, addend: 0x0, symName: _PXCloneCurrentPrefsPath, symObjAddr: 0x4AC, symBinAddr: 0x7274, symSize: 0x78 }
+  - { offset: 0x4D61, size: 0x8, addend: 0x0, symName: _PXCloneCurrentLockPath, symObjAddr: 0x524, symBinAddr: 0x72EC, symSize: 0xA0 }
+  - { offset: 0x4DAE, size: 0x8, addend: 0x0, symName: _PXCloneEnsureStorage, symObjAddr: 0x5C4, symBinAddr: 0x738C, symSize: 0x294 }
+  - { offset: 0x4F88, size: 0x8, addend: 0x0, symName: _PXCloneLegacyPrefsSources, symObjAddr: 0x858, symBinAddr: 0x7620, symSize: 0x36C }
+  - { offset: 0x510A, size: 0x8, addend: 0x0, symName: _PXAddCandidate, symObjAddr: 0xBC4, symBinAddr: 0x798C, symSize: 0x1AC }
+  - { offset: 0x51B1, size: 0x8, addend: 0x0, symName: _PXCloneLegacyPrefsSources.cold.1, symObjAddr: 0xE14, symBinAddr: 0xACA4, symSize: 0x14 }
+  - { offset: 0x51CC, size: 0x8, addend: 0x0, symName: _PXCloneLegacyPrefsSources.cold.1, symObjAddr: 0xE14, symBinAddr: 0xACA4, symSize: 0x14 }
+  - { offset: 0x51E0, size: 0x8, addend: 0x0, symName: _PXCloneLegacyPrefsSources.cold.1, symObjAddr: 0xE14, symBinAddr: 0xACA4, symSize: 0x14 }
+  - { offset: 0x523B, size: 0x8, addend: 0x0, symName: ___PXCloneJBROOT_block_invoke, symObjAddr: 0xD70, symBinAddr: 0x7B38, symSize: 0x48 }
+  - { offset: 0x52B7, size: 0x8, addend: 0x0, symName: ___PXCloneROOTFS_block_invoke, symObjAddr: 0xDB8, symBinAddr: 0x7B80, symSize: 0x48 }
+  - { offset: 0x54B2, size: 0x8, addend: 0x0, symName: '+[PXClonePrefs shared]', symObjAddr: 0x0, symBinAddr: 0x7BC8, symSize: 0x4C }
+  - { offset: 0x54CB, size: 0x8, addend: 0x0, symName: _PXClonePrefsNotification, symObjAddr: 0x2D10, symBinAddr: 0x103A8, symSize: 0x0 }
+  - { offset: 0x5543, size: 0x8, addend: 0x0, symName: _PXClonePrefsErrorDomain, symObjAddr: 0x2D18, symBinAddr: 0x103B0, symSize: 0x0 }
+  - { offset: 0x554C, size: 0x8, addend: 0x0, symName: '+[PXClonePrefs shared]', symObjAddr: 0x0, symBinAddr: 0x7BC8, symSize: 0x4C }
+  - { offset: 0x5575, size: 0x8, addend: 0x0, symName: _shared.shared, symObjAddr: 0xB2D0, symBinAddr: 0x14858, symSize: 0x0 }
+  - { offset: 0x558A, size: 0x8, addend: 0x0, symName: _shared.once, symObjAddr: 0xB2D8, symBinAddr: 0x14860, symSize: 0x0 }
+  - { offset: 0x58D7, size: 0x8, addend: 0x0, symName: '+[PXClonePrefs shared].cold.1', symObjAddr: 0x27B4, symBinAddr: 0xACB8, symSize: 0x14 }
+  - { offset: 0x58F2, size: 0x8, addend: 0x0, symName: '+[PXClonePrefs shared].cold.1', symObjAddr: 0x27B4, symBinAddr: 0xACB8, symSize: 0x14 }
+  - { offset: 0x5903, size: 0x8, addend: 0x0, symName: '___22+[PXClonePrefs shared]_block_invoke', symObjAddr: 0x4C, symBinAddr: 0x7C14, symSize: 0x48 }
+  - { offset: 0x5940, size: 0x8, addend: 0x0, symName: '-[PXClonePrefs init]', symObjAddr: 0x94, symBinAddr: 0x7C5C, symSize: 0x210 }
+  - { offset: 0x5B2C, size: 0x8, addend: 0x0, symName: '___20-[PXClonePrefs init]_block_invoke', symObjAddr: 0x2A4, symBinAddr: 0x7E6C, symSize: 0x48 }
+  - { offset: 0x5B5C, size: 0x8, addend: 0x0, symName: '___20-[PXClonePrefs init]_block_invoke.14', symObjAddr: 0x300, symBinAddr: 0x7EB4, symSize: 0x90 }
+  - { offset: 0x5BA2, size: 0x8, addend: 0x0, symName: '-[PXClonePrefs dealloc]', symObjAddr: 0x390, symBinAddr: 0x7F44, symSize: 0x58 }
+  - { offset: 0x5C09, size: 0x8, addend: 0x0, symName: '-[PXClonePrefs reloadSnapshot:]', symObjAddr: 0x3E8, symBinAddr: 0x7F9C, symSize: 0x1DC }
+  - { offset: 0x5CEA, size: 0x8, addend: 0x0, symName: _PXPrefsError, symObjAddr: 0x5C4, symBinAddr: 0x8178, symSize: 0x108 }
+  - { offset: 0x5D47, size: 0x8, addend: 0x0, symName: ___Block_byref_object_copy_, symObjAddr: 0x6CC, symBinAddr: 0x8280, symSize: 0x10 }
+  - { offset: 0x5D69, size: 0x8, addend: 0x0, symName: ___Block_byref_object_dispose_, symObjAddr: 0x6DC, symBinAddr: 0x8290, symSize: 0x8 }
+  - { offset: 0x5D86, size: 0x8, addend: 0x0, symName: '___31-[PXClonePrefs reloadSnapshot:]_block_invoke', symObjAddr: 0x6E4, symBinAddr: 0x8298, symSize: 0x94 }
+  - { offset: 0x5DAB, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s40r48r, symObjAddr: 0x778, symBinAddr: 0x832C, symSize: 0x60 }
+  - { offset: 0x5DD1, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_e8_32s40r48r, symObjAddr: 0x7D8, symBinAddr: 0x838C, symSize: 0x54 }
+  - { offset: 0x5DEE, size: 0x8, addend: 0x0, symName: '-[PXClonePrefs snapshot]', symObjAddr: 0x82C, symBinAddr: 0x83E0, symSize: 0x58 }
+  - { offset: 0x5E50, size: 0x8, addend: 0x0, symName: '-[PXClonePrefs isVisibleBundle:container:]', symObjAddr: 0x884, symBinAddr: 0x8438, symSize: 0x120 }
+  - { offset: 0x5EE4, size: 0x8, addend: 0x0, symName: _PXHiddenList, symObjAddr: 0x9A4, symBinAddr: 0x8558, symSize: 0x1AC }
+  - { offset: 0x5F48, size: 0x8, addend: 0x0, symName: '-[PXClonePrefs setVisible:bundle:container:completion:]', symObjAddr: 0xB50, symBinAddr: 0x8704, symSize: 0x194 }
+  - { offset: 0x6027, size: 0x8, addend: 0x0, symName: '___55-[PXClonePrefs setVisible:bundle:container:completion:]_block_invoke', symObjAddr: 0xCE4, symBinAddr: 0x8898, symSize: 0xCC }
+  - { offset: 0x60E2, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s40s48s56b, symObjAddr: 0xDB0, symBinAddr: 0x8964, symSize: 0x60 }
+  - { offset: 0x6108, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_e8_32s40s48s56s, symObjAddr: 0xE10, symBinAddr: 0x89C4, symSize: 0x54 }
+  - { offset: 0x6125, size: 0x8, addend: 0x0, symName: '-[PXClonePrefs storageError]', symObjAddr: 0xE64, symBinAddr: 0x8A18, symSize: 0x58 }
+  - { offset: 0x6164, size: 0x8, addend: 0x0, symName: '-[PXClonePrefs _queueReload]', symObjAddr: 0xEBC, symBinAddr: 0x8A70, symSize: 0xD0 }
+  - { offset: 0x61A8, size: 0x8, addend: 0x0, symName: '___28-[PXClonePrefs _queueReload]_block_invoke', symObjAddr: 0xF8C, symBinAddr: 0x8B40, symSize: 0x90 }
+  - { offset: 0x61EE, size: 0x8, addend: 0x0, symName: '-[PXClonePrefs _finishOnMain:ok:error:]', symObjAddr: 0x102C, symBinAddr: 0x8BD0, symSize: 0xE8 }
+  - { offset: 0x625B, size: 0x8, addend: 0x0, symName: '___39-[PXClonePrefs _finishOnMain:ok:error:]_block_invoke', symObjAddr: 0x1114, symBinAddr: 0x8CB8, symSize: 0x18 }
+  - { offset: 0x628B, size: 0x8, addend: 0x0, symName: '-[PXClonePrefs _setError:]', symObjAddr: 0x11C0, symBinAddr: 0x8CD0, symSize: 0x7C }
+  - { offset: 0x62CA, size: 0x8, addend: 0x0, symName: '-[PXClonePrefs _publish:root:]', symObjAddr: 0x123C, symBinAddr: 0x8D4C, symSize: 0xD8 }
+  - { offset: 0x6334, size: 0x8, addend: 0x0, symName: _PXDeepImmutable, symObjAddr: 0x1314, symBinAddr: 0x8E24, symSize: 0x2D0 }
+  - { offset: 0x63F9, size: 0x8, addend: 0x0, symName: '-[PXClonePrefs _loadLockedWithError:]', symObjAddr: 0x15E4, symBinAddr: 0x90F4, symSize: 0x9C8 }
+  - { offset: 0x6B44, size: 0x8, addend: 0x0, symName: _PXReadDictionary, symObjAddr: 0x1FAC, symBinAddr: 0x9ABC, symSize: 0x108 }
+  - { offset: 0x6BAD, size: 0x8, addend: 0x0, symName: _PXWriteDictionary, symObjAddr: 0x20B4, symBinAddr: 0x9BC4, symSize: 0x180 }
+  - { offset: 0x6C4A, size: 0x8, addend: 0x0, symName: '-[PXClonePrefs _mutateVisibility:key:error:]', symObjAddr: 0x2234, symBinAddr: 0x9D44, symSize: 0x48C }
+  - { offset: 0x6F20, size: 0x8, addend: 0x0, symName: '-[PXClonePrefs .cxx_destruct]', symObjAddr: 0x26C0, symBinAddr: 0xA1D0, symSize: 0x70 }
+  - { offset: 0x6F50, size: 0x8, addend: 0x0, symName: ___PXDeepImmutable_block_invoke, symObjAddr: 0x2730, symBinAddr: 0xA240, symSize: 0x84 }
+  - { offset: 0x7571, size: 0x8, addend: 0x0, symName: _PXCloneClassResponds, symObjAddr: 0x0, symBinAddr: 0xA2C4, symSize: 0x3C }
+  - { offset: 0x757E, size: 0x8, addend: 0x0, symName: _PXCloneHookMessage, symObjAddr: 0x820, symBinAddr: 0xAAE4, symSize: 0x90 }
+  - { offset: 0x75A3, size: 0x8, addend: 0x0, symName: _PXCloneHookMessage.hook, symObjAddr: 0x3FE8, symBinAddr: 0x14868, symSize: 0x0 }
+  - { offset: 0x75C3, size: 0x8, addend: 0x0, symName: _PXCloneHookMessage.once, symObjAddr: 0x3FF0, symBinAddr: 0x14870, symSize: 0x0 }
+  - { offset: 0x76D3, size: 0x8, addend: 0x0, symName: _PXCloneHookFunction, symObjAddr: 0x8E4, symBinAddr: 0xABA8, symSize: 0x84 }
+  - { offset: 0x76F8, size: 0x8, addend: 0x0, symName: _PXCloneHookFunction.hook, symObjAddr: 0x3FF8, symBinAddr: 0x14878, symSize: 0x0 }
+  - { offset: 0x7718, size: 0x8, addend: 0x0, symName: _PXCloneHookFunction.once, symObjAddr: 0x4000, symBinAddr: 0x14880, symSize: 0x0 }
+  - { offset: 0x77E5, size: 0x8, addend: 0x0, symName: _PXCloneClassResponds, symObjAddr: 0x0, symBinAddr: 0xA2C4, symSize: 0x3C }
+  - { offset: 0x781D, size: 0x8, addend: 0x0, symName: _PXCloneClassMethodMatches, symObjAddr: 0x3C, symBinAddr: 0xA300, symSize: 0x118 }
+  - { offset: 0x795A, size: 0x8, addend: 0x0, symName: _PXMatchSignature, symObjAddr: 0x154, symBinAddr: 0xA418, symSize: 0x170 }
+  - { offset: 0x7A3C, size: 0x8, addend: 0x0, symName: _PXCloneInstanceMethodMatches, symObjAddr: 0x2C4, symBinAddr: 0xA588, symSize: 0xEC }
+  - { offset: 0x7B2D, size: 0x8, addend: 0x0, symName: _PXCloneClassInstanceMethodMatches, symObjAddr: 0x3B0, symBinAddr: 0xA674, symSize: 0xC8 }
+  - { offset: 0x7BE8, size: 0x8, addend: 0x0, symName: _PXCloneSendId, symObjAddr: 0x478, symBinAddr: 0xA73C, symSize: 0x88 }
+  - { offset: 0x7C39, size: 0x8, addend: 0x0, symName: _PXCloneSendId1, symObjAddr: 0x500, symBinAddr: 0xA7C4, symSize: 0xA4 }
+  - { offset: 0x7C99, size: 0x8, addend: 0x0, symName: _PXCloneSendBool, symObjAddr: 0x5A4, symBinAddr: 0xA868, symSize: 0x70 }
+  - { offset: 0x7CEA, size: 0x8, addend: 0x0, symName: _PXCloneSendBool1, symObjAddr: 0x614, symBinAddr: 0xA8D8, symSize: 0x8C }
+  - { offset: 0x7D4A, size: 0x8, addend: 0x0, symName: _PXCloneSendVoid, symObjAddr: 0x6A0, symBinAddr: 0xA964, symSize: 0x64 }
+  - { offset: 0x7D97, size: 0x8, addend: 0x0, symName: _PXCloneSendVoid1, symObjAddr: 0x704, symBinAddr: 0xA9C8, symSize: 0x88 }
+  - { offset: 0x7DF3, size: 0x8, addend: 0x0, symName: _PXCloneImageBase, symObjAddr: 0x78C, symBinAddr: 0xAA50, symSize: 0x40 }
+  - { offset: 0x7EB4, size: 0x8, addend: 0x0, symName: _PXCloneFunctionAt, symObjAddr: 0x7CC, symBinAddr: 0xAA90, symSize: 0x54 }
+  - { offset: 0x7FBF, size: 0x8, addend: 0x0, symName: _PXCloneHookMessage.cold.1, symObjAddr: 0x99C, symBinAddr: 0xACCC, symSize: 0x14 }
+  - { offset: 0x7FDA, size: 0x8, addend: 0x0, symName: _PXCloneHookMessage.cold.1, symObjAddr: 0x99C, symBinAddr: 0xACCC, symSize: 0x14 }
+  - { offset: 0x7FEB, size: 0x8, addend: 0x0, symName: ___PXCloneHookMessage_block_invoke, symObjAddr: 0x8B0, symBinAddr: 0xAB74, symSize: 0x34 }
+  - { offset: 0x8033, size: 0x8, addend: 0x0, symName: _PXCloneHookFunction.cold.1, symObjAddr: 0x9B0, symBinAddr: 0xACE0, symSize: 0x14 }
+  - { offset: 0x804E, size: 0x8, addend: 0x0, symName: _PXCloneHookFunction.cold.1, symObjAddr: 0x9B0, symBinAddr: 0xACE0, symSize: 0x14 }
+  - { offset: 0x805F, size: 0x8, addend: 0x0, symName: ___PXCloneHookFunction_block_invoke, symObjAddr: 0x968, symBinAddr: 0xAC2C, symSize: 0x34 }
+...

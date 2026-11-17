@@ -1,0 +1,5 @@
+---
+triple:          'arm64e-apple-darwin'
+binary-path:     '/Users/runner/work/theos-ci/theos-ci/debs/CleanStatus/.theos/obj/arm64e/LocalCleanStatusAnimations.dylib'
+relocations:     []
+...
