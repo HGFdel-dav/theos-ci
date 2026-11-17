@@ -11,6 +11,7 @@
 #import "SLSigner.h"
 
 static NSString *g_fakeId = nil;
+static const char *kSLFireName = "com.minis.shanlianrenew.fire";
 
 #pragma mark - 通知
 
@@ -22,7 +23,7 @@ static void SLNotify(NSString *title, NSString *body) {
         c.title = title; c.body = body;
         UNNotificationRequest *r = [UNNotificationRequest requestWithIdentifier:
             [NSString stringWithFormat:@"sl.%u", arc4random()] content:c trigger:nil];
-        [[UNUserNotificationCenter currentNotificationCenter] addNotificationRequest:r error:NULL];
+        [[UNUserNotificationCenter currentNotificationCenter] addNotificationRequest:r withCompletionHandler:nil];
         return;
     }
     CFUserNotificationDisplayNotice(0, 0, NULL, NULL, NULL,
@@ -197,13 +198,14 @@ static void SLRunFillPhase(SLState *st) {
 
     NSString *old = st.snapToken ?: @"";
     __block int waited = 0;
-    __block void (^poll)(void);
-    poll = ^{
+    __block __weak void (^weakPoll)(void);
+    void (^poll)(void);
+    weakPoll = poll = ^{
         NSString *t = [SLHttp newTokenDifferentFrom:old];
         if (t) { SLLog(@"new token after %ds", waited); SLFill(st, t); return; }
         if (waited % 15 == 0) SLLog(@"waiting token %ds", waited);
         if (++waited > 90) { g_filling = NO; SLFailOrRetry(st, @"no new token"); return; }
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), poll);
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), weakPoll);
     };
     poll();
 }
@@ -255,7 +257,7 @@ static void SLTick(void) {
     double now = [NSDate date].timeIntervalSince1970;
 
     if (st.phase == SLPhaseResetting) { if (!SLAppRunning()) { SLLog(@"relaunch(reset)"); SLOpenApp(); } return; }
-    if (st.phase == SLPhaseNeedFill) { if (!SLAppRunning()) SLOpenApp(); notify_post(SL_NOTIFY_FIRE); return; }
+    if (st.phase == SLPhaseNeedFill) { if (!SLAppRunning()) SLOpenApp(); notify_post(kSLFireName); return; }
     if (st.phase != SLPhaseArmed) return;
 
     BOOL due = (st.nextFire1 > 0 && now >= st.nextFire1) || (st.nextFire2 > 0 && now >= st.nextFire2);
@@ -299,7 +301,7 @@ __attribute__((constructor)) static void SLInit(void) {
     }
 
     int tok = 0;
-    notify_register_dispatch(SL_NOTIFY_FIRE, &tok, dispatch_get_main_queue(), ^(int t) { SLOnLaunch(); });
+    notify_register_dispatch(kSLFireName, &tok, dispatch_get_main_queue(), ^(int t) { SLOnLaunch(); });
 
     SLState *st = [SLState load];
     BOOL fresh = ![SL_VER isEqualToString:(st.ver ?: @"")];
