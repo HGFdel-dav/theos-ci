@@ -10,9 +10,15 @@ static NSString *g_logDir = nil;
 
 #pragma mark - 日志
 
+// 用真实写入判断（access 不看沙盒）
 static BOOL SLDirWritable(NSString *d) {
     if (!d.length) return NO;
-    return access(d.fileSystemRepresentation, W_OK) == 0;
+    NSFileManager *fm = [NSFileManager defaultManager];
+    [fm createDirectoryAtPath:d withIntermediateDirectories:YES attributes:nil error:NULL];
+    NSString *probe = [d stringByAppendingPathComponent:@".slwrite"];
+    BOOL ok = [fm createFileAtPath:probe contents:[NSData dataWithBytes:"x" length:1] attributes:nil];
+    if (ok) [fm removeItemAtPath:probe error:NULL];
+    return ok;
 }
 
 NSString *SLLogDir(void) {
@@ -121,30 +127,52 @@ NSString *SLStatePath(void) {
 
 NSString *SLAppGroup(void) { return SL_APP_GROUP; }
 
-static NSString *SLFindGroupPrefs(NSString *group) {
+// 按容器元数据找应用组容器目录
+NSString *SLGroupContainer(void) {
+    static NSString *g = nil;
+    static BOOL done = NO;
+    if (done) return g;
+    done = YES;
     NSFileManager *fm = [NSFileManager defaultManager];
     NSMutableArray *bases = [NSMutableArray array];
     NSString *r = SLJbRoot();
     if (r.length) [bases addObject:[r stringByAppendingPathComponent:@"var/mobile/Containers/Shared/AppGroup"]];
     [bases addObject:@"/var/mobile/Containers/Shared/AppGroup"];
-    NSString *name = [group stringByAppendingString:@".plist"];
     for (NSString *base in bases) {
         for (NSString *n in [fm contentsOfDirectoryAtPath:base error:NULL]) {
-            NSString *f = [[[base stringByAppendingPathComponent:n]
-                            stringByAppendingPathComponent:@"Library/Preferences"]
-                           stringByAppendingPathComponent:name];
-            if ([fm fileExistsAtPath:f]) return f;
+            NSString *dir = [base stringByAppendingPathComponent:n];
+            NSString *meta = [dir stringByAppendingPathComponent:
+                              @".com.apple.mobile_container_manager.metadata.plist"];
+            NSDictionary *m = [NSDictionary dictionaryWithContentsOfFile:meta];
+            NSString *ident = m[@"MCMMetadataIdentifier"];
+            if ([ident isEqualToString:SL_APP_GROUP] ||
+                [ident isEqualToString:SL_APP_GROUP_OLD]) { g = dir; return g; }
         }
     }
-    return @"";
+    // 元数据读不到就按偏好文件名反查
+    for (NSString *base in bases) {
+        for (NSString *n in [fm contentsOfDirectoryAtPath:base error:NULL]) {
+            NSString *dir = [base stringByAppendingPathComponent:n];
+            for (NSString *gname in @[SL_APP_GROUP, SL_APP_GROUP_OLD]) {
+                NSString *f = [[[dir stringByAppendingPathComponent:@"Library/Preferences"]
+                                stringByAppendingPathComponent:gname]
+                               stringByAppendingPathExtension:@"plist"];
+                if ([fm fileExistsAtPath:f]) { g = dir; return g; }
+            }
+        }
+    }
+    g = @"";
+    return g;
 }
 
 NSString *SLAppGroupPrefsPath(void) {
     static NSString *p = nil;
     if (p) return p;
-    p = SLFindGroupPrefs(SL_APP_GROUP);
-    if (!p.length) p = SLFindGroupPrefs(SL_APP_GROUP_OLD);
-    if (!p) p = @"";
+    NSString *g = SLGroupContainer();
+    p = g.length
+      ? [[[g stringByAppendingPathComponent:@"Library/Preferences"]
+          stringByAppendingPathComponent:SL_APP_GROUP] stringByAppendingPathExtension:@"plist"]
+      : @"";
     return p;
 }
 
