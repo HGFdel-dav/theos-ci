@@ -1,5 +1,4 @@
 #import "SLRenewPaths.h"
-#import <dlfcn.h>
 #import <stdio.h>
 #import <stdarg.h>
 #import <unistd.h>
@@ -20,9 +19,7 @@ NSString *SLLogDir(void) {
     if (g_logDir) return g_logDir;
     NSFileManager *fm = [NSFileManager defaultManager];
     NSMutableArray *cands = [NSMutableArray array];
-    NSString *r = SLJbRoot();
-    if (r.length) [cands addObject:[r stringByAppendingPathComponent:@"var/mobile/Library/Preferences"]];
-    [cands addObject:@"/var/mobile/Library/Preferences"];
+    [cands addObject:SLStateDir()];
     [cands addObject:NSTemporaryDirectory()];
     for (NSString *d in cands) {
         if (!d.length) continue;
@@ -58,25 +55,10 @@ void SLLog(NSString *fmt, ...) {
 
 #pragma mark - 隐根
 
-static NSString *SLTrimSlash(NSString *r) {
-    if (r.length > 1 && [r hasSuffix:@"/"]) return [r substringToIndex:r.length - 1];
-    return r;
-}
-
 // 优先系统 jbroot()，否则扫描真实位置
 NSString *SLJbRoot(void) {
     if (g_rootDone) return g_root;
     g_rootDone = YES;
-
-    static NSString *(*fn)(NSString *);
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{ fn = (NSString *(*)(NSString *))dlsym(RTLD_DEFAULT, "jbroot"); });
-    if (fn) {
-        @try {
-            NSString *r = SLTrimSlash(fn(@"/"));
-            if (r.length > 1) { g_root = r; return g_root; }
-        } @catch (__unused NSException *e) {}
-    }
 
     NSFileManager *fm = [NSFileManager defaultManager];
     NSMutableArray *cands = [NSMutableArray array];
@@ -107,13 +89,27 @@ NSString *SLJbRoot(void) {
 
 NSString *SLStateDir(void) {
     if (g_stateDir) return g_stateDir;
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSMutableArray *cands = [NSMutableArray array];
+
+    // 首选：应用组容器，App 与 SpringBoard 都能读写
+    NSString *gp = SLAppGroupPrefsPath();
+    if (gp.length) [cands addObject:[gp stringByDeletingLastPathComponent]];
+    // 次选：App 自己容器
+    NSString *home = NSHomeDirectory();
+    if (home.length) [cands addObject:[home stringByAppendingPathComponent:@"Library/Preferences"]];
+    // 末选：隐根偏好、真实偏好、临时目录
     NSString *r = SLJbRoot();
-    NSString *p = nil;
-    if (r.length) p = [r stringByAppendingPathComponent:@"var/mobile/Library/Preferences"];
-    if (!p.length || !SLDirWritable(p)) p = @"/var/mobile/Library/Preferences";
-    [[NSFileManager defaultManager] createDirectoryAtPath:p withIntermediateDirectories:YES
-                             attributes:nil error:NULL];
-    g_stateDir = p;
+    if (r.length) [cands addObject:[r stringByAppendingPathComponent:@"var/mobile/Library/Preferences"]];
+    [cands addObject:@"/var/mobile/Library/Preferences"];
+    [cands addObject:NSTemporaryDirectory()];
+
+    for (NSString *d in cands) {
+        if (!d.length) continue;
+        [fm createDirectoryAtPath:d withIntermediateDirectories:YES attributes:nil error:NULL];
+        if (SLDirWritable(d)) { g_stateDir = d; break; }
+    }
+    if (!g_stateDir) g_stateDir = NSTemporaryDirectory();
     return g_stateDir;
 }
 
