@@ -725,17 +725,12 @@ static void SLInitBody(void) {
     SLState *st = [SLState load];
     BOOL fresh = ![SL_VER isEqualToString:(st.ver ?: @"")];
     if (fresh) {
-        BOOL busy = (st.phase == SLPhaseResetting || st.phase == SLPhaseNeedFill);
         st.ver = SL_VER;
-        if (!busy) {
-            st.phase = SLPhaseIdle;
-            st.attempt = 0;
-            st.lastError = @"";
-        }
+        st.phase = SLPhaseIdle;
+        st.attempt = 0;
+        st.lastError = @"";
         [st save];
-        SLLog(@"fresh %@ state=%@ busy=%d logdir=%@", SL_VER, SLStatePath(), busy, SLLogDir());
-        SLOnLaunch();
-        return;
+        SLLog(@"fresh %@ state=%@ logdir=%@", SL_VER, SLStatePath(), SLLogDir());
     }
 
     SLOnLaunch();
