@@ -176,11 +176,13 @@ static NSUUID *SLHookAdid(id self, SEL _cmd) {
     return g_origAdid ? g_origAdid(self, _cmd) : nil;
 }
 
-// —— 隐藏界面：App 照常跑，但不显示 ——
-static void (*g_origMakeKeyVisible)(id, SEL) = NULL;
-static void SLHookMakeKeyAndVisible(id self, SEL _cmd) {
-    // 不调用原实现 = 窗口永远不显示
-    SLLog(@"hidden-ui: suppressed makeKeyAndVisible %@", NSStringFromClass([self class]));
+static NSString *SLNewUUID(void) { return [[NSUUID UUID].UUIDString uppercaseString]; }
+
+static NSUserDefaults *SLDefaults(void) {
+    NSUserDefaults *d = [[NSUserDefaults alloc] initWithSuiteName:SL_APP_GROUP];
+    if (!d) d = [[NSUserDefaults alloc] initWithSuiteName:SL_APP_GROUP_OLD];
+    if (!d) d = [NSUserDefaults standardUserDefaults];
+    return d;
 }
 
 static void (*g_origViewDidAppear)(id, SEL, BOOL) = NULL;
@@ -201,8 +203,9 @@ static void SLHookViewDidAppear(id self, SEL _cmd, BOOL animated) {
 #pragma mark - 重置
 
 static void SLPerformReset(SLState *st) {
-    NSUserDefaults *sd = [NSUserDefaults standardUserDefaults];
-    NSDictionary *snap = [sd dictionaryRepresentation] ?: @{};
+    NSUserDefaults *d = SLDefaults();
+    if (!d) d = [NSUserDefaults standardUserDefaults];
+    NSDictionary *snap = [d dictionaryRepresentation] ?: @{};
     st.snapPrefs = snap;
     st.snapToken = [SLHttp currentToken];
     st.phase = SLPhaseNeedFill;
@@ -220,42 +223,6 @@ static void SLPerformReset(SLState *st) {
         [st save];
     }
     SLLog(@"reset: prefs backup=%@", bak.lastPathComponent);
-
-    // 按「一键重置」的做法：把 App 恢复成刚装好的状态
-    // 1) 清 App 自己的偏好域（含 flutter.klocalUserInfoSaveKey / deviceId / agree）
-    NSString *bid = [NSBundle mainBundle].bundleIdentifier ?: @"com.shanlian.pro";
-    [sd removePersistentDomainForName:bid];
-    [sd synchronize];
-    SLLog(@"wipe: domain %@ cleared", bid);
-
-    // 2) 清 App Group 域
-    for (NSString *g in @[@"group.com.shanlian.pro", SL_APP_GROUP, SL_PREF_SUITE]) {
-        if (!g.length) continue;
-        NSUserDefaults *gd = [[NSUserDefaults alloc] initWithSuiteName:g];
-        if (gd) { [gd removePersistentDomainForName:g]; [gd synchronize]; }
-    }
-    SLLog(@"wipe: groups cleared");
-
-    // 3) 钥匙串按类全删（不带 account/service 条件，避免卡死）
-    NSArray *classes = @[(__bridge id)kSecClassGenericPassword,
-                         (__bridge id)kSecClassInternetPassword,
-                         (__bridge id)kSecClassKey];
-    int kcCount = 0;
-    for (id c in classes) {
-        NSDictionary *q = @{(__bridge id)kSecClass: c};
-        OSStatus s = SecItemDelete((__bridge CFDictionaryRef)q);
-        SLLog(@"wipe: kc class %d st=%d", (int)[classes indexOfObject:c], (int)s);
-        if (s == errSecSuccess) kcCount++;
-    }
-    SLLog(@"wipe: kc classes deleted=%d", kcCount);
-
-    // 4) 删 App 缓存库
-    [SLHttp wipeAppCacheDB];
-    SLLog(@"wipe: cache done");
-
-    // 注意：不预设 deviceId，让 App 自己生成新设备号并重新注册
-    [st save];
-    SLLog(@"reset done snap=%lu (App 将以全新状态启动)", (unsigned long)snap.count);
 
     // 主队列正常退出；主线程若被卡住，全局队列兜底
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
@@ -451,35 +418,7 @@ static BOOL SLScreenLocked(void) {
     return NO;
 }
 
-static void SLOpenApp(void);
-
-static BOOL SLAppRunning(void) {
-    Class c = NSClassFromString(@"LSApplicationWorkspace");
-    if (!c) return NO;
-    id ws = ((id (*)(id, SEL))objc_msgSend)(c, sel_registerName("defaultWorkspace"));
-    if (!ws) return NO;
-    SEL sel = sel_registerName("runningApplications");
-    if (![ws respondsToSelector:sel]) return NO;
-    id apps = ((id (*)(id, SEL))objc_msgSend)(ws, sel);
-    if (![apps isKindOfClass:[NSArray class]]) return NO;
-    for (id a in (NSArray *)apps) {
-        SEL bs = sel_registerName("bundleIdentifier");
-        if (![a respondsToSelector:bs]) continue;
-        id bid = ((id (*)(id, SEL))objc_msgSend)(a, bs);
-        if ([bid isKindOfClass:[NSString class]] && [(NSString *)bid isEqualToString:SL_APP_ID]) return YES;
-    }
-    return NO;
-}
-
-// 最近一次拉起的时间，避免每 15 秒强行前台化
-static NSTimeInterval g_lastOpen = 0;
-static void SLOpenAppThrottled(void) {
-    NSTimeInterval now = [NSDate date].timeIntervalSince1970;
-    if (now - g_lastOpen < 90) return;          // 90 秒内不重复拉起
-    g_lastOpen = now;
-    SLLog(@"open app (throttled)");
-    SLOpenApp();
-}
+static BOOL SLAppRunning(void) { return NO; }   // 一律直接调起，重复调用无害
 
 static void SLOpenApp(void) {
     Class c = NSClassFromString(@"LSApplicationWorkspace");
