@@ -1,6 +1,6 @@
 # STATUS — 闪连自动续期
 
-状态：`local_wip`（本地未推送、未编译）
+状态：`built_static_verified`（已推送、CI 两架构构建成功、产物已静态核验；未安装）
 
 ## 目标
 - 到期前自动完成「重置 → 新号 → 填 88888888 → 确认 +3 天」。
@@ -40,5 +40,24 @@
 - 签名 6 个候选中哪个正确未知，需真机首次校准。
 
 ## 授权
-- 已获：本地写码。
-- 未获：推送、CI、安装、注销、重启。
+- 已获：本地写码、推送、CI。
+- 未获：安装、注销、重启。
+
+## 构建
+- 提交 9fefce3 / 分支 shanlian-renew-1.0.0-20261118，CI run 44163296059 两架构均成功出包。
+- 整体 run 红只因既有 ReynardDefault 失败，与本项目无关。
+- 交付与核验见 releases/1.0.0/VERIFIED.md 与 attachments/ShanLianRenew-1.0.0。
+
+## 1.0.1 真机故障与修复（2026-11-18）
+真机实测（MCP 直连）：装插件后 App 0.6s 即消失，卸载后正常 → 确认是插件。
+实测证据：
+- 应用组真实为 `group.com.shanlianv.pro`，原写 `SZY6Z8FST5.com.lightningxvpn.shared`（错）。
+- 隐根真实在 `/var/containers/Bundle/Application/.jbroot-XXXX`，原只在 AppGroup 下扫（错）。
+- 无日志/状态文件生成 → 构造期未完成。
+修复：
+- 应用组改真实名，旧名兜底，永不为 nil。
+- 隐根优先 `dlsym("jbroot")`，否则扫两个真实位置。
+- 状态先落盘再退出，主队列 0.8s + 全局队列 2.5s 双兜底退出。
+- 拉起改为一律 `LSApplicationWorkspace`，去掉 `SBApplicationController`。
+- 构造体整体 @try/@catch，异常不再杀进程。
+- 日志目录多路径兜底（jbroot 偏好 → 真实偏好 → 临时目录）。
