@@ -393,8 +393,6 @@ static void SLInitBody(void) {
         st.lastError = @"";
         [st save];
         SLLog(@"fresh %@ state=%@ logdir=%@", SL_VER, SLStatePath(), SLLogDir());
-        SLOnLaunch();
-        return;
     }
 
     BOOL busy = (st.phase == SLPhaseNeedFill || st.phase == SLPhaseResetting);
