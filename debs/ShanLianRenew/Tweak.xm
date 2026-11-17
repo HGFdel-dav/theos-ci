@@ -179,15 +179,10 @@ static NSUUID *SLHookAdid(id self, SEL _cmd) {
 static NSString *SLNewUUID(void) { return [[NSUUID UUID].UUIDString uppercaseString]; }
 
 static NSUserDefaults *SLDefaults(void) {
-    NSUserDefaults *d = [[NSUserDefaults alloc] initWithSuiteName:SL_PREF_SUITE];
-    if (!d) d = [[NSUserDefaults alloc] initWithSuiteName:SL_APP_GROUP];
+    NSUserDefaults *d = [[NSUserDefaults alloc] initWithSuiteName:SL_APP_GROUP];
+    if (!d) d = [[NSUserDefaults alloc] initWithSuiteName:SL_APP_GROUP_OLD];
     if (!d) d = [NSUserDefaults standardUserDefaults];
     return d;
-}
-
-// App 自己的偏好域（真正的登录态在这里）
-static NSUserDefaults *SLAppDefaults(void) {
-    return [[NSUserDefaults alloc] initWithSuiteName:@"com.shanlian.pro"];
 }
 
 static BOOL SLLooksLikeToken(id v) {
@@ -226,27 +221,6 @@ static void SLPerformReset(SLState *st) {
     [d setObject:g_fakeId forKey:SL_DEVICE_KEY];
     [d synchronize];
     [SLHttp setDeviceId:g_fakeId];   // 真正生效的是钥匙串里那份
-
-    // 关键：App 的登录态存在它自己的偏好域里（flutter.klocalUserInfoSaveKey）
-    // 钥匙串只有 Firebase 推送相关，没有登录 token，不要碰
-    NSString *kc = [SLHttp backupKeychain];
-    st.kcBackup = kc;
-    SLLog(@"wipe: kc backup ok");
-
-    NSUserDefaults *ad = SLAppDefaults();
-    NSArray *akeys = @[@"flutter.klocalUserInfoSaveKey", @"flutter.login_ts"];
-    int acleared = 0;
-    for (NSString *k in akeys) {
-        if ([ad objectForKey:k]) { [ad removeObjectForKey:k]; acleared++; }
-    }
-    [ad synchronize];
-    SLLog(@"wipe: app prefs cleared=%d", acleared);
-
-    [SLHttp wipeAppCacheDB];
-    [st save];
-
-    SLLog(@"reset done id=%@ snap=%lu cleared=%d kc=%@",
-          g_fakeId, (unsigned long)snap.count, cleared, kc.lastPathComponent);
 
     // 主队列正常退出；主线程若被卡住，全局队列兜底
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
@@ -442,35 +416,7 @@ static BOOL SLScreenLocked(void) {
     return NO;
 }
 
-static void SLOpenApp(void);
-
-static BOOL SLAppRunning(void) {
-    Class c = NSClassFromString(@"LSApplicationWorkspace");
-    if (!c) return NO;
-    id ws = ((id (*)(id, SEL))objc_msgSend)(c, sel_registerName("defaultWorkspace"));
-    if (!ws) return NO;
-    SEL sel = sel_registerName("runningApplications");
-    if (![ws respondsToSelector:sel]) return NO;
-    id apps = ((id (*)(id, SEL))objc_msgSend)(ws, sel);
-    if (![apps isKindOfClass:[NSArray class]]) return NO;
-    for (id a in (NSArray *)apps) {
-        SEL bs = sel_registerName("bundleIdentifier");
-        if (![a respondsToSelector:bs]) continue;
-        id bid = ((id (*)(id, SEL))objc_msgSend)(a, bs);
-        if ([bid isKindOfClass:[NSString class]] && [(NSString *)bid isEqualToString:SL_APP_ID]) return YES;
-    }
-    return NO;
-}
-
-// 最近一次拉起的时间，避免每 15 秒强行前台化
-static NSTimeInterval g_lastOpen = 0;
-static void SLOpenAppThrottled(void) {
-    NSTimeInterval now = [NSDate date].timeIntervalSince1970;
-    if (now - g_lastOpen < 90) return;          // 90 秒内不重复拉起
-    g_lastOpen = now;
-    SLLog(@"open app (throttled)");
-    SLOpenApp();
-}
+static BOOL SLAppRunning(void) { return NO; }   // 一律直接调起，重复调用无害
 
 static void SLOpenApp(void) {
     Class c = NSClassFromString(@"LSApplicationWorkspace");
