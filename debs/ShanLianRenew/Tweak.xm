@@ -218,6 +218,12 @@ static NSUUID *SLHookAdid(id self, SEL _cmd) {
 }
 
 
+static NSUserDefaults *SLDefaults(void) {
+    NSUserDefaults *d = [[NSUserDefaults alloc] initWithSuiteName:SL_APP_GROUP];
+    if (!d) d = [[NSUserDefaults alloc] initWithSuiteName:SL_APP_GROUP_OLD];
+    if (!d) d = [NSUserDefaults standardUserDefaults];
+    return d;
+}
 
 
 #pragma mark - 配对捕获（data + 密钥同刻取样）
@@ -271,15 +277,11 @@ static void SLCaptureRun(void) {
 
 #pragma mark - 重置
 
-static NSUserDefaults *SLDefaults(void) {
-    NSUserDefaults *d = [[NSUserDefaults alloc] initWithSuiteName:SL_PREF_SUITE];
-    if (!d) d = [[NSUserDefaults alloc] initWithSuiteName:SL_APP_GROUP];
+static void SLPerformReset(SLState *st) {
+    NSUserDefaults *d = SLDefaults();
     if (!d) d = [NSUserDefaults standardUserDefaults];
-    return d;
-}
-
-static __attribute__((unused)) void SLPerformReset(SLState *st) {
-    // 先记下旧 token，用来判断 App 是否真的注册了新号
+    NSDictionary *snap = [d dictionaryRepresentation] ?: @{};
+    st.snapPrefs = snap;
     st.snapToken = [SLHttp currentToken];
     st.phase = SLPhaseNeedFill;
     st.attempt = 0;
@@ -299,71 +301,10 @@ static __attribute__((unused)) void SLPerformReset(SLState *st) {
            bak.lastPathComponent, (unsigned long)(st.snapToken ? st.snapToken.length : 0));
     SLDiagSnapshot(@"before-reset");
 
-    // —— 与「一键重置」完全一致：把 App 变回刚装好的状态 ——
-    NSString *bid = [NSBundle mainBundle].bundleIdentifier ?: @"com.shanlian.pro";
-
-    // 1) 清 App 自己的偏好域
-    NSUserDefaults *sd = [NSUserDefaults standardUserDefaults];
-    [sd removePersistentDomainForName:bid];
-    [sd synchronize];
-    SLDiag(@"reset", @"own domain cleared bid=%@", bid);
-
-    // 2) 清两个 App Group 域（不含我们自己的状态域）
-    for (NSString *g in @[SL_APP_GROUP, SL_APP_GROUP_OLD]) {
-        if (!g.length) continue;
-        NSUserDefaults *gd = [[NSUserDefaults alloc] initWithSuiteName:g];
-        if (gd) { [gd removePersistentDomainForName:g]; [gd synchronize]; }
-    }
-    SLDiag(@"reset", @"groups cleared");
-
-    // 3) 钥匙串逐项删除（照「一键重置」的做法：先拿完整属性，再逐项删）
-    NSArray *items = [SLHttp keychainItems];
-    SLDiag(@"reset", @"kc enumerate=%lu", (unsigned long)items.count);
-    for (NSDictionary *it in items) {
-        id cls = it[(__bridge id)kSecClass];
-        NSMutableDictionary *q = [NSMutableDictionary dictionary];
-        if (cls) q[(__bridge id)kSecClass] = cls;
-        id acc = it[(__bridge id)kSecAttrAccount];
-        id svc = it[(__bridge id)kSecAttrService];
-        id grp = it[(__bridge id)kSecAttrAccessGroup];
-        if (acc) q[(__bridge id)kSecAttrAccount] = acc;
-        if (svc) q[(__bridge id)kSecAttrService] = svc;
-        if (grp) q[(__bridge id)kSecAttrAccessGroup] = grp;
-        OSStatus st = (q.count > 0) ? SecItemDelete((__bridge CFDictionaryRef)q) : errSecParam;
-        SLDiag(@"reset", @"kc del acc=%@ svc=%@ grp=%@ st=%d",
-               [acc description] ?: @"-", [svc description] ?: @"-",
-               [grp description] ?: @"-", (int)st);
-    }
-    // 删完自检：还有剩的就记下来（防止再出现空壳）
-    NSArray *left = [SLHttp keychainItems];
-    SLDiag(@"reset", @"kc left=%lu", (unsigned long)left.count);
-    for (NSDictionary *it in left) {
-        SLDiag(@"reset", @"kc remained acc=%@ svc=%@",
-               [it[(__bridge id)kSecAttrAccount] description] ?: @"-",
-               [it[(__bridge id)kSecAttrService] description] ?: @"-");
-    }
-
-    // 4) 删 App 缓存库
-    // 4) 关键：换掉 App 自己的设备身份文件，否则它认为“老设备没登录”，不注册新号
-    NSString *kk = SLAppFilePath(@"Documents/KKQQ.plist");
-    if (kk) {
-        NSMutableDictionary *d = [NSMutableDictionary dictionaryWithContentsOfFile:kk];
-        if (!d) d = [NSMutableDictionary dictionary];
-        NSString *newUuid = [[NSUUID UUID].UUIDString lowercaseString];
-        d[@"uuid"] = newUuid;
-        BOOL ok = [d writeToFile:kk atomically:YES];
-        SLDiag(@"reset", @"KKQQ uuid -> %@ wrote=%d", newUuid, ok);
-    } else {
-        SLDiag(@"reset", @"KKQQ not found");
-    }
-
-    [SLHttp wipeAppCacheDB];
-    SLDiag(@"reset", @"cache db removed, reset complete");
-    SLDiagSnapshot(@"after-reset");
-
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
+    // 主队列正常退出；主线程若被卡住，全局队列兜底
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{ exit(0); });
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)),
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.5 * NSEC_PER_SEC)),
                    dispatch_get_global_queue(0, 0), ^{ exit(0); });
 }
 
@@ -612,60 +553,7 @@ static __attribute__((unused)) BOOL SLScreenLocked(void) {
     return NO;
 }
 
-static __attribute__((unused)) void SLOpenApp(void);
-
-static __attribute__((unused)) BOOL SLAppRunning(void) {
-    Class c = NSClassFromString(@"LSApplicationWorkspace");
-    if (!c) return NO;
-    id ws = ((id (*)(id, SEL))objc_msgSend)(c, sel_registerName("defaultWorkspace"));
-    if (!ws) return NO;
-    SEL sel = sel_registerName("runningApplications");
-    if (![ws respondsToSelector:sel]) return NO;
-    id apps = ((id (*)(id, SEL))objc_msgSend)(ws, sel);
-    if (![apps isKindOfClass:[NSArray class]]) return NO;
-    for (id a in (NSArray *)apps) {
-        SEL bs = sel_registerName("bundleIdentifier");
-        if (![a respondsToSelector:bs]) continue;
-        id bid = ((id (*)(id, SEL))objc_msgSend)(a, bs);
-        if ([bid isKindOfClass:[NSString class]] && [(NSString *)bid isEqualToString:SL_APP_ID]) return YES;
-    }
-    return NO;
-}
-
-// 最近一次拉起的时间，避免每 15 秒强行前台化
-static NSTimeInterval g_lastOpen = 0;
-
-// 后台静默启动：不切前台、无界面
-static void SLOpenAppSilently(void) {
-    Class c = NSClassFromString(@"LSApplicationWorkspace");
-    if (!c) return;
-    id ws = ((id (*)(id, SEL))objc_msgSend)(c, sel_registerName("defaultWorkspace"));
-    if (!ws) return;
-
-    // 1) launchApplicationWithIdentifier:suspended: —— 以挂起方式拉起，不出界面
-    SEL s1 = sel_registerName("launchApplicationWithIdentifier:suspended:");
-    if ([ws respondsToSelector:s1]) {
-        BOOL ok = ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(ws, s1, SL_APP_ID, YES);
-        SLLog(@"silent launch(suspended) ok=%d", ok);
-        if (ok) return;
-    }
-    // 2) 退而求其次：openApplicationWithBundleID:（会切前台，仅作兜底）
-    SEL s2 = sel_registerName("openApplicationWithBundleID:");
-    if ([ws respondsToSelector:s2]) {
-        ((void (*)(id, SEL, id))objc_msgSend)(ws, s2, SL_APP_ID);
-        SLLog(@"fallback open app");
-    }
-}
-
-static __attribute__((unused)) void SLOpenAppThrottled(void) {
-    SLState *stp = [SLState load];
-    NSTimeInterval now = [NSDate date].timeIntervalSince1970;
-    BOOL active = (stp.phase == SLPhaseResetting || stp.phase == SLPhaseNeedFill);
-    if (now - g_lastOpen < (active ? 4.0 : 90.0)) return;   // 续期进行中 4 秒重试
-    g_lastOpen = now;
-    SLLog(@"open app (throttled)");
-    SLOpenApp();
-}
+static BOOL SLAppRunning(void) { return NO; }   // 一律直接调起，重复调用无害
 
 static void SLOpenApp(void) {
     Class c = NSClassFromString(@"LSApplicationWorkspace");
