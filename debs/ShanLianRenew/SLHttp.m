@@ -129,17 +129,21 @@ static NSString *g_host = nil;
     NSData *d = CFBridgingRelease(out);
     if (![d isKindOfClass:[NSData class]] || !d.length) return nil;
 
-    NSString *s = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
-    SLLog(@"secure item len=%lu head=%@", (unsigned long)d.length,
-          s ? [s substringToIndex:MIN((NSUInteger)24, s.length)] : @"(bin)");
+    NSData *head = [d subdataWithRange:NSMakeRange(0, MIN((NSUInteger)48, d.length))];
+    SLLog(@"secure item len=%lu head64=%@", (unsigned long)d.length,
+          [head base64EncodedStringWithOptions:0]);
 
-    if ([s hasPrefix:@"{"]) {
-        id j = [NSJSONSerialization JSONObjectWithData:d options:0 error:NULL];
-        if ([j isKindOfClass:[NSDictionary class]]) {
-            id v = ((NSDictionary *)j)[@"v"] ?: ((NSDictionary *)j)[@"value"];
-            if ([v isKindOfClass:[NSString class]]) s = v;
-        }
+    NSString *s = nil;
+    // 1) 直接按 JSON 解（不先转字符串）
+    id j = [NSJSONSerialization JSONObjectWithData:d options:0 error:NULL];
+    if ([j isKindOfClass:[NSDictionary class]]) {
+        id v = ((NSDictionary *)j)[@"v"] ?: ((NSDictionary *)j)[@"value"];
+        if ([v isKindOfClass:[NSString class]]) s = v;
     }
+    // 2) UTF-8 / UTF-16
+    if (!s) s = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
+    if (!s) s = [[NSString alloc] initWithData:d encoding:NSUTF16LittleEndianStringEncoding];
+    if (!s) s = [[NSString alloc] initWithData:d encoding:NSUTF16BigEndianStringEncoding];
     if (![s isKindOfClass:[NSString class]] || !s.length) return nil;
     if ([s hasPrefix:@"eyJ"]) return s;
 
