@@ -39,7 +39,6 @@ static NSString *g_host = nil;
                                  (__bridge id)kSecReturnData: @YES,
                                  (__bridge id)kSecMatchLimit: (__bridge id)kSecMatchLimitAll } mutableCopy];
     if (group.length) q[(__bridge id)kSecAttrAccessGroup] = group;
-    q[(__bridge id)kSecAttrSynchronizable] = (__bridge id)kSecAttrSynchronizableAny;
     CFTypeRef out = NULL;
     if (SecItemCopyMatching((__bridge CFDictionaryRef)q, &out) != errSecSuccess || !out) return @[];
     NSArray *a = CFBridgingRelease(out);
@@ -51,7 +50,6 @@ static NSString *g_host = nil;
     for (NSString *g in @[SL_KEYCHAIN_GROUP, @""]) {
         [all addObjectsFromArray:[self itemsClass:(__bridge id)kSecClassGenericPassword group:g]];
         [all addObjectsFromArray:[self itemsClass:(__bridge id)kSecClassInternetPassword group:g]];
-        [all addObjectsFromArray:[self itemsClass:(__bridge id)kSecClassKey group:g]];
     }
     return all;
 }
