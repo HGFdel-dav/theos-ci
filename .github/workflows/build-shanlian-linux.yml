@@ -15,7 +15,7 @@ jobs:
       - name: Deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y make clang perl git curl xz-utils libssl-dev libplist-dev zip unzip libncurses-dev ldid libtinfo6
+          sudo apt-get install -y make clang perl git curl xz-utils libssl-dev libplist-dev zip unzip libncurses-dev libtinfo6
 
       - name: Setup Theos
         run: |
@@ -30,7 +30,10 @@ jobs:
           curl -sL https://github.com/L1ghtmann/llvm-project/releases/latest/download/iOSToolchain-x86_64.tar.xz \
             | tar -xJf - -C "$HOME/theos/toolchain/"
           test -x "$HOME/theos/toolchain/linux/iphone/bin/clang"
-          which ldid
+          # ldid（Ubuntu 无包，从源码编）
+          git clone --depth 1 https://github.com/ProcursusTeam/ldid.git "$HOME/ldid-src"
+          ( cd "$HOME/ldid-src" && make -j"$(nproc)" && sudo cp -f ldid /usr/local/bin/ldid )
+          ldid -V || true
 
       - name: Build rootless arm64
         run: |
