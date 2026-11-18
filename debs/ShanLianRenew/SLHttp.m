@@ -246,10 +246,7 @@ static NSString *g_host = nil;
     NSData *key = [SLSigner keychainKey];
     if (!key || i > 5) { SLLog(@"mint: give up i=%ld", (long)i); done(nil, @"exhausted"); return; }
     NSString *peach = [NSString stringWithFormat:@"%.0f", [NSDate date].timeIntervalSince1970 * 1000];
-    NSDictionary *clear = @{ @"deviceInfo": @"iPhone 12", @"deviceId": dev, @"deviceType": @"1" };
-    NSString *b64 = [self makeDataForJson:clear key:key];
-    NSMutableDictionary *body = [clear mutableCopy];
-    if (b64.length) body[@"data"] = b64;
+    NSDictionary *body = @{ @"deviceInfo": @"iPhone 12", @"deviceId": dev, @"deviceType": @"1" };
     NSMutableURLRequest *r = [NSMutableURLRequest requestWithURL:
         [NSURL URLWithString:[NSString stringWithFormat:@"https://%@%@", g_host, @"/app/tourist/slfirstDeviceLoginfn"]]];
     r.HTTPMethod = @"POST"; r.timeoutInterval = 15;
