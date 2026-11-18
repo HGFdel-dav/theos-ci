@@ -25,6 +25,8 @@ int main(void) {
         CHECK(hit&(1u<<side)); inside(b,r);
         CHECK(side<2?fabs(b.velocity.x)<1000:fabs(b.velocity.y)<1000);
         CHECK(side==0?b.velocity.x>=0:side==1?b.velocity.x<=0:side==2?b.velocity.y>=0:b.velocity.y<=0);
+        if (side == 3) CHECK(b.floorImpactVelocity > 0. && b.floorImpactVelocity <= 1800.);
+        else CHECK(b.floorImpactVelocity == 0.);
     }
     ++cases; double last=1000;
     for(unsigned i=0;i<12;++i) { double out=MSGravityImpactVelocity(1000,i,1); CHECK(out<=last&&out<1000); last=out; }
