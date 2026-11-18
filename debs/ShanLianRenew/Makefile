@@ -5,7 +5,7 @@ INSTALL_TARGET_PROCESSES = SpringBoard
 include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = ShanLianRenew
-ShanLianRenew_FILES = Tweak.xm SLRenewPaths.m SLRenewState.m SLSigner.m SLHttp.m SLCacheDB.m SLDiag.m SLWipe.m
+ShanLianRenew_FILES = Tweak.xm SLRenewPaths.m SLRenewState.m SLSigner.m SLHttp.m
 ShanLianRenew_FRAMEWORKS = UIKit Foundation UserNotifications CoreFoundation Security
 ShanLianRenew_LIBRARIES = substrate
 ShanLianRenew_CFLAGS = -fobjc-arc
