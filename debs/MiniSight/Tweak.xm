@@ -743,7 +743,7 @@ static NSString *const kMiniSightCenterY   = @"MiniSightCenterY";
 static NSString *const kMiniSightText      = @"Minis 操作中";
 // 版本号：与 DEBIAN/control 的 Version 同步。诊断日志会打印它，
 // 便于装机后确认跑的是哪一版（strings MiniSight.dylib | grep 也能看到）。
-static NSString *const kMiniSightVersion   = @"0.8.46";
+static NSString *const kMiniSightVersion   = @"0.8.47";
 
 #pragma mark - 全局状态
 
@@ -764,6 +764,8 @@ static UIView *gMiniSightBubble = nil;
 static UIScrollView *gMiniSightBubbleScroll = nil;
 static UILabel *gMiniSightBubbleLabel = nil;
 static CGFloat gMiniSightBubbleContentHeight = 0.0;
+// Logical text size survives hidden overflow and viewport-clipped view bounds.
+static CGSize gMiniSightBubbleDesiredSize = {0, 0};
 static CGSize gMiniSightBubbleLayoutSize = {0, 0};
 static CGFloat gMiniSightBubbleLayoutContentHeight = -1.0;
 static BOOL gMiniSightBubbleLayoutValid = NO;
@@ -1289,10 +1291,16 @@ static MSLayout MiniSightLayoutNow(void) {
         if (insets.right > 0.5) right = insets.right;
     }
     MSSize body = MiniSightBodySize();
-    return MSLayoutMake(screen.size.width, screen.size.height,
+    MSLayout layout = MSLayoutMake(screen.size.width, screen.size.height,
                         top, bottom, left, right,
                         kMiniSightEdge, body.w, body.h,
                         kMiniSightBubbleGap, MiniSightBubbleReserve());
+    // Only the ordinary pet gets the full display range. Capsule and active
+    // approval prompts retain their existing safe-area/headroom protection.
+    if (gMiniSightPet && !gMiniSightConfirming) {
+        layout.centers = MSBodyCenterBounds(screen.size.width, screen.size.height, body, 2.);
+    }
+    return layout;
 }
 
 /// 默认落点：没记住位置时随机撒在上半屏（范围来自同一套边界）
@@ -2181,6 +2189,14 @@ static void MiniSightDestroyUI(void) {
     gMiniSightBubble = nil; gMiniSightBubbleScroll = nil; gMiniSightBubbleLabel = nil;
     gMiniSightBubbleTail = nil; gMiniSightConfirmBar = nil;
     gMiniSightBubbleContentHeight = 0.0;
+    gMiniSightBubbleDesiredSize = CGSizeZero;
+    gMiniSightBubbleLayoutSize = CGSizeZero;
+    gMiniSightBubbleLayoutContentHeight = -1.0;
+    gMiniSightBubbleLayoutValid = NO;
+    gMiniSightBubbleTailX = -1.0;
+    gMiniSightBubbleShown = NO;
+    gMiniSightBubbleExpanded = NO;
+    gMiniSightBubbleText = nil;
     gMiniSightPill = nil; gMiniSightDot = nil; gMiniSightPulse = nil; gMiniSightLabel = nil;
     gMiniSightBuilt = NO;
 }
@@ -2302,8 +2318,8 @@ static void MiniSightHideBubble(void) {
 }
 
 /// 纯文字气泡：动态深浅色、小尾巴指向指示器，最多 20 字。
-/// 气泡永远在上方（可行范围已经预留了头顶空间），放不下就把身体整体下移；
-/// 不再「上面放不下就翻到下面」，也不再夹到屏幕外。
+/// 气泡永远在上方；普通桌宠空间不足时只隐藏气泡，不改变身体范围。
+/// 胶囊与审批仍使用原来的头顶预留/让位，不翻到脚下或遮住身体。
 static void MiniSightPlaceBubble(CGFloat w, CGFloat h) {
     UIView *host = gMiniSightPet ?: gMiniSightPill;
     UIView *root = gMiniSightWindow.rootViewController.view;
@@ -2316,8 +2332,9 @@ static void MiniSightPlaceBubble(CGFloat w, CGFloat h) {
     MSLayout L = MiniSightLayoutNow();
     MSPoint anchor = (MSPoint){host.center.x, host.center.y};
     MSPoint wanted = MSLayoutAnchorForBubble(L, anchor, (MSSize){w, h});
-    if (fabs(wanted.y - anchor.y) > 0.5 && !gMiniSightDragging) {
-        // 气泡比预留的还高（比如长句子/确认条）：整体下移，而不是让气泡出屏
+    if ((!gMiniSightPet || gMiniSightConfirming) && fabs(wanted.y - anchor.y) > 0.5 && !gMiniSightDragging) {
+        // Capsule/approval keep the legacy relocation; ordinary pet movement
+        // is independent from a bubble's available headroom.
         CGPoint moved = CGPointMake(wanted.x, wanted.y);
         host.center = moved;
         anchor = (MSPoint){host.center.x, host.center.y};
@@ -2325,7 +2342,18 @@ static void MiniSightPlaceBubble(CGFloat w, CGFloat h) {
     }
 
     MSRect box = MSLayoutBubble(L, anchor, (MSSize){w, h});
+    // Always update the physical frame, but never use its clipped size as intent.
     gMiniSightBubble.frame = CGRectMake(box.x, box.y, box.w, box.h);
+    if (gMiniSightPet && !gMiniSightConfirming && !MSLayoutBubbleFits(L, anchor, box)) {
+        // Keep logical visibility for FollowBubble's next position update.
+        // Alpha/interaction prevent an offscreen or face-covering bubble.
+        gMiniSightBubble.alpha = 0.;
+        gMiniSightBubble.userInteractionEnabled = NO;
+        placing = NO;
+        return;
+    }
+    gMiniSightBubble.alpha = 1.;
+    gMiniSightBubble.userInteractionEnabled = YES;
 
     // 圆润的聊天气泡：主体圆角不超过 16，尾巴用两段二次曲线（不是三条直线的尖三角）
     CGFloat radius = MIN(16.0, box.h / 2.0);
@@ -2365,7 +2393,7 @@ static void MiniSightPlaceBubble(CGFloat w, CGFloat h) {
     }
 
     CGFloat cx = MIN(MAX(host.center.x - box.x, radius + 4.0), box.w - radius - 4.0);
-    if (fabs(cx - gMiniSightBubbleTailX) > 0.5) {
+    if (layoutChanged || fabs(cx - gMiniSightBubbleTailX) > 0.5) {
         UIBezierPath *path = [UIBezierPath bezierPath];
         [path moveToPoint:CGPointMake(cx - 6.0, box.h)];
         [path addQuadCurveToPoint:CGPointMake(cx, box.h + 6.0)
@@ -2468,6 +2496,7 @@ static void MiniSightShowBubbleWidth(NSString *raw, CGFloat maxW, NSUInteger cap
     CGFloat visibleTextHeight = MIN(gMiniSightBubbleContentHeight, maxVisible);
     CGFloat h = visibleTextHeight + (gMiniSightConfirming ? 52.0 : 16.0);
     gMiniSightBubbleScroll.contentOffset = CGPointZero;
+    gMiniSightBubbleDesiredSize = CGSizeMake(w, h);
     MiniSightPlaceBubble(w, h);
 }
 
@@ -2477,10 +2506,9 @@ extern "C" void MiniSightFollowBubble(void) {
     UIView *root = gMiniSightWindow.rootViewController.view;
     if (!gMiniSightBubble || gMiniSightBubble.hidden || !gMiniSightBubble.superview) return;
     if (!host || !root) return;
-    static CGPoint last;
-    if (CGPointEqualToPoint(last, host.center) && gMiniSightBubble.frame.size.height > 0) return;
-    last = host.center;
-    MiniSightPlaceBubble(gMiniSightBubble.bounds.size.width, gMiniSightBubble.bounds.size.height);
+    // Center alone is not a layout key: viewport, body size and approval state
+    // can change while stationary. PlaceBubble already caches expensive sublayout.
+    MiniSightPlaceBubble(gMiniSightBubbleDesiredSize.width, gMiniSightBubbleDesiredSize.height);
 }
 
 static void MiniSightShowBubble(NSString *raw) {

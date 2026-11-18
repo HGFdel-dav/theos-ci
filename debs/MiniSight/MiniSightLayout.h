@@ -59,6 +59,16 @@ static inline MSPoint MSLayoutAnchorForBubble(MSLayout L, MSPoint anchor, MSSize
     return a;
 }
 
+/// Ordinary pet bubbles never push a freely dragged pet away from an edge.
+/// Hide a bubble that cannot fit; approval prompts use the legacy relocation.
+static inline int MSLayoutBubbleFits(MSLayout L, MSPoint anchor, MSRect box) {
+    double top = anchor.y - L.body.h * .5;
+    return isfinite(box.x) && isfinite(box.y) && isfinite(box.w) && isfinite(box.h) &&
+        box.w > 0. && box.h > 0. && box.x >= L.safe.x && box.y >= L.safe.y &&
+        box.x + box.w <= L.safe.x + L.safe.w + .001 &&
+        box.y + box.h <= fmin(L.safe.y + L.safe.h, top - L.gap) + .001;
+}
+
 /// 气泡矩形：永远在身体上方，横向夹在 safe 内，尺寸上限为 safe
 static inline MSRect MSLayoutBubble(MSLayout L, MSPoint anchor, MSSize bubble) {
     return MSBubbleAbove(L.safe, anchor, L.body, bubble, L.gap);

@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include "../MiniSightLayout.h"
+#include "../scripts/fixtures/minisight_bubble_edge_20261118/portable_cases.h"
 
 static unsigned seed = 20261031u;
 static double rnd(double lo, double hi) {
@@ -96,6 +97,39 @@ int main(void) {
         if (jump < -eps) fail("跳跃高度为负", L, a, body, i);
         checks += 2;
     }
+
+    // A saved roam target can reach the display edge while its body remains visible.
+    {
+        MSRect centers = MSBodyCenterBounds(390, 844, (MSSize){56, 61}, 2);
+        MSPoint left = MSClampCenter(centers, (MSPoint){-100, 400});
+        MSRect body = {left.x - 28, left.y - 30.5, 56, 61};
+        if (fabs(body.x - 2.) > eps || body.x < -eps || body.x + body.w > 390 + eps) {
+            printf("FAIL 宠物应可贴近屏幕边缘：x=%.2f rect=%.2f..%.2f\n", left.x, body.x, body.x + body.w);
+            return 1;
+        }
+        checks++;
+    }
+
+    // Ordinary pet: hide overflow rather than moving the body. Approval still
+    // has its original safe/headroom layout and a visible button-sized bubble.
+    {
+        MSLayout old = MSLayoutMake(390,844,47,34,0,0,8,56,61,7,100);
+        MSLayout pet = old;
+        pet.centers = MSBodyCenterBounds(390,844,pet.body,2.);
+        MSPoint top = MSLayoutClamp(pet,(MSPoint){2,0});
+        MSRect box = MSLayoutBubble(pet,top,(MSSize){160,52});
+        if (MSLayoutBubbleFits(pet,top,box) || fabs(top.y-32.5)>eps) return 1;
+        MSPoint middle = MSLayoutClamp(pet,(MSPoint){2,400});
+        box = MSLayoutBubble(pet,middle,(MSSize){160,52});
+        if (!MSLayoutBubbleFits(pet,middle,box) || fabs(middle.x-30)>eps) return 1;
+        MSPoint approved = MSLayoutAnchorForBubble(old,top,(MSSize){180,140});
+        box = MSLayoutBubble(old,approved,(MSSize){180,140});
+        if (!MSLayoutBubbleFits(old,approved,box)) return 1;
+        checks += 3;
+    }
+
+    // Additional edge/viewport geometry cases; all original randomized checks remain.
+    checks += MSBubbleEdgeCases();
 
     // 对照：旧实现（移动整屏 window + 只用 window.bounds 夹子视图）确实会越界
     {

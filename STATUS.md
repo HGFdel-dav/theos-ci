@@ -1,4 +1,15 @@
-# 当前：MiniSight0.8.45 真实CI／双DEB静态核验PASS（2026-11-17，未安装）
+# 当前：MiniSight0.8.47 本地整合通过，待授权推送执行（2026-11-18）
+
+- 本轮问答卡 `local_repair: 可以`；修歌词链路、名字唤醒具体缺陷、注销/重启后素材整图重现、恢复可贴边但身体不出屏。`storage_scan: 暂时不用`；余额和数据占用暂停。用户后续另行“这几个问题修复了，就推送”，批准本批本地全部检查后的提交/推送/CI；没有设备/MCP/开麦/真实歌曲请求/安装/注销/重启/整IPA下载授权。
+- 当前HEAD `9fbc15d8669d91997c059c1ecedc6cf3e5a16070`，0.8.46此前双CI/DEB已验，准确证据 `../MiniSight-releases/MiniSight-0.8.46-20261117/VERIFIED.md`。下文0.8.45不是当前源码基线；当前实装插件仍未本轮读取，不假定旧版本。
+- 插件候选升为0.8.47；两端共享Atlas恢复与MediaRemote符号__TEXT滑移定位已本地修，保所有旧素材/动作与锁屏/显隐/取消/匹配准则；根因条件不等于手机已经解决。
+- 普通pet中心边界与气泡空间分开；胶囊/审批仍旧safe/headroom。新增视觉四角边界只修正屏边变形，不缩小活动范围。App与P Pet/Panel/Resources的旧分支差异不覆盖。
+- R1/R2/R3补修真实FINAL已收并核SHA：A权限正常inactive/真正后台区分、两阶段协作取消；P普通文字保逻辑尺寸/无center-only缓存/重建清缓存，审批安全代码逐字保持。最终独立整合审查已确认LOCAL_READY_NATIVE_PENDING/blockers=[]，父核42个审查快照SHA均匹配；未宣布原生或手机通过。
+- 最终本地58入口全部符合预期：47普通退出0（36含native SKIP）、9严格缺Apple退出1并拒放、2diffcheck通过；原布局1600029、边界C449462+3行为负例及7相邻便携入口过。核心镜像和旧功能源码保护全过，新strict已登记未触发CI。
+- 证据目录 `../openminis/local-reviews/pet-four-repairs-20261118/`；最终独立整合审查闭合后冻结精确源码，再按已获批准分别推送。安装加载/真机功能与CI各分开报告。
+
+---
+# 历史：MiniSight0.8.45 真实CI／双DEB静态核验PASS（2026-11-17，未安装）
 
 - 本轮用户明确覆盖旧“仅重试一次后停”的限制，授权当前版本继续编译／真实CI错误窄修／普通push与双架构验包。已在预算内达到真实编译与验包终态；不包含安装、设备配置、开麦、真实歌词请求、注销或重启。
 - 最终本地／远端HEAD `fd321d3a374cfce99aafb652830b9d63ad998f6d`；HGFdel-dav/theos-ci，minisight-0.8.45-20261116，run124／43923925319 attempt1；RootHide与rootless全部步骤逐项completed/success。固定macos-15-intel、Xcode16.4、iPhoneOS15.5.sdk、FINALPACKAGE=1，不换runner／SDK／门槛，不在iSH编iOS。
