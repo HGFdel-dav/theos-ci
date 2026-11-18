@@ -1,6 +1,6 @@
 Package: com.minis.shanlianrenew
 Name: 闪连自动续期
-Version: 1.0.9
+Version: 1.0.10
 Architecture: iphoneos-arm
 Description: 到期前自动重置出新号并填邀请码续 3 天，全程后台，不打扰。
 Maintainer: Minis
