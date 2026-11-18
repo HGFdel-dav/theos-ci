@@ -98,16 +98,13 @@ NSString *SLStateDir(void) {
     NSFileManager *fm = [NSFileManager defaultManager];
     NSMutableArray *cands = [NSMutableArray array];
 
-    // 首选：应用组容器，App 与 SpringBoard 都能读写
-    NSString *gp = SLAppGroupPrefsPath();
-    if (gp.length) [cands addObject:[gp stringByDeletingLastPathComponent]];
+    NSURL *gu = [[NSFileManager defaultManager]
+                 containerURLForSecurityApplicationGroupIdentifier:SL_APP_GROUP];
+    if (gu.path.length) [cands addObject:[gu.path stringByAppendingPathComponent:@"Library/Preferences"]];
     // 次选：App 自己容器
     NSString *home = NSHomeDirectory();
     if (home.length) [cands addObject:[home stringByAppendingPathComponent:@"Library/Preferences"]];
     // 末选：隐根偏好、真实偏好、临时目录
-    NSString *r = SLJbRoot();
-    if (r.length) [cands addObject:[r stringByAppendingPathComponent:@"var/mobile/Library/Preferences"]];
-    [cands addObject:@"/var/mobile/Library/Preferences"];
     [cands addObject:NSTemporaryDirectory()];
 
     for (NSString *d in cands) {
