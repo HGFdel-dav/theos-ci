@@ -3,6 +3,7 @@
 #import <UIKit/UIKit.h>
 #import <notify.h>
 #import <stdlib.h>
+#import <Security/Security.h>
 #import <CoreFoundation/CFUserNotification.h>
 #import <UserNotifications/UserNotifications.h>
 #import "SLRenewPaths.h"
@@ -11,6 +12,31 @@
 #import "SLSigner.h"
 
 static NSString *g_fakeId = nil;
+
+#pragma mark - 钥匙串写入诊断
+
+static OSStatus (*g_origSecItemAdd)(CFDictionaryRef, CFTypeRef *);
+static OSStatus SLHookSecItemAdd(CFDictionaryRef attrs, CFTypeRef *out) {
+    @try {
+        NSDictionary *d = (__bridge NSDictionary *)attrs;
+        NSString *cls = [d[(__bridge id)kSecClass] description];
+        id data = d[(__bridge id)kSecValueData];
+        NSString *head = @"";
+        if ([data isKindOfClass:[NSData class]]) {
+            NSData *x = (NSData *)data;
+            NSString *t = [[NSString alloc] initWithData:[x subdataWithRange:
+                            NSMakeRange(0, MIN((NSUInteger)24, x.length))] encoding:NSUTF8StringEncoding];
+            if (t) head = t;
+            SLLog(@"SecItemAdd len=%lu head=%@", (unsigned long)x.length, head);
+        } else {
+            SLLog(@"SecItemAdd class=%@", cls);
+        }
+        SLLog(@"  acct=%@ svce=%@ agrp=%@ sync=%@",
+              d[(__bridge id)kSecAttrAccount], d[(__bridge id)kSecAttrService],
+              d[(__bridge id)kSecAttrAccessGroup], d[(__bridge id)kSecAttrSynchronizable]);
+    } @catch (__unused NSException *e) {}
+    return g_origSecItemAdd ? g_origSecItemAdd(attrs, out) : errSecInternalError;
+}
 static const char *kSLFireName = "com.minis.shanlianrenew.fire";
 
 #pragma mark - 通知
@@ -294,6 +320,7 @@ static void SLInitBody(void) {
 
     Class ud = NSClassFromString(@"UIDevice");
     if (ud) MSHookMessageEx(ud, @selector(identifierForVendor), (IMP)SLHookIdfv, (IMP *)&g_origIdfv);
+    MSHookFunction((void *)SecItemAdd, (void *)SLHookSecItemAdd, (void **)&g_origSecItemAdd);
     Class am = NSClassFromString(@"ASIdentifierManager");
     if (am) MSHookMessageEx(am, @selector(advertisingIdentifier), (IMP)SLHookAdid, (IMP *)&g_origAdid);
 
