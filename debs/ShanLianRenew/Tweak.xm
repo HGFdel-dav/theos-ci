@@ -35,6 +35,20 @@ static OSStatus SLHookSecItemCopyMatching(CFDictionaryRef q, CFTypeRef *out) {
                 NSString *t = x.length ? [[NSString alloc] initWithData:
                     [x subdataWithRange:NSMakeRange(0, MIN((NSUInteger)20, x.length))] encoding:NSUTF8StringEncoding] : nil;
                 SLLog(@"  -> data len=%lu head=%@", (unsigned long)x.length, t ?: @"");
+            } else if ([r isKindOfClass:[NSArray class]]) {
+                for (NSDictionary *it in (NSArray *)r) {
+                    if (![it isKindOfClass:[NSDictionary class]]) continue;
+                    id dat = it[(__bridge id)kSecValueData];
+                    NSString *t = nil;
+                    if ([dat isKindOfClass:[NSData class]] && [(NSData *)dat length]) {
+                        t = [[NSString alloc] initWithData:[(NSData *)dat subdataWithRange:
+                             NSMakeRange(0, MIN((NSUInteger)16, [(NSData *)dat length]))]
+                                                  encoding:NSUTF8StringEncoding];
+                    }
+                    SLLog(@"  item acct=%@ len=%lu head=%@",
+                          it[(__bridge id)kSecAttrAccount],
+                          (unsigned long)[(NSData *)dat length], t ?: @"");
+                }
             } else {
                 SLLog(@"  -> %@", [r class]);
             }
