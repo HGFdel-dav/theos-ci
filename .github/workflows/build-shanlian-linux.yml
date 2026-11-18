@@ -44,6 +44,22 @@ jobs:
           make clean || true
           make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide ARCHS=arm64
 
+      - name: Sign payload and repack
+        run: |
+          set -e
+          cd debs/ShanLianRenew
+          for deb in packages/*.deb; do
+            rm -rf /tmp/rp && mkdir /tmp/rp
+            dpkg-deb -R "$deb" /tmp/rp
+            ldid -S /tmp/rp/Library/MobileSubstrate/DynamicLibraries/ShanLianRenew.dylib
+            dpkg-deb -b /tmp/rp "$deb"
+          done
+          for deb in packages/*.deb; do
+            rm -rf /tmp/chk && mkdir /tmp/chk && dpkg-deb -R "$deb" /tmp/chk
+            llvm-otool 2>/dev/null || true
+            strings /tmp/chk/Library/MobileSubstrate/DynamicLibraries/ShanLianRenew.dylib | grep -c slfillInviteCodefe || true
+          done
+
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
