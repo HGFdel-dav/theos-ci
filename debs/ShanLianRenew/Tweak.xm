@@ -18,6 +18,33 @@ static NSString *g_fakeId = nil;
 
 #pragma mark - 钥匙串写入诊断
 
+static OSStatus (*g_origSecItemCopyMatching)(CFDictionaryRef, CFTypeRef *);
+static OSStatus SLHookSecItemCopyMatching(CFDictionaryRef q, CFTypeRef *out) {
+    @try {
+        NSDictionary *d = (__bridge NSDictionary *)q;
+        SLLog(@"CopyMatching class=%@ acct=%@ svce=%@ agrp=%@",
+              d[(__bridge id)kSecClass], d[(__bridge id)kSecAttrAccount],
+              d[(__bridge id)kSecAttrService], d[(__bridge id)kSecAttrAccessGroup]);
+    } @catch (__unused NSException *e) {}
+    OSStatus st = g_origSecItemCopyMatching ? g_origSecItemCopyMatching(q, out) : errSecInternalError;
+    @try {
+        if (st == errSecSuccess && out && *out) {
+            id r = (__bridge id)*out;
+            if ([r isKindOfClass:[NSData class]]) {
+                NSData *x = (NSData *)r;
+                NSString *t = x.length ? [[NSString alloc] initWithData:
+                    [x subdataWithRange:NSMakeRange(0, MIN((NSUInteger)20, x.length))] encoding:NSUTF8StringEncoding] : nil;
+                SLLog(@"  -> data len=%lu head=%@", (unsigned long)x.length, t ?: @"");
+            } else {
+                SLLog(@"  -> %@", [r class]);
+            }
+        } else {
+            SLLog(@"  -> st=%d", (int)st);
+        }
+    } @catch (__unused NSException *e) {}
+    return st;
+}
+
 static OSStatus (*g_origSecItemAdd)(CFDictionaryRef, CFTypeRef *);
 static OSStatus SLHookSecItemAdd(CFDictionaryRef attrs, CFTypeRef *out) {
     @try {
@@ -597,6 +624,7 @@ static void SLInitBody(void) {
     Class ud = NSClassFromString(@"UIDevice");
     if (ud) MSHookMessageEx(ud, @selector(identifierForVendor), (IMP)SLHookIdfv, (IMP *)&g_origIdfv);
     MSHookFunction((void *)SecItemAdd, (void *)SLHookSecItemAdd, (void **)&g_origSecItemAdd);
+    MSHookFunction((void *)SecItemCopyMatching, (void *)SLHookSecItemCopyMatching, (void **)&g_origSecItemCopyMatching);
     Class am = NSClassFromString(@"ASIdentifierManager");
     if (am) MSHookMessageEx(am, @selector(advertisingIdentifier), (IMP)SLHookAdid, (IMP *)&g_origAdid);
 
