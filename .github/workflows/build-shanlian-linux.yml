@@ -51,6 +51,7 @@ jobs:
           for deb in packages/*.deb; do
             rm -rf /tmp/rp && mkdir /tmp/rp
             dpkg-deb -R "$deb" /tmp/rp
+            sed -i 's/^Architecture:.*/Architecture: iphoneos-arm64/' /tmp/rp/DEBIAN/control
             ldid -S /tmp/rp/Library/MobileSubstrate/DynamicLibraries/ShanLianRenew.dylib
             dpkg-deb -b /tmp/rp "$deb"
           done
