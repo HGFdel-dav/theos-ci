@@ -95,10 +95,11 @@ static NSString *g_host = nil;
     // 0) keyed archive（bplist00）
     if (d.length > 8 && !memcmp(d.bytes, "bplist", 6)) {
         @try {
-            NSSet *ok = [NSSet setWithArray:@[[NSString class], [NSDictionary class],
-                                              [NSArray class], [NSData class], [NSNumber class]]];
             NSError *ue = nil;
-            id o = [NSKeyedUnarchiver unarchivedObjectOfClasses:ok fromData:d error:&ue];
+            NSKeyedUnarchiver *u = [[NSKeyedUnarchiver alloc] initForReadingFromData:d error:&ue];
+            u.requiresSecureCoding = NO;
+            id o = nil;
+            if (u) { o = [u decodeObjectForKey:NSKeyedArchiveRootObjectKey]; [u finishDecoding]; }
             if (!o && ue) SLLog(@"unarchive err %@", ue.localizedDescription);
             if ([o isKindOfClass:[NSString class]]) s = o;
             else if ([o isKindOfClass:[NSDictionary class]]) {
