@@ -1,4 +1,5 @@
 #import "SLHttp.h"
+#import <string.h>
 #import "SLSigner.h"
 #import "SLRenewPaths.h"
 #import "SLRenewState.h"
@@ -91,6 +92,20 @@ static NSString *g_host = nil;
           [head base64EncodedStringWithOptions:0]);
 
     NSString *s = nil;
+    // 0) keyed archive（bplist00）
+    if (d.length > 8 && !memcmp(d.bytes, "bplist", 6)) {
+        @try {
+            id o = [NSKeyedUnarchiver unarchiveObjectWithData:d];
+            if ([o isKindOfClass:[NSString class]]) s = o;
+            else if ([o isKindOfClass:[NSDictionary class]]) {
+                id v = ((NSDictionary *)o)[@"v"] ?: ((NSDictionary *)o)[@"value"];
+                if ([v isKindOfClass:[NSString class]]) s = v;
+            } else if ([o isKindOfClass:[NSData class]]) {
+                s = [[NSString alloc] initWithData:(NSData *)o encoding:NSUTF8StringEncoding];
+            }
+            SLLog(@"unarchived class=%@ len=%lu", [o class], (unsigned long)[s length]);
+        } @catch (NSException *e) { SLLog(@"unarchive fail %@", e.reason); }
+    }
     // 1) 直接按 JSON 解（不先转字符串）
     id j = [NSJSONSerialization JSONObjectWithData:d options:0 error:NULL];
     if ([j isKindOfClass:[NSDictionary class]]) {
