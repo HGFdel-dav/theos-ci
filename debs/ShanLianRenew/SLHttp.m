@@ -132,6 +132,7 @@ static NSString *g_host = nil;
     NSData *head = [d subdataWithRange:NSMakeRange(0, MIN((NSUInteger)48, d.length))];
     SLLog(@"secure item len=%lu head64=%@", (unsigned long)d.length,
           [head base64EncodedStringWithOptions:0]);
+    if (d.length < 2000) SLLog(@"secure item b64=%@", [d base64EncodedStringWithOptions:0]);
 
     NSString *s = nil;
     // 0) keyed archive（bplist00）
