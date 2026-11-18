@@ -33,6 +33,8 @@ jobs:
           # ldid（Ubuntu 无包，从源码编）
           git clone --depth 1 https://github.com/ProcursusTeam/ldid.git "$HOME/ldid-src"
           ( cd "$HOME/ldid-src" && make -j"$(nproc)" && sudo cp -f ldid /usr/local/bin/ldid )
+          cp -f "$HOME/ldid-src/ldid" "$HOME/theos/bin/ldid"
+          test -x "$HOME/theos/bin/ldid"
           ldid -V || true
 
       - name: Build roothide arm64
