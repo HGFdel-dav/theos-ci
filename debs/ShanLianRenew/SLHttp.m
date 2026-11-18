@@ -87,40 +87,17 @@ static NSString *g_host = nil;
     NSData *d = CFBridgingRelease(out);
     if (![d isKindOfClass:[NSData class]] || !d.length) return nil;
 
-    NSData *head = [d subdataWithRange:NSMakeRange(0, MIN((NSUInteger)48, d.length))];
-    SLLog(@"secure item len=%lu head64=%@", (unsigned long)d.length,
-          [head base64EncodedStringWithOptions:0]);
-    if (d.length < 2000) SLLog(@"secure item b64=%@", [d base64EncodedStringWithOptions:0]);
+    NSString *s = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
+    SLLog(@"secure item len=%lu head=%@", (unsigned long)d.length,
+          s ? [s substringToIndex:MIN((NSUInteger)24, s.length)] : @"(bin)");
 
-    NSString *s = nil;
-    // 0) keyed archive（bplist00）
-    if (d.length > 8 && !memcmp(d.bytes, "bplist", 6)) {
-        @try {
-            NSSet *ok = [NSSet setWithArray:@[[NSString class], [NSDictionary class],
-                                              [NSArray class], [NSData class], [NSNumber class]]];
-            NSError *ue = nil;
-            id o = [NSKeyedUnarchiver unarchivedObjectOfClasses:ok fromData:d error:&ue];
-            if (!o && ue) SLLog(@"unarchive err %@", ue.localizedDescription);
-            if ([o isKindOfClass:[NSString class]]) s = o;
-            else if ([o isKindOfClass:[NSDictionary class]]) {
-                id v = ((NSDictionary *)o)[@"v"] ?: ((NSDictionary *)o)[@"value"];
-                if ([v isKindOfClass:[NSString class]]) s = v;
-            } else if ([o isKindOfClass:[NSData class]]) {
-                s = [[NSString alloc] initWithData:(NSData *)o encoding:NSUTF8StringEncoding];
-            }
-            SLLog(@"unarchived class=%@ len=%lu", [o class], (unsigned long)[s length]);
-        } @catch (NSException *e) { SLLog(@"unarchive fail %@", e.reason); }
+    if ([s hasPrefix:@"{"]) {
+        id j = [NSJSONSerialization JSONObjectWithData:d options:0 error:NULL];
+        if ([j isKindOfClass:[NSDictionary class]]) {
+            id v = ((NSDictionary *)j)[@"v"] ?: ((NSDictionary *)j)[@"value"];
+            if ([v isKindOfClass:[NSString class]]) s = v;
+        }
     }
-    // 1) 直接按 JSON 解（不先转字符串）
-    id j = [NSJSONSerialization JSONObjectWithData:d options:0 error:NULL];
-    if ([j isKindOfClass:[NSDictionary class]]) {
-        id v = ((NSDictionary *)j)[@"v"] ?: ((NSDictionary *)j)[@"value"];
-        if ([v isKindOfClass:[NSString class]]) s = v;
-    }
-    // 2) UTF-8 / UTF-16
-    if (!s) s = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
-    if (!s) s = [[NSString alloc] initWithData:d encoding:NSUTF16LittleEndianStringEncoding];
-    if (!s) s = [[NSString alloc] initWithData:d encoding:NSUTF16BigEndianStringEncoding];
     if (![s isKindOfClass:[NSString class]] || !s.length) return nil;
     if ([s hasPrefix:@"eyJ"]) return s;
 
