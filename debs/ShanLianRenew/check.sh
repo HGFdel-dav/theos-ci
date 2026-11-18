@@ -22,10 +22,14 @@ EOF
 
 for f in *.m *.xm; do
   python3 - "$f" <<'EOF' || FAIL=1
-import sys
-s=open(sys.argv[1]).read()
-if s.count('{')!=s.count('}') or s.count('(')!=s.count(')') or s.count('[')!=s.count(']'):
-    print('FAIL unbalanced',sys.argv[1]); sys.exit(1)
+import sys, re
+s = open(sys.argv[1]).read()
+s = re.sub(r'\.', 'x', s)
+s = re.sub(r'"[^"\n]*"', '""', s)
+s = re.sub(r'/\*.*?\*/', '', s, flags=re.S)
+s = re.sub(r'//[^\n]*', '', s)
+if s.count('{') != s.count('}') or s.count('(') != s.count(')') or s.count('[') != s.count(']'):
+    print('FAIL unbalanced', sys.argv[1]); sys.exit(1)
 EOF
 done
 
