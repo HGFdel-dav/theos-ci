@@ -170,18 +170,50 @@ static NSString *g_host = nil;
 + (void)mintTokenCompletion:(void (^)(NSString *, NSString *))done {
     NSString *dev = [self deviceId];
     if (!dev.length) { SLLog(@"mint: no deviceId"); done(nil, @"no deviceId"); return; }
+    [self mintTry:0 dev:dev done:done];
+}
+
++ (void)mintTry:(NSInteger)i dev:(NSString *)dev done:(void (^)(NSString *, NSString *))done {
+    NSData *key = [SLSigner keychainKey];
+    if (!key || i > 5) { SLLog(@"mint: give up i=%ld", (long)i); done(nil, @"exhausted"); return; }
+    NSString *peach = [NSString stringWithFormat:@"%.0f", [NSDate date].timeIntervalSince1970 * 1000];
     NSDictionary *body = @{ @"deviceInfo": @"iPhone 12", @"deviceId": dev, @"deviceType": @"1" };
-    SLLog(@"mint: posting login dev=%@", dev);
-    [self send:@"POST" path:@"/app/tourist/slfirstDeviceLoginfn" body:body
-     completion:^(NSInteger st, NSDictionary *r, NSError *e) {
-        NSString *raw = r ? [[NSString alloc] initWithData:
-            [NSJSONSerialization dataWithJSONObject:r options:0 error:NULL] encoding:NSUTF8StringEncoding]
-                          : e.localizedDescription;
-        if (!raw) raw = @"";
-        SLLog(@"mint resp http=%ld %@", (long)st, [raw substringToIndex:MIN((NSUInteger)200, raw.length)]);
-        NSString *t = r[@"token"];
-        done([t isKindOfClass:[NSString class]] ? t : nil, raw);
-    }];
+    NSMutableURLRequest *r = [NSMutableURLRequest requestWithURL:
+        [NSURL URLWithString:[NSString stringWithFormat:@"https://%@%@", g_host, @"/app/tourist/slfirstDeviceLoginfn"]]];
+    r.HTTPMethod = @"POST"; r.timeoutInterval = 15;
+    [r setValue:@"Shan Lian" forHTTPHeaderField:@"User-Agent"];
+    [r setValue:@"1" forHTTPHeaderField:@"shanlian"];
+    [r setValue:[self firebaseToken] forHTTPHeaderField:@"firebase_pntoken"];
+    [r setValue:peach forHTTPHeaderField:@"peach"];
+    [r setValue:[SLSigner signPeach:peach key:key idx:i] forHTTPHeaderField:@"lightningx"];
+    [r setValue:@"4.5.3" forHTTPHeaderField:@"version"];
+    [r setValue:@"15.5" forHTTPHeaderField:@"system-version"];
+    [r setValue:@"1" forHTTPHeaderField:@"platform"];
+    [r setValue:@"true" forHTTPHeaderField:@"virtual_machine"];
+    [r setValue:@"zh-CN" forHTTPHeaderField:@"Accept-Language"];
+    [r setValue:[self appInstanceId] forHTTPHeaderField:@"appInstanceId"];
+    [r setValue:dev forHTTPHeaderField:@"deviceId"];
+    r.HTTPBody = [NSJSONSerialization dataWithJSONObject:body options:0 error:NULL];
+    [r setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+    SLLog(@"mint try %ld", (long)i);
+    [[[NSURLSession sharedSession] dataTaskWithRequest:r completionHandler:
+      ^(NSData *d, NSURLResponse *resp, NSError *e) {
+        NSInteger st = [(NSHTTPURLResponse *)resp statusCode];
+        NSDictionary *o = nil;
+        if (d.length) { id j = [NSJSONSerialization JSONObjectWithData:d options:0 error:NULL];
+            if ([j isKindOfClass:[NSDictionary class]]) o = j; }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            SLLog(@"mint try %ld -> %ld", (long)i, (long)st);
+            if (st == 200 && [o[@"token"] isKindOfClass:[NSString class]]) {
+                SLState *s9 = [SLState load]; s9.signerIdx = (int)i; [s9 save];
+                done(o[@"token"], @"ok");
+            } else if (st == 403) {
+                [self mintTry:i + 1 dev:dev done:done];
+            } else {
+                done(nil, [NSString stringWithFormat:@"http %ld", (long)st]);
+            }
+        });
+    }] resume];
 }
 
 + (NSDictionary *)groupPrefs {
