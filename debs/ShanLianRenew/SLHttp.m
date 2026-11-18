@@ -150,6 +150,41 @@ static NSString *g_host = nil;
 
 #pragma mark - 应用组里的值
 
++ (NSString *)deviceId {
+    id v = [self groupPrefs][SL_DEVICE_KEY];
+    if ([v isKindOfClass:[NSString class]] && [v length]) return v;
+    NSDictionary *q = @{ (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
+                         (__bridge id)kSecAttrAccount: SL_DEVICE_KEY,
+                         (__bridge id)kSecAttrService: @"flutter_secure_storage_service",
+                         (__bridge id)kSecAttrAccessGroup: SL_KEYCHAIN_GROUP,
+                         (__bridge id)kSecReturnData: @YES,
+                         (__bridge id)kSecMatchLimit: (__bridge id)kSecMatchLimitOne };
+    CFTypeRef out = NULL;
+    if (SecItemCopyMatching((__bridge CFDictionaryRef)q, &out) == errSecSuccess && out) {
+        NSData *d = CFBridgingRelease(out);
+        NSString *t = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
+        if ([t isKindOfClass:[NSString class]] && t.length) return t;
+    }
+    return nil;
+}
+
++ (void)mintTokenCompletion:(void (^)(NSString *, NSString *))done {
+    NSString *dev = [self deviceId];
+    if (!dev.length) { SLLog(@"mint: no deviceId"); done(nil, @"no deviceId"); return; }
+    NSDictionary *body = @{ @"deviceInfo": @"iPhone 12", @"deviceId": dev, @"deviceType": @"1" };
+    SLLog(@"mint: posting login dev=%@", dev);
+    [self send:@"POST" path:@"/app/tourist/slfirstDeviceLoginfn" body:body
+     completion:^(NSInteger st, NSDictionary *r, NSError *e) {
+        NSString *raw = r ? [[NSString alloc] initWithData:
+            [NSJSONSerialization dataWithJSONObject:r options:0 error:NULL] encoding:NSUTF8StringEncoding]
+                          : e.localizedDescription;
+        if (!raw) raw = @"";
+        SLLog(@"mint resp http=%ld %@", (long)st, [raw substringToIndex:MIN((NSUInteger)200, raw.length)]);
+        NSString *t = r[@"token"];
+        done([t isKindOfClass:[NSString class]] ? t : nil, raw);
+    }];
+}
+
 + (NSDictionary *)groupPrefs {
     NSString *p = SLAppGroupPrefsPath();
     if (!p.length) return @{};
