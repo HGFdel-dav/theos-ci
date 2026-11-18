@@ -35,19 +35,26 @@ jobs:
           ( cd "$HOME/ldid-src" && make -j"$(nproc)" && sudo cp -f ldid /usr/local/bin/ldid )
           ldid -V || true
 
-      - name: Build rootless arm64
+      - name: Build roothide arm64
         run: |
           set -e
           cd debs/ShanLianRenew
           make clean || true
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide ARCHS=arm64
 
       - name: Build roothide arm64e
         run: |
           set -e
           cd debs/ShanLianRenew
           make clean || true
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide ARCHS=arm64e
+
+      - name: Build rootless arm64
+        run: |
+          set -e
+          cd debs/ShanLianRenew
+          make clean || true
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless ARCHS=arm64
 
       - name: Upload
         uses: actions/upload-artifact@v4
