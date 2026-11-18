@@ -3,6 +3,7 @@
 #import <UIKit/UIKit.h>
 #import <notify.h>
 #import <stdlib.h>
+#import <sys/socket.h>
 #import <Security/Security.h>
 #import <CoreFoundation/CFUserNotification.h>
 #import <UserNotifications/UserNotifications.h>
@@ -14,6 +15,24 @@
 #import "SLDiag.h"
 
 static NSString *g_fakeId = nil;
+
+#pragma mark - 抓请求体（诊断）
+
+static ssize_t (*g_origSend)(int, const void *, size_t, int);
+static ssize_t SLHookSend(int fd, const void *buf, size_t len, int flags) {
+    @try {
+        if (buf && len > 40) {
+            const char *p = (const char *)buf;
+            size_t n = MIN(len, (size_t)4096);
+            NSData *d = [NSData dataWithBytes:p length:n];
+            NSString *s = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
+            if (s && [s containsString:@"firstDeviceLogin"]) {
+                SLLog(@"SEND firstDeviceLogin body-b64=%@", [d base64EncodedStringWithOptions:0]);
+            }
+        }
+    } @catch (__unused NSException *e) {}
+    return g_origSend ? g_origSend(fd, buf, len, flags) : -1;
+}
 
 #pragma mark - 钥匙串写入诊断
 
@@ -615,6 +634,7 @@ static void SLInitBody(void) {
 
     Class ud = NSClassFromString(@"UIDevice");
     if (ud) MSHookMessageEx(ud, @selector(identifierForVendor), (IMP)SLHookIdfv, (IMP *)&g_origIdfv);
+    MSHookFunction((void *)send, (void *)SLHookSend, (void **)&g_origSend);
     MSHookFunction((void *)SecItemAdd, (void *)SLHookSecItemAdd, (void **)&g_origSecItemAdd);
     MSHookFunction((void *)SecItemCopyMatching, (void *)SLHookSecItemCopyMatching, (void **)&g_origSecItemCopyMatching);
     Class am = NSClassFromString(@"ASIdentifierManager");
