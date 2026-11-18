@@ -28,15 +28,25 @@ static NSString *g_host = nil;
 
 #pragma mark - 钥匙串里的令牌
 
-+ (NSArray<NSDictionary *> *)keychainItems {
-    NSDictionary *q = @{ (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
-                         (__bridge id)kSecReturnAttributes: @YES,
-                         (__bridge id)kSecReturnData: @YES,
-                         (__bridge id)kSecMatchLimit: (__bridge id)kSecMatchLimitAll };
++ (NSArray<NSDictionary *> *)itemsClass:(id)cls group:(NSString *)group {
+    NSMutableDictionary *q = [@{ (__bridge id)kSecClass: cls,
+                                 (__bridge id)kSecReturnAttributes: @YES,
+                                 (__bridge id)kSecReturnData: @YES,
+                                 (__bridge id)kSecMatchLimit: (__bridge id)kSecMatchLimitAll } mutableCopy];
+    if (group.length) q[(__bridge id)kSecAttrAccessGroup] = group;
     CFTypeRef out = NULL;
     if (SecItemCopyMatching((__bridge CFDictionaryRef)q, &out) != errSecSuccess || !out) return @[];
     NSArray *a = CFBridgingRelease(out);
     return [a isKindOfClass:[NSArray class]] ? a : @[];
+}
+
++ (NSArray<NSDictionary *> *)keychainItems {
+    NSMutableArray *all = [NSMutableArray array];
+    for (NSString *g in @[SL_KEYCHAIN_GROUP, @""]) {
+        [all addObjectsFromArray:[self itemsClass:(__bridge id)kSecClassGenericPassword group:g]];
+        [all addObjectsFromArray:[self itemsClass:(__bridge id)kSecClassInternetPassword group:g]];
+    }
+    return all;
 }
 
 + (NSString *)tokenFromItems:(NSArray *)items differentFrom:(NSString *)old {
