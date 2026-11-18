@@ -74,15 +74,52 @@ static NSString *g_host = nil;
     return nil;
 }
 
+// flutter_secure_storage 包装：{"v":"..."}，也可能有 base64
++ (NSString *)tokenFromSecureStorage {
+    NSDictionary *q = @{ (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
+                         (__bridge id)kSecAttrAccount: @"com.shanlian.pro",
+                         (__bridge id)kSecAttrAccessGroup: SL_KEYCHAIN_GROUP,
+                         (__bridge id)kSecReturnData: @YES,
+                         (__bridge id)kSecMatchLimit: (__bridge id)kSecMatchLimitOne };
+    CFTypeRef out = NULL;
+    if (SecItemCopyMatching((__bridge CFDictionaryRef)q, &out) != errSecSuccess || !out) return nil;
+    NSData *d = CFBridgingRelease(out);
+    if (![d isKindOfClass:[NSData class]] || !d.length) return nil;
+
+    NSString *s = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
+    SLLog(@"secure item len=%lu head=%@", (unsigned long)d.length,
+          s ? [s substringToIndex:MIN((NSUInteger)24, s.length)] : @"(bin)");
+
+    if ([s hasPrefix:@"{"]) {
+        id j = [NSJSONSerialization JSONObjectWithData:d options:0 error:NULL];
+        if ([j isKindOfClass:[NSDictionary class]]) {
+            id v = ((NSDictionary *)j)[@"v"] ?: ((NSDictionary *)j)[@"value"];
+            if ([v isKindOfClass:[NSString class]]) s = v;
+        }
+    }
+    if (![s isKindOfClass:[NSString class]] || !s.length) return nil;
+    if ([s hasPrefix:@"eyJ"]) return s;
+
+    NSData *b = [[NSData alloc] initWithBase64EncodedString:s
+                  options:NSDataBase64DecodingIgnoreUnknownCharacters];
+    if (b.length) {
+        NSString *t = [[NSString alloc] initWithData:b encoding:NSUTF8StringEncoding];
+        if ([t hasPrefix:@"eyJ"]) return t;
+    }
+    return nil;
+}
+
 + (NSString *)currentToken {
-    NSString *t = [self tokenFromItems:[self keychainItems] differentFrom:nil];
-    if (t) return t;
-    t = [self tokenInPrefsDifferentFrom:nil];
-    if (!t) SLLog(@"no token found (keychain/prefs)");
+    NSString *t = [self tokenFromSecureStorage];
+    if (!t) t = [self tokenFromItems:[self keychainItems] differentFrom:nil];
+    if (!t) t = [self tokenInPrefsDifferentFrom:nil];
+    if (!t) SLLog(@"no token found (all sources)");
     return t;
 }
 + (NSString *)newTokenDifferentFrom:(NSString *)old {
-    NSString *t = [self tokenFromItems:[self keychainItems] differentFrom:old];
+    NSString *t = [self tokenFromSecureStorage];
+    if (t && (!old.length || ![t isEqualToString:old])) return t;
+    t = [self tokenFromItems:[self keychainItems] differentFrom:old];
     return t ?: [self tokenInPrefsDifferentFrom:old];
 }
 
