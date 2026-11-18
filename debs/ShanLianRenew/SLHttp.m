@@ -174,6 +174,7 @@ static NSString *g_host = nil;
 }
 
 + (void)mintTry:(NSInteger)i dev:(NSString *)dev done:(void (^)(NSString *, NSString *))done {
+    [self hosts];
     NSData *key = [SLSigner keychainKey];
     if (!key || i > 5) { SLLog(@"mint: give up i=%ld", (long)i); done(nil, @"exhausted"); return; }
     NSString *peach = [NSString stringWithFormat:@"%.0f", [NSDate date].timeIntervalSince1970 * 1000];
@@ -207,7 +208,7 @@ static NSString *g_host = nil;
             if (st == 200 && [o[@"token"] isKindOfClass:[NSString class]]) {
                 SLState *s9 = [SLState load]; s9.signerIdx = (int)i; [s9 save];
                 done(o[@"token"], @"ok");
-            } else if (st == 403) {
+            } else if (st == 403 || st == 0) {
                 [self mintTry:i + 1 dev:dev done:done];
             } else {
                 done(nil, [NSString stringWithFormat:@"http %ld", (long)st]);
