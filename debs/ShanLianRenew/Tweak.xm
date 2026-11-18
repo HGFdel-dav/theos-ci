@@ -3,12 +3,6 @@
 #import <UIKit/UIKit.h>
 #import <notify.h>
 #import <stdlib.h>
-#import <sys/socket.h>
-#import <sys/uio.h>
-#import <dlfcn.h>
-#import <unistd.h>
-#import <mach-o/dyld.h>
-#import <string.h>
 #import <Security/Security.h>
 #import <CoreFoundation/CFUserNotification.h>
 #import <UserNotifications/UserNotifications.h>
@@ -21,107 +15,7 @@
 
 static NSString *g_fakeId = nil;
 
-#pragma mark - 抓请求体（诊断）
-
-static __thread int g_inHook = 0;
-static volatile int g_ready = 0;
-
-static void SLDumpBuf(NSString *tag, const void *buf, size_t len) {
-    if (!buf || len < 40 || !g_ready || g_inHook) return;
-    g_inHook = 1;
-    @try {
-        size_t n = MIN(len, (size_t)4096);
-        if (!memmem(buf, n, "firstDeviceLogin", 16)) return;
-        NSData *d = [NSData dataWithBytes:buf length:n];
-        SLLog(@"%@ firstDeviceLogin body-b64=%@", tag, [d base64EncodedStringWithOptions:0]);
-    } @catch (__unused NSException *e) {
-    } @finally {
-        g_inHook = 0;
-    }
-}
-
-static ssize_t (*g_origSend)(int, const void *, size_t, int);
-static ssize_t SLHookSend(int fd, const void *buf, size_t len, int flags) {
-    @try {
-        if (buf && len > 40) {
-            const char *p = (const char *)buf;
-            size_t n = MIN(len, (size_t)4096);
-            NSData *d = [NSData dataWithBytes:p length:n];
-            NSString *s = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
-            if (s && [s containsString:@"firstDeviceLogin"]) {
-                SLLog(@"SEND firstDeviceLogin body-b64=%@", [d base64EncodedStringWithOptions:0]);
-            }
-        }
-    } @catch (__unused NSException *e) {}
-    return g_origSend ? g_origSend(fd, buf, len, flags) : -1;
-}
-
-static ssize_t (*g_origWrite)(int, const void *, size_t);
-static ssize_t SLHookWrite(int fd, const void *buf, size_t len) {
-    SLDumpBuf(@"WRITE", buf, len);
-    return g_origWrite ? g_origWrite(fd, buf, len) : -1;
-}
-
-static ssize_t (*g_origSendTo)(int, const void *, size_t, int, const struct sockaddr *, socklen_t);
-static ssize_t SLHookSendTo(int fd, const void *buf, size_t len, int flags, const struct sockaddr *a, socklen_t al) {
-    SLDumpBuf(@"SENDTO", buf, len);
-    return g_origSendTo ? g_origSendTo(fd, buf, len, flags, a, al) : -1;
-}
-
-static ssize_t (*g_origWriteV)(int, const struct iovec *, int);
-static ssize_t SLHookWriteV(int fd, const struct iovec *iov, int cnt) {
-    for (int i = 0; i < cnt; i++) SLDumpBuf(@"WRITEV", iov[i].iov_base, iov[i].iov_len);
-    return g_origWriteV ? g_origWriteV(fd, iov, cnt) : -1;
-}
-
-static int (*g_origSSLWrite)(void *, const void *, int);
-static int SLHookSSLWrite(void *ssl, const void *buf, int num) {
-    SLDumpBuf(@"SSL", buf, (size_t)num);
-    return g_origSSLWrite ? g_origSSLWrite(ssl, buf, num) : -1;
-}
-
 #pragma mark - 钥匙串写入诊断
-
-static OSStatus (*g_origSecItemCopyMatching)(CFDictionaryRef, CFTypeRef *);
-static OSStatus SLHookSecItemCopyMatching(CFDictionaryRef q, CFTypeRef *out) {
-    @try {
-        NSDictionary *d = (__bridge NSDictionary *)q;
-        SLLog(@"CopyMatching class=%@ acct=%@ svce=%@ agrp=%@",
-              d[(__bridge id)kSecClass], d[(__bridge id)kSecAttrAccount],
-              d[(__bridge id)kSecAttrService], d[(__bridge id)kSecAttrAccessGroup]);
-    } @catch (__unused NSException *e) {}
-    OSStatus st = g_origSecItemCopyMatching ? g_origSecItemCopyMatching(q, out) : errSecInternalError;
-    @try {
-        if (st == errSecSuccess && out && *out) {
-            id r = (__bridge id)*out;
-            if ([r isKindOfClass:[NSData class]]) {
-                NSData *x = (NSData *)r;
-                NSString *t = x.length ? [[NSString alloc] initWithData:
-                    [x subdataWithRange:NSMakeRange(0, MIN((NSUInteger)20, x.length))] encoding:NSUTF8StringEncoding] : nil;
-                SLLog(@"  -> data len=%lu head=%@", (unsigned long)x.length, t ?: @"");
-            } else if ([r isKindOfClass:[NSArray class]]) {
-                for (NSDictionary *it in (NSArray *)r) {
-                    if (![it isKindOfClass:[NSDictionary class]]) continue;
-                    id dat = it[(__bridge id)kSecValueData];
-                    NSString *t = nil;
-                    if ([dat isKindOfClass:[NSData class]] && [(NSData *)dat length]) {
-                        t = [[NSString alloc] initWithData:[(NSData *)dat subdataWithRange:
-                             NSMakeRange(0, MIN((NSUInteger)16, [(NSData *)dat length]))]
-                                                  encoding:NSUTF8StringEncoding];
-                    }
-                    SLLog(@"  item acct=%@ len=%lu head=%@",
-                          it[(__bridge id)kSecAttrAccount],
-                          (unsigned long)[(NSData *)dat length], t ?: @"");
-                }
-            } else {
-                SLLog(@"  -> %@", [r class]);
-            }
-        } else {
-            SLLog(@"  -> st=%d", (int)st);
-        }
-    } @catch (__unused NSException *e) {}
-    return st;
-}
 
 static OSStatus (*g_origSecItemAdd)(CFDictionaryRef, CFTypeRef *);
 static OSStatus SLHookSecItemAdd(CFDictionaryRef attrs, CFTypeRef *out) {
@@ -688,16 +582,7 @@ static void SLInitBody(void) {
 
     Class ud = NSClassFromString(@"UIDevice");
     if (ud) MSHookMessageEx(ud, @selector(identifierForVendor), (IMP)SLHookIdfv, (IMP *)&g_origIdfv);
-
-    MSHookFunction((void *)send, (void *)SLHookSend, (void **)&g_origSend);
-    MSHookFunction((void *)write, (void *)SLHookWrite, (void **)&g_origWrite);
-    MSHookFunction((void *)sendto, (void *)SLHookSendTo, (void **)&g_origSendTo);
-    MSHookFunction((void *)writev, (void *)SLHookWriteV, (void **)&g_origWriteV);
-    g_ready = 1;
-    void *sslw = dlsym(RTLD_DEFAULT, "SSL_write");
-    if (sslw) MSHookFunction(sslw, (void *)SLHookSSLWrite, (void **)&g_origSSLWrite);
     MSHookFunction((void *)SecItemAdd, (void *)SLHookSecItemAdd, (void **)&g_origSecItemAdd);
-    MSHookFunction((void *)SecItemCopyMatching, (void *)SLHookSecItemCopyMatching, (void **)&g_origSecItemCopyMatching);
     Class am = NSClassFromString(@"ASIdentifierManager");
     if (am) MSHookMessageEx(am, @selector(advertisingIdentifier), (IMP)SLHookAdid, (IMP *)&g_origAdid);
 
