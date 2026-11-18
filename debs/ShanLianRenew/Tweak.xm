@@ -133,8 +133,8 @@ static NSUUID *SLHookAdid(id self, SEL _cmd) {
 static NSString *SLNewUUID(void) { return [[NSUUID UUID].UUIDString uppercaseString]; }
 
 static NSUserDefaults *SLDefaults(void) {
-    NSUserDefaults *d = [[NSUserDefaults alloc] initWithSuiteName:SL_APP_GROUP];
-    if (!d) d = [[NSUserDefaults alloc] initWithSuiteName:SL_APP_GROUP_OLD];
+    NSUserDefaults *d = [[NSUserDefaults alloc] initWithSuiteName:SL_PREF_SUITE];
+    if (!d) d = [[NSUserDefaults alloc] initWithSuiteName:SL_APP_GROUP];
     if (!d) d = [NSUserDefaults standardUserDefaults];
     return d;
 }
