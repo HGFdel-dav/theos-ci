@@ -256,6 +256,7 @@ static MSMusicDiagnosticStages MSMusicDiagnose(bool active, bool mediaAvailable,
     _playing = NO; _validAt = 0; _awaitingFreshInfo = YES;
     _playerIdentified = NO; _progressAvailable = NO; _lyricsRequestFinished = NO;
     _lyricsAwaitingFreshInfo = NO;
+    [_timer invalidate]; _timer = nil;
     [self publishLine:nil playing:NO force:YES];
     if (!_allowed || (!_lyrics && !_motion) || !_container.length || !MSMusicInfo || !MSMusicIsPlaying) return;
     __weak typeof(self) weakSelf = self;

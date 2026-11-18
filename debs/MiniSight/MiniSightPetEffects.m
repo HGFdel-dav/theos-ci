@@ -32,7 +32,7 @@
     NSUInteger _frameFailures;
     MSPetDamped _pivotX, _pivotY;
     NSString *_transientRole;
-    CGFloat _tilt, _sway, _flightAngle, _impact, _grabX, _grabY, _shakeStrength, _shakeDirection;
+    CGFloat _tilt, _sway, _flightAngle, _impact, _landImpact, _grabX, _grabY, _shakeStrength, _shakeDirection;
     double _phase, _musicAmplitude;
     MSPetDamped _angle, _offsetX, _offsetY, _scaleX, _scaleY, _dragX, _dragY;
     MSPetDragTrail _trail;
