@@ -6,4 +6,6 @@
 + (void)send:(NSString *)method path:(NSString *)path body:(NSDictionary *)json
   completion:(void (^)(NSInteger status, NSDictionary *resp, NSError *err))done;
 + (void)calibrateSignerCompletion:(void (^)(NSInteger idx))done;
++ (NSString *)deviceId;
++ (void)mintTokenCompletion:(void (^)(NSString *token, NSString *raw))done;
 @end

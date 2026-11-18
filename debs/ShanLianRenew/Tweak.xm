@@ -241,6 +241,13 @@ static void SLFailOrRetry(SLState *st, NSString *reason) {
 #pragma mark - 流程（App 端）
 
 static void SLRefreshDeadline(void) {
+    if (![SLHttp currentToken]) {
+        [SLHttp mintTokenCompletion:^(NSString *t, NSString *raw) {
+            if (t.length) { SLLog(@"mint ok token len=%lu", (unsigned long)t.length); SLRefreshDeadline(); }
+            else { SLLog(@"mint failed"); }
+        }];
+        return;
+    }
     SLState *st0 = [SLState load];
     if (st0.phase == SLPhaseNeedFill || st0.phase == SLPhaseResetting) return;
     [SLHttp send:@"GET" path:@"/app/customer/slgetUserInfogo" body:nil
