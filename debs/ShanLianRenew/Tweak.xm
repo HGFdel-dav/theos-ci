@@ -393,6 +393,8 @@ static void SLInitBody(void) {
         st.lastError = @"";
         [st save];
         SLLog(@"fresh %@ state=%@ logdir=%@", SL_VER, SLStatePath(), SLLogDir());
+        SLOnLaunch();
+        return;
     }
 
     BOOL busy = (st.phase == SLPhaseNeedFill || st.phase == SLPhaseResetting);
@@ -400,7 +402,7 @@ static void SLInitBody(void) {
         [SLHttp calibrateSignerCompletion:^(NSInteger i) {
             SLState *s2 = [SLState load]; s2.signerIdx = (int)i; [s2 save];
             SLLog(@"signer=%ld", (long)i);
-            if (i >= 0) SLOnLaunch();
+            SLOnLaunch();
         }];
     } else {
         SLOnLaunch();
