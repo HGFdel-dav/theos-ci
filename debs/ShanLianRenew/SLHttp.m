@@ -431,8 +431,7 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
     [[[NSURLSession sharedSession] dataTaskWithRequest:r completionHandler:
       ^(NSData *data, NSURLResponse *resp, NSError *err) {
         if (err && ![(NSHTTPURLResponse *)resp statusCode]) {
-            SLLog(@"net err %@ -> rotate host", err.localizedDescription);
-            [self rotateHost];
+            SLLog(@"net err %@ (host kept)", err.localizedDescription);
         }
         NSInteger code = [(NSHTTPURLResponse *)resp statusCode];
         NSDictionary *o = nil;
