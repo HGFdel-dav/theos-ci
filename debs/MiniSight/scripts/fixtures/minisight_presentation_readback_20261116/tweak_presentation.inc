@@ -89,7 +89,6 @@ static void MiniSightRequestResources(BOOL force, void (^completion)(void)) {
         [gMiniSightResourceCompletions removeAllObjects];
         for (void (^block)(void) in pending) block();
         MiniSightUpdateMusic();
-        MiniSightNameWakeUpdate();
     }];
 }
 
@@ -119,7 +118,6 @@ static void MiniSightConvergeSettings(BOOL resourcesFresh) {
         MiniSightApplySettingsLive();
     }
     MiniSightUpdateMusic();
-    MiniSightNameWakeUpdate();
 }
 
 static void MiniSightReloadSettings(void) {
@@ -154,9 +152,6 @@ static void MiniSightReloadSettings(void) {
 }
 
 static void MiniSightUserHide(void) {
-    gMiniSightNameWakePresentationHeld = NO;
-    MiniSightNameWakeCancel(@"user_hidden", YES);
-    gMiniSightNameWakePresentationHeld = NO;
     gMiniSightShown = NO;
     gMiniSightUserHidden = YES;
     MSMiniSightSetPreference(@"MiniSightUserHidden", @YES);
