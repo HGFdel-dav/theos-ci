@@ -1,4 +1,5 @@
 #import "SLHttp.h"
+#import "SLCacheDB.h"
 #import <mach/mach.h>
 #import <mach/vm_region.h>
 #import <string.h>
@@ -236,7 +237,8 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
 }
 
 + (NSString *)currentToken {
-    NSString *t = [self tokenFromMemory];
+    NSString *t = [SLCacheDB token];
+    if (!t) t = [self tokenFromMemory];
     if (!t) t = [self tokenFromSecureStorage];
     if (!t) t = [self tokenFromItems:[self keychainItems] differentFrom:nil];
     if (!t) t = [self tokenInPrefsDifferentFrom:nil];
@@ -379,12 +381,12 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
 }
 
 + (NSMutableURLRequest *)request:(NSString *)method path:(NSString *)path body:(NSDictionary *)json {
-    [self hosts];   // 确保 g_host 已初始化
-    // 已验证可长期重放的固定签名对（host 必须是 api.slcloudstore.com）
-    NSString *peach = @"1795058555152";
-    NSString *sig = @"1o7LhUbImdtP60eCkZKPBa7nCMkCcGF//TRjz4UG6BM=";
-    if ([method isEqualToString:@"POST"]) {
-        sig = @"M15jUnjOTNCpZjddd+GLohsDrkA9WyHDFWAQ7lTo2No=";
+    NSString *peach = [NSString stringWithFormat:@"%.0f", [NSDate date].timeIntervalSince1970 * 1000];
+    NSString *sig = nil;
+    if ([SLCacheDB refresh:g_host] || [SLCacheDB signature]) {
+        NSString *cp = [SLCacheDB peach];
+        NSString *cs = [SLCacheDB signature];
+        if (cp.length && cs.length) { peach = cp; sig = cs; }
     }
     SLState *st = [SLState load];
     NSData *key = [SLSigner keychainKey];
