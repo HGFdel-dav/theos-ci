@@ -425,31 +425,9 @@ static void SLGoBackground(void) {
         SLLog(@"app suspended");
         return;
     }
-    SEL s2 = sel_registerName("_suspend");
-    if ([a respondsToSelector:s2]) {
-        ((void (*)(id, SEL))objc_msgSend)(a, s2);
-        SLLog(@"app _suspended");
-    }
-}
-
-static void SLOnLaunch(void) {
-    // —— 观察模式：只取样，不动任何东西 ——
-    // 每次 App 启动都记一份「密钥 + 缓存里的加密串」，供离线配对分析
-    SLCaptureRun();
-
-    SLState *st = [SLState load];
-    if (st.phase == SLPhaseResetting) {
-        // 观察版：不做重置，只记一笔
-        SLLog(@"observe-only: reset requested but skipped");
-        st.phase = SLPhaseIdle;
-        [st save];
-    }
-    if (st.phase == SLPhaseNeedFill) {
-        SLLog(@"observe-only: fill requested but skipped");
-        st.phase = SLPhaseIdle;
-        [st save];
-    }
-    [SLHttp warmup];
+    if (st.phase == SLPhaseNeedFill) { SLRunFillPhase(st); return; }
+    [SLHttp probeNet];
+    [SLHttp probeHeaders];
     SLRefreshDeadline();
 }
 
