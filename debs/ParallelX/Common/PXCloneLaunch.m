@@ -363,6 +363,21 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     [self pollClosed:token];
 }
 
+- (NSString *)closeTimeoutDetail {
+    NSArray *bridges = _bridges[_bundle].allObjects;
+    NSInteger scenes = 0, canvases = 0, visible = 0;
+    for (id bridge in bridges) {
+        if (PXLaunchObject(bridge, @"scene")) scenes++;
+        if ([PXLaunchObject(bridge, @"canvas") isKindOfClass:UIView.class]) canvases++;
+        if (PXLaunchBridgeCoversScreen(bridge)) visible++;
+    }
+    NSError *error = nil;
+    NSArray *running = PXRunningProcesses(_bundle, &error);
+    return [NSString stringWithFormat:@"close_timeout b=%lu scene=%ld canvas=%ld visible=%ld proc=%lu",
+            (unsigned long)bridges.count, (long)scenes, (long)canvases, (long)visible,
+            (unsigned long)(running ? running.count : 0)];
+}
+
 - (void)pollClosed:(uint64_t)token {
     if (!PXCloneFlowIsCurrent(&_flow, token) || _flow.phase != PXCloneFlowClosing) return;
     BOOL closed = YES;
@@ -376,7 +391,10 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
         [self pollTerminated:token];
         return;
     }
-    if (++_attempt >= 30) { [self finish:token error:PXLaunchError(4, @"旧分屏场景未释放")]; return; }
+    if (++_attempt >= 30) {
+        [self record:[self closeTimeoutDetail] code:4];
+        [self finish:token error:PXLaunchError(4, @"旧分屏场景未释放")]; return;
+    }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 100 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ [self pollClosed:token]; });
 }
 
@@ -558,7 +576,7 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     // A bounded, content-free event ring survives a missed live log capture.
     // No account display names, credentials, messages or app content.
     NSDictionary *event = @{ @"time": @(NSDate.date.timeIntervalSince1970),
-                             @"build": @"clone0.89", @"token": @(_flow.token),
+                             @"build": @"clone0.90", @"token": @(_flow.token),
                              @"stage": stage, @"code": @(code),
                              @"bundle": _bundle ?: @"", @"targetHash": @(_container.hash) };
     [_trace addObject:event];
