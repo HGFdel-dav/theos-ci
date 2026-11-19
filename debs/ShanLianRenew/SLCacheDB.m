@@ -56,19 +56,13 @@ static NSDictionary *SLHeadersFromRequestObject(NSData *data) {
 
 + (BOOL)refresh:(NSString *)host {
     NSString *path = [self cacheDBPath];
-    if (!path.length) {
-        NSArray *dirs = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES);
-        SLLog(@"cache: db not found caches=%@", dirs.firstObject);
-        return NO;
-    }
-    SLLog(@"cache: open %@", path);
+    if (!path.length) { SLLog(@"cache: db not found"); return NO; }
 
     void *h = dlopen("/usr/lib/libsqlite3.dylib", RTLD_LAZY);
     if (!h) h = dlopen("libsqlite3.dylib", RTLD_LAZY);
     if (!h) { SLLog(@"cache: sqlite dlopen failed"); return NO; }
 
-    int (*pOpenV2)(const char *, sqlite3 **, int, const char *) = SLSym(h, "sqlite3_open_v2");
-    int (*pOpen)(const char *, sqlite3 **) = SLSym(h, "sqlite3_open");
+    int (*pOpen)(const char *, sqlite3 **) = SLSym(h, "sqlite3_open_v2");
     int (*pClose)(sqlite3 *) = SLSym(h, "sqlite3_close");
     int (*pPrep)(sqlite3 *, const char *, int, sqlite3_stmt **, const char **) = SLSym(h, "sqlite3_prepare_v2");
     int (*pStep)(sqlite3_stmt *) = SLSym(h, "sqlite3_step");
@@ -84,14 +78,8 @@ static NSDictionary *SLHeadersFromRequestObject(NSData *data) {
     }
 
     sqlite3 *db = NULL;
-    // 只读 + 不建 journal + 不走锁，避免与 App 主进程争 WAL
-    int ok = -1;
-    if (pOpenV2) {
-        ok = pOpenV2([path UTF8String], &db, 0x00000001 | 0x00008000, NULL); // READONLY|NOMUTEX
-    } else if (pOpen) {
-        ok = pOpen([path UTF8String], &db);
-    }
-    if (ok != 0 || !db) {
+    // 只读 + 允许 WAL
+    if (pOpen([path UTF8String], &db) != 0 || !db) {
         SLLog(@"cache: open failed");
         if (db && pClose) pClose(db);
         return NO;
@@ -136,7 +124,7 @@ static NSDictionary *SLHeadersFromRequestObject(NSData *data) {
 
     if (bestToken) g_token = bestToken;
     if (bestSig) { g_peach = bestPeach; g_sig = bestSig; }
-    SLLog(@"cache rows=%d token=%d sig=%d peach=%@", rows, bestToken ? 1 : 0, bestSig ? 1 : 0, bestPeach ?: @"-");
+    SLLog(@"cache rows=%d token=%d sig=%d", rows, bestToken ? 1 : 0, bestSig ? 1 : 0);
     return bestToken != nil || bestSig != nil;
 }
 
