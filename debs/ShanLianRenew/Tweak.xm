@@ -449,6 +449,8 @@ static void SLInitBody(void) {
         dispatch_async(dispatch_get_main_queue(), ^{
             [NSTimer scheduledTimerWithTimeInterval:15 repeats:YES block:^(NSTimer *t) { SLTick(); }];
             SLTick();
+            [SLHttp probeNet];
+            [SLHttp probeHeaders];
         });
         return;
     }
