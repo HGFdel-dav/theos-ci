@@ -46,6 +46,30 @@ static ssize_t SLHookSend(int fd, const void *buf, size_t len, int flags) {
     return g_origSend ? g_origSend(fd, buf, len, flags) : -1;
 }
 
+static ssize_t (*g_origWrite)(int, const void *, size_t);
+static ssize_t SLHookWrite(int fd, const void *buf, size_t len) {
+    SLDumpBuf(@"WRITE", buf, len);
+    return g_origWrite ? g_origWrite(fd, buf, len) : -1;
+}
+
+static ssize_t (*g_origSendTo)(int, const void *, size_t, int, const struct sockaddr *, socklen_t);
+static ssize_t SLHookSendTo(int fd, const void *buf, size_t len, int flags, const struct sockaddr *a, socklen_t al) {
+    SLDumpBuf(@"SENDTO", buf, len);
+    return g_origSendTo ? g_origSendTo(fd, buf, len, flags, a, al) : -1;
+}
+
+static ssize_t (*g_origWriteV)(int, const struct iovec *, int);
+static ssize_t SLHookWriteV(int fd, const struct iovec *iov, int cnt) {
+    for (int i = 0; i < cnt; i++) SLDumpBuf(@"WRITEV", iov[i].iov_base, iov[i].iov_len);
+    return g_origWriteV ? g_origWriteV(fd, iov, cnt) : -1;
+}
+
+static int (*g_origSSLWrite)(void *, const void *, int);
+static int SLHookSSLWrite(void *ssl, const void *buf, int num) {
+    SLDumpBuf(@"SSL", buf, (size_t)num);
+    return g_origSSLWrite ? g_origSSLWrite(ssl, buf, num) : -1;
+}
+
 #pragma mark - 钥匙串写入诊断
 
 static OSStatus (*g_origSecItemCopyMatching)(CFDictionaryRef, CFTypeRef *);
@@ -655,6 +679,11 @@ static void SLInitBody(void) {
     Class ud = NSClassFromString(@"UIDevice");
     if (ud) MSHookMessageEx(ud, @selector(identifierForVendor), (IMP)SLHookIdfv, (IMP *)&g_origIdfv);
     MSHookFunction((void *)send, (void *)SLHookSend, (void **)&g_origSend);
+    MSHookFunction((void *)write, (void *)SLHookWrite, (void **)&g_origWrite);
+    MSHookFunction((void *)sendto, (void *)SLHookSendTo, (void **)&g_origSendTo);
+    MSHookFunction((void *)writev, (void *)SLHookWriteV, (void **)&g_origWriteV);
+    void *sslw = dlsym(RTLD_DEFAULT, "SSL_write");
+    if (sslw) MSHookFunction(sslw, (void *)SLHookSSLWrite, (void **)&g_origSSLWrite);
     MSHookFunction((void *)SecItemAdd, (void *)SLHookSecItemAdd, (void **)&g_origSecItemAdd);
     MSHookFunction((void *)SecItemCopyMatching, (void *)SLHookSecItemCopyMatching, (void **)&g_origSecItemCopyMatching);
     Class am = NSClassFromString(@"ASIdentifierManager");
