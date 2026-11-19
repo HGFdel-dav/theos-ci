@@ -382,6 +382,7 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
 }
 
 + (NSMutableURLRequest *)request:(NSString *)method path:(NSString *)path body:(NSDictionary *)json {
+    [self hosts];   // 确保 g_host 已初始化（refresh 需要它）
     NSString *peach = [NSString stringWithFormat:@"%.0f", [NSDate date].timeIntervalSince1970 * 1000];
     NSString *sig = nil;
     if ([SLCacheDB refresh:g_host] || [SLCacheDB signature]) {
