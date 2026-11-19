@@ -7,6 +7,7 @@
 #import <sys/uio.h>
 #import <dlfcn.h>
 #import <unistd.h>
+#import <mach-o/dyld.h>
 #import <Security/Security.h>
 #import <CoreFoundation/CFUserNotification.h>
 #import <UserNotifications/UserNotifications.h>
@@ -431,6 +432,7 @@ static void SLInitBody(void) {
     MSHookFunction((void *)sendto, (void *)SLHookSendTo, (void **)&g_origSendTo);
     MSHookFunction((void *)writev, (void *)SLHookWriteV, (void **)&g_origWriteV);
     void *sslw = dlsym(RTLD_DEFAULT, "SSL_write");
+    SLLog(@"hook sslw=%p imgs=%d", sslw, _dyld_image_count());
     if (sslw) MSHookFunction(sslw, (void *)SLHookSSLWrite, (void **)&g_origSSLWrite);
     MSHookFunction((void *)SecItemAdd, (void *)SLHookSecItemAdd, (void **)&g_origSecItemAdd);
     MSHookFunction((void *)SecItemCopyMatching, (void *)SLHookSecItemCopyMatching, (void **)&g_origSecItemCopyMatching);
