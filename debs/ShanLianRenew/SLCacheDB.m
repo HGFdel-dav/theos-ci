@@ -28,25 +28,6 @@ static void *SLSym(void *h, const char *n) { return h ? dlsym(h, n) : NULL; }
 }
 
 // 从 request_object(NSKeyedArchiver plist) 里取出头部字典
-static NSString *SLURLFromRequestObject(NSData *data) {
-    if (!data.length) return nil;
-    id obj = nil;
-    @try {
-        obj = [NSPropertyListSerialization propertyListWithData:data
-                                                        options:NSPropertyListImmutable
-                                                         format:NULL error:NULL];
-    } @catch (__unused NSException *e) { obj = nil; }
-    if (![obj isKindOfClass:[NSDictionary class]]) return nil;
-    id arr = ((NSDictionary *)obj)[@"Array"];
-    if (![arr isKindOfClass:[NSArray class]]) return nil;
-    for (id x in (NSArray *)arr) {
-        if ([x isKindOfClass:[NSDictionary class]] && ((NSDictionary *)x)[@"_CFURLString"]) {
-            return ((NSDictionary *)x)[@"_CFURLString"];
-        }
-    }
-    return nil;
-}
-
 static NSDictionary *SLHeadersFromRequestObject(NSData *data) {
     if (!data.length) return nil;
     id obj = nil;
@@ -75,19 +56,13 @@ static NSDictionary *SLHeadersFromRequestObject(NSData *data) {
 
 + (BOOL)refresh:(NSString *)host {
     NSString *path = [self cacheDBPath];
-    if (!path.length) {
-        NSArray *dirs = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES);
-        SLLog(@"cache: db not found caches=%@", dirs.firstObject);
-        return NO;
-    }
-    SLLog(@"cache: open %@", path);
+    if (!path.length) { SLLog(@"cache: db not found"); return NO; }
 
     void *h = dlopen("/usr/lib/libsqlite3.dylib", RTLD_LAZY);
     if (!h) h = dlopen("libsqlite3.dylib", RTLD_LAZY);
     if (!h) { SLLog(@"cache: sqlite dlopen failed"); return NO; }
 
-    int (*pOpenV2)(const char *, sqlite3 **, int, const char *) = SLSym(h, "sqlite3_open_v2");
-    int (*pOpen)(const char *, sqlite3 **) = SLSym(h, "sqlite3_open");
+    int (*pOpen)(const char *, sqlite3 **) = SLSym(h, "sqlite3_open_v2");
     int (*pClose)(sqlite3 *) = SLSym(h, "sqlite3_close");
     int (*pPrep)(sqlite3 *, const char *, int, sqlite3_stmt **, const char **) = SLSym(h, "sqlite3_prepare_v2");
     int (*pStep)(sqlite3_stmt *) = SLSym(h, "sqlite3_step");
@@ -103,14 +78,8 @@ static NSDictionary *SLHeadersFromRequestObject(NSData *data) {
     }
 
     sqlite3 *db = NULL;
-    // 只读 + 不建 journal + 不走锁，避免与 App 主进程争 WAL
-    int ok = -1;
-    if (pOpenV2) {
-        ok = pOpenV2([path UTF8String], &db, 0x00000001 | 0x00008000, NULL); // READONLY|NOMUTEX
-    } else if (pOpen) {
-        ok = pOpen([path UTF8String], &db);
-    }
-    if (ok != 0 || !db) {
+    // 只读 + 允许 WAL
+    if (pOpen([path UTF8String], &db) != 0 || !db) {
         SLLog(@"cache: open failed");
         if (db && pClose) pClose(db);
         return NO;
@@ -134,11 +103,6 @@ static NSDictionary *SLHeadersFromRequestObject(NSData *data) {
         NSData *data = [NSData dataWithBytes:b length:(NSUInteger)n];
         NSDictionary *hdr = SLHeadersFromRequestObject(data);
         if (!hdr) continue;
-        NSString *url = SLURLFromRequestObject(data);
-        if (host.length && url.length) {
-            NSString *h = [NSURL URLWithString:url].host;
-            if (h.length && ![h isEqualToString:host]) continue;
-        }
 
         NSString *tk = hdr[@"Authorization"];
         NSString *pe = hdr[@"peach"];
@@ -160,66 +124,12 @@ static NSDictionary *SLHeadersFromRequestObject(NSData *data) {
 
     if (bestToken) g_token = bestToken;
     if (bestSig) { g_peach = bestPeach; g_sig = bestSig; }
-    SLLog(@"cache rows=%d token=%d sig=%d peach=%@", rows, bestToken ? 1 : 0, bestSig ? 1 : 0, bestPeach ?: @"-");
+    SLLog(@"cache rows=%d token=%d sig=%d", rows, bestToken ? 1 : 0, bestSig ? 1 : 0);
     return bestToken != nil || bestSig != nil;
 }
 
 + (NSString *)token { return g_token; }
 + (NSString *)peach { return g_peach; }
 + (NSString *)signature { return g_sig; }
-
-// 取缓存里 firstDeviceLogin 的请求体原文（用于解密配对）
-+ (NSString *)firstDeviceLoginBody {
-    NSString *dbPath = [self cacheDBPath];
-    if (!dbPath) return nil;
-    void *h = dlopen("/usr/lib/libsqlite3.dylib", RTLD_LAZY);
-    if (!h) h = dlopen("libsqlite3.dylib", RTLD_LAZY);
-    if (!h) return nil;
-    int (*pOpenV2)(const char *, sqlite3 **, int, const char *) = SLSym(h, "sqlite3_open_v2");
-    void *(*pPrep)(void *, const char *, int, void **, const char *) = SLSym(h, "sqlite3_prepare_v2");
-    int (*pStep)(void *) = SLSym(h, "sqlite3_step");
-    const unsigned char *(*pColText)(void *, int) = SLSym(h, "sqlite3_column_text");
-    int (*pColBytes)(void *, int) = SLSym(h, "sqlite3_column_bytes");
-    int (*pFinal)(void *) = SLSym(h, "sqlite3_finalize");
-    int (*pClose)(void *) = SLSym(h, "sqlite3_close");
-    if (!pOpenV2 || !pPrep || !pStep || !pColText || !pClose) return nil;
-
-    sqlite3 *db = NULL;
-    if (pOpenV2(dbPath.UTF8String, &db, 0x00000001 | 0x00008000, NULL) != 0 || !db) return nil;
-
-    NSString *found = nil;
-    void *st = NULL;
-    const char *sql = "select request_object from cfurl_cache_blob_data";
-    if (pPrep(db, sql, -1, &st, NULL) == 0 && st) {
-        while (pStep(st) == 100) {
-            const unsigned char *txt = pColText(st, 0);
-            int n = pColBytes(st, 0);
-            if (!txt || n <= 0) continue;
-            NSData *d = [NSData dataWithBytes:txt length:(NSUInteger)n];
-            if (!d.length) continue;
-            @try {
-                id pl = [NSPropertyListSerialization propertyListWithData:d
-                                    options:NSPropertyListImmutable format:NULL error:NULL];
-                if (![pl isKindOfClass:[NSDictionary class]]) continue;
-                NSArray *arr = pl[@"Array"];
-                if (![arr isKindOfClass:[NSArray class]] || arr.count < 22) continue;
-                if ([arr[1] isKindOfClass:[NSDictionary class]]) {
-                    NSString *u = arr[1][@"_CFURLString"];
-                    if (![u isKindOfClass:[NSString class]] ||
-                        [u rangeOfString:@"firstDeviceLogin"].location == NSNotFound) continue;
-                } else continue;
-                id body = arr[21];
-                if ([body isKindOfClass:[NSArray class]] && [body count]) body = [body firstObject];
-                if (![body isKindOfClass:[NSData class]] || ![body length]) continue;
-                found = [[NSString alloc] initWithData:body encoding:NSUTF8StringEncoding];
-                if (found.length) break;
-            } @catch (NSException *e) { continue; }
-        }
-        if (st) pFinal(st);
-    }
-    pClose(db);
-    dlclose(h);
-    return found;
-}
 
 @end
