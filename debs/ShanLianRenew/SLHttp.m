@@ -1,4 +1,5 @@
 #import "SLHttp.h"
+#import "SLCacheDB.h"
 #import <mach/mach.h>
 #import <mach/vm_region.h>
 #import <string.h>
@@ -253,7 +254,8 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
 }
 
 + (NSString *)currentToken {
-    NSString *t = [self tokenFromMemory];
+    NSString *t = [SLCacheDB token];
+    if (!t) t = [self tokenFromMemory];
     if (!t) t = [self tokenFromSecureStorage];
     if (!t) t = [self tokenFromItems:[self keychainItems] differentFrom:nil];
     if (!t) t = [self tokenInPrefsDifferentFrom:nil];
@@ -415,9 +417,8 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
     [r setValue:peach forHTTPHeaderField:@"peach"];
     if (sig.length) {
         [r setValue:sig forHTTPHeaderField:@"lightningx"];
-    } else {
-        NSData *key = [SLSigner keychainKey];   // 只在需要时才碰钥匙串
-        if (key) [r setValue:[SLSigner signPeach:peach key:key idx:st.signerIdx] forHTTPHeaderField:@"lightningx"];
+    } else if (key) {
+        [r setValue:[SLSigner signPeach:peach key:key idx:st.signerIdx] forHTTPHeaderField:@"lightningx"];
     }
     [r setValue:@"4.5.4" forHTTPHeaderField:@"version"];
     [r setValue:@"15.5" forHTTPHeaderField:@"system-version"];
