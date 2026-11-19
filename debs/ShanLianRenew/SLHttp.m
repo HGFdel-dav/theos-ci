@@ -487,6 +487,7 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
     [self hosts];
     SLLog(@"%@ %@ host=%@ sig=%d", method, path, g_host,
           [[SLState load] signerIdx]);
+    [SLCacheDB refresh:g_host];
     NSString *peach = @"1795058555152";
     NSString *sig = [method isEqualToString:@"POST"]
         ? @"M15jUnjOTNCpZjddd+GLohsDrkA9WyHDFWAQ7lTo2No="
