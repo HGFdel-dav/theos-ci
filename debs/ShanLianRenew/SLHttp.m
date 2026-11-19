@@ -530,15 +530,11 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
     SLLog(@"%@ %@ host=%@ sig=%d", method, path, g_host,
           [[SLState load] signerIdx]);
     NSMutableURLRequest *r = [self request:method path:path body:json];
-    NSURLSessionConfiguration *cfg = [NSURLSessionConfiguration ephemeralSessionConfiguration];
-    cfg.timeoutIntervalForRequest = 60;
-    cfg.timeoutIntervalForResource = 90;
-    cfg.waitsForConnectivity = NO;
-    cfg.requestCachePolicy = NSURLRequestReloadIgnoringLocalAndRemoteCacheData;
-    static NSURLSession *sess = nil;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{ sess = [NSURLSession sessionWithConfiguration:cfg]; });
-    [[sess dataTaskWithRequest:r completionHandler:
+    SLLog(@"send URL=%@ peach=%@ sig=%@ authlen=%lu",
+          r.URL.absoluteString, [r valueForHTTPHeaderField:@"peach"],
+          [[r valueForHTTPHeaderField:@"lightningx"] substringToIndex:MIN((NSUInteger)12, [[r valueForHTTPHeaderField:@"lightningx"] length])],
+          (unsigned long)[[r valueForHTTPHeaderField:@"Authorization"] length]);
+    [[[NSURLSession sharedSession] dataTaskWithRequest:r completionHandler:
       ^(NSData *data, NSURLResponse *resp, NSError *err) {
         if (err && ![(NSHTTPURLResponse *)resp statusCode]) {
             SLLog(@"net err %@ (host kept)", err.localizedDescription);
