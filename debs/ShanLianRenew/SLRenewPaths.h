@@ -12,7 +12,7 @@
 #define SL_STATE_NAME  @"com.minis.shanlianrenew.plist"
 
 #define SL_NOTIFY_FIRE @"com.minis.shanlianrenew.fire"
-#define SL_VER @"1.0.21"
+#define SL_VER @"1.0.23"
 
 #ifdef __cplusplus
 extern "C" {
