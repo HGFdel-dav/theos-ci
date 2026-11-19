@@ -63,9 +63,20 @@ static NSString *g_host = nil;
 + (NSString *)tokenFromItems:(NSArray *)items differentFrom:(NSString *)old {
     for (NSDictionary *d in items) {
         NSData *data = d[(__bridge id)kSecValueData];
-        if (![data isKindOfClass:[NSData class]] || data.length < 20) continue;
+        if (![data isKindOfClass:[NSData class]] || data.length < 20 || data.length > 4096) continue;
         NSString *s = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-        if (![s hasPrefix:@"eyJ"]) continue;
+        if (!s.length) continue;
+        BOOL ok = YES;
+        for (NSUInteger i = 0; i < s.length && ok; i++) {
+            unichar c = [s characterAtIndex:i];
+            ok = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+                 c == '.' || c == '_' || c == '-';
+        }
+        if (!ok) continue;
+        id acct = d[(__bridge id)kSecAttrAccount];
+        if ([acct isKindOfClass:[NSString class]] && [s length] <= 200) {
+            SLLog(@"token cand acct=%@ len=%lu val=%@", acct, (unsigned long)s.length, s);
+        }
         if (old.length && [s isEqualToString:old]) continue;
         return s;
     }
