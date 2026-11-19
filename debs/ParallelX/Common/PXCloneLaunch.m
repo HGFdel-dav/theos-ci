@@ -50,6 +50,21 @@ static BOOL PXLaunchBool(id target, NSString *name) {
            PXCloneSendBool(target, selector);
 }
 
+// A closed split can leave its bridge object alive with a non-nil scene and
+// canvas, so those pointers say nothing about what is actually on screen.
+// Only a canvas attached to a visible window can still cover the screen.
+static BOOL PXLaunchBridgeCoversScreen(id bridge) {
+    id canvas = PXLaunchObject(bridge, @"canvas");
+    if (![canvas isKindOfClass:UIView.class]) return NO;
+    UIView *view = canvas;
+    UIWindow *window = view.window;
+    if (!window || window.hidden || window.alpha <= 0.1) return NO;
+    for (UIView *ancestor = view; ancestor; ancestor = ancestor.superview)
+        if (ancestor.hidden || ancestor.alpha <= 0.1) return NO;
+    CGRect rect = [view convertRect:view.bounds toView:window];
+    return !CGRectIsEmpty(CGRectIntersection(rect, window.bounds));
+}
+
 static NSError *PXLaunchError(NSInteger code, NSString *message) {
     return [NSError errorWithDomain:@"com.niubiprass.parallelxclone.launch"
                                code:code userInfo:@{NSLocalizedDescriptionKey: message}];
@@ -353,7 +368,7 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     BOOL closed = YES;
     if (!_reuse) {
         for (id bridge in _bridges[_bundle].allObjects)
-            if (PXLaunchObject(bridge, @"scene") || PXLaunchObject(bridge, @"canvas")) { closed = NO; break; }
+            if (PXLaunchBridgeCoversScreen(bridge)) { closed = NO; break; }
     }
     if (closed) {
         if (!PXCloneFlowAdvance(&_flow, token, PXCloneFlowClosing, PXCloneFlowTerminating)) return;
@@ -543,7 +558,7 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     // A bounded, content-free event ring survives a missed live log capture.
     // No account display names, credentials, messages or app content.
     NSDictionary *event = @{ @"time": @(NSDate.date.timeIntervalSince1970),
-                             @"build": @"clone0.88", @"token": @(_flow.token),
+                             @"build": @"clone0.89", @"token": @(_flow.token),
                              @"stage": stage, @"code": @(code),
                              @"bundle": _bundle ?: @"", @"targetHash": @(_container.hash) };
     [_trace addObject:event];
