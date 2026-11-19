@@ -458,11 +458,11 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
         NSDate *t0 = [NSDate date];
         [[[NSURLSession sharedSession] dataTaskWithRequest:r completionHandler:
           ^(NSData *d, NSURLResponse *resp, NSError *e) {
-            dispatch_async(dispatch_get_main_queue(), ^{
+            dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
                 SLLog(@"hv %@ -> %ld %.2fs %@", name, (long)[(NSHTTPURLResponse *)resp statusCode],
                       -[t0 timeIntervalSinceNow], e.localizedDescription ?: @"-");
                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)),
-                               dispatch_get_main_queue(), ^{
+                               dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
                     void (^nb)(NSUInteger) = weakRun;
                     if (nb) nb(i + 1);
                 });
