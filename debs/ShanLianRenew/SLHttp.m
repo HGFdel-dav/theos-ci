@@ -422,6 +422,39 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
     return r;
 }
 
++ (void)probeHeaders {
+    NSString *A = [SLCacheDB token] ?: @"";
+    NSString *S = @"1o7LhUbImdtP60eCkZKPBa7nCMkCcGF//TRjz4UG6BM=";
+    NSString *P = @"1795058555152";
+    NSString *u = @"https://api.slcloudstore.com/app/customer/slgetUserInfogo";
+    NSArray *variants = @[
+        @{@"n": @"bare-min", @"h": @{@"User-Agent": @"Shan Lian", @"peach": P, @"lightningx": S, @"Authorization": A}},
+        @{@"n": @"plus-appid", @"h": @{@"User-Agent": @"Shan Lian", @"peach": P, @"lightningx": S, @"Authorization": A, @"appInstanceId": [self appInstanceId]}},
+        @{@"n": @"plus-ver", @"h": @{@"User-Agent": @"Shan Lian", @"peach": P, @"lightningx": S, @"Authorization": A, @"version": @"4.5.4", @"shanlian": @"1", @"platform": @"1"}},
+        @{@"n": @"full", @"h": @{@"User-Agent": @"Shan Lian", @"peach": P, @"lightningx": S, @"Authorization": A,
+                                 @"version": @"4.5.4", @"shanlian": @"1", @"platform": @"1",
+                                 @"system-version": @"15.5", @"virtual_machine": @"true",
+                                 @"Accept-Language": @"zh-CN", @"appInstanceId": [self appInstanceId],
+                                 @"firebase_pntoken": [self firebaseToken]}},
+    ];
+    for (NSDictionary *v in variants) {
+        NSMutableURLRequest *r = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:u]];
+        r.timeoutInterval = 15;
+        for (NSString *k in ((NSDictionary *)v[@"h"]).allKeys) {
+            [r setValue:v[@"h"][k] forHTTPHeaderField:k];
+        }
+        NSString *name = v[@"n"];
+        NSDate *t0 = [NSDate date];
+        [[[NSURLSession sharedSession] dataTaskWithRequest:r completionHandler:
+          ^(NSData *d, NSURLResponse *resp, NSError *e) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                SLLog(@"hv %@ -> %ld %.2fs %@", name, (long)[(NSHTTPURLResponse *)resp statusCode],
+                      -[t0 timeIntervalSinceNow], e.localizedDescription ?: @"-");
+            });
+        }] resume];
+    }
+}
+
 + (void)probeNet {
     NSArray *tests = @[@"https://api.slacover.com/app/customer/slgetUserInfogo",
                        @"https://api.slcloudstore.com/app/customer/slgetUserInfogo",
