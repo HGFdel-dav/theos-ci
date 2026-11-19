@@ -8,6 +8,5 @@
 + (void)calibrateSignerCompletion:(void (^)(NSInteger idx))done;
 + (NSString *)deviceId;
 + (void)probeNet;
-+ (void)probeHeaders;
 + (void)mintTokenCompletion:(void (^)(NSString *token, NSString *raw))done;
 @end
