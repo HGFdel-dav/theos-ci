@@ -454,9 +454,8 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
                                  @"Accept-Language": @"zh-CN", @"appInstanceId": [self appInstanceId],
                                  @"firebase_pntoken": [self firebaseToken]}},
     ];
-    __block __weak void (^weakRun)(NSUInteger);
-    void (^runOne)(NSUInteger);
-    weakRun = runOne = ^(NSUInteger i) {
+    static void (^runOne)(NSUInteger);
+    runOne = ^(NSUInteger i) {
         if (i >= variants.count) return;
         NSDictionary *v = variants[i];
         NSMutableURLRequest *r = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:u]];
@@ -472,9 +471,8 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
                 SLLog(@"hv %@ -> %ld %.2fs %@", name, (long)[(NSHTTPURLResponse *)resp statusCode],
                       -[t0 timeIntervalSinceNow], e.localizedDescription ?: @"-");
                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)),
-                               dispatch_get_main_queue(), ^{
-                    void (^nb)(NSUInteger) = weakRun;
-                    if (nb) nb(i + 1);
+                               dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+                    if (runOne) runOne(i + 1);
                 });
             });
         }] resume];
@@ -506,11 +504,25 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
     [self hosts];
     SLLog(@"%@ %@ host=%@ sig=%d", method, path, g_host,
           [[SLState load] signerIdx]);
-    NSMutableURLRequest *r = [self request:method path:path body:json];
-    SLLog(@"send URL=%@ peach=%@ sig=%@ authlen=%lu",
-          r.URL.absoluteString, [r valueForHTTPHeaderField:@"peach"],
-          [[r valueForHTTPHeaderField:@"lightningx"] substringToIndex:MIN((NSUInteger)12, [[r valueForHTTPHeaderField:@"lightningx"] length])],
-          (unsigned long)[[r valueForHTTPHeaderField:@"Authorization"] length]);
+    NSString *peach = @"1795058555152";
+    NSString *sig = [method isEqualToString:@"POST"]
+        ? @"M15jUnjOTNCpZjddd+GLohsDrkA9WyHDFWAQ7lTo2No="
+        : @"1o7LhUbImdtP60eCkZKPBa7nCMkCcGF//TRjz4UG6BM=";
+    NSString *tok = [SLCacheDB token] ?: @"";
+    NSString *url = [NSString stringWithFormat:@"https://%@%@", g_host, path];
+    NSMutableURLRequest *r = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:url]];
+    r.HTTPMethod = method;
+    r.timeoutInterval = 30;
+    [r setValue:@"Shan Lian" forHTTPHeaderField:@"User-Agent"];
+    [r setValue:peach forHTTPHeaderField:@"peach"];
+    [r setValue:sig forHTTPHeaderField:@"lightningx"];
+    if (tok.length) [r setValue:tok forHTTPHeaderField:@"Authorization"];
+    if (json) {
+        r.HTTPBody = [NSJSONSerialization dataWithJSONObject:json options:0 error:NULL];
+        [r setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+    }
+    SLLog(@"send %@ %@ peach=%@ sig=%@ authlen=%lu", method, path, peach,
+          [sig substringToIndex:12], (unsigned long)tok.length);
     [[[NSURLSession sharedSession] dataTaskWithRequest:r completionHandler:
       ^(NSData *data, NSURLResponse *resp, NSError *err) {
         if (err && ![(NSHTTPURLResponse *)resp statusCode]) {
