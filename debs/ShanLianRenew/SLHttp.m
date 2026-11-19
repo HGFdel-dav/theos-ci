@@ -6,6 +6,7 @@
 #import "SLRenewPaths.h"
 #import "SLRenewState.h"
 #import <Security/Security.h>
+#import <CommonCrypto/CommonCryptor.h>
 
 static NSArray<NSString *> *g_hosts = nil;
 static NSString *g_host = nil;
@@ -251,6 +252,34 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
     return nil;
 }
 
+
+#pragma mark - 入口加密包 data
+
++ (NSString *)makeDataForJson:(NSDictionary *)json key:(NSData *)key {
+    if (!key.length) return nil;
+    NSData *plain = [NSJSONSerialization dataWithJSONObject:json options:0 error:NULL];
+    if (!plain.length) return nil;
+    unsigned char iv[12];
+    for (int i = 0; i < 12; i++) iv[i] = (unsigned char)arc4random();
+    CCCryptorRef ref = NULL;
+    if (CCCryptorCreateWithMode(kCCEncrypt, kCCModeGCM, kCCAlgorithmAES, ccNoPadding,
+                                iv, key.bytes, key.length, NULL, 0, 0, 0, &ref) != kCCSuccess) return nil;
+    unsigned char *ct = malloc(plain.length + 16);
+    size_t moved = 0, ctLen = 0;
+    CCCryptorUpdate(ref, plain.bytes, plain.length, ct, plain.length + 16, &moved);
+    ctLen = moved;
+    unsigned char tag[16];
+    size_t tagLen = 16;
+    CCCryptorGCMFinalize(ref, tag, &tagLen);
+    CCCryptorRelease(ref);
+    NSMutableData *out = [NSMutableData data];
+    [out appendBytes:iv length:12];
+    [out appendBytes:ct length:ctLen];
+    [out appendBytes:tag length:16];
+    free(ct);
+    return [out base64EncodedStringWithOptions:0];
+}
+
 + (void)mintTokenCompletion:(void (^)(NSString *, NSString *))done {
     NSString *dev = [self deviceId];
     if (!dev.length) { SLLog(@"mint: no deviceId"); done(nil, @"no deviceId"); return; }
@@ -262,7 +291,10 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
     NSData *key = [SLSigner keychainKey];
     if (!key || i > 5) { SLLog(@"mint: give up i=%ld", (long)i); done(nil, @"exhausted"); return; }
     NSString *peach = [NSString stringWithFormat:@"%.0f", [NSDate date].timeIntervalSince1970 * 1000];
-    NSDictionary *body = @{ @"deviceInfo": @"iPhone 12", @"deviceId": dev, @"deviceType": @"1" };
+    NSDictionary *clear = @{ @"deviceInfo": @"iPhone 12", @"deviceId": dev, @"deviceType": @"1" };
+    NSString *b64 = [self makeDataForJson:clear key:key];
+    NSMutableDictionary *body = [clear mutableCopy];
+    if (b64.length) body[@"data"] = b64;
     NSMutableURLRequest *r = [NSMutableURLRequest requestWithURL:
         [NSURL URLWithString:[NSString stringWithFormat:@"https://%@%@", g_host, @"/app/tourist/slfirstDeviceLoginfn"]]];
     r.HTTPMethod = @"POST"; r.timeoutInterval = 15;
