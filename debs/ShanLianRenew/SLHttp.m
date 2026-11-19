@@ -7,6 +7,11 @@
 #import "SLRenewState.h"
 #import <Security/Security.h>
 #import <CommonCrypto/CommonCryptor.h>
+#ifndef kCCModeGCM
+#define kCCModeGCM 11
+#endif
+extern CCCryptorStatus CCCryptorGCMEncrypt(CCCryptorRef, const void *, size_t, void *, size_t *);
+extern CCCryptorStatus CCCryptorGCMFinal(CCCryptorRef, void *, size_t *);
 
 static NSArray<NSString *> *g_hosts = nil;
 static NSString *g_host = nil;
@@ -266,11 +271,10 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
                                 iv, key.bytes, key.length, NULL, 0, 0, 0, &ref) != kCCSuccess) return nil;
     unsigned char *ct = malloc(plain.length + 16);
     size_t moved = 0, ctLen = 0;
-    CCCryptorUpdate(ref, plain.bytes, plain.length, ct, plain.length + 16, &moved);
-    ctLen = moved;
+    CCCryptorGCMEncrypt(ref, plain.bytes, plain.length, ct, &ctLen);
     unsigned char tag[16];
     size_t tagLen = 16;
-    CCCryptorGCMFinalize(ref, tag, &tagLen);
+    CCCryptorGCMFinal(ref, tag, &tagLen);
     CCCryptorRelease(ref);
     NSMutableData *out = [NSMutableData data];
     [out appendBytes:iv length:12];
