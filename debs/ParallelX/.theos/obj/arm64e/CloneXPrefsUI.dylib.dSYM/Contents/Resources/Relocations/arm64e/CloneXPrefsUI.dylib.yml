@@ -1,0 +1,75 @@
+---
+triple:          'arm64e-apple-darwin'
+binary-path:     '/Users/runner/work/theos-ci/theos-ci/debs/ParallelX/.theos/obj/arm64e/CloneXPrefsUI.dylib'
+relocations:
+  - { offset: 0x1E, size: 0x8, addend: 0x0, symName: '-[CXRootListController init]', symObjAddr: 0x0, symBinAddr: 0x4000, symSize: 0x5C }
+  - { offset: 0x23DF, size: 0x8, addend: 0x0, symName: '-[CXRootListController init]', symObjAddr: 0x0, symBinAddr: 0x4000, symSize: 0x5C }
+  - { offset: 0x2413, size: 0x8, addend: 0x0, symName: '-[CXRootListController viewWillAppear:]', symObjAddr: 0x5C, symBinAddr: 0x405C, symSize: 0x4C }
+  - { offset: 0x2452, size: 0x8, addend: 0x0, symName: '-[CXRootListController readShown:]', symObjAddr: 0xA8, symBinAddr: 0x40A8, symSize: 0xDC }
+  - { offset: 0x24AF, size: 0x8, addend: 0x0, symName: '-[CXRootListController writeShown:specifier:]', symObjAddr: 0x184, symBinAddr: 0x4184, symSize: 0x108 }
+  - { offset: 0x2532, size: 0x8, addend: 0x0, symName: '-[CXRootListController specifiers]', symObjAddr: 0x28C, symBinAddr: 0x428C, symSize: 0x768 }
+  - { offset: 0x26DA, size: 0x8, addend: 0x0, symName: _CXAppName, symObjAddr: 0xA7C, symBinAddr: 0x4A7C, symSize: 0xFC }
+  - { offset: 0x276B, size: 0x8, addend: 0x0, symName: '___34-[CXRootListController specifiers]_block_invoke', symObjAddr: 0x9F4, symBinAddr: 0x49F4, symSize: 0x88 }
+  - { offset: 0x28C4, size: 0x8, addend: 0x0, symName: '+[CXCraneBridge diagnosticLines]', symObjAddr: 0x0, symBinAddr: 0x4B78, symSize: 0x20C }
+  - { offset: 0x28EB, size: 0x8, addend: 0x0, symName: _CXSwitchInFlight, symObjAddr: 0x89E3, symBinAddr: 0x10598, symSize: 0x0 }
+  - { offset: 0x2A7D, size: 0x8, addend: 0x0, symName: '+[CXCraneBridge diagnosticLines]', symObjAddr: 0x0, symBinAddr: 0x4B78, symSize: 0x20C }
+  - { offset: 0x2B56, size: 0x8, addend: 0x0, symName: _CXCraneCandidatePaths, symObjAddr: 0x20C, symBinAddr: 0x4D84, symSize: 0x338 }
+  - { offset: 0x2C81, size: 0x8, addend: 0x0, symName: '+[CXCraneBridge isCraneAvailable]', symObjAddr: 0x544, symBinAddr: 0x50BC, symSize: 0x20 }
+  - { offset: 0x2CBE, size: 0x8, addend: 0x0, symName: _CXCraneManagerClass, symObjAddr: 0x564, symBinAddr: 0x50DC, symSize: 0x194 }
+  - { offset: 0x2D53, size: 0x8, addend: 0x0, symName: '+[CXCraneBridge sharedManager]', symObjAddr: 0x6F8, symBinAddr: 0x5270, symSize: 0x84 }
+  - { offset: 0x2E01, size: 0x8, addend: 0x0, symName: _CXSignature, symObjAddr: 0x77C, symBinAddr: 0x52F4, symSize: 0x1AC }
+  - { offset: 0x2F28, size: 0x8, addend: 0x0, symName: _CXMsgSend, symObjAddr: 0x928, symBinAddr: 0x54A0, symSize: 0x48 }
+  - { offset: 0x2FD0, size: 0x8, addend: 0x0, symName: '+[CXCraneBridge isApplicationSupportedByCrane:]', symObjAddr: 0x970, symBinAddr: 0x54E8, symSize: 0xB8 }
+  - { offset: 0x3063, size: 0x8, addend: 0x0, symName: '+[CXCraneBridge activeContainerForBundleID:]', symObjAddr: 0xA28, symBinAddr: 0x55A0, symSize: 0x10C }
+  - { offset: 0x311A, size: 0x8, addend: 0x0, symName: _CXMsgSendStr, symObjAddr: 0xB34, symBinAddr: 0x56AC, symSize: 0x48 }
+  - { offset: 0x316C, size: 0x8, addend: 0x0, symName: '+[CXCraneBridge containersForBundleID:]', symObjAddr: 0xB7C, symBinAddr: 0x56F4, symSize: 0x410 }
+  - { offset: 0x32AE, size: 0x8, addend: 0x0, symName: '+[CXCraneBridge applicationsWithNonDefaultContainers]', symObjAddr: 0xF8C, symBinAddr: 0x5B04, symSize: 0x1F4 }
+  - { offset: 0x3382, size: 0x8, addend: 0x0, symName: '+[CXCraneBridge displayNameForContainer:bundleID:]', symObjAddr: 0x1180, symBinAddr: 0x5CF8, symSize: 0x258 }
+  - { offset: 0x34A5, size: 0x8, addend: 0x0, symName: '+[CXCraneBridge prepareLaunchForBundleID:containerID:completion:]', symObjAddr: 0x13D8, symBinAddr: 0x5F50, symSize: 0x10C }
+  - { offset: 0x35A4, size: 0x8, addend: 0x0, symName: '___65+[CXCraneBridge prepareLaunchForBundleID:containerID:completion:]_block_invoke', symObjAddr: 0x14E4, symBinAddr: 0x605C, symSize: 0xF4 }
+  - { offset: 0x35CA, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s40s48b, symObjAddr: 0x15D8, symBinAddr: 0x6150, symSize: 0x50 }
+  - { offset: 0x35DA, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s40s48b, symObjAddr: 0x15D8, symBinAddr: 0x6150, symSize: 0x50 }
+  - { offset: 0x3600, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_e8_32s40s48s, symObjAddr: 0x1628, symBinAddr: 0x61A0, symSize: 0x44 }
+  - { offset: 0x361D, size: 0x8, addend: 0x0, symName: '+[CXCraneBridge switchBundleID:toContainer:completion:]', symObjAddr: 0x166C, symBinAddr: 0x61E4, symSize: 0xC }
+  - { offset: 0x3674, size: 0x8, addend: 0x0, symName: '+[CXCraneBridge switchBundleID:toContainer:reload:completion:]', symObjAddr: 0x1678, symBinAddr: 0x61F0, symSize: 0x118 }
+  - { offset: 0x36F4, size: 0x8, addend: 0x0, symName: '___62+[CXCraneBridge switchBundleID:toContainer:reload:completion:]_block_invoke', symObjAddr: 0x1790, symBinAddr: 0x6308, symSize: 0x738 }
+  - { offset: 0x3A22, size: 0x8, addend: 0x0, symName: '___62+[CXCraneBridge switchBundleID:toContainer:reload:completion:]_block_invoke_2', symObjAddr: 0x1EC8, symBinAddr: 0x6A40, symSize: 0x1C }
+  - { offset: 0x3A48, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32b, symObjAddr: 0x1EE4, symBinAddr: 0x6A5C, symSize: 0x10 }
+  - { offset: 0x3A58, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32b, symObjAddr: 0x1EE4, symBinAddr: 0x6A5C, symSize: 0x10 }
+  - { offset: 0x3A7E, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_e8_32s, symObjAddr: 0x1EF4, symBinAddr: 0x6A6C, symSize: 0x8 }
+  - { offset: 0x3A9B, size: 0x8, addend: 0x0, symName: '___62+[CXCraneBridge switchBundleID:toContainer:reload:completion:]_block_invoke.107', symObjAddr: 0x1EFC, symBinAddr: 0x6A74, symSize: 0xA4 }
+  - { offset: 0x3AE5, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s40s48b56r, symObjAddr: 0x1FA0, symBinAddr: 0x6B18, symSize: 0x60 }
+  - { offset: 0x3AEF, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s40s48b56r, symObjAddr: 0x1FA0, symBinAddr: 0x6B18, symSize: 0x60 }
+  - { offset: 0x3B15, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_e8_32s40s48s56r, symObjAddr: 0x2000, symBinAddr: 0x6B78, symSize: 0x50 }
+  - { offset: 0x3B32, size: 0x8, addend: 0x0, symName: '___62+[CXCraneBridge switchBundleID:toContainer:reload:completion:]_block_invoke.109', symObjAddr: 0x2050, symBinAddr: 0x6BC8, symSize: 0x28 }
+  - { offset: 0x3B5A, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32b40r, symObjAddr: 0x2078, symBinAddr: 0x6BF0, symSize: 0x50 }
+  - { offset: 0x3B6A, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32b40r, symObjAddr: 0x2078, symBinAddr: 0x6BF0, symSize: 0x50 }
+  - { offset: 0x3B90, size: 0x8, addend: 0x0, symName: ___destroy_helper_block_e8_32s40r, symObjAddr: 0x20C8, symBinAddr: 0x6C40, symSize: 0x40 }
+  - { offset: 0x3BAD, size: 0x8, addend: 0x0, symName: '___62+[CXCraneBridge switchBundleID:toContainer:reload:completion:]_block_invoke.110', symObjAddr: 0x2108, symBinAddr: 0x6C80, symSize: 0x94 }
+  - { offset: 0x3BF8, size: 0x8, addend: 0x0, symName: '___62+[CXCraneBridge switchBundleID:toContainer:reload:completion:]_block_invoke_2.111', symObjAddr: 0x219C, symBinAddr: 0x6D14, symSize: 0x18 }
+  - { offset: 0x3C20, size: 0x8, addend: 0x0, symName: ___CXCraneCandidatePaths_block_invoke, symObjAddr: 0x21B4, symBinAddr: 0x6D2C, symSize: 0x90 }
+  - { offset: 0x3C2A, size: 0x8, addend: 0x0, symName: ___CXCraneCandidatePaths_block_invoke, symObjAddr: 0x21B4, symBinAddr: 0x6D2C, symSize: 0x90 }
+  - { offset: 0x3C7B, size: 0x8, addend: 0x0, symName: ___copy_helper_block_e8_32s, symObjAddr: 0x2244, symBinAddr: 0x6DBC, symSize: 0x8 }
+  - { offset: 0x42EC, size: 0x8, addend: 0x0, symName: '+[CXPrefs shared]', symObjAddr: 0x0, symBinAddr: 0x6DC4, symSize: 0x44 }
+  - { offset: 0x4305, size: 0x8, addend: 0x0, symName: _CXKeyHiddenItems, symObjAddr: 0x760, symBinAddr: 0xC340, symSize: 0x0 }
+  - { offset: 0x437D, size: 0x8, addend: 0x0, symName: _CXKeyDiagCraneOK, symObjAddr: 0x768, symBinAddr: 0xC348, symSize: 0x0 }
+  - { offset: 0x4386, size: 0x8, addend: 0x0, symName: '+[CXPrefs shared]', symObjAddr: 0x0, symBinAddr: 0x6DC4, symSize: 0x44 }
+  - { offset: 0x43AF, size: 0x8, addend: 0x0, symName: _shared.shared, symObjAddr: 0x26C0, symBinAddr: 0x105A0, symSize: 0x0 }
+  - { offset: 0x43C4, size: 0x8, addend: 0x0, symName: _shared.once, symObjAddr: 0x26C8, symBinAddr: 0x105A8, symSize: 0x0 }
+  - { offset: 0x4526, size: 0x8, addend: 0x0, symName: '+[CXPrefs shared].cold.1', symObjAddr: 0x650, symBinAddr: 0x7814, symSize: 0x14 }
+  - { offset: 0x4541, size: 0x8, addend: 0x0, symName: '+[CXPrefs shared].cold.1', symObjAddr: 0x650, symBinAddr: 0x7814, symSize: 0x14 }
+  - { offset: 0x4552, size: 0x8, addend: 0x0, symName: '___17+[CXPrefs shared]_block_invoke', symObjAddr: 0x44, symBinAddr: 0x6E08, symSize: 0x40 }
+  - { offset: 0x4577, size: 0x8, addend: 0x0, symName: '-[CXPrefs objectForKey:]', symObjAddr: 0x84, symBinAddr: 0x6E48, symSize: 0x8C }
+  - { offset: 0x462D, size: 0x8, addend: 0x0, symName: '-[CXPrefs boolForKey:defaultValue:]', symObjAddr: 0x110, symBinAddr: 0x6ED4, symSize: 0x58 }
+  - { offset: 0x468E, size: 0x8, addend: 0x0, symName: '-[CXPrefs setBool:forKey:]', symObjAddr: 0x168, symBinAddr: 0x6F2C, symSize: 0x80 }
+  - { offset: 0x4707, size: 0x8, addend: 0x0, symName: '-[CXPrefs hiddenItems]', symObjAddr: 0x1E8, symBinAddr: 0x6FAC, symSize: 0x1A4 }
+  - { offset: 0x4776, size: 0x8, addend: 0x0, symName: '-[CXPrefs isItemShownInMenu:containerID:]', symObjAddr: 0x38C, symBinAddr: 0x7150, symSize: 0xDC }
+  - { offset: 0x47D7, size: 0x8, addend: 0x0, symName: '-[CXPrefs setItemInMenu:containerID:shown:]', symObjAddr: 0x468, symBinAddr: 0x722C, symSize: 0x128 }
+  - { offset: 0x4866, size: 0x8, addend: 0x0, symName: '-[CXPrefs setObject:forKey:]', symObjAddr: 0x590, symBinAddr: 0x7354, symSize: 0x84 }
+  - { offset: 0x48CE, size: 0x8, addend: 0x0, symName: '-[CXPrefs synchronize]', symObjAddr: 0x614, symBinAddr: 0x73D8, symSize: 0x3C }
+  - { offset: 0x490A, size: 0x8, addend: 0x0, symName: '+[CXPrefs shared].cold.1', symObjAddr: 0x650, symBinAddr: 0x7814, symSize: 0x14 }
+  - { offset: 0x4A4D, size: 0x8, addend: 0x0, symName: _CXLogPath, symObjAddr: 0x0, symBinAddr: 0x7414, symSize: 0x60 }
+  - { offset: 0x4BD0, size: 0x8, addend: 0x0, symName: _CXLogPath, symObjAddr: 0x0, symBinAddr: 0x7414, symSize: 0x60 }
+  - { offset: 0x4BF7, size: 0x8, addend: 0x0, symName: _CXLogDirectory, symObjAddr: 0x60, symBinAddr: 0x7474, symSize: 0x10C }
+  - { offset: 0x4CE9, size: 0x8, addend: 0x0, symName: _CXLog, symObjAddr: 0x16C, symBinAddr: 0x7580, symSize: 0x294 }
+...
