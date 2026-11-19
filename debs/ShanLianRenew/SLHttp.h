@@ -7,5 +7,6 @@
   completion:(void (^)(NSInteger status, NSDictionary *resp, NSError *err))done;
 + (void)calibrateSignerCompletion:(void (^)(NSInteger idx))done;
 + (NSString *)deviceId;
++ (void)probeNet;
 + (void)mintTokenCompletion:(void (^)(NSString *token, NSString *raw))done;
 @end
