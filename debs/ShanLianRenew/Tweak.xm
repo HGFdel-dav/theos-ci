@@ -4,6 +4,9 @@
 #import <notify.h>
 #import <stdlib.h>
 #import <sys/socket.h>
+#import <sys/uio.h>
+#import <dlfcn.h>
+#import <unistd.h>
 #import <Security/Security.h>
 #import <CoreFoundation/CFUserNotification.h>
 #import <UserNotifications/UserNotifications.h>
