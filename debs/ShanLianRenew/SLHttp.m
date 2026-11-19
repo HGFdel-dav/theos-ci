@@ -390,7 +390,6 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
         if (cp.length && cs.length) { peach = cp; sig = cs; }
     }
     SLState *st = [SLState load];
-    NSData *key = [SLSigner keychainKey];
 
     NSMutableURLRequest *r = [NSMutableURLRequest requestWithURL:
         [NSURL URLWithString:[NSString stringWithFormat:@"https://%@%@", g_host, path]]];
@@ -402,8 +401,9 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
     [r setValue:peach forHTTPHeaderField:@"peach"];
     if (sig.length) {
         [r setValue:sig forHTTPHeaderField:@"lightningx"];
-    } else if (key) {
-        [r setValue:[SLSigner signPeach:peach key:key idx:st.signerIdx] forHTTPHeaderField:@"lightningx"];
+    } else {
+        NSData *key = [SLSigner keychainKey];   // 只在需要时才碰钥匙串
+        if (key) [r setValue:[SLSigner signPeach:peach key:key idx:st.signerIdx] forHTTPHeaderField:@"lightningx"];
     }
     [r setValue:@"4.5.4" forHTTPHeaderField:@"version"];
     [r setValue:@"15.5" forHTTPHeaderField:@"system-version"];
