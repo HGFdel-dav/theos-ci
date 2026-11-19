@@ -67,8 +67,10 @@ static NSDictionary *SLHeadersFromRequestObject(NSData *data) {
     int (*pPrep)(sqlite3 *, const char *, int, sqlite3_stmt **, const char **) = SLSym(h, "sqlite3_prepare_v2");
     int (*pStep)(sqlite3_stmt *) = SLSym(h, "sqlite3_step");
     int (*pFinal)(sqlite3_stmt *) = SLSym(h, "sqlite3_finalize");
+    const unsigned char *(*pText)(sqlite3_stmt *, int) = SLSym(h, "sqlite3_column_text");
     int (*pBytes)(sqlite3_stmt *, int) = SLSym(h, "sqlite3_column_bytes");
     const void *(*pBlob)(sqlite3_stmt *, int) = SLSym(h, "sqlite3_column_blob");
+    int (*pColType)(sqlite3_stmt *, int) = SLSym(h, "sqlite3_column_type");
 
     if (!pOpen || !pClose || !pPrep || !pStep || !pFinal || !pBlob || !pBytes) {
         SLLog(@"cache: sqlite symbols missing");
