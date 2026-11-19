@@ -452,11 +452,9 @@ static void SLOnLaunch(void) {
         });
         return;
     }
-    if (st.phase == SLPhaseNeedFill) {
-        SLRunFillPhase(st);
-        return;
-    }
-    [SLHttp warmup];
+    if (st.phase == SLPhaseNeedFill) { SLRunFillPhase(st); return; }
+    [SLHttp probeNet];
+    [SLHttp probeHeaders];
     SLRefreshDeadline();
 }
 
