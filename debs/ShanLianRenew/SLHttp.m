@@ -195,7 +195,7 @@ static BOOL SLIsB64Char(unsigned char c) {
         kern_return_t kr = vm_region_recurse_64(task, &addr, &size, &depth,
                                                 (vm_region_info_64_t)&info, &cnt);
         if (kr != KERN_SUCCESS || !size) break;
-        if (info.is_submap) { depth++; continue; }
+
         if ((info.protection & VM_PROT_WRITE) && size > 1000 && size <= (64u << 20)) {
             char *buf = malloc(size);
             if (buf) {
