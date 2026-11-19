@@ -355,13 +355,21 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     }
     _oldPIDs = pids;
     NSString *active = [PXCloneCrane activeContainerForBundle:_bundle];
-    // The user may close the split window while the account keeps running so
-    // notifications still arrive. If that same account is still alive, bring
-    // its window back instead of tearing anything down.
-    _reuse = [active isEqual:_container] && _oldProcesses.count >= 1;
-    [self record:[NSString stringWithFormat:@"reuse_check hit=%d proc=%lu hosted=%d",
+    BOOL windowGone = YES;
+    for (id bridge in _bridges[_bundle].allObjects)
+        if (PXLaunchBridgeCoversScreen(bridge)) { windowGone = NO; break; }
+    BOOL exactHost = [_hostedContainers[_bundle] isEqual:_container] &&
+                     _oldProcesses.count == 1 && _oldPIDs.count == 1 &&
+                     [_hostedPIDs[_bundle] isEqual:_oldPIDs.firstObject];
+    // The window was swiped away but the account is still alive, so its
+    // notifications keep working: bring the window back instead of tearing the
+    // account down. Only when nothing of this app is on screen; a split that is
+    // still visible keeps the original strict check to avoid double hosting.
+    _reuse = [active isEqual:_container] && _oldProcesses.count >= 1 &&
+             (windowGone || exactHost);
+    [self record:[NSString stringWithFormat:@"reuse_check hit=%d proc=%lu gone=%d exact=%d",
                   (int)_reuse, (unsigned long)_oldProcesses.count,
-                  (int)(_hostedContainers[_bundle] != nil)] code:0];
+                  (int)windowGone, (int)exactHost] code:0];
     if (!_reuse) {
         [self record:@"close_native_contexts" code:0];
         @try { ((void (*)(id, SEL, id))objc_msgSend)((id)panel, close, _bundle); }
