@@ -302,8 +302,9 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
     if (CCCryptorCreateWithMode(kCCEncrypt, kCCModeGCM, kCCAlgorithmAES, ccNoPadding,
                                 iv, key.bytes, key.length, NULL, 0, 0, 0, &ref) != kCCSuccess) return nil;
     unsigned char *ct = malloc(plain.length + 16);
-    size_t ctLen = 0;
-    CCCryptorGCMEncrypt(ref, plain.bytes, plain.length, ct, &ctLen);
+    size_t moved = 0, ctLen = 0;
+    CCCryptorUpdate(ref, plain.bytes, plain.length, ct, plain.length + 16, &moved);
+    ctLen = moved;
     unsigned char tag[16];
     size_t tagLen = 16;
     CCCryptorGCMFinalize(ref, tag, &tagLen);
@@ -326,7 +327,10 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
     NSData *key = [SLSigner keychainKey];
     if (!key || i > 5) { SLLog(@"mint: give up i=%ld", (long)i); done(nil, @"exhausted"); return; }
     NSString *peach = [NSString stringWithFormat:@"%.0f", [NSDate date].timeIntervalSince1970 * 1000];
-    NSDictionary *body = @{ @"deviceInfo": @"iPhone 12", @"deviceId": dev, @"deviceType": @"1" };
+    NSDictionary *clear = @{ @"deviceInfo": @"iPhone 12", @"deviceId": dev, @"deviceType": @"1" };
+    NSString *b64 = [self makeDataForJson:clear key:key];
+    NSMutableDictionary *body = [clear mutableCopy];
+    if (b64.length) body[@"data"] = b64;
     NSMutableURLRequest *r = [NSMutableURLRequest requestWithURL:
         [NSURL URLWithString:[NSString stringWithFormat:@"https://%@%@", g_host, @"/app/tourist/slfirstDeviceLoginfn"]]];
     r.HTTPMethod = @"POST"; r.timeoutInterval = 15;
