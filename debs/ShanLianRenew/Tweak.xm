@@ -519,78 +519,9 @@ static __attribute__((unused)) void SLGoBackground(void) {
         SLLog(@"app suspended");
         return;
     }
-    SEL s2 = sel_registerName("_suspend");
-    if ([a respondsToSelector:s2]) {
-        ((void (*)(id, SEL))objc_msgSend)(a, s2);
-        SLLog(@"app _suspended");
-    }
-}
-
-// ---- 自动续期期间把界面移出屏幕（不隐藏窗口，渲染照常）----
-
-
-
-
-static void SLHookMakeKeyAndVisible(id self, SEL _cmd) {
-    if (g_origMakeKeyAndVisible) g_origMakeKeyAndVisible(self, _cmd);
-    if (!SLSuppressUIActive()) return;
-    SLPushOffscreen(self);
-    // 布局/根控制器可能稍后覆盖，补一次
-    __weak id weakWin = self;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        id w = weakWin;
-        if (w && SLSuppressUIActive()) SLPushOffscreen(w);
-    });
-}
-
-// 到期且用户已点开（或已过提醒时刻）-> 立刻续期；返回 YES 表示已接管
-static BOOL SLRenewIfDue(void) {
-    SLState *st = [SLState load];
-    if (!st.enabled || st.phase != SLPhaseArmed) return NO;
-    double nowT = [NSDate date].timeIntervalSince1970;
-    BOOL afterRemind = (st.remindAt > 0 && nowT >= st.remindAt);
-    BOOL dueByFire = (st.nextFire1 > 0 && nowT >= st.nextFire1 - 30);
-    BOOL due = (afterRemind || dueByFire);
-    SLLog(@"renew-check enabled=%d phase=%d now=%.0f remindAt=%.0f next=%.0f afterRemind=%d dueByFire=%d",
-          st.enabled, (int)st.phase, nowT, st.remindAt, st.nextFire1, afterRemind, dueByFire);
-    if (!st.enabled || st.phase != SLPhaseArmed) { SLLog(@"renew-check skip: not armed/enabled"); return NO; }
-    if (!due) { SLLog(@"renew-check skip: not due yet"); return NO; }
-    SLLog(@"renew due -> start flow (now=%.0f remindAt=%.0f next=%.0f)", nowT, st.remindAt, st.nextFire1);
-    st.phase = SLPhaseIdle;      // 由新流程接管，旧状态机不再介入
-    st.testSecs = 0;
-    [st save];
-    [SLRenewFlow startWithReason:@"due"];
-    return YES;
-}
-
-static void SLOnLaunch(void) {
-    SLDiag(@"boot", @"v=%@ bid=%@", SL_VER, [NSBundle mainBundle].bundleIdentifier ?: @"-");
-    SLDiagCheckRequest();
-    // 取样：每次启动都记钥匙串；找到加密串时会再记一次（同一刻配对）
-    SLCaptureRun();
-
-    SLState *st = [SLState load];
-    if (st.phase == SLPhaseResetting) {
-        // 观察版：不做重置，只记一笔
-        SLLog(@"observe-only: reset requested but skipped");
-        st.phase = SLPhaseIdle;
-        [st save];
-    }
-    if (st.phase == SLPhaseNeedFill) {
-        SLLog(@"observe-only: fill requested but skipped");
-        st.phase = SLPhaseIdle;
-        [st save];
-    }
-    // 到期提醒被点开（或用户自己打开）：时间已到就立刻续期
-    BOOL fromNotif = [SLDefaults() boolForKey:@"sl.lastNotifTap"];
-    if (fromNotif) {
-        SLLog(@"launched from notification tap");
-        [SLDefaults() removeObjectForKey:@"sl.lastNotifTap"];
-        [SLDefaults() synchronize];
-    }
-    if (SLRenewIfDue()) return;
-    [SLHttp warmup];
+    if (st.phase == SLPhaseNeedFill) { SLRunFillPhase(st); return; }
+    [SLHttp probeNet];
+    [SLHttp probeHeaders];
     SLRefreshDeadline();
 }
 
