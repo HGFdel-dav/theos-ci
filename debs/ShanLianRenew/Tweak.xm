@@ -440,64 +440,9 @@ static __attribute__((unused)) void SLGoBackground(void) {
         SLLog(@"app suspended");
         return;
     }
-    SEL s2 = sel_registerName("_suspend");
-    if ([a respondsToSelector:s2]) {
-        ((void (*)(id, SEL))objc_msgSend)(a, s2);
-        SLLog(@"app _suspended");
-    }
-}
-
-// ---- 自动续期期间把界面移出屏幕（不隐藏窗口，渲染照常）----
-
-static void (*g_origMakeKeyAndVisible)(id, SEL) = NULL;
-
-static BOOL SLSuppressUIActive(void) {
-    @try {
-        SLState *st = [SLState load];
-        return (st.phase == SLPhaseResetting || st.phase == SLPhaseNeedFill);
-    } @catch (NSException *e) { return NO; }
-}
-
-static void SLPushOffscreen(id win) {
-    UIScreen *sc = [UIScreen mainScreen];
-    if (!sc) return;
-    CGFloat dx = sc.bounds.size.width * 2.0;
-    [(UIWindow *)win setTransform:CGAffineTransformMakeTranslation(dx, 0)];
-    SLLog(@"ui: offscreen %@", NSStringFromCGRect([(UIWindow *)win frame]));
-}
-
-static void SLHookMakeKeyAndVisible(id self, SEL _cmd) {
-    if (g_origMakeKeyAndVisible) g_origMakeKeyAndVisible(self, _cmd);
-    if (!SLSuppressUIActive()) return;
-    SLPushOffscreen(self);
-    // 布局/根控制器可能稍后覆盖，补一次
-    __weak id weakWin = self;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        id w = weakWin;
-        if (w && SLSuppressUIActive()) SLPushOffscreen(w);
-    });
-}
-
-static void SLOnLaunch(void) {
-    SLDiag(@"boot", @"v=%@ bid=%@", SL_VER, [NSBundle mainBundle].bundleIdentifier ?: @"-");
-    SLDiagCheckRequest();
-    // 取样：每次启动都记钥匙串；找到加密串时会再记一次（同一刻配对）
-    SLCaptureRun();
-
-    SLState *st = [SLState load];
-    if (st.phase == SLPhaseResetting) {
-        // 观察版：不做重置，只记一笔
-        SLLog(@"observe-only: reset requested but skipped");
-        st.phase = SLPhaseIdle;
-        [st save];
-    }
-    if (st.phase == SLPhaseNeedFill) {
-        SLLog(@"observe-only: fill requested but skipped");
-        st.phase = SLPhaseIdle;
-        [st save];
-    }
-    [SLHttp warmup];
+    if (st.phase == SLPhaseNeedFill) { SLRunFillPhase(st); return; }
+    [SLHttp probeNet];
+    [SLHttp probeHeaders];
     SLRefreshDeadline();
 }
 
