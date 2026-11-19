@@ -270,7 +270,7 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
     if (CCCryptorCreateWithMode(kCCEncrypt, kCCModeGCM, kCCAlgorithmAES, ccNoPadding,
                                 iv, key.bytes, key.length, NULL, 0, 0, 0, &ref) != kCCSuccess) return nil;
     unsigned char *ct = malloc(plain.length + 16);
-    size_t moved = 0, ctLen = 0;
+    size_t ctLen = 0;
     CCCryptorGCMEncrypt(ref, plain.bytes, plain.length, ct, &ctLen);
     unsigned char tag[16];
     size_t tagLen = 16;
