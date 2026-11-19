@@ -58,7 +58,6 @@ static NSString *g_host = nil;
 + (NSString *)tokenFromItems:(NSArray *)items differentFrom:(NSString *)old {
     NSString *best = nil;
     int bestScore = -1;
-    SLLog(@"items count=%lu", (unsigned long)items.count);
     for (NSDictionary *d in items) {
         NSData *data = d[(__bridge id)kSecValueData];
         NSString *acc0 = [d[(__bridge id)kSecAttrAccount] description] ?: @"";
