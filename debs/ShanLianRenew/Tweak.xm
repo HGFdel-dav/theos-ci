@@ -342,7 +342,14 @@ static void SLRunFillPhase(SLState *st) {
 
 static void SLOnLaunch(void) {
     SLState *st = [SLState load];
-    if (st.phase == SLPhaseResetting) { SLPerformReset(st); return; }
+    if (st.phase == SLPhaseResetting) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            SLState *s2 = [SLState load];
+            if (s2.phase == SLPhaseResetting) SLPerformReset(s2);
+        });
+        return;
+    }
     if (st.phase == SLPhaseNeedFill) { SLRunFillPhase(st); return; }
     SLRefreshDeadline();
 }
