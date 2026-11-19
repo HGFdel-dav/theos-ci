@@ -158,7 +158,7 @@ static BOOL SLIsB64Char(unsigned char c) {
         kern_return_t kr = vm_region_64(task, &addr, &size, VM_REGION_BASIC_INFO_64,
                                         (vm_region_info_64_t)&info, &cnt, &obj);
         if (kr != KERN_SUCCESS || !size) break;
-        if (info.is_submap) { addr += size; continue; }
+
         if ((info.protection & VM_PROT_WRITE) && size > 1000 && size <= (64u << 20)) {
             char *buf = malloc(size);
             if (buf) {
