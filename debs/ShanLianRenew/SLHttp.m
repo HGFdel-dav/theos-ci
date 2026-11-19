@@ -529,26 +529,16 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
     [self hosts];
     SLLog(@"%@ %@ host=%@ sig=%d", method, path, g_host,
           [[SLState load] signerIdx]);
-    NSString *peach = @"1795058555152";
-    NSString *sig = [method isEqualToString:@"POST"]
-        ? @"M15jUnjOTNCpZjddd+GLohsDrkA9WyHDFWAQ7lTo2No="
-        : @"1o7LhUbImdtP60eCkZKPBa7nCMkCcGF//TRjz4UG6BM=";
-    NSString *tok = [SLCacheDB token] ?: @"";
-    NSString *url = [NSString stringWithFormat:@"https://%@%@", g_host, path];
-    NSMutableURLRequest *r = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:url]];
-    r.HTTPMethod = method;
-    r.timeoutInterval = 30;
-    [r setValue:@"Shan Lian" forHTTPHeaderField:@"User-Agent"];
-    [r setValue:peach forHTTPHeaderField:@"peach"];
-    [r setValue:sig forHTTPHeaderField:@"lightningx"];
-    if (tok.length) [r setValue:tok forHTTPHeaderField:@"Authorization"];
-    if (json) {
-        r.HTTPBody = [NSJSONSerialization dataWithJSONObject:json options:0 error:NULL];
-        [r setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
-    }
-    SLLog(@"send %@ %@ peach=%@ sig=%@ authlen=%lu", method, path, peach,
-          [sig substringToIndex:12], (unsigned long)tok.length);
-    [[[NSURLSession sharedSession] dataTaskWithRequest:r completionHandler:
+    NSMutableURLRequest *r = [self request:method path:path body:json];
+    NSURLSessionConfiguration *cfg = [NSURLSessionConfiguration ephemeralSessionConfiguration];
+    cfg.timeoutIntervalForRequest = 60;
+    cfg.timeoutIntervalForResource = 90;
+    cfg.waitsForConnectivity = NO;
+    cfg.requestCachePolicy = NSURLRequestReloadIgnoringLocalAndRemoteCacheData;
+    static NSURLSession *sess = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ sess = [NSURLSession sessionWithConfiguration:cfg]; });
+    [[sess dataTaskWithRequest:r completionHandler:
       ^(NSData *data, NSURLResponse *resp, NSError *err) {
         if (err && ![(NSHTTPURLResponse *)resp statusCode]) {
             SLLog(@"net err %@ (host kept)", err.localizedDescription);
