@@ -436,10 +436,7 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
                                  @"Accept-Language": @"zh-CN", @"appInstanceId": [self appInstanceId],
                                  @"firebase_pntoken": [self firebaseToken]}},
     ];
-    static void (^runOne)(NSUInteger);
-    runOne = ^(NSUInteger i) {
-        if (i >= variants.count) return;
-        NSDictionary *v = variants[i];
+    for (NSDictionary *v in variants) {
         NSMutableURLRequest *r = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:u]];
         r.timeoutInterval = 15;
         for (NSString *k in ((NSDictionary *)v[@"h"]).allKeys) {
@@ -452,10 +449,6 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 SLLog(@"hv %@ -> %ld %.2fs %@", name, (long)[(NSHTTPURLResponse *)resp statusCode],
                       -[t0 timeIntervalSinceNow], e.localizedDescription ?: @"-");
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)),
-                               dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-                    if (runOne) runOne(i + 1);
-                });
             });
         }] resume];
     }
