@@ -7,6 +7,8 @@
 #import <sys/uio.h>
 #import <dlfcn.h>
 #import <unistd.h>
+#import <mach-o/dyld.h>
+#import <string.h>
 #import <Security/Security.h>
 #import <CoreFoundation/CFUserNotification.h>
 #import <UserNotifications/UserNotifications.h>
@@ -22,16 +24,21 @@ static NSString *g_fakeId = nil;
 
 #pragma mark - 抓请求体（诊断）
 
+static __thread int g_inHook = 0;
+static volatile int g_ready = 0;
+
 static void SLDumpBuf(NSString *tag, const void *buf, size_t len) {
-    if (!buf || len < 40) return;
+    if (!buf || len < 40 || !g_ready || g_inHook) return;
+    g_inHook = 1;
     @try {
         size_t n = MIN(len, (size_t)4096);
+        if (!memmem(buf, n, "firstDeviceLogin", 16)) return;
         NSData *d = [NSData dataWithBytes:buf length:n];
-        NSString *s = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
-        if (s && [s containsString:@"firstDeviceLogin"]) {
-            SLLog(@"%@ firstDeviceLogin body-b64=%@", tag, [d base64EncodedStringWithOptions:0]);
-        }
-    } @catch (__unused NSException *e) {}
+        SLLog(@"%@ firstDeviceLogin body-b64=%@", tag, [d base64EncodedStringWithOptions:0]);
+    } @catch (__unused NSException *e) {
+    } @finally {
+        g_inHook = 0;
+    }
 }
 
 static ssize_t (*g_origSend)(int, const void *, size_t, int);
@@ -693,6 +700,7 @@ static void SLInitBody(void) {
     MSHookFunction((void *)write, (void *)SLHookWrite, (void **)&g_origWrite);
     MSHookFunction((void *)sendto, (void *)SLHookSendTo, (void **)&g_origSendTo);
     MSHookFunction((void *)writev, (void *)SLHookWriteV, (void **)&g_origWriteV);
+    g_ready = 1;
     void *sslw = dlsym(RTLD_DEFAULT, "SSL_write");
     if (sslw) MSHookFunction(sslw, (void *)SLHookSSLWrite, (void **)&g_origSSLWrite);
     MSHookFunction((void *)SecItemAdd, (void *)SLHookSecItemAdd, (void **)&g_origSecItemAdd);
