@@ -1,0 +1,7 @@
+# Files this round is NOT allowed to modify. Frozen 2026-11-19 before editing src/.
+# tests/static_check.py fails if any of these change.
+3f5a477c9548d2e4339809fd6f4c93a39ba48fe448f9db1431915947601eb0f8  reference/published-patch.txt
+a5be8272ae59a6bec14755065a3095ade2eed0b9c08e88378f3d2578da291c82  disasm/BackLightCC-setBrightnessKey_value_.txt
+e567ca4af844418c993d8213a5a409794a3247a303b63c4d311690ae688150d0  disasm/BackLightCC-defaultAction.txt
+a8ac1bed9d2ca9eb969fb204e3ba10c482c03888b00f2663fc12ef6168e7d95a  disasm/BackLightCCSingle-initWithParams_.txt
+363cc0c453d5eebb5cfb8e6d2c7b5d89034164e8f93368bfb79898ccc667d4cf  src/patch_rh6.py
