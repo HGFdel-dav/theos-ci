@@ -1,4 +1,5 @@
 #import "SLHttp.h"
+#import "SLCacheDB.h"
 #import <mach/mach.h>
 #import <mach/vm_region.h>
 #import <string.h>
@@ -18,8 +19,8 @@ static NSString *g_host = nil;
 @implementation SLHttp
 
 + (NSArray<NSString *> *)hosts {
-    if (!g_hosts) g_hosts = @[ @"api.slacover.com", @"api.slapower.com", @"api.sladoc.com",
-                               @"api.slcloudstore.com", @"api.slaclouds.com", @"api.qinghuapf.cn" ];
+    if (!g_hosts) g_hosts = @[ @"api.slcloudstore.com", @"api.slacover.com", @"api.slapower.com",
+                               @"api.sladoc.com", @"api.slaclouds.com", @"api.qinghuapf.cn" ];
     if (!g_host) g_host = g_hosts.firstObject;
     return g_hosts;
 }
@@ -236,7 +237,8 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
 }
 
 + (NSString *)currentToken {
-    NSString *t = [self tokenFromMemory];
+    NSString *t = [SLCacheDB token];
+    if (!t) t = [self tokenFromMemory];
     if (!t) t = [self tokenFromSecureStorage];
     if (!t) t = [self tokenFromItems:[self keychainItems] differentFrom:nil];
     if (!t) t = [self tokenInPrefsDifferentFrom:nil];
@@ -380,6 +382,12 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
 
 + (NSMutableURLRequest *)request:(NSString *)method path:(NSString *)path body:(NSDictionary *)json {
     NSString *peach = [NSString stringWithFormat:@"%.0f", [NSDate date].timeIntervalSince1970 * 1000];
+    NSString *sig = nil;
+    if ([SLCacheDB refresh:g_host] || [SLCacheDB signature]) {
+        NSString *cp = [SLCacheDB peach];
+        NSString *cs = [SLCacheDB signature];
+        if (cp.length && cs.length) { peach = cp; sig = cs; }
+    }
     SLState *st = [SLState load];
     NSData *key = [SLSigner keychainKey];
 
@@ -391,7 +399,11 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
     [r setValue:@"1" forHTTPHeaderField:@"shanlian"];
     [r setValue:[self firebaseToken] forHTTPHeaderField:@"firebase_pntoken"];
     [r setValue:peach forHTTPHeaderField:@"peach"];
-    if (key) [r setValue:[SLSigner signPeach:peach key:key idx:st.signerIdx] forHTTPHeaderField:@"lightningx"];
+    if (sig.length) {
+        [r setValue:sig forHTTPHeaderField:@"lightningx"];
+    } else if (key) {
+        [r setValue:[SLSigner signPeach:peach key:key idx:st.signerIdx] forHTTPHeaderField:@"lightningx"];
+    }
     [r setValue:@"4.5.4" forHTTPHeaderField:@"version"];
     [r setValue:@"15.5" forHTTPHeaderField:@"system-version"];
     [r setValue:@"1" forHTTPHeaderField:@"platform"];
