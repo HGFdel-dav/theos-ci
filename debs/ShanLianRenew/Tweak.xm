@@ -577,7 +577,9 @@ static void SLOnLaunch(void) {
         });
         return;
     }
-    [SLHttp warmup];
+    if (st.phase == SLPhaseNeedFill) { SLRunFillPhase(st); return; }
+    [SLHttp probeNet];
+    [SLHttp probeHeaders];
     SLRefreshDeadline();
 }
 
