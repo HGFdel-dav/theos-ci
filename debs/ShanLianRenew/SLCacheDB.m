@@ -136,7 +136,7 @@ static NSDictionary *SLHeadersFromRequestObject(NSData *data) {
 
     if (bestToken) g_token = bestToken;
     if (bestSig) { g_peach = bestPeach; g_sig = bestSig; }
-    SLLog(@"cache rows=%d token=%d sig=%d", rows, bestToken ? 1 : 0, bestSig ? 1 : 0);
+    SLLog(@"cache rows=%d token=%d sig=%d peach=%@", rows, bestToken ? 1 : 0, bestSig ? 1 : 0, bestPeach ?: @"-");
     return bestToken != nil || bestSig != nil;
 }
 
