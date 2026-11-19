@@ -170,6 +170,8 @@ static pid_t PXProcessPID(id process) {
     BOOL _reuse;
     BOOL _terminationRequested;
     NSUInteger _attempt;
+    NSUInteger _splitRetries;
+    CFAbsoluteTime _flowStart;
     PXCloneTraceState _reportedTraceState;
     NSMutableArray *_trace;
 }
@@ -179,6 +181,7 @@ static pid_t PXProcessPID(id process) {
 - (void)authenticate:(uint64_t)token;
 - (void)verify:(uint64_t)token;
 - (void)openSplit:(uint64_t)token;
+- (void)retrySplit:(uint64_t)token;
 - (void)pollOpened:(uint64_t)token;
 - (void)finish:(uint64_t)token error:(NSError * _Nullable)error;
 - (void)record:(NSString *)stage code:(NSInteger)code;
@@ -324,10 +327,12 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     uint64_t token = _nextToken++;
     if (!PXCloneFlowBegin(&_flow, token)) return;
     _attempt = 0;
+    _splitRetries = 0;
     _openingBridge = nil;
     _nativeOpenReturned = NO;
     _terminationRequested = NO;
     _reuse = NO;
+    _flowStart = CFAbsoluteTimeGetCurrent();
     [self record:@"request" code:0];
     Class panel = PXLaunchClass(@"PXPanelEntry");
     SEL close = NSSelectorFromString(@"switcherRemovedApplication:");
@@ -350,15 +355,24 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     }
     _oldPIDs = pids;
     NSString *active = [PXCloneCrane activeContainerForBundle:_bundle];
-    _reuse = [active isEqual:_container] && [_hostedContainers[_bundle] isEqual:_container] &&
-             _oldProcesses.count == 1 && _oldPIDs.count == 1 &&
-             [_hostedPIDs[_bundle] isEqual:_oldPIDs.firstObject];
+    // The user may close the split window while the account keeps running so
+    // notifications still arrive. If that same account is still alive, bring
+    // its window back instead of tearing anything down.
+    _reuse = [active isEqual:_container] && _oldProcesses.count >= 1;
+    [self record:[NSString stringWithFormat:@"reuse_check hit=%d proc=%lu hosted=%d",
+                  (int)_reuse, (unsigned long)_oldProcesses.count,
+                  (int)(_hostedContainers[_bundle] != nil)] code:0];
     if (!_reuse) {
         [self record:@"close_native_contexts" code:0];
         @try { ((void (*)(id, SEL, id))objc_msgSend)((id)panel, close, _bundle); }
         @catch (__unused NSException *exception) {
             [self finish:token error:PXLaunchError(3, @"旧分屏窗口清理失败")]; return;
         }
+        // Ask the old account to exit while the window is closing, so its own
+        // clean-up time overlaps ours instead of being paid twice.
+        _terminationRequested = YES;
+        [self record:@"termination_requested" code:0];
+        PXRequestTermination(_bundle);
     }
     [self pollClosed:token];
 }
@@ -422,7 +436,10 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
             [self finish:token error:PXLaunchError(5, @"无法请求旧账号退出")]; return;
         }
     }
-    if (++_attempt >= 60) { [self finish:token error:PXLaunchError(6, @"旧账号进程未退出，未启动其他账号")]; return; }
+    if (++_attempt >= 40) {
+        [self record:[NSString stringWithFormat:@"terminate_timeout proc=%lu", (unsigned long)running.count] code:6];
+        [self finish:token error:PXLaunchError(6, @"旧账号进程未退出，未启动其他账号")]; return;
+    }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 100 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ [self pollTerminated:token]; });
 }
 
@@ -496,11 +513,48 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     [self pollOpened:token];
 }
 
+- (void)retrySplit:(uint64_t)token {
+    if (!PXCloneFlowIsCurrent(&_flow, token) || _flow.phase != PXCloneFlowOpening) return;
+    _attempt = 0;
+    _openingBridge = nil;
+    _nativeOpenReturned = NO;
+    [self record:@"native_retry" code:(NSInteger)_splitRetries];
+    // A failed host can leave a half-built context behind. Clear it first so
+    // the retry starts from the same state a fresh open would see.
+    Class panel = PXLaunchClass(@"PXPanelEntry");
+    SEL close = NSSelectorFromString(@"switcherRemovedApplication:");
+    @try { ((void (*)(id, SEL, id))objc_msgSend)((id)panel, close, _bundle); }
+    @catch (__unused NSException *exception) { }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(900 * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
+        if (!PXCloneFlowIsCurrent(&self->_flow, token) || self->_flow.phase != PXCloneFlowOpening) return;
+        Class target = PXLaunchClass(@"PXPanelEntry");
+        SEL open = NSSelectorFromString(@"externalOpenApplication:");
+        @try { ((void (*)(id, SEL, id))objc_msgSend)((id)target, open, self->_bundle); }
+        @catch (__unused NSException *exception) {
+            [self finish:token error:PXLaunchError(16, @"原生分屏打开发生异常")]; return;
+        }
+        [self pollOpened:token];
+    });
+}
+
 - (void)nativeOpenReturned:(BOOL)ok bridge:(id)bridge token:(uint64_t)token {
     if (!PXCloneFlowIsCurrent(&_flow, token) || _flow.phase != PXCloneFlowOpening || bridge != _openingBridge) return;
     _nativeOpenReturned = ok;
     [self record:ok ? @"native_completion_ok" : @"native_completion_failed" code:ok ? 0 : 17];
-    if (!ok) [self finish:token error:PXLaunchError(17, @"原生分屏托管失败，没有转为全屏")];
+    if (!ok) {
+        // Record what the panel actually handed us before deciding anything.
+        id canvas = PXLaunchObject(bridge, @"canvas");
+        NSArray *live = PXRunningProcesses(_bundle, NULL);
+        [self record:[NSString stringWithFormat:@"open_detail bridge=%d canvas=%d visible=%d proc=%lu retry=%lu",
+                      (int)(bridge != nil), (int)[canvas isKindOfClass:UIView.class],
+                      (int)PXLaunchBridgeCoversScreen(bridge),
+                      (unsigned long)(live ? live.count : 0), (unsigned long)_splitRetries] code:17];
+        // Right after a respring the panel can refuse the first host request
+        // because its own machinery is not up yet. Retry instead of making the
+        // user tap again and wait.
+        if (_splitRetries < 2) { _splitRetries++; [self retrySplit:token]; return; }
+        [self finish:token error:PXLaunchError(17, @"原生分屏托管失败，没有转为全屏")];
+    }
 }
 
 - (void)pollOpened:(uint64_t)token {
@@ -537,6 +591,8 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
         NSArray *processes = PXRunningProcesses(_bundle, NULL);
         _hostedPIDs[_bundle] = @(processes.count == 1 ? PXProcessPID(processes.firstObject) : 0);
         [self record:@"split_visible_verified" code:0];
+        [self record:[NSString stringWithFormat:@"done ms=%d ok=1 reuse=%d",
+                      (int)((CFAbsoluteTimeGetCurrent() - _flowStart) * 1000.0), (int)_reuse] code:0];
         [self finish:token error:nil]; return;
     }
     if (!verified) { [self finish:token error:PXLaunchError(18, @"打开期间账号发生变化，已停止分屏")]; return; }
@@ -559,6 +615,8 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
         [_hostedContainers removeObjectForKey:_bundle];
         [_hostedPIDs removeObjectForKey:_bundle];
         [self record:@"failed" code:error.code];
+        [self record:[NSString stringWithFormat:@"done ms=%d ok=0",
+                      (int)((CFAbsoluteTimeGetCurrent() - _flowStart) * 1000.0)] code:error.code];
         [self showError:error.localizedDescription ?: @"账号切换失败"];
     } else if (_flow.phase != PXCloneFlowOpening) {
         [self record:@"superseded_without_open" code:0];
@@ -576,7 +634,7 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     // A bounded, content-free event ring survives a missed live log capture.
     // No account display names, credentials, messages or app content.
     NSDictionary *event = @{ @"time": @(NSDate.date.timeIntervalSince1970),
-                             @"build": @"clone0.90", @"token": @(_flow.token),
+                             @"build": @"clone0.91", @"token": @(_flow.token),
                              @"stage": stage, @"code": @(code),
                              @"bundle": _bundle ?: @"", @"targetHash": @(_container.hash) };
     [_trace addObject:event];
