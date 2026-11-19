@@ -18,7 +18,7 @@ static NSString *g_fakeId = nil;
 
 #pragma mark - 抓请求体（诊断）
 
-static void SLDumpBuf(const char *tag, const void *buf, size_t len) {
+static void SLDumpBuf(NSString *tag, const void *buf, size_t len) {
     if (!buf || len < 40) return;
     @try {
         size_t n = MIN(len, (size_t)4096);
