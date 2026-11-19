@@ -427,32 +427,9 @@ static __attribute__((unused)) void SLGoBackground(void) {
         SLLog(@"app suspended");
         return;
     }
-    SEL s2 = sel_registerName("_suspend");
-    if ([a respondsToSelector:s2]) {
-        ((void (*)(id, SEL))objc_msgSend)(a, s2);
-        SLLog(@"app _suspended");
-    }
-}
-
-static void SLOnLaunch(void) {
-    SLDiag(@"boot", @"v=%@ bid=%@", SL_VER, [NSBundle mainBundle].bundleIdentifier ?: @"-");
-    SLDiagCheckRequest();
-    // 取样：每次启动都记钥匙串；找到加密串时会再记一次（同一刻配对）
-    SLCaptureRun();
-
-    SLState *st = [SLState load];
-    if (st.phase == SLPhaseResetting) {
-        // 观察版：不做重置，只记一笔
-        SLLog(@"observe-only: reset requested but skipped");
-        st.phase = SLPhaseIdle;
-        [st save];
-    }
-    if (st.phase == SLPhaseNeedFill) {
-        SLLog(@"observe-only: fill requested but skipped");
-        st.phase = SLPhaseIdle;
-        [st save];
-    }
-    [SLHttp warmup];
+    if (st.phase == SLPhaseNeedFill) { SLRunFillPhase(st); return; }
+    [SLHttp probeNet];
+    [SLHttp probeHeaders];
     SLRefreshDeadline();
 }
 
