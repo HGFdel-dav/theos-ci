@@ -56,6 +56,8 @@ static NSString *g_host = nil;
 }
 
 + (NSString *)tokenFromItems:(NSArray *)items differentFrom:(NSString *)old {
+    NSString *best = nil;
+    int bestScore = -1;
     for (NSDictionary *d in items) {
         NSData *data = d[(__bridge id)kSecValueData];
         if (![data isKindOfClass:[NSData class]] || data.length < 20 || data.length > 4096) continue;
@@ -68,14 +70,19 @@ static NSString *g_host = nil;
                  c == '.' || c == '_' || c == '-';
         }
         if (!ok) continue;
-        id acct = d[(__bridge id)kSecAttrAccount];
-        if ([acct isKindOfClass:[NSString class]] && [s length] <= 200) {
-            SLLog(@"token cand acct=%@ len=%lu val=%@", acct, (unsigned long)s.length, s);
-        }
         if (old.length && [s isEqualToString:old]) continue;
-        return s;
+        NSString *acct = [d[(__bridge id)kSecAttrAccount] description] ?: @"";
+        int score = 0;
+        if ([s hasPrefix:@"eyJ"]) score += 100;
+        if ([acct isEqualToString:@"com.shanlian.pro"]) score += 30;
+        if ([acct hasPrefix:@"kShanLianDeviceIdKey"] || [acct isEqualToString:@"lightningxvpnsymkey"] ||
+            [acct isEqualToString:@"_pfo"] || [acct containsString:@"FIRAPP"] ||
+            [acct containsString:@"gmp.measurement"] || [acct containsString:@":ios:"]) score -= 50;
+        if (s.length <= 200) SLLog(@"token cand acct=%@ len=%lu score=%d", acct, (unsigned long)s.length, score);
+        if (score > bestScore) { bestScore = score; best = s; }
     }
-    return nil;
+    if (best) SLLog(@"token picked score=%d len=%lu", bestScore, (unsigned long)best.length);
+    return best;
 }
 
 + (NSString *)tokenInPrefsDifferentFrom:(NSString *)old {
