@@ -67,7 +67,7 @@ static NSDictionary *SLHeadersFromRequestObject(NSData *data) {
     if (!h) h = dlopen("libsqlite3.dylib", RTLD_LAZY);
     if (!h) { SLLog(@"cache: sqlite dlopen failed"); return NO; }
 
-    int (*pOpen)(const char *, sqlite3 **) = SLSym(h, "sqlite3_open_v2");
+    int (*pOpen)(const char *, sqlite3 **) = SLSym(h, "sqlite3_open");
     int (*pClose)(sqlite3 *) = SLSym(h, "sqlite3_close");
     int (*pPrep)(sqlite3 *, const char *, int, sqlite3_stmt **, const char **) = SLSym(h, "sqlite3_prepare_v2");
     int (*pStep)(sqlite3_stmt *) = SLSym(h, "sqlite3_step");
