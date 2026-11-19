@@ -169,6 +169,7 @@ static pid_t PXProcessPID(id process) {
     BOOL _nativeOpenReturned;
     BOOL _reuse;
     BOOL _terminationRequested;
+    BOOL _forceTerminated;
     NSUInteger _attempt;
     NSUInteger _splitRetries;
     CFAbsoluteTime _flowStart;
@@ -331,6 +332,7 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     _openingBridge = nil;
     _nativeOpenReturned = NO;
     _terminationRequested = NO;
+    _forceTerminated = NO;
     _reuse = NO;
     _flowStart = CFAbsoluteTimeGetCurrent();
     [self record:@"request" code:0];
@@ -444,8 +446,18 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
             [self finish:token error:PXLaunchError(5, @"无法请求旧账号退出")]; return;
         }
     }
-    if (++_attempt >= 40) {
-        [self record:[NSString stringWithFormat:@"terminate_timeout proc=%lu", (unsigned long)running.count] code:6];
+    // Switching accounts is exclusive by design: the account the user left must
+    // end, otherwise the target one cannot start. Keep asking through the panel's
+    // own termination API instead of giving up and showing an error.
+    if (!_forceTerminated && _attempt >= 5) {
+        _forceTerminated = YES;
+        [self record:[NSString stringWithFormat:@"termination_repeat proc=%lu",
+                      (unsigned long)running.count] code:0];
+        PXRequestTermination(_bundle);
+    }
+    if (++_attempt >= 150) {
+        [self record:[NSString stringWithFormat:@"terminate_timeout proc=%lu",
+                      (unsigned long)running.count] code:6];
         [self finish:token error:PXLaunchError(6, @"旧账号进程未退出，未启动其他账号")]; return;
     }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 100 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ [self pollTerminated:token]; });
@@ -642,7 +654,7 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     // A bounded, content-free event ring survives a missed live log capture.
     // No account display names, credentials, messages or app content.
     NSDictionary *event = @{ @"time": @(NSDate.date.timeIntervalSince1970),
-                             @"build": @"clone0.91", @"token": @(_flow.token),
+                             @"build": @"clone0.92", @"token": @(_flow.token),
                              @"stage": stage, @"code": @(code),
                              @"bundle": _bundle ?: @"", @"targetHash": @(_container.hash) };
     [_trace addObject:event];
