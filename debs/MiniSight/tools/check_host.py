@@ -238,9 +238,9 @@ callback = tweak[tweak.index('static void MiniSightDarwinCallback('):]
 callback = callback[:callback.index('\n}\n')]
 confirm = tweak[tweak.index('static void MiniSightShowConfirm(void) {'):]
 confirm = confirm[:confirm.index('\n}\n')]
-ok('if (!MiniSightAlwaysShow() && !gMiniSightBurst && !gMiniSightNameWakeToken.length && !gMiniSightNameWakePresentationHeld)' in show_body
+ok('if (!MiniSightAlwaysShow() && !gMiniSightBurst)' in show_body
    and 'MiniSightTracePresentationGate(@"idle_call_mode"); return;' in show_body,
-   '11a 调用模式 show 必须限定真实活动或名字对话')
+   '11a 调用模式 show 必须限定真实活动')
 converge_body = tweak[tweak.index('static void MiniSightConvergeSettings(BOOL resourcesFresh) {'):]
 converge_body = converge_body[:converge_body.index('\n}\n')]
 ok('MiniSightConvergeSettings(NO);' in reload_body and 'MiniSightConvergeSettings(YES);' in tweak and

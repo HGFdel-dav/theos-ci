@@ -22,7 +22,7 @@ need('setMotionLocked:YES forReason:MiniSightPetMotionLockChatEditor' not in pan
 need('preferredFramesPerSecond = 60' in panel, 'anchor follower matches the pet frame cadence')
 need('currentAnchorRect' in panel, 'follower uses tilt-safe anchor')
 pet=(ROOT/'MiniSightPet.m').read_text()
-need('effectiveLayout == 3' in pet and '(CGFloat)col / packCols' in pet and '(CGFloat)_state / packRows' in pet, 'single sheet plays row/column frames')
+need('effectiveLayout == 3' in pet and '(CGFloat)col / packCols' in pet and 'MSPetPoseAtlasRowAt((int)_state' in pet, 'single sheet uses verified action row and animated column')
 need('effectiveLayout == 1' in pet and 'CGRectMake(0, 0, 1, 1)' in pet, 'single image is never sliced')
 need('MSLoadAtlas(petPath, single, key)' in (ROOT/'MiniSightResources.m').read_text(), 'single image loads at its own ratio')
 need(tweak.count('0.20') >= 2, 'drag gain is applied on change and on release')

@@ -1,15 +1,9 @@
-# 当前：插件 0.8.48 本地候选，待推送与双架构 CI（2026-11-19）
+# 当前：插件 0.8.49 双端修复候选，本地检查完成待推送（2026-11-19）
 
-- 基于已验 c1f0e656a180e26574f6d9837c9f0deb13059365，当前本地候选加入歌词阶段诊断、真实触地速度与重摔坐稳/起身恢复；包版本 `0.8.48`，目标分支 `minisight-0.8.48-20261119`。
-- 本地静态/便携检查与物理回归已通过；Apple 原生夹具、双架构 DEB、安装加载、真机尚未验证。本次用户已明确授权推送与 CI；不包含安装、注销、重启或设备操作。
-
-- 最终P HEADc1f0e656a180e26574f6d9837c9f0deb13059365；HGFdel-dav/theos-ci minisight-0.8.47-20261118 run44230653549/#127 attempt1 completed success，RootHide/rootless全部必需步骤success。固定SDK15.5，minOS15.0；完整日志CRC/官方artifact非null digest与本地SHA及当前attempt/upload ID/time归属通过。
-- 两scheme实际新Atlas17组/7compiled负例、Music共享缓存5tests/2native负例、bubble78断言/4native负例、bounds449462/3portable负例及原ImageIO/Foundation/host/SDK类型门槛通过。所有native是macOS host，不是手机；P bounds仅portable，不假称App Swift执行。
-- 双DEB仅dylib0755+SpringBoard plist0644、无维护脚本；RH arm64e PAC1648/159签名页，RL arm64/155签名页，SHA1+SHA256全部代码页及特殊槽2实算、byte4096篡改拒绝。RH SHA62724ee61b10ba0e5129c784b2b1631d65050befc0c41dcb8c9c0edf14718fd8；RL SHA09c2ac1bc218f2cf1fb1ba553eca795aef736d31ff078bbb4365bfbf2035f756。
-- Source147精确Gitblob ZIP SHA13ffc02ac5e777787c5507baee4581006dd8ce7684f00a6d611a53f317770eb5。双包/版本化Source/SHA256SUMS/VERIFIED.md/json存attachments/MiniSight-0.8.47-20261118及shared/MiniSight-releases同名备份，逐字节一致；父重新check全门槛与SHA通过。
-- 配套App96dfff6c7b07dc4a21d624a8b4ff76c5377d4495/build325 attempt2也已真实发布终验。P生产不含A唯一CoreGraphics测试导入修订，不影响P已执行portable-only；不为未执行夹具重编成功包。
-- 未装/未MCP/device/mic/注销重启/真实曲目/整IPA下载/余额存储；冷启动素材/实际歌词与名字/宽范围移动等真机未验。此次推送许可只用于此批，不等于安装许可。证据`../openminis/releases/Minis-0.8.47-20261118/PLUGIN-HANDOFF.md`。
-- 本终态STATUS只本地更新，未再提交/推送，以下为冻结前历史。
+- 本地插件 HEAD `5aac5a700666cb3ac79b81d23ccec83caffd93fc`，包版本 `0.8.49`；已确认远端不存在目标 `minisight-0.8.49-20261119`，workflow 已加入该分支。
+- 本地验证通过：插件宿主 129 项检查、修复保护检查、音乐动作 40498 项便携检查，以及媒体/姿态 C 测试和 3 个编译负例；Apple UIKit/Foundation 原生夹具、Theos 双架构 DEB 未运行。
+- 插件专属改动同步 App 的歌词监控/气泡诊断；补齐 SpringBoard 桌宠硬重击落地吸收、阶段恢复、拖拽/音乐姿态，并移除旧名字唤醒通知路由与构建源。常规 Tweak 显示/聊天/审批行为保持原宿主实现。
+- 未推送、未触发 CI、未构建 DEB、未安装或真机验收；未操作设备/开麦/注销/重启。推送使用 `$GITHUB_TOKEN_QQ`，App 使用独立 `$GITHUB_TOKEN`。
 
 ---
 # 历史：MiniSight0.8.47 本地整合通过，待授权推送执行（2026-11-18）

@@ -37,7 +37,6 @@
 #import "MiniSightBlip.h"
 #import "MiniSightMusicMonitor.h"
 #import "MiniSightMusicPresentationPolicy.h"
-#import "MiniSightNameWakeBridge.h"
 #import <Photos/Photos.h>
 #import <notify.h>
 #import <signal.h>
@@ -84,14 +83,6 @@ static BOOL gMiniSightShownWritePending = NO, gMiniSightHideObservedOff = NO;
 static uint64_t gMiniSightShownWriteEpoch = 0;
 static NSString *gMiniSightHidePreviousShownIdentity;
 static void MiniSightConvergeSettings(BOOL resourcesFresh);
-static NSString *gMiniSightNameWakeToken;
-// Dictation may finish before the user sends the draft. This UI lease is
-// separate from the single-use audio request and ends on an actual panel close.
-static BOOL gMiniSightNameWakePresentationHeld = NO;
-static BOOL gMiniSightNameWakeCancelling = NO;
-static void MiniSightNameWakeUpdate(void);
-static void MiniSightNameWakeReadRequest(void);
-static void MiniSightNameWakeCancel(NSString *reason, BOOL cancelPanel);
 static BOOL gMiniSightResourceRefreshAgain = NO;
 static NSMutableArray *gMiniSightResourceCompletions;
 static void MiniSightReloadSettings(void);
@@ -190,8 +181,7 @@ static void MiniSightApplyShownReadback(void) {
 static BOOL MiniSightAppOwnsPresentation(void) {
     // Renderer is an explicit global choice, not a foreground-window heuristic.
     // If App mode is selected, SpringBoard never paints a duplicate pet.
-    return MiniSightRenderer() == 1 && MiniSightStyle() == 1 && MiniSightShown() &&
-        !(gMiniSightNameWakeToken.length || gMiniSightNameWakePresentationHeld);
+    return MiniSightRenderer() == 1 && MiniSightStyle() == 1 && MiniSightShown();
 }
 
 /// Presentation is main-thread owned. App ownership is read live from SBWorkspace
@@ -220,12 +210,8 @@ static void MiniSightReplyToPluginProbe(void) {
 static void MiniSightReconcileAppPresentation(void) {
     NSCAssert([NSThread isMainThread], @"MiniSight presentation is main-thread owned");
     MiniSightUpdateMusic();
-    MiniSightNameWakeUpdate();
-    if (!MiniSightChatPanel.existingPanel.isVisible && !gMiniSightNameWakeToken.length)
-        gMiniSightNameWakePresentationHeld = NO;
     BOOL appOwns = MiniSightAppOwnsPresentation();
-    BOOL wantsOverlay = MiniSightShown() && (MiniSightAlwaysShow() || gMiniSightBurst ||
-        gMiniSightNameWakeToken.length || gMiniSightNameWakePresentationHeld);
+    BOOL wantsOverlay = MiniSightShown() && (MiniSightAlwaysShow() || gMiniSightBurst);
     if (appOwns) {
         MiniSightStopGravity();
         [[MiniSightChatPanel existingPanel] hideWithoutKey];
@@ -248,9 +234,6 @@ static void MiniSightStartPresentationTimer(void) {
 }
 
 static void MiniSightUserHide(void) {
-    gMiniSightNameWakePresentationHeld = NO;
-    MiniSightNameWakeCancel(@"user_hidden", YES);
-    gMiniSightNameWakePresentationHeld = NO;
     gMiniSightShown = NO;
     gMiniSightUserHidden = YES;
     MSMiniSightSetPreference(@"MiniSightUserHidden", @YES);
@@ -351,7 +334,6 @@ static void MiniSightInstallRecorderCallbacks(void) {
                               MiniSightRecorderIssue issue, BOOL quarantined) {
         __strong MiniSightRecorder *strongRecorder = weakRecorder;
         if (!strongRecorder) return;
-        MiniSightNameWakeUpdate();
         MSDiag(@"recorder state=%ld owner=%ld issue=%ld quarantined=%d", (long)state, (long)owner, (long)issue, quarantined);
         MSDiagEvent(@"recording", @"state", quarantined || issue != MiniSightRecorderIssueNone ? @"failed" : @"pending", @{ @"source": @"plugin", @"mode": @(owner), @"value": @(state), @"issue": @(issue), @"reason": quarantined ? @"quarantined" : @"controller_state" });
         if (quarantined) { MiniSightSay(@"录屏状态待系统确认，暂不允许再次启动"); return; }
@@ -743,7 +725,7 @@ static NSString *const kMiniSightCenterY   = @"MiniSightCenterY";
 static NSString *const kMiniSightText      = @"Minis 操作中";
 // 版本号：与 DEBIAN/control 的 Version 同步。诊断日志会打印它，
 // 便于装机后确认跑的是哪一版（strings MiniSight.dylib | grep 也能看到）。
-static NSString *const kMiniSightVersion   = @"0.8.48";
+static NSString *const kMiniSightVersion   = @"0.8.49";
 
 #pragma mark - 全局状态
 
@@ -1389,7 +1371,6 @@ static void MiniSightInteractionBegin(void) {
 static void MiniSightInteractionEnd(void) {
     gMiniSightPet.interactionActive = NO;
     gMiniSightPet.roamingPaused = NO;
-    MiniSightNameWakeUpdate();
 }
 
 /// 取一个「不会跟着浮窗一起动」的参照视图，用来换算拖拽位移
@@ -1516,8 +1497,6 @@ static void MiniSightRunGesture(NSString *action, BOOL allowSecondTap) {
             gMiniSightDragOrigin = origin;
             gMiniSightDragOriginValid = YES;
             gMiniSightDragging = YES;
-            MiniSightNameWakeCancel(@"drag", YES);
-            MiniSightNameWakeUpdate();
             [MiniSightBlip playIfEnabled:MiniSightRuntimeConfig.shared.sound];
             if (gMiniSightPet) [gMiniSightPet beginDraggingAtPoint:[pan locationInView:gMiniSightPet]];
             MSDiagEvent(@"drag", @"begin", @"ok", @{ @"source": @"plugin", @"x": @(origin.x), @"y": @(origin.y) });
@@ -1816,7 +1795,6 @@ static void MiniSightRequestResources(BOOL force, void (^completion)(void)) {
         [gMiniSightResourceCompletions removeAllObjects];
         for (void (^block)(void) in pending) block();
         MiniSightUpdateMusic();
-        MiniSightNameWakeUpdate();
     }];
 }
 
@@ -2044,7 +2022,7 @@ static void MiniSightTracePresentationGate(NSString *reason) {
 static void MiniSightShow(void) {
     // Call mode is driven only by an active MCP-owned burst. A stray show
     // notification or stale status must never wake the pet while idle.
-    if (!MiniSightAlwaysShow() && !gMiniSightBurst && !gMiniSightNameWakeToken.length && !gMiniSightNameWakePresentationHeld) { MiniSightTracePresentationGate(@"idle_call_mode"); return; }
+    if (!MiniSightAlwaysShow() && !gMiniSightBurst) { MiniSightTracePresentationGate(@"idle_call_mode"); return; }
     if (!gMiniSightResourcesReady) {
         MiniSightRequestResources(NO, ^{ MiniSightShow(); });
         return;
@@ -2065,7 +2043,7 @@ static void MiniSightShowAfterOwnershipCheck(void) {
     if (!MiniSightShown()) { MiniSightTracePresentationGate(@"user_hidden"); return; }
     // Call mode is driven only by an active MCP-owned burst. A stray show
     // notification or stale status must never wake the pet while idle.
-    if (!MiniSightAlwaysShow() && !gMiniSightBurst && !gMiniSightNameWakeToken.length && !gMiniSightNameWakePresentationHeld) { MiniSightTracePresentationGate(@"idle_call_mode"); return; }
+    if (!MiniSightAlwaysShow() && !gMiniSightBurst) { MiniSightTracePresentationGate(@"idle_call_mode"); return; }
     if (!gMiniSightResourcesReady) {
         MiniSightRequestResources(NO, ^{ MiniSightShow(); });
         return;
@@ -2125,7 +2103,6 @@ static void MiniSightShowAfterOwnershipCheck(void) {
 }
 
 static void MiniSightHide(void) {
-    if (gMiniSightNameWakeToken.length && !gMiniSightNameWakeCancelling) return;
     if (gMiniSightConfirming) return;   // 等问题回答完再收，否则气泡跟着窗口一起没
     MiniSightHideBubble();
     if (MiniSightAlwaysShow() && MiniSightShown() && !gMiniSightUserHidden && !MiniSightAppOwnsPresentation()) {
@@ -2161,7 +2138,6 @@ static void MiniSightHide(void) {
 /// 彻底拆掉浮窗（设置变更时重建用）
 static void MiniSightDestroyUI(void) {
     MSMusicNextEpoch(&gMiniSightFadeEpoch);
-    MiniSightNameWakeCancel(@"host_teardown", YES);
     NSMutableDictionary *closed = [MiniSightMusicPresentation() mutableCopy];
     closed[@"allowed"] = @NO; closed[@"stopReason"] = @"host_teardown";
     [MiniSightMusicMonitor.shared configureAllowed:NO lyrics:NO motion:NO container:gMiniSightContainer presentation:closed];
@@ -2273,7 +2249,6 @@ static void MiniSightConvergeSettings(BOOL resourcesFresh) {
         MiniSightApplySettingsLive();
     }
     MiniSightUpdateMusic();
-    MiniSightNameWakeUpdate();
 }
 
 static void MiniSightReloadSettings(void) {
@@ -2741,8 +2716,6 @@ static BOOL MiniSightOpenChat(void) {
     return opened;
 }
 
-#include "MiniSightNameWakeHost.h"
-
 #pragma mark - Darwin 通知
 
 /// 注意：Darwin 通知的回调线程不保证是主线程，所有 UI 操作统一切回主线程
@@ -2753,11 +2726,6 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
                                     CFDictionaryRef userInfo) {
     NSString *note = (__bridge NSString *)name;
     if (note.length == 0) return;
-    if ([note isEqualToString:MSNWRequestNote]) {
-        dispatch_async(dispatch_get_main_queue(), ^{ MiniSightNameWakeReadRequest(); });
-        return;
-    }
-
     if ([note isEqualToString:kMiniSightShow]) {
         dispatch_async(dispatch_get_main_queue(), ^{ MiniSightShow(); });
         return;
@@ -2793,7 +2761,6 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
         // Notifications may merge or repeat. Always read the current system value.
         dispatch_async(dispatch_get_main_queue(), ^{
             MiniSightReadScreenState();
-            MiniSightNameWakeUpdate();
             MiniSightUpdateMusic();
             MSDiagEvent(@"screen", @"state", gMiniSightScreenKnown ? @"ok" : @"failed", @{ @"source": @"plugin", @"enabled": @(!gMiniSightScreenBlanked), @"valid": @(gMiniSightScreenKnown) });
             if (!gMiniSightScreenKnown || gMiniSightScreenBlanked) {
@@ -2821,7 +2788,6 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
     if ([note isEqualToString:kMiniSightResourcesChanged]) {
         dispatch_async(dispatch_get_main_queue(), ^{
             BOOL visible = gMiniSightWindow && !gMiniSightWindow.hidden;
-            MiniSightNameWakeCancel(@"resources_changed", YES);
             [MiniSightResources releaseCachedAtlas];
             gMiniSightResourcesReady = NO;
             MiniSightRequestResources(YES, ^{
@@ -2841,8 +2807,6 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
     dispatch_async(dispatch_get_main_queue(), ^{
         if (shouldShow) {
             gMiniSightBurst = YES;
-            MiniSightNameWakeCancel(@"tool_busy", YES);
-            MiniSightNameWakeUpdate();
             if (gMiniSightPendingHide) { dispatch_block_cancel(gMiniSightPendingHide); gMiniSightPendingHide = nil; }
             MiniSightArmIdleHide();
             MiniSightShow();
@@ -2912,11 +2876,9 @@ static void MiniSightBringMinisFront(void) {
         gMiniSightGestureTarget = [[MiniSightGestureHandler alloc] init];
         gMiniSightUserHidden = [MSMiniSightPreference(@"MiniSightUserHidden") boolValue];
 
+        MSDiagEvent(@"name_wake", @"stop", @"ok", @{@"source": @"plugin", @"reason": @"feature_removed", @"active": @NO});
         // 立刻注册 Darwin 通知：回调里会懒加载 UI，不会漏掉启动早期的事件
         CFNotificationCenterRef center = CFNotificationCenterGetDarwinNotifyCenter();
-        CFNotificationCenterAddObserver(center, (__bridge const void *)MSNWRequestNote,
-            MiniSightDarwinCallback, (__bridge CFStringRef)MSNWRequestNote, NULL,
-            CFNotificationSuspensionBehaviorDeliverImmediately);
         CFNotificationCenterAddObserver(center,
                                         (__bridge const void *)kMiniSightStarted,
                                         MiniSightDarwinCallback,
