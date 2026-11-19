@@ -63,8 +63,12 @@ static NSString *g_host = nil;
 + (NSString *)tokenFromItems:(NSArray *)items differentFrom:(NSString *)old {
     NSString *best = nil;
     int bestScore = -1;
+    SLLog(@"items count=%lu", (unsigned long)items.count);
     for (NSDictionary *d in items) {
         NSData *data = d[(__bridge id)kSecValueData];
+        NSString *acc0 = [d[(__bridge id)kSecAttrAccount] description] ?: @"";
+        NSString *b64s = [data isKindOfClass:[NSData class]] ? [[data base64EncodedStringWithOptions:0] substringToIndex:MIN((NSUInteger)64, [data base64EncodedStringWithOptions:0].length)] : @"";
+        SLLog(@"item acct=%@ len=%lu b64head=%@", acc0, (unsigned long)([data isKindOfClass:[NSData class]] ? data.length : 0), b64s);
         if (![data isKindOfClass:[NSData class]] || data.length < 20 || data.length > 4096) continue;
         NSString *s = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
         if (!s.length) continue;
