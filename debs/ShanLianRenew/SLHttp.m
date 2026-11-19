@@ -237,7 +237,6 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
 }
 
 + (NSString *)currentToken {
-    if (![SLCacheDB token]) [SLCacheDB refresh:nil];
     NSString *t = [SLCacheDB token];
     if (!t) t = [self tokenFromMemory];
     if (!t) t = [self tokenFromSecureStorage];
