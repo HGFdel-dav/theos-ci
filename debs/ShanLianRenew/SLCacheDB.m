@@ -28,6 +28,25 @@ static void *SLSym(void *h, const char *n) { return h ? dlsym(h, n) : NULL; }
 }
 
 // 从 request_object(NSKeyedArchiver plist) 里取出头部字典
+static NSString *SLURLFromRequestObject(NSData *data) {
+    if (!data.length) return nil;
+    id obj = nil;
+    @try {
+        obj = [NSPropertyListSerialization propertyListWithData:data
+                                                        options:NSPropertyListImmutable
+                                                         format:NULL error:NULL];
+    } @catch (__unused NSException *e) { obj = nil; }
+    if (![obj isKindOfClass:[NSDictionary class]]) return nil;
+    id arr = ((NSDictionary *)obj)[@"Array"];
+    if (![arr isKindOfClass:[NSArray class]]) return nil;
+    for (id x in (NSArray *)arr) {
+        if ([x isKindOfClass:[NSDictionary class]] && ((NSDictionary *)x)[@"_CFURLString"]) {
+            return ((NSDictionary *)x)[@"_CFURLString"];
+        }
+    }
+    return nil;
+}
+
 static NSDictionary *SLHeadersFromRequestObject(NSData *data) {
     if (!data.length) return nil;
     id obj = nil;
@@ -115,6 +134,11 @@ static NSDictionary *SLHeadersFromRequestObject(NSData *data) {
         NSData *data = [NSData dataWithBytes:b length:(NSUInteger)n];
         NSDictionary *hdr = SLHeadersFromRequestObject(data);
         if (!hdr) continue;
+        NSString *url = SLURLFromRequestObject(data);
+        if (host.length && url.length) {
+            NSString *h = [NSURL URLWithString:url].host;
+            if (h.length && ![h isEqualToString:host]) continue;
+        }
 
         NSString *tk = hdr[@"Authorization"];
         NSString *pe = hdr[@"peach"];
