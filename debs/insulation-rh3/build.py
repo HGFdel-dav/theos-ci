@@ -103,8 +103,15 @@ def main():
   raise SystemExit('patch-manifest mismatch')
  core.write_bytes(patched.read_bytes())
  run('ldid','-S',str(core))
+ # Read the signed core now: under the rootless scheme Library/ moves to var/jb
+ # later on, so this path is only valid at this point of the run.
+ core_signed_sha=hashlib.sha256(core.read_bytes()).hexdigest()
  fat,sig=compile_display(tmp)
  dylib,plist=install_display(payload,fat)
+ # Hash the display files now too: the rootless scheme moves Library/ to var/jb
+ # further down, which invalidates both paths.
+ dylib_sha=hashlib.sha256(dylib.read_bytes()).hexdigest()
+ plist_sha=hashlib.sha256(plist.read_bytes()).hexdigest()
  ctl=payload/'DEBIAN';ctext=(ctl/'control').read_text()
  def setfield(text,key,value):
   lines=[l for l in text.splitlines() if not l.lower().startswith(key.lower()+':')]
@@ -121,9 +128,9 @@ def main():
  run('dpkg-deb','--root-owner-group','-b',str(payload),str(out))
  print(json.dumps({'scheme':scheme,'version':VERSION,'out':str(out),
   'sha256':hashlib.sha256(out.read_bytes()).hexdigest(),
-  'core_sha256':hashlib.sha256(core.read_bytes()).hexdigest(),
+  'core_sha256':core_signed_sha,
   'display':{'install_path':str((final/DYLIB_DIR/f'{DISPLAY}.dylib').relative_to(payload)),
-             'dylib_sha256':hashlib.sha256(dylib.read_bytes()).hexdigest(),
-             'plist_sha256':hashlib.sha256(plist.read_bytes()).hexdigest(),
+             'dylib_sha256':dylib_sha,
+             'plist_sha256':plist_sha,
              'signature':sig}},indent=2))
 if __name__=='__main__':main()
