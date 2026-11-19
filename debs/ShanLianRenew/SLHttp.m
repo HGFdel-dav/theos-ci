@@ -430,6 +430,26 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
     return r;
 }
 
++ (void)probeNet {
+    NSArray *tests = @[@"https://api.slacover.com/app/customer/slgetUserInfogo",
+                       @"https://api.slcloudstore.com/app/customer/slgetUserInfogo",
+                       @"https://www.baidu.com/"];
+    for (NSString *u in tests) {
+        NSMutableURLRequest *r = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:u]];
+        r.timeoutInterval = 12;
+        r.HTTPMethod = @"GET";
+        NSDate *t0 = [NSDate date];
+        [[[NSURLSession sharedSession] dataTaskWithRequest:r completionHandler:
+          ^(NSData *d, NSURLResponse *resp, NSError *e) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                SLLog(@"probe %@ -> %ld %.2fs err=%@", [u componentsSeparatedByString:@"//"].lastObject,
+                      (long)[(NSHTTPURLResponse *)resp statusCode],
+                      -[t0 timeIntervalSinceNow], e.localizedDescription ?: @"-");
+            });
+        }] resume];
+    }
+}
+
 + (void)send:(NSString *)method path:(NSString *)path body:(NSDictionary *)json
   completion:(void (^)(NSInteger, NSDictionary *, NSError *))done {
     [self hosts];
