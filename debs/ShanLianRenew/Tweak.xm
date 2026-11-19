@@ -19,6 +19,18 @@ static NSString *g_fakeId = nil;
 
 #pragma mark - 抓请求体（诊断）
 
+static void SLDumpBuf(NSString *tag, const void *buf, size_t len) {
+    if (!buf || len < 40) return;
+    @try {
+        size_t n = MIN(len, (size_t)4096);
+        NSData *d = [NSData dataWithBytes:buf length:n];
+        NSString *s = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
+        if (s && [s containsString:@"firstDeviceLogin"]) {
+            SLLog(@"%@ firstDeviceLogin body-b64=%@", tag, [d base64EncodedStringWithOptions:0]);
+        }
+    } @catch (__unused NSException *e) {}
+}
+
 static ssize_t (*g_origSend)(int, const void *, size_t, int);
 static ssize_t SLHookSend(int fd, const void *buf, size_t len, int flags) {
     @try {
