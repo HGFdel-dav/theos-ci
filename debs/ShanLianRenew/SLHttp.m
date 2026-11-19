@@ -403,7 +403,7 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
     NSMutableURLRequest *r = [NSMutableURLRequest requestWithURL:
         [NSURL URLWithString:[NSString stringWithFormat:@"https://%@%@", g_host, path]]];
     r.HTTPMethod = method;
-    r.timeoutInterval = 20;
+    r.timeoutInterval = 60;
     [r setValue:@"Shan Lian" forHTTPHeaderField:@"User-Agent"];
     [r setValue:@"1" forHTTPHeaderField:@"shanlian"];
     [r setValue:[self firebaseToken] forHTTPHeaderField:@"firebase_pntoken"];
