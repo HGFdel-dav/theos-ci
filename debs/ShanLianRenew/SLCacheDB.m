@@ -67,7 +67,8 @@ static NSDictionary *SLHeadersFromRequestObject(NSData *data) {
     if (!h) h = dlopen("libsqlite3.dylib", RTLD_LAZY);
     if (!h) { SLLog(@"cache: sqlite dlopen failed"); return NO; }
 
-    int (*pOpen)(const char *, sqlite3 **) = SLSym(h, "sqlite3_open_v2");
+    int (*pOpenV2)(const char *, sqlite3 **, int, const char *) = SLSym(h, "sqlite3_open_v2");
+    int (*pOpen)(const char *, sqlite3 **) = SLSym(h, "sqlite3_open");
     int (*pClose)(sqlite3 *) = SLSym(h, "sqlite3_close");
     int (*pPrep)(sqlite3 *, const char *, int, sqlite3_stmt **, const char **) = SLSym(h, "sqlite3_prepare_v2");
     int (*pStep)(sqlite3_stmt *) = SLSym(h, "sqlite3_step");
@@ -83,8 +84,14 @@ static NSDictionary *SLHeadersFromRequestObject(NSData *data) {
     }
 
     sqlite3 *db = NULL;
-    // 只读 + 允许 WAL
-    if (pOpen([path UTF8String], &db) != 0 || !db) {
+    // 只读 + 不建 journal + 不走锁，避免与 App 主进程争 WAL
+    int ok = -1;
+    if (pOpenV2) {
+        ok = pOpenV2([path UTF8String], &db, 0x00000001 | 0x00008000, NULL); // READONLY|NOMUTEX
+    } else if (pOpen) {
+        ok = pOpen([path UTF8String], &db);
+    }
+    if (ok != 0 || !db) {
         SLLog(@"cache: open failed");
         if (db && pClose) pClose(db);
         return NO;
