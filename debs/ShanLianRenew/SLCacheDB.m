@@ -56,12 +56,7 @@ static NSDictionary *SLHeadersFromRequestObject(NSData *data) {
 
 + (BOOL)refresh:(NSString *)host {
     NSString *path = [self cacheDBPath];
-    if (!path.length) {
-        NSArray *dirs = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES);
-        SLLog(@"cache: db not found caches=%@", dirs.firstObject);
-        return NO;
-    }
-    SLLog(@"cache: open %@", path);
+    if (!path.length) { SLLog(@"cache: db not found"); return NO; }
 
     void *h = dlopen("/usr/lib/libsqlite3.dylib", RTLD_LAZY);
     if (!h) h = dlopen("libsqlite3.dylib", RTLD_LAZY);
