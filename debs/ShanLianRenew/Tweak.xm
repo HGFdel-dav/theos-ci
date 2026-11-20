@@ -426,6 +426,7 @@ static void SLFill(SLState *st, NSString *token) {
                 SLScheduleReminder(st);
                 SLLog(@"renew ok -> %.0f", ndv);
                 SLNotify(@"闪连已续上", [NSString stringWithFormat:@"到期 %@", data[@"deadline"] ?: @""]);
+                SLGoBackground();
             } else {
                 g_filling = NO;
                 SLFailOrRetry(st, @"deadline not extended");
@@ -454,6 +455,7 @@ static void SLFailOrRetry(SLState *st, NSString *reason) {
     [st save];
     SLLog(@"rolled back, phase=failed");
     SLNotify(@"闪连没续上", [NSString stringWithFormat:@"已退回旧号，需要你看一眼（%@）", reason ?: @"未知"]);
+    SLGoBackground();
 }
 
 #pragma mark - 流程（App 端）
@@ -658,8 +660,10 @@ static void SLOpenAppSilently(void) {
 }
 
 static __attribute__((unused)) void SLOpenAppThrottled(void) {
+    SLState *stp = [SLState load];
     NSTimeInterval now = [NSDate date].timeIntervalSince1970;
-    if (now - g_lastOpen < 90) return;          // 90 秒内不重复拉起
+    BOOL active = (stp.phase == SLPhaseResetting || stp.phase == SLPhaseNeedFill);
+    if (now - g_lastOpen < (active ? 4.0 : 90.0)) return;   // 续期进行中 4 秒重试
     g_lastOpen = now;
     SLLog(@"open app (throttled)");
     SLOpenApp();
@@ -729,6 +733,11 @@ static void SLInitBody(void) {
 
     if (isApp) g_fakeId = [SLDefaults() stringForKey:SL_DEVICE_KEY];
 
+    if (isApp) {
+        Class winCls = NSClassFromString(@"UIWindow");
+        if (winCls) MSHookMessageEx(winCls, @selector(makeKeyAndVisible),
+                                   (IMP)SLHookMakeKeyAndVisible, (IMP *)&g_origMakeKeyAndVisible);
+    }
 
     Class ud = NSClassFromString(@"UIDevice");
     if (ud) MSHookMessageEx(ud, @selector(identifierForVendor), (IMP)SLHookIdfv, (IMP *)&g_origIdfv);
