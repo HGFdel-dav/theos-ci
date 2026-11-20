@@ -522,7 +522,7 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     if (!PXCloneFlowAdvance(&_flow, token, PXCloneFlowVerifying, PXCloneFlowOpening)) return;
     [self record:@"native_split_requested" code:0];
     _attempt = 0;
-    // This is alpha391's own complete host/canvas/overlay builder. Do not call
+    // Let the original build its complete host/canvas/overlay. Do not call
     // openApplication with nil views, a nil continuation, or applicationActivated.
     Class panel = PXLaunchClass(@"PXPanelEntry");
     SEL selector = NSSelectorFromString(@"externalOpenApplication:");
@@ -654,7 +654,7 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     // A bounded, content-free event ring survives a missed live log capture.
     // No account display names, credentials, messages or app content.
     NSDictionary *event = @{ @"time": @(NSDate.date.timeIntervalSince1970),
-                             @"build": @"clone0.93", @"token": @(_flow.token),
+                             @"build": @"clone0.94", @"token": @(_flow.token),
                              @"stage": stage, @"code": @(code),
                              @"bundle": _bundle ?: @"", @"targetHash": @(_container.hash) };
     [_trace addObject:event];

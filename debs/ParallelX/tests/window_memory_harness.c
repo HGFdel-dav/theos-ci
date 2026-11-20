@@ -9,7 +9,50 @@ static bool near(double a,double b) { return fabs(a-b)<0.000001; }
 static void same(PXWMRect a,PXWMRect b) {
     CHECK(near(a.x,b.x)); CHECK(near(a.y,b.y)); CHECK(near(a.width,b.width)); CHECK(near(a.height,b.height));
 }
+static void native_lifecycle(void) {
+    PXWMNativeLifecycle old = {0}, next = {0};
+    /* Real native order: enter -> close old scene -> install canvas -> return. */
+    PXWMNativeBegin(&old, 1);
+    CHECK(!PXWMNativeBindingActive(&old, 1));
+    CHECK(PXWMNativeClose(&old));
+    CHECK(!PXWMNativeBindingActive(&old, 1));
+    CHECK(PXWMNativeReturned(&old, true, true, true));
+    CHECK(PXWMNativeBindingActive(&old, 1));
+    CHECK(!PXWMNativeReturned(&old, true, false, true));
+    CHECK(PXWMNativeBindingActive(&old, 1));
+
+    PXWMNativeBegin(&next, 2);
+    CHECK(!PXWMNativeBindingActive(&next, 2));
+    CHECK(!PXWMNativeClose(&old));
+    CHECK(PXWMNativeClose(&next));
+    CHECK(!PXWMNativeBindingActive(&old, 1));
+    CHECK(PXWMNativeReturned(&next, true, true, true));
+    CHECK(PXWMNativeBindingActive(&next, 2));
+    CHECK(!PXWMNativeBindingActive(&next, 1));
+    CHECK(!PXWMNativeClose(&next));
+    CHECK(!PXWMNativeBindingActive(&next, 2));
+
+    /* A second close during entry is not the first native cleanup. */
+    PXWMNativeBegin(&next, 3);
+    CHECK(PXWMNativeClose(&next));
+    CHECK(!PXWMNativeClose(&next));
+    CHECK(!PXWMNativeReturned(&next, true, true, true));
+    CHECK(!PXWMNativeBindingActive(&next, 3));
+
+    for (unsigned which=0; which<5; ++which) {
+        uint64_t serial = which == 4 ? 0 : 10 + which;
+        PXWMNativeBegin(&next, serial);
+        if (which != 3 && which != 4) CHECK(PXWMNativeClose(&next));
+        /* Superseded, wrong canvas, exception, missing cleanup, invalid token. */
+        CHECK(!PXWMNativeReturned(&next, which!=0, which!=1, which!=2));
+        CHECK(!PXWMNativeBindingActive(&next, serial));
+    }
+    CHECK(!PXWMNativeBindingActive(NULL, 1));
+    CHECK(!PXWMNativeClose(NULL));
+}
+
 int main(void) {
+    native_lifecycle();
     PXWMGeometry saved={{50,140,260,520},{0,0,390,844}};
     PXWMRect native={10,70,320,640}, out={-7,-7,-7,-7};
     CHECK(PXWMValidGeometry(saved));

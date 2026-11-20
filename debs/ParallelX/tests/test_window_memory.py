@@ -31,7 +31,9 @@ class WindowMemoryPolicy(unittest.TestCase):
                         ('g.frame.x >= g.reference.x - tolerance','true'),
                         ('(!resolved || (keyKnown && previousKey != currentKey))',
                          '(!resolved || !keyKnown || previousKey != currentKey)'),
-                        ('orientationKnown && gestureKey == currentKey &&', 'orientationKnown &&')]:
+                        ('orientationKnown && gestureKey == currentKey &&', 'orientationKnown &&'),
+                        ('!state->initialCleanupSeen && !state->cancelled', '!state->cancelled'),
+                        ('matchingCanvasAndBundle && state->initialCleanupSeen', 'state->initialCleanupSeen')]:
             with self.subTest(old=old), tempfile.TemporaryDirectory() as temp:
                 target=Path(temp)
                 (target/'Common').mkdir(); (target/'tests').mkdir()
@@ -44,19 +46,43 @@ class WindowMemoryPolicy(unittest.TestCase):
                 self.assertNotEqual(run.returncode,0)
 
     def test_native_method_table_bytes_match_fixture(self):
-        fixture=json.loads((ROOT/'tests/fixtures/window-memory-alpha391-abi.json').read_text())
+        fixture=json.loads((ROOT/'tests/fixtures/window-memory-alpha437-abi.json').read_text())
         image=(ROOT/fixture['sample']).read_bytes()
         self.assertEqual(hashlib.sha256(image).hexdigest(),fixture['sample_sha256'])
+        start, end = (int(value,16) for value in fixture['selref_range'])
         def relative(pos): return pos+struct.unpack_from('<i',image,pos)[0]
         def cstr(pos): return image[pos:image.index(b'\0',pos)].decode()
         for method in fixture['methods']:
             with self.subTest(selector=method['selector']):
-                entry=method['entry']
-                self.assertEqual(relative(entry+8),method['imp'])
+                entry=int(method['entry'],16)
+                self.assertEqual(relative(entry+8),int(method['imp'],16))
                 self.assertEqual(cstr(relative(entry+4)),method['encoding'])
                 name=relative(entry)
-                if 0x8e5b8<=name<0x8f8b8: name=struct.unpack_from('<Q',image,name)[0]&0xffffffff
+                if start<=name<end: name=struct.unpack_from('<Q',image,name)[0]&0xffffffff
                 self.assertEqual(cstr(name),method['selector'])
+
+    def test_original_open_first_closes_old_window_then_sets_canvas(self):
+        fixture=json.loads((ROOT/'tests/fixtures/window-memory-alpha437-abi.json').read_text())
+        image=(ROOT/fixture['sample']).read_bytes()
+        self.assertEqual(hashlib.sha256(image).hexdigest(),fixture['sample_sha256'])
+        def word(pos): return struct.unpack_from('<I',image,pos)[0]
+        def sign(n,bits): return (n^(1<<(bits-1)))-(1<<(bits-1))
+        previous=0
+        for call in fixture['open_calls']:
+            pos, stub, ref=(int(call[key],16) for key in ('at','stub','selref'))
+            self.assertGreater(pos,previous)
+            self.assertEqual(word(pos)>>26,0b100101) # BL
+            self.assertEqual(pos+4*sign(word(pos)&0x3ffffff,26),stub)
+            adrp, ldr=word(stub), word(stub+4)
+            self.assertEqual(adrp&0x9f00001f,0x90000001) # ADRP x1
+            self.assertEqual(ldr&0xffc003ff,0xf9400021) # LDR x1, [x1, #offset]
+            pages=sign(((adrp>>5)&0x7ffff)*4+((adrp>>29)&3),21)
+            self.assertEqual((stub&~4095)+(pages<<12)+((ldr>>10)&0xfff)*8,ref)
+            name=struct.unpack_from('<Q',image,ref)[0]&0xffffffff
+            self.assertEqual(image[name:image.index(b'\0',name)].decode(),call['selector'])
+            previous=pos
+        self.assertEqual([call['selector'] for call in fixture['open_calls']],
+                         ['close','setCanvas:','setKeyboardOverlay:','setBundleID:'])
 
 class WindowMemorySourceGuards(unittest.TestCase):
     def test_hooks_guard_exact_abi_and_forward_native_arguments(self):
@@ -70,6 +96,22 @@ class WindowMemorySourceGuards(unittest.TestCase):
                           'object_getIvar','PXCloneFunctionAt','method_setImplementation'):
             self.assertNotIn(forbidden,source)
         self.assertIn('PXWindowMemoryInstall(', (ROOT/'Tweak.xm').read_text())
+
+    def test_memory_binding_is_published_only_after_native_open_returns(self):
+        source=(ROOT/'Common/PXWindowMemory.m').read_text()
+        start=source.index('static void PXWMOpen(')
+        end=source.index('static void PXWMLayout(',start)
+        method=source[start:end]
+        forwarded=method.rindex('PXWMOriginalOpen(self,command,bundle,canvas,overlay,completion)')
+        publish=method.index('objc_setAssociatedObject(self, PXWMContextKey, ticket')
+        self.assertLess(method.index('objc_setAssociatedObject(self, PXWMOpenTicketKey, ticket'),forwarded)
+        self.assertLess(forwarded,method.index('PXWMNativeReturned(&ticket->native'))
+        self.assertLess(method.index('PXWMNativeReturned(&ticket->native'),publish)
+        self.assertLess(publish,method.index('PXWMTryRestore(ticket)'))
+        close=source[source.index('static void PXWMClose('):source.index('static void PXWMControllerLayout(')]
+        self.assertIn('PXWMNativeClose(&ticket->native)',close)
+        self.assertIn('if (PXWMOriginalClose) PXWMOriginalClose(self,command);',close)
+        self.assertNotIn('return;',close)
 
     def test_only_user_completed_geometry_can_save(self):
         source=(ROOT/'Common/PXWindowMemory.m').read_text()
@@ -200,6 +242,6 @@ class WindowMemoryAppleStorage(unittest.TestCase):
         self.assertLessEqual(len(logs),256)
         self.assertGreater(len(logs),200)
         self.assertTrue(any(event['event']=='fixture' for event in logs))
-        self.assertTrue(all(event['build']=='clone0.93' for event in logs))
+        self.assertTrue(all(event['build']=='clone0.94' for event in logs))
 
 if __name__ == '__main__': unittest.main(verbosity=2)

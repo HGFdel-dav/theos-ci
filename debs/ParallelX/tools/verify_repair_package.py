@@ -94,7 +94,7 @@ def main():
     if not package.is_file():
         raise ValueError("expected current package missing")
     for name, expected in (("Package", "com.moxuan.parallelx"), ("Version", VERSION),
-                           ("Architecture", debarch), ("Depends", "mobilesubstrate, preferenceloader")):
+                           ("Architecture", debarch), ("Depends", "mobilesubstrate, preferenceloader, firmware (>= 15.0), firmware (<< 16.0)")):
         if field(package, name) != expected:
             raise ValueError(f"wrong {name}: {field(package, name)}")
     report = {"version": VERSION, "scheme": args.scheme, "architecture": arch, "images": {}}
@@ -115,7 +115,8 @@ def main():
         if len(memory_entry) != 1 or not memory_entry[0].get("isController") or "bundle" in memory_entry[0]:
             raise ValueError("window memory entry not wired to injected controller")
         for binary, markers in {
-            "ParallelXClone": (b"PXWindowMemoryStore", b"native_open_observed", b"save_user_geometry", b"restore_geometry_applied"),
+            "ParallelXClone": (b"PXWindowMemoryStore", b"native_open_observed", b"native_initial_cleanup_preserved",
+                               b"native_window_bound", b"save_user_geometry", b"restore_geometry_applied"),
             "ParallelXPrefsUI": (b"PXWindowMemoryController", b"PXWindowMemoryStore", b"confirmClear"),
         }.items():
             content = (lib / (binary + ".dylib")).read_bytes()
@@ -144,11 +145,17 @@ def main():
             if any(word in subprocess.check_output(["xcrun", "nm", str(image)], text=True)
                    for word in ("__ZL15PXPerformAction", "_PXCloneHookMessage")):
                 raise ValueError("unstripped private C hook symbols")
-        for original in sorted((ROOT / "vendor/alpha391").rglob("*")):
+        for original in sorted((ROOT / "vendor/alpha437").rglob("*")):
             if not original.is_file():
                 continue
-            relative = original.relative_to(ROOT / "vendor/alpha391")
+            relative = original.relative_to(ROOT / "vendor/alpha437")
             if str(relative).endswith("ParallelXPrefs.bundle/Root.plist"):
+                original_spec = plistlib.loads(original.read_bytes())
+                installed_spec = plistlib.loads((prefix / relative).read_bytes())
+                original_rows = [row for row in installed_spec['items'] if row.get('detail') not in
+                                 ('PXCloneAccountsController', 'PXWindowMemoryController')]
+                if {**installed_spec, 'items': original_rows} != original_spec:
+                    raise ValueError('existing alpha437 settings rows changed')
                 continue
             installed = prefix / relative
             if installed.read_bytes() != original.read_bytes():

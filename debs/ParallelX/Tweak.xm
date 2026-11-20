@@ -21,7 +21,7 @@
 #endif
 
 // Both action signatures are intercepted by actual declaring class and ABI.
-// alpha391 metadata places them on PXSceneBridge; no owner-class name guess
+// alpha437 metadata places both configured-action entries on PXSceneBridge.
 // may decide whether the clone item is consumed.
 static BOOL (*PXOrigPerformAction2)(id, SEL, id, BOOL);
 static BOOL (*PXOrigPerformAction1)(id, SEL, id);
@@ -581,11 +581,8 @@ static void PXForcePluginState(void) {
     [PXCloneProbe log:@"ORIG-STATE-FORCED now=%llu", (unsigned long long)PXPluginState()];
 }
 
-// The image's own constructors bail at dyld time, which is also why every
-// feature is dead and not only the panel. Their addresses are stable in this
-// binary (__TEXT,__init_offsets): call them again on the main queue, where the
-// classes and run loop they need already exist, then start the panel.
-__attribute__((unused)) static const uintptr_t PXOrigInitOffsets[] = { 0x40bc, 0xab04, 0x6aabc };
+// Do not call vendor constructors or old image offsets. Let dyld initialize
+// the image once; on the main queue use only its checked panel class methods.
 
 static BOOL PXClassHasValue(Class cls, NSString *key) {
     if (!cls) return NO;
@@ -606,7 +603,7 @@ static void PXStartOriginalPanel(NSUInteger step) {
         return;
     }
     SEL start = NSSelectorFromString(@"start");
-    if (![panel respondsToSelector:start]) {
+    if (!PXCloneClassMethodMatches(panel, start, @encode(void), @[], NULL)) {
         [PXCloneProbe log:@"ORIG-START-UNRESPONSIVE step=%lu", (unsigned long)step];
         return;
     }
@@ -616,9 +613,9 @@ static void PXStartOriginalPanel(NSUInteger step) {
     [PXCloneProbe log:@"ORIG-STATE step=%lu enable=%llu panel=%d handle=%d", (unsigned long)step,
         (unsigned long long)PXPluginState(),
         (int)PXClassHasValue(panel, @"panelWindow"), (int)PXClassHasValue(panel, @"handleWindow")];
-    if ([panel respondsToSelector:update]) ((void (*)(id, SEL))objc_msgSend)((id)panel, update);
-    if ([panel respondsToSelector:refresh]) ((void (*)(id, SEL))objc_msgSend)((id)panel, refresh);
-    ((void (*)(id, SEL))objc_msgSend)((id)panel, start);
+    if (PXCloneClassMethodMatches(panel, update, @encode(void), @[], NULL)) PXCloneSendVoid((id)panel, update);
+    if (PXCloneClassMethodMatches(panel, refresh, @encode(void), @[], NULL)) PXCloneSendVoid((id)panel, refresh);
+    PXCloneSendVoid((id)panel, start);
     [PXCloneProbe log:@"ORIG-START-CALL step=%lu after handle=%d", (unsigned long)step,
         (int)PXClassHasValue(panel, @"handleWindow")];
     if (step >= 2) return;

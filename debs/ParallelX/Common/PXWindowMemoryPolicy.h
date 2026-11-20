@@ -90,3 +90,47 @@ static inline uint64_t PXWMIdentifierHash(const char *identifier) {
     if (bytes) while (*bytes) { hash ^= *bytes++; hash *= UINT64_C(1099511628211); }
     return hash;
 }
+
+/* alpha437 openApplication first closes its PREVIOUS scene, then assigns the
+ * incoming canvas. This is not the same event as closing the new window.
+ * No UIKit/ObjC is needed to execute these exact production transitions. */
+typedef struct {
+    uint64_t serial;
+    bool entering;
+    bool initialCleanupSeen;
+    bool cancelled;
+    bool bound;
+} PXWMNativeLifecycle;
+
+static inline void PXWMNativeBegin(PXWMNativeLifecycle *state, uint64_t serial) {
+    if (!state) return;
+    *state = (PXWMNativeLifecycle){serial, true, false, false, false};
+}
+
+/* True only for the one synchronous pre-canvas cleanup at native entry.
+ * The native close implementation is still called on every path. */
+static inline bool PXWMNativeClose(PXWMNativeLifecycle *state) {
+    if (!state) return false;
+    if (state->serial && state->entering && !state->initialCleanupSeen && !state->cancelled) {
+        state->initialCleanupSeen = true;
+        return true;
+    }
+    state->cancelled = true;
+    state->bound = false;
+    return false;
+}
+
+static inline bool PXWMNativeReturned(PXWMNativeLifecycle *state, bool currentTicket,
+                                     bool matchingCanvasAndBundle, bool returnedNormally) {
+    if (!state || !state->entering) return false;
+    state->entering = false;
+    state->bound = state->serial && currentTicket && returnedNormally &&
+                   matchingCanvasAndBundle && state->initialCleanupSeen && !state->cancelled;
+    if (!state->bound) state->cancelled = true;
+    return state->bound;
+}
+
+static inline bool PXWMNativeBindingActive(const PXWMNativeLifecycle *state, uint64_t serial) {
+    return state && serial && state->serial == serial && state->bound &&
+           !state->entering && !state->cancelled;
+}

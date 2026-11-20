@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Whole-project local gate. Read-only except temporary scheme checks."""
+import argparse
 import hashlib
+import json
 import os
 import plistlib
 import subprocess
@@ -8,9 +10,11 @@ import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEB = os.environ.get("BASELINE_DEB", "/tmp/parallelx-alpha391-bcca9307.deb")
-EXPECTED_DEB = "76052a287abb9b925c52701bde835152aeab20331e4e90fc39a8f92102d40c50"
-VENDOR = os.path.join(ROOT, "vendor/alpha391")
+DEB = os.environ.get("BASELINE_DEB", "/var/minis/attachments/uploads/shared-2D65F75C.deb")
+MANIFEST_PATH = os.path.join(ROOT, "tools/baseline-alpha437.json")
+with open(MANIFEST_PATH, encoding="utf-8") as manifest_file:
+    BASELINE = json.load(manifest_file)
+VENDOR = os.path.join(ROOT, BASELINE["vendor_root"])
 
 
 def sha(path):
@@ -26,35 +30,79 @@ def fail(message):
     return 1
 
 
-def main():
-    errors = 0
-    if os.path.exists(DEB):
-        if sha(DEB) != EXPECTED_DEB:
-            errors += fail("baseline deb hash changed")
-        else:
-            print("ok baseline deb", EXPECTED_DEB)
-    else:
-        errors += fail("exact baseline DEB missing; set BASELINE_DEB before validation")
+def deb_field(package, field):
+    return subprocess.check_output(["dpkg-deb", "-f", package, field], text=True).strip()
 
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--pinned-vendor", action="store_true",
+                        help="CI: compare every vendor file to the manifest from the verified source DEB")
+    args = parser.parse_args()
+    if args.pinned_vendor and "BASELINE_DEB" in os.environ:
+        parser.error("--pinned-vendor does not accept a DEB override; omit it to verify the full DEB")
+    errors = 0
+    baseline_fields = BASELINE["baseline"]
+    has_deb = not args.pinned_vendor and os.path.isfile(DEB)
+    if args.pinned_vendor:
+        print("CI pinned alpha437 payload mode; source archive not present on the runner", baseline_fields["deb_sha256"])
+    elif has_deb:
+        digest = sha(DEB)
+        if digest != baseline_fields["deb_sha256"]:
+            errors += fail(f"baseline deb hash mismatch: {digest}")
+        else:
+            print("ok exact baseline deb", digest)
+        metadata_errors = errors
+        for field, key in (("Package", "package"), ("Version", "version"),
+                           ("Architecture", "architecture"), ("Depends", "depends")):
+            actual = deb_field(DEB, field)
+            if actual != baseline_fields[key]:
+                errors += fail(f"baseline {field} mismatch: {actual}")
+        if errors == metadata_errors:
+            print("ok baseline package metadata")
+    else:
+        errors += fail("exact baseline DEB missing; set BASELINE_DEB to the supplied alpha437 package")
+
+    expected_payload = BASELINE["payload_sha256"]
+    payload_errors = errors
     vendor_files = []
     for base, _, names in os.walk(VENDOR):
         for name in names:
             vendor_files.append(os.path.relpath(os.path.join(base, name), VENDOR))
     vendor_files.sort()
-    if len(vendor_files) != 16:
-        errors += fail(f"vendor file count {len(vendor_files)} != 16")
-    if os.path.exists(DEB):
+    if vendor_files != sorted(expected_payload):
+        errors += fail("vendor file set differs from exact alpha437 source manifest")
+    for rel, expected in sorted(expected_payload.items()):
+        path = os.path.join(VENDOR, rel)
+        if not os.path.isfile(path):
+            errors += fail(f"vendor source missing {rel}")
+        elif sha(path) != expected:
+            errors += fail(f"vendor source hash mismatch {rel}")
+    if errors == payload_errors:
+        print("ok source payload manifest", len(expected_payload), "files")
+
+    if has_deb:
         with tempfile.TemporaryDirectory() as temp:
-            subprocess.run(["dpkg-deb", "-x", DEB, temp], check=True)
-            for rel in vendor_files:
-                source = os.path.join(temp, rel)
-                if not os.path.exists(source):
-                    errors += fail(f"vendor extra file {rel}")
-                elif sha(source) != sha(os.path.join(VENDOR, rel)):
-                    errors += fail(f"vendor changed {rel}")
-        print("ok vendor payload", len(vendor_files), "files byte-identical")
-    else:
-        errors += fail("cannot compare vendor without the exact baseline DEB")
+            try:
+                extract_errors = errors
+                subprocess.run(["dpkg-deb", "-x", DEB, temp], check=True)
+                extracted = []
+                for base, _, names in os.walk(temp):
+                    for name in names:
+                        extracted.append(os.path.relpath(os.path.join(base, name), temp))
+                extracted.sort()
+                if extracted != sorted(expected_payload):
+                    errors += fail("baseline DEB payload file set differs from source manifest")
+                for rel, expected in sorted(expected_payload.items()):
+                    path = os.path.join(temp, rel)
+                    if not os.path.isfile(path):
+                        errors += fail(f"baseline DEB payload missing {rel}")
+                    elif sha(path) != expected:
+                        errors += fail(f"baseline DEB payload mismatch {rel}")
+                if errors == extract_errors:
+                    print("ok baseline DEB payload matches manifest")
+            except subprocess.CalledProcessError as exc:
+                errors += fail(f"cannot extract baseline DEB: {exc}")
 
     for rel in ["layout/DEBIAN/postinst.in",
                 "layout/Library/PreferenceBundles/ParallelXPrefs.bundle/Root.plist",
