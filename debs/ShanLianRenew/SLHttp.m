@@ -48,11 +48,9 @@ static NSString *g_host = nil;
 
 + (NSArray<NSDictionary *> *)keychainItems {
     NSMutableArray *all = [NSMutableArray array];
-    for (NSString *g in @[SL_KEYCHAIN_GROUP, @""]) {
-        [all addObjectsFromArray:[self itemsClass:(__bridge id)kSecClassGenericPassword group:g]];
-        [all addObjectsFromArray:[self itemsClass:(__bridge id)kSecClassInternetPassword group:g]];
-        [all addObjectsFromArray:[self itemsClass:(__bridge id)kSecClassKey group:g]];
-    }
+    [all addObjectsFromArray:[self itemsClass:(__bridge id)kSecClassGenericPassword group:@""]];
+    [all addObjectsFromArray:[self itemsClass:(__bridge id)kSecClassInternetPassword group:@""]];
+    [all addObjectsFromArray:[self itemsClass:(__bridge id)kSecClassKey group:@""]];
     return all;
 }
 
@@ -590,13 +588,15 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
 
 
 static NSString *SLKcClassOf(id c) {
-    if (!c) return @"?";
-    NSString *s = (NSString *)c;
-    if ([s isEqualToString:(__bridge NSString *)kSecClassGenericPassword]) return @"genp";
-    if ([s isEqualToString:(__bridge NSString *)kSecClassInternetPassword]) return @"inet";
-    if ([s isEqualToString:(__bridge NSString *)kSecClassKey]) return @"key";
-    if ([s isEqualToString:(__bridge NSString *)kSecClassCertificate]) return @"cert";
-    return @"?";
+    NSString *s = c ? [c description] : @"";
+    if ([s isEqualToString:@"genp"]) return @"genp";
+    if ([s isEqualToString:@"inet"]) return @"inet";
+    if ([s isEqualToString:@"keys"]) return @"key";
+    if ([s isEqualToString:@"cert"]) return @"cert";
+    if ([s containsString:@"GenericPassword"]) return @"genp";
+    if ([s containsString:@"InternetPassword"]) return @"inet";
+    if ([s containsString:@"Key"]) return @"key";
+    return @"genp";   // 兜底：绝大多数是通用密码项
 }
 
 // 把当前所有钥匙串项完整写到文件，返回路径
@@ -625,6 +625,8 @@ static NSString *SLKcClassOf(id c) {
     return p;
 }
 
+
+// 删除账号相关项（account 含 com.shanlian.pro），保留设备号
 static id SLSecClassFrom(NSString *s) {
     if ([s isEqualToString:@"genp"]) return (__bridge id)kSecClassGenericPassword;
     if ([s isEqualToString:@"inet"]) return (__bridge id)kSecClassInternetPassword;
@@ -632,7 +634,6 @@ static id SLSecClassFrom(NSString *s) {
     return nil;
 }
 
-// 删除账号相关项（account 含 com.shanlian.pro），保留设备号
 + (int)wipeAccountItems {
     int n = 0;
     for (NSDictionary *d in [self keychainItems]) {
@@ -643,7 +644,9 @@ static id SLSecClassFrom(NSString *s) {
         BOOL hit = [acc containsString:@"com.shanlian.pro"] ||
                    [svc containsString:@"com.shanlian.pro"];
         if (!hit) continue;
-        NSMutableDictionary *q = [@{ (__bridge id)kSecClass: cls } mutableCopy];
+        id realCls = SLSecClassFrom(SLKcClassOf(cls));
+        if (!realCls) { SLLog(@"kc del skip cls=%@ acc=%@", SLKcClassOf(cls), acc); continue; }
+        NSMutableDictionary *q = [@{ (__bridge id)kSecClass: realCls } mutableCopy];
         if (acc.length) q[(__bridge id)kSecAttrAccount] = acc;
         if (svc.length) q[(__bridge id)kSecAttrService] = svc;
         OSStatus st = SecItemDelete((__bridge CFDictionaryRef)q);
