@@ -376,8 +376,6 @@ static void SLFill(SLState *st, NSString *token) {
         NSString *rj = resp ? [[NSString alloc] initWithData:
             [NSJSONSerialization dataWithJSONObject:resp options:0 error:NULL]
             encoding:NSUTF8StringEncoding] : (err.localizedDescription ?: @"");
-        SLDiag(@"fill", @"resp http=%ld api=%ld body=%@", (long)status,
-               (long)[resp[@"code"] integerValue], rj ?: @"-");
         SLLog(@"fill resp http=%ld api=%ld body=%@", (long)status,
               (long)[resp[@"code"] integerValue],
               [rj substringToIndex:MIN((NSUInteger)220, rj.length)]);
@@ -549,30 +547,9 @@ static void SLOnLaunch(void) {
 
     SLState *st = [SLState load];
     if (st.phase == SLPhaseResetting) {
-        // 观察版：不做重置，只记一笔
-        SLLog(@"observe-only: reset requested but skipped");
-        st.phase = SLPhaseIdle;
-        [st save];
-    }
-    if (st.phase == SLPhaseNeedFill) {
-        SLLog(@"observe-only: fill requested but skipped");
-        st.phase = SLPhaseIdle;
-        [st save];
-    }
-    // 到期提醒被点开（或用户自己打开）：时间已到就立刻续期
-    double nowT = [NSDate date].timeIntervalSince1970;
-    BOOL fromNotif = [SLDefaults() boolForKey:@"sl.lastNotifTap"];
-    if (fromNotif) {
-        SLLog(@"launched from notification tap");
-        [SLDefaults() removeObjectForKey:@"sl.lastNotifTap"];
-        [SLDefaults() synchronize];
-    }
-    if (st.enabled && st.phase == SLPhaseArmed && (fromNotif || (st.nextFire1 > 0 && nowT >= st.nextFire1 - 30))) {
-        SLLog(@"renew triggered by user (now=%.0f fire=%.0f)", nowT, st.nextFire1);
-        st.phase = SLPhaseResetting;
-        st.attempt = 0;
-        [st save];
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
+        // 只有锁屏时才真正换号（会退出 App），避免打断用户
+        if (!SLScreenLocked()) { SLLog(@"reset: not locked, defer"); return; }
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
             SLState *s2 = [SLState load];
             if (s2.phase == SLPhaseResetting) SLPerformReset(s2);
@@ -598,7 +575,35 @@ static __attribute__((unused)) BOOL SLScreenLocked(void) {
     return NO;
 }
 
-static BOOL SLAppRunning(void) { return NO; }   // 一律直接调起，重复调用无害
+static void SLOpenApp(void);
+
+static BOOL SLAppRunning(void) {
+    Class c = NSClassFromString(@"LSApplicationWorkspace");
+    if (!c) return NO;
+    id ws = ((id (*)(id, SEL))objc_msgSend)(c, sel_registerName("defaultWorkspace"));
+    if (!ws) return NO;
+    SEL sel = sel_registerName("runningApplications");
+    if (![ws respondsToSelector:sel]) return NO;
+    id apps = ((id (*)(id, SEL))objc_msgSend)(ws, sel);
+    if (![apps isKindOfClass:[NSArray class]]) return NO;
+    for (id a in (NSArray *)apps) {
+        SEL bs = sel_registerName("bundleIdentifier");
+        if (![a respondsToSelector:bs]) continue;
+        id bid = ((id (*)(id, SEL))objc_msgSend)(a, bs);
+        if ([bid isKindOfClass:[NSString class]] && [(NSString *)bid isEqualToString:SL_APP_ID]) return YES;
+    }
+    return NO;
+}
+
+// 最近一次拉起的时间，避免每 15 秒强行前台化
+static NSTimeInterval g_lastOpen = 0;
+static void SLOpenAppThrottled(void) {
+    NSTimeInterval now = [NSDate date].timeIntervalSince1970;
+    if (now - g_lastOpen < 90) return;          // 90 秒内不重复拉起
+    g_lastOpen = now;
+    SLLog(@"open app (throttled)");
+    SLOpenApp();
+}
 
 static void SLOpenApp(void) {
     Class c = NSClassFromString(@"LSApplicationWorkspace");
@@ -617,11 +622,16 @@ static void SLTick(void) {
     // 观察版：桌面端不做任何动作（不拉起 App、不重置、不填码）
     SLState *st = [SLState load];
     double now = [NSDate date].timeIntervalSince1970;
-    if (!st.enabled) return;
-    // 保留判据日志与投递通道，但观察期不实际开火
-    if (st.nextFire1 > 0 && now >= st.nextFire1) {
-        SLLog(@"fire locked=%d late=%d dl_in=%.0f (observe: skip)", 0, 0, st.deadline - now);
-        notify_post(kSLFireName);
+
+    // 换号/填码阶段同样只在锁屏时动作，避免打扰用户
+    if (st.phase == SLPhaseResetting || st.phase == SLPhaseNeedFill) {
+        if (!SLScreenLocked()) {
+            if ((int)now % 300 == 0) SLLog(@"phase=%d waiting for lock", (int)st.phase);
+            return;
+        }
+        if (!SLAppRunning()) SLOpenAppThrottled();
+        if (st.phase == SLPhaseNeedFill) notify_post(kSLFireName);
+        return;
     }
     if (st.phase != SLPhaseArmed) return;
 
