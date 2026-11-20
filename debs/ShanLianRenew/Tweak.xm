@@ -490,7 +490,26 @@ static void SLInitBody(void) {
     NSString *bid = [NSBundle mainBundle].bundleIdentifier;
     BOOL isApp = [bid isEqualToString:SL_APP_ID];
     BOOL isSB  = [bid isEqualToString:SL_SB_ID];
-    if (!isApp && !isSB) return;
+    BOOL isExt = [bid isEqualToString:@"com.shanlian.pro.iosTunnel"];
+    if (!isApp && !isSB && !isExt) return;
+    if (isExt) {
+        SLLog(@"init tunnel ext v%@", SL_VER);
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            NSArray *items = [SLHttp keychainItems];
+            SLLog(@"ext items=%lu", (unsigned long)items.count);
+            for (NSDictionary *it in items) {
+                NSString *acc = [it[(__bridge id)kSecAttrAccount] description] ?: @"";
+                NSData *d = it[(__bridge id)kSecValueData];
+                NSString *b64 = [d isKindOfClass:[NSData class]]
+                    ? [[d base64EncodedStringWithOptions:0] substringToIndex:
+                       MIN((NSUInteger)44, [d base64EncodedStringWithOptions:0].length)] : @"";
+                SLLog(@"ext item %@ len=%lu %@", acc,
+                      (unsigned long)([d isKindOfClass:[NSData class]] ? d.length : 0), b64);
+            }
+        });
+        return;
+    }
     SLLog(@"init %@ v%@ ver-state=%@ phase=%d", bid, SL_VER,
           [[NSDictionary dictionaryWithContentsOfFile:SLStatePath()] objectForKey:@"ver"] ?: @"-", 0);
 
