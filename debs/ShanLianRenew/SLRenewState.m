@@ -28,6 +28,7 @@
         if ([d[@"host"] isKindOfClass:[NSString class]]) s.host = d[@"host"];
         if ([d[@"snapPrefs"] isKindOfClass:[NSDictionary class]]) s.snapPrefs = d[@"snapPrefs"];
         if ([d[@"snapToken"] isKindOfClass:[NSString class]]) s.snapToken = d[@"snapToken"];
+        if ([d[@"kcBackup"] isKindOfClass:[NSString class]]) s.kcBackup = d[@"kcBackup"];
         if ([d[@"ver"] isKindOfClass:[NSString class]]) s.ver = d[@"ver"];
     }
     if (s.lead1 <= 0) s.lead1 = 10;
@@ -57,6 +58,7 @@
     d[@"host"] = self.host ?: @"";
     if (self.snapPrefs) d[@"snapPrefs"] = self.snapPrefs;
     if (self.snapToken) d[@"snapToken"] = self.snapToken;
+    if (self.kcBackup) d[@"kcBackup"] = self.kcBackup;
     if (self.ver) d[@"ver"] = self.ver;
     [d writeToFile:SLStatePath() atomically:YES];
 }

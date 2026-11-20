@@ -31,6 +31,7 @@ typedef NS_ENUM(NSInteger, SLPhase) {
 // 回滚快照
 @property (nonatomic) NSDictionary *snapPrefs;
 @property (nonatomic) NSString *snapToken;
+@property (nonatomic) NSString *kcBackup;
 @property (nonatomic) NSString *ver;
 
 + (instancetype)load;
