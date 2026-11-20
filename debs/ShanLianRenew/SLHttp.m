@@ -247,6 +247,10 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
     return t;
 }
 + (NSString *)newTokenDifferentFrom:(NSString *)old {
+    [self hosts];
+    [SLCacheDB refresh:g_host];          // App 自己登录后，新 token 会写进它自己的缓存
+    NSString *c = [SLCacheDB token];
+    if (c.length && (!old.length || ![c isEqualToString:old])) return c;
     NSString *t = [self tokenFromMemory];
     if (t && old.length && [t isEqualToString:old]) t = nil;
     if (!t) t = [self tokenFromSecureStorage];
