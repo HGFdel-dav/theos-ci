@@ -320,14 +320,31 @@ static __attribute__((unused)) void SLPerformReset(SLState *st) {
     }
     SLDiag(@"reset", @"groups cleared");
 
-    // 3) 钥匙串按 class 全删（不加 account/service 条件，才不会卡死）
-    NSArray *classes = @[(__bridge id)kSecClassGenericPassword,
-                         (__bridge id)kSecClassInternetPassword,
-                         (__bridge id)kSecClassKey];
-    for (NSUInteger i = 0; i < classes.count; i++) {
-        NSDictionary *q = @{(__bridge id)kSecClass: classes[i]};
-        OSStatus s = SecItemDelete((__bridge CFDictionaryRef)q);
-        SLDiag(@"reset", @"kc[%lu] delete st=%d", (unsigned long)i, (int)s);
+    // 3) 钥匙串逐项删除（照「一键重置」的做法：先拿完整属性，再逐项删）
+    NSArray *items = [SLHttp keychainItems];
+    SLDiag(@"reset", @"kc enumerate=%lu", (unsigned long)items.count);
+    for (NSDictionary *it in items) {
+        id cls = it[(__bridge id)kSecClass];
+        NSMutableDictionary *q = [NSMutableDictionary dictionary];
+        if (cls) q[(__bridge id)kSecClass] = cls;
+        id acc = it[(__bridge id)kSecAttrAccount];
+        id svc = it[(__bridge id)kSecAttrService];
+        id grp = it[(__bridge id)kSecAttrAccessGroup];
+        if (acc) q[(__bridge id)kSecAttrAccount] = acc;
+        if (svc) q[(__bridge id)kSecAttrService] = svc;
+        if (grp) q[(__bridge id)kSecAttrAccessGroup] = grp;
+        OSStatus st = (q.count > 0) ? SecItemDelete((__bridge CFDictionaryRef)q) : errSecParam;
+        SLDiag(@"reset", @"kc del acc=%@ svc=%@ grp=%@ st=%d",
+               [acc description] ?: @"-", [svc description] ?: @"-",
+               [grp description] ?: @"-", (int)st);
+    }
+    // 删完自检：还有剩的就记下来（防止再出现空壳）
+    NSArray *left = [SLHttp keychainItems];
+    SLDiag(@"reset", @"kc left=%lu", (unsigned long)left.count);
+    for (NSDictionary *it in left) {
+        SLDiag(@"reset", @"kc remained acc=%@ svc=%@",
+               [it[(__bridge id)kSecAttrAccount] description] ?: @"-",
+               [it[(__bridge id)kSecAttrService] description] ?: @"-");
     }
 
     // 4) 删 App 缓存库
