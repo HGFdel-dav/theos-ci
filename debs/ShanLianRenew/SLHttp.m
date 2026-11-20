@@ -439,6 +439,12 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
     return r;
 }
 
++ (void)warmup {
+    [self hosts];
+    [SLCacheDB refresh:g_host];
+    SLLog(@"warmup token=%d", [SLCacheDB token] ? 1 : 0);
+}
+
 + (void)probeHeaders {
     NSString *A = [SLCacheDB token] ?: @"";
     NSString *S = @"1o7LhUbImdtP60eCkZKPBa7nCMkCcGF//TRjz4UG6BM=";
