@@ -228,7 +228,7 @@ static NSUserDefaults *SLDefaults(void) {
     return d;
 }
 
-static void SLPerformReset(SLState *st) {
+static __attribute__((unused)) void SLPerformReset(SLState *st) {
     // 先记下旧 token，用来判断 App 是否真的注册了新号
     st.snapToken = [SLHttp currentToken];
     st.phase = SLPhaseNeedFill;
@@ -393,7 +393,7 @@ static void SLRefreshDeadline(void) {
     }];
 }
 
-static void SLRunFillPhase(SLState *st) {
+static __attribute__((unused)) void SLRunFillPhase(SLState *st) {
     if (g_filling) return;
     g_filling = YES;
 
@@ -414,7 +414,7 @@ static void SLRunFillPhase(SLState *st) {
 
 
 // App 是否在前台（避免在用户正看着时退出它）
-static BOOL SLAppForeground(void) {
+static __attribute__((unused)) BOOL SLAppForeground(void) {
     Class app = NSClassFromString(@"UIApplication");
     if (!app) return NO;
     id a = ((id (*)(id, SEL))objc_msgSend)(app, sel_registerName("sharedApplication"));
@@ -426,7 +426,7 @@ static BOOL SLAppForeground(void) {
 
 
 // 让 App 立刻退回后台（用户几乎看不到）
-static void SLGoBackground(void) {
+static __attribute__((unused)) void SLGoBackground(void) {
     Class app = NSClassFromString(@"UIApplication");
     if (!app) return;
     id a = ((id (*)(id, SEL))objc_msgSend)(app, sel_registerName("sharedApplication"));
@@ -467,7 +467,7 @@ static void SLOnLaunch(void) {
 
 #pragma mark - 计时（桌面端）
 
-static BOOL SLScreenLocked(void) {
+static __attribute__((unused)) BOOL SLScreenLocked(void) {
     Class c = NSClassFromString(@"SBLockScreenManager");
     if (!c) return NO;
     id sh = ((id (*)(id, SEL))objc_msgSend)(c, sel_registerName("sharedInstance"));
@@ -477,9 +477,9 @@ static BOOL SLScreenLocked(void) {
     return NO;
 }
 
-static void SLOpenApp(void);
+static __attribute__((unused)) void SLOpenApp(void);
 
-static BOOL SLAppRunning(void) {
+static __attribute__((unused)) BOOL SLAppRunning(void) {
     Class c = NSClassFromString(@"LSApplicationWorkspace");
     if (!c) return NO;
     id ws = ((id (*)(id, SEL))objc_msgSend)(c, sel_registerName("defaultWorkspace"));
@@ -522,7 +522,7 @@ static void SLOpenAppSilently(void) {
     }
 }
 
-static void SLOpenAppThrottled(void) {
+static __attribute__((unused)) void SLOpenAppThrottled(void) {
     NSTimeInterval now = [NSDate date].timeIntervalSince1970;
     if (now - g_lastOpen < 90) return;          // 90 秒内不重复拉起
     g_lastOpen = now;
