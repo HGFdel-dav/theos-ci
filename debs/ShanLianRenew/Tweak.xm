@@ -426,6 +426,7 @@ static void SLGoBackground(void) {
         return;
     }
     if (st.phase == SLPhaseNeedFill) { SLRunFillPhase(st); return; }
+    [SLHttp warmup];
     [SLHttp probeNet];
     [SLHttp probeHeaders];
     SLRefreshDeadline();
