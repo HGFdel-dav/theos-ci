@@ -208,7 +208,10 @@ static void SLPerformReset(SLState *st) {
         st.kcBackup = bak;   // 复用这个字段存偏好备份路径
         [st save];
     }
-    SLLog(@"reset: prefs backup=%@", bak.lastPathComponent);
+    [d setObject:g_fakeId forKey:SL_DEVICE_KEY];
+    [d synchronize];
+    [SLHttp setDeviceId:g_fakeId];   // 真正生效的是钥匙串里那份
+    SLLog(@"reset done id=%@ snap=%lu cleared=%d", g_fakeId, (unsigned long)snap.count, cleared);
 
     // 主队列正常退出；主线程若被卡住，全局队列兜底
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
