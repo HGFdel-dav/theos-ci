@@ -185,18 +185,12 @@ static NSUserDefaults *SLDefaults(void) {
     return d;
 }
 
-static BOOL SLLooksLikeToken(id v) {
-    return [v isKindOfClass:[NSString class]] && [(NSString *)v hasPrefix:@"eyJ"];
-}
-
-
 
 #pragma mark - 重置
 
 static void SLPerformReset(SLState *st) {
-    NSUserDefaults *d = SLDefaults();
-    if (!d) d = [NSUserDefaults standardUserDefaults];
-    NSDictionary *snap = [d dictionaryRepresentation] ?: @{};
+    NSUserDefaults *sd = [NSUserDefaults standardUserDefaults];
+    NSDictionary *snap = [sd dictionaryRepresentation] ?: @{};
     st.snapPrefs = snap;
     st.snapToken = [SLHttp currentToken];
     st.phase = SLPhaseNeedFill;
@@ -213,30 +207,43 @@ static void SLPerformReset(SLState *st) {
         st.kcBackup = bak;   // 复用这个字段存偏好备份路径
         [st save];
     }
-    [d setObject:g_fakeId forKey:SL_DEVICE_KEY];
-    [d synchronize];
-    [SLHttp setDeviceId:g_fakeId];   // 真正生效的是钥匙串里那份
+    SLLog(@"reset: prefs backup=%@", bak.lastPathComponent);
 
-    // 关键：App 的登录态存在它自己的偏好域里（flutter.klocalUserInfoSaveKey）
-    // 钥匙串只有 Firebase 推送相关，没有登录 token，不要碰
-    NSString *kc = [SLHttp backupKeychain];
-    st.kcBackup = kc;
-    SLLog(@"wipe: kc backup ok");
+    // 按「一键重置」的做法：把 App 恢复成刚装好的状态
+    // 1) 清 App 自己的偏好域（含 flutter.klocalUserInfoSaveKey / deviceId / agree）
+    NSString *bid = [NSBundle mainBundle].bundleIdentifier ?: @"com.shanlian.pro";
+    [sd removePersistentDomainForName:bid];
+    [sd synchronize];
+    SLLog(@"wipe: domain %@ cleared", bid);
 
-    NSUserDefaults *ad = SLAppDefaults();
-    NSArray *akeys = @[@"flutter.klocalUserInfoSaveKey", @"flutter.login_ts"];
-    int acleared = 0;
-    for (NSString *k in akeys) {
-        if ([ad objectForKey:k]) { [ad removeObjectForKey:k]; acleared++; }
+    // 2) 清 App Group 域
+    for (NSString *g in @[@"group.com.shanlian.pro", SL_APP_GROUP, SL_PREF_SUITE]) {
+        if (!g.length) continue;
+        NSUserDefaults *gd = [[NSUserDefaults alloc] initWithSuiteName:g];
+        if (gd) { [gd removePersistentDomainForName:g]; [gd synchronize]; }
     }
-    [ad synchronize];
-    SLLog(@"wipe: app prefs cleared=%d", acleared);
+    SLLog(@"wipe: groups cleared");
 
+    // 3) 钥匙串按类全删（不带 account/service 条件，避免卡死）
+    NSArray *classes = @[(__bridge id)kSecClassGenericPassword,
+                         (__bridge id)kSecClassInternetPassword,
+                         (__bridge id)kSecClassKey];
+    int kcCount = 0;
+    for (id c in classes) {
+        NSDictionary *q = @{(__bridge id)kSecClass: c};
+        OSStatus s = SecItemDelete((__bridge CFDictionaryRef)q);
+        SLLog(@"wipe: kc class %d st=%d", (int)[classes indexOfObject:c], (int)s);
+        if (s == errSecSuccess) kcCount++;
+    }
+    SLLog(@"wipe: kc classes deleted=%d", kcCount);
+
+    // 4) 删 App 缓存库
     [SLHttp wipeAppCacheDB];
-    [st save];
+    SLLog(@"wipe: cache done");
 
-    SLLog(@"reset done id=%@ snap=%lu cleared=%d kc=%@",
-          g_fakeId, (unsigned long)snap.count, cleared, kc.lastPathComponent);
+    // 注意：不预设 deviceId，让 App 自己生成新设备号并重新注册
+    [st save];
+    SLLog(@"reset done snap=%lu (App 将以全新状态启动)", (unsigned long)snap.count);
 
     // 主队列正常退出；主线程若被卡住，全局队列兜底
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
