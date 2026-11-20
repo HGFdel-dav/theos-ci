@@ -16,6 +16,7 @@
 #import "SLRenewState.h"
 #import "SLHttp.h"
 #import "SLSigner.h"
+#import "SLCacheDB.h"
 
 static NSString *g_fakeId = nil;
 
