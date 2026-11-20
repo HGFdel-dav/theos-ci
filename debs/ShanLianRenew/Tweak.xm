@@ -221,91 +221,113 @@ static NSUUID *SLHookAdid(id self, SEL _cmd) {
     return g_origAdid ? g_origAdid(self, _cmd) : nil;
 }
 
-// —— 隐藏界面：App 照常跑，但不显示 ——
-static void (*g_origMakeKeyVisible)(id, SEL) = NULL;
-static void SLHookMakeKeyAndVisible(id self, SEL _cmd) {
-    // 不调用原实现 = 窗口永远不显示
-    SLLog(@"hidden-ui: suppressed makeKeyAndVisible %@", NSStringFromClass([self class]));
+
+
+
+#pragma mark - 配对捕获（data + 密钥同刻取样）
+
+// 把钥匙串全部项完整写出（含完整 base64），用于和同一时刻的 data 配对解密
+static NSString *SLCaptureKeychain(void) {
+    NSMutableString *out = [NSMutableString string];
+    NSArray *items = [SLHttp keychainItems];
+    [out appendFormat:@"# count=%lu ts=%.0f\n", (unsigned long)items.count, [NSDate date].timeIntervalSince1970];
+    for (NSDictionary *d in items) {
+        NSString *acc = [d[(__bridge id)kSecAttrAccount] description] ?: @"";
+        NSString *svc = [d[(__bridge id)kSecAttrService] description] ?: @"";
+        NSString *grp = [d[(__bridge id)kSecAttrAccessGroup] description] ?: @"";
+        NSData *val = d[(__bridge id)kSecValueData];
+        NSString *b64 = [val isKindOfClass:[NSData class]] ? [val base64EncodedStringWithOptions:0] : @"";
+        [out appendFormat:@"%@\t%@\t%@\t%@\n", acc, svc, grp, b64];
+    }
+    NSString *p = [SLStateDir() stringByAppendingPathComponent:
+        [NSString stringWithFormat:@"cap-kc-%.0f.tsv", [NSDate date].timeIntervalSince1970]];
+    [out writeToFile:p atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+    SLLog(@"capture: keychain -> %@ (%lu items)", p.lastPathComponent, (unsigned long)items.count);
+    return p;
 }
 
-static void (*g_origViewDidAppear)(id, SEL, BOOL) = NULL;
-static void SLHookViewDidAppear(id self, SEL _cmd, BOOL animated) {
-    if (g_origViewDidAppear) g_origViewDidAppear(self, _cmd, animated);
-    // 界面出现后立刻把窗口藏起来
-    @try {
-        id v = ((id (*)(id, SEL))objc_msgSend)(self, sel_registerName("view"));
-        id w = v ? ((id (*)(id, SEL))objc_msgSend)(v, sel_registerName("window")) : nil;
-        if (w) {
-            ((void (*)(id, SEL, BOOL))objc_msgSend)(w, sel_registerName("setHidden:"), YES);
-        }
-    } @catch (NSException *e) {}
+// 从 App 缓存里找 firstDeviceLogin 的请求体，原样写出
+static BOOL SLCaptureLoginBody(void) {
+    NSString *body = [SLCacheDB firstDeviceLoginBody];
+    if (!body.length) return NO;
+    NSData *d = [body dataUsingEncoding:NSUTF8StringEncoding];
+    NSString *p = [SLStateDir() stringByAppendingPathComponent:
+        [NSString stringWithFormat:@"cap-body-%.0f.json", [NSDate date].timeIntervalSince1970]];
+    [d writeToFile:p atomically:YES];
+    SLLog(@"capture: login body -> %@ (%lu bytes)", p.lastPathComponent, (unsigned long)d.length);
+    return YES;
 }
 
-
+static void SLCaptureRun(void) {
+    SLCaptureKeychain();
+    __block int tries = 0;
+    void (^poll)(void);
+    __block __weak void (^weakPoll)(void);
+    weakPoll = poll = ^{
+        if (SLCaptureLoginBody()) { SLLog(@"capture: done"); return; }
+        if (++tries > 12) { SLLog(@"capture: body not found after %d tries", tries); return; }
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), weakPoll);
+    };
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), poll);
+}
 
 #pragma mark - 重置
 
 static void SLPerformReset(SLState *st) {
-    NSUserDefaults *sd = [NSUserDefaults standardUserDefaults];
-    NSDictionary *snap = [sd dictionaryRepresentation] ?: @{};
-    st.snapPrefs = snap;
+    // 先记下旧 token，用来判断 App 是否真的注册了新号
     st.snapToken = [SLHttp currentToken];
     st.phase = SLPhaseNeedFill;
     st.attempt = 0;
     st.lastRun = [NSDate date].timeIntervalSince1970;
 
-    // 先把偏好文件整份留底，失败能回滚
+    // 偏好文件留底，万一 App 没注册出来可以还原
     NSString *appPl = SLAppPrefsPath();
     NSString *dir = SLStateDir();
     NSString *bak = [dir stringByAppendingPathComponent:
         [NSString stringWithFormat:@"prefs-%.0f.plist", [NSDate date].timeIntervalSince1970]];
     if (appPl) {
         [[NSFileManager defaultManager] copyItemAtPath:appPl toPath:bak error:NULL];
-        st.kcBackup = bak;   // 复用这个字段存偏好备份路径
-        [st save];
+        st.kcBackup = bak;
     }
-    SLLog(@"reset: prefs backup=%@", bak.lastPathComponent);
+    [st save];    // 必须在清域之前存，否则状态会被一起清掉
+    SLLog(@"reset: start backup=%@", bak.lastPathComponent);
 
-    // 按「一键重置」的做法：把 App 恢复成刚装好的状态
-    // 1) 清 App 自己的偏好域（含 flutter.klocalUserInfoSaveKey / deviceId / agree）
+    // —— 与「一键重置」完全一致：把 App 变回刚装好的状态 ——
     NSString *bid = [NSBundle mainBundle].bundleIdentifier ?: @"com.shanlian.pro";
+
+    // 1) 清 App 自己的偏好域
+    NSUserDefaults *sd = [NSUserDefaults standardUserDefaults];
     [sd removePersistentDomainForName:bid];
     [sd synchronize];
-    SLLog(@"wipe: domain %@ cleared", bid);
+    SLLog(@"wipe: own domain cleared");
 
-    // 2) 清 App Group 域
-    for (NSString *g in @[@"group.com.shanlian.pro", SL_APP_GROUP, SL_PREF_SUITE]) {
+    // 2) 清两个 App Group 域（不含我们自己的状态域）
+    for (NSString *g in @[SL_APP_GROUP, SL_APP_GROUP_OLD]) {
         if (!g.length) continue;
         NSUserDefaults *gd = [[NSUserDefaults alloc] initWithSuiteName:g];
         if (gd) { [gd removePersistentDomainForName:g]; [gd synchronize]; }
     }
     SLLog(@"wipe: groups cleared");
 
-    // 3) 钥匙串按类全删（不带 account/service 条件，避免卡死）
+    // 3) 钥匙串按 class 全删（不加 account/service 条件，才不会卡死）
     NSArray *classes = @[(__bridge id)kSecClassGenericPassword,
                          (__bridge id)kSecClassInternetPassword,
                          (__bridge id)kSecClassKey];
-    int kcCount = 0;
-    for (id c in classes) {
-        NSDictionary *q = @{(__bridge id)kSecClass: c};
+    for (NSUInteger i = 0; i < classes.count; i++) {
+        NSDictionary *q = @{(__bridge id)kSecClass: classes[i]};
         OSStatus s = SecItemDelete((__bridge CFDictionaryRef)q);
-        SLLog(@"wipe: kc class %d st=%d", (int)[classes indexOfObject:c], (int)s);
-        if (s == errSecSuccess) kcCount++;
+        SLLog(@"wipe: kc[%lu] st=%d", (unsigned long)i, (int)s);
     }
-    SLLog(@"wipe: kc classes deleted=%d", kcCount);
 
     // 4) 删 App 缓存库
     [SLHttp wipeAppCacheDB];
-    SLLog(@"wipe: cache done");
+    SLLog(@"wipe: done, app 将以全新状态启动");
 
-    // 注意：不预设 deviceId，让 App 自己生成新设备号并重新注册
-    [st save];
-    SLLog(@"reset done snap=%lu (App 将以全新状态启动)", (unsigned long)snap.count);
-
-    // 主队列正常退出；主线程若被卡住，全局队列兜底
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{ exit(0); });
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.5 * NSEC_PER_SEC)),
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)),
                    dispatch_get_global_queue(0, 0), ^{ exit(0); });
 }
 
@@ -390,7 +412,6 @@ static void SLFailOrRetry(SLState *st, NSString *reason) {
             SLLog(@"rollback: prefs restored from %@", st.kcBackup.lastPathComponent);
         }
     }
-    if (st.kcBackup.length) [SLHttp restoreKeychain:st.kcBackup];
     st.phase = SLPhaseFailed;
     [st save];
     SLLog(@"rolled back, phase=failed");
@@ -506,26 +527,23 @@ static void SLHookMakeKeyAndVisible(id self, SEL _cmd) {
 }
 
 static void SLOnLaunch(void) {
-    SLDiag(@"boot", @"v=%@ bid=%@", SL_VER, [NSBundle mainBundle].bundleIdentifier ?: @"-");
-    SLDiagCheckRequest();
-    // 取样：每次启动都记钥匙串；找到加密串时会再记一次（同一刻配对）
+    // —— 观察模式：只取样，不动任何东西 ——
+    // 每次 App 启动都记一份「密钥 + 缓存里的加密串」，供离线配对分析
     SLCaptureRun();
 
     SLState *st = [SLState load];
     if (st.phase == SLPhaseResetting) {
-        // 只有锁屏时才真正换号（会退出 App），避免打断用户
-        if (!SLScreenLocked()) { SLLog(@"reset: not locked, defer"); return; }
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{
-            SLState *s2 = [SLState load];
-            if (s2.phase == SLPhaseResetting) SLPerformReset(s2);
-        });
-        return;
+        // 观察版：不做重置，只记一笔
+        SLLog(@"observe-only: reset requested but skipped");
+        st.phase = SLPhaseIdle;
+        [st save];
     }
-    if (st.phase == SLPhaseNeedFill) { SLRunFillPhase(st); return; }
+    if (st.phase == SLPhaseNeedFill) {
+        SLLog(@"observe-only: fill requested but skipped");
+        st.phase = SLPhaseIdle;
+        [st save];
+    }
     [SLHttp warmup];
-    [SLHttp probeNet];
-    [SLHttp probeHeaders];
     SLRefreshDeadline();
 }
 
@@ -584,32 +602,16 @@ static void SLOpenApp(void) {
 }
 
 static void SLTick(void) {
-    SLDiagCheckRequest();
     // 观察版：桌面端不做任何动作（不拉起 App、不重置、不填码）
     SLState *st = [SLState load];
     double now = [NSDate date].timeIntervalSince1970;
-
-    // 换号/填码阶段同样只在锁屏时动作，避免打扰用户
-    if (st.phase == SLPhaseResetting || st.phase == SLPhaseNeedFill) {
-        if (!SLScreenLocked()) {
-            if ((int)now % 300 == 0) SLLog(@"phase=%d waiting for lock", (int)st.phase);
-            return;
-        }
-        if (!SLAppRunning()) SLOpenAppThrottled();
-        if (st.phase == SLPhaseNeedFill) notify_post(kSLFireName);
-        return;
+    if (!st.enabled) return;
+    // 保留判据日志与投递通道，但观察期不实际开火
+    if (st.nextFire1 > 0 && now >= st.nextFire1) {
+        SLLog(@"fire locked=%d late=%d dl_in=%.0f (observe: skip)", 0, 0, st.deadline - now);
+        notify_post(kSLFireName);
     }
-    if (st.phase != SLPhaseArmed) return;
-
-    BOOL due = (st.nextFire1 > 0 && now >= st.nextFire1) || (st.nextFire2 > 0 && now >= st.nextFire2);
-    if (!due) return;
-    if (st.dueNotified) return;          // 只提醒一次，绝不自己弹出来
-    st.dueNotified = YES;
-    [st save];
-    SLLog(@"due reached, notify only (dl_in=%.0f)", st.deadline - now);
-    SLDiag(@"tick", @"due -> notify");
-    SLNotify(@"闪连快到期了",
-             [NSString stringWithFormat:@"打开闪连就会自动续期（还有 %.0f 分钟）", (st.deadline - now) / 60.0]);
+    return;
 }
 
 
@@ -653,6 +655,7 @@ static void SLInitBody(void) {
 
     Class ud = NSClassFromString(@"UIDevice");
     if (ud) MSHookMessageEx(ud, @selector(identifierForVendor), (IMP)SLHookIdfv, (IMP *)&g_origIdfv);
+
     MSHookFunction((void *)send, (void *)SLHookSend, (void **)&g_origSend);
     MSHookFunction((void *)write, (void *)SLHookWrite, (void **)&g_origWrite);
     MSHookFunction((void *)sendto, (void *)SLHookSendTo, (void **)&g_origSendTo);

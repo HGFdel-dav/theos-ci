@@ -168,4 +168,58 @@ static NSDictionary *SLHeadersFromRequestObject(NSData *data) {
 + (NSString *)peach { return g_peach; }
 + (NSString *)signature { return g_sig; }
 
+// 取缓存里 firstDeviceLogin 的请求体原文（用于解密配对）
++ (NSString *)firstDeviceLoginBody {
+    NSString *dbPath = [self cacheDBPath];
+    if (!dbPath) return nil;
+    void *h = dlopen("/usr/lib/libsqlite3.dylib", RTLD_LAZY);
+    if (!h) h = dlopen("libsqlite3.dylib", RTLD_LAZY);
+    if (!h) return nil;
+    int (*pOpenV2)(const char *, sqlite3 **, int, const char *) = SLSym(h, "sqlite3_open_v2");
+    void *(*pPrep)(void *, const char *, int, void **, const char *) = SLSym(h, "sqlite3_prepare_v2");
+    int (*pStep)(void *) = SLSym(h, "sqlite3_step");
+    const unsigned char *(*pColText)(void *, int) = SLSym(h, "sqlite3_column_text");
+    int (*pColBytes)(void *, int) = SLSym(h, "sqlite3_column_bytes");
+    int (*pFinal)(void *) = SLSym(h, "sqlite3_finalize");
+    int (*pClose)(void *) = SLSym(h, "sqlite3_close");
+    if (!pOpenV2 || !pPrep || !pStep || !pColText || !pClose) return nil;
+
+    sqlite3 *db = NULL;
+    if (pOpenV2(dbPath.UTF8String, &db, 0x00000001 | 0x00008000, NULL) != 0 || !db) return nil;
+
+    NSString *found = nil;
+    void *st = NULL;
+    const char *sql = "select request_object from cfurl_cache_blob_data";
+    if (pPrep(db, sql, -1, &st, NULL) == 0 && st) {
+        while (pStep(st) == 100) {
+            const unsigned char *txt = pColText(st, 0);
+            int n = pColBytes(st, 0);
+            if (!txt || n <= 0) continue;
+            NSData *d = [NSData dataWithBytes:txt length:(NSUInteger)n];
+            if (!d.length) continue;
+            @try {
+                id pl = [NSPropertyListSerialization propertyListWithData:d
+                                    options:NSPropertyListImmutable format:NULL error:NULL];
+                if (![pl isKindOfClass:[NSDictionary class]]) continue;
+                NSArray *arr = pl[@"Array"];
+                if (![arr isKindOfClass:[NSArray class]] || arr.count < 22) continue;
+                if ([arr[1] isKindOfClass:[NSDictionary class]]) {
+                    NSString *u = arr[1][@"_CFURLString"];
+                    if (![u isKindOfClass:[NSString class]] ||
+                        [u rangeOfString:@"firstDeviceLogin"].location == NSNotFound) continue;
+                } else continue;
+                id body = arr[21];
+                if ([body isKindOfClass:[NSArray class]] && [body count]) body = [body firstObject];
+                if (![body isKindOfClass:[NSData class]] || ![body length]) continue;
+                found = [[NSString alloc] initWithData:body encoding:NSUTF8StringEncoding];
+                if (found.length) break;
+            } @catch (NSException *e) { continue; }
+        }
+        if (st) pFinal(st);
+    }
+    pClose(db);
+    dlclose(h);
+    return found;
+}
+
 @end
