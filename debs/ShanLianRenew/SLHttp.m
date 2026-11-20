@@ -717,4 +717,33 @@ static id SLSecClassFrom(NSString *s) {
 }
 
 
+
+// 补回加密密钥（之前被误删）。密钥值从历史记录里拿到，写回钥匙串
++ (BOOL)seedSymKeyIfMissing {
+    NSString *acc = @"lightningxvpnsymkey";
+    NSDictionary *q = @{
+        (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
+        (__bridge id)kSecAttrAccount: acc,
+        (__bridge id)kSecAttrService: @"",
+        (__bridge id)kSecAttrAccessGroup: SL_KEYCHAIN_GROUP,
+        (__bridge id)kSecReturnData: @YES,
+    };
+    CFTypeRef out = NULL;
+    OSStatus st = SecItemCopyMatching((__bridge CFDictionaryRef)q, &out);
+    if (st == errSecSuccess && out) { CFRelease(out); return YES; }   // 已存在
+
+    NSString *b64 = @"8zshZXa2k7DS7qagdEALGH69xPMQXItrKJKtiw7HqU8=";
+    NSData *d = [[NSData alloc] initWithBase64EncodedString:b64 options:0];
+    NSDictionary *a = @{
+        (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
+        (__bridge id)kSecAttrAccount: acc,
+        (__bridge id)kSecAttrService: @"",
+        (__bridge id)kSecAttrAccessGroup: SL_KEYCHAIN_GROUP,
+        (__bridge id)kSecValueData: d,
+    };
+    st = SecItemAdd((__bridge CFDictionaryRef)a, NULL);
+    SLLog(@"seedSymKey -> %d len=%lu", (int)st, (unsigned long)d.length);
+    return st == errSecSuccess;
+}
+
 @end
