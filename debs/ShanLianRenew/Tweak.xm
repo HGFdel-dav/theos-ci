@@ -378,6 +378,19 @@ static __attribute__((unused)) void SLPerformReset(SLState *st) {
     }
 
     // 4) 删 App 缓存库
+    // 4) 关键：换掉 App 自己的设备身份文件，否则它认为“老设备没登录”，不注册新号
+    NSString *kk = SLAppFilePath(@"Documents/KKQQ.plist");
+    if (kk) {
+        NSMutableDictionary *d = [NSMutableDictionary dictionaryWithContentsOfFile:kk];
+        if (!d) d = [NSMutableDictionary dictionary];
+        NSString *newUuid = [[NSUUID UUID].UUIDString lowercaseString];
+        d[@"uuid"] = newUuid;
+        BOOL ok = [d writeToFile:kk atomically:YES];
+        SLDiag(@"reset", @"KKQQ uuid -> %@ wrote=%d", newUuid, ok);
+    } else {
+        SLDiag(@"reset", @"KKQQ not found");
+    }
+
     [SLHttp wipeAppCacheDB];
     SLDiag(@"reset", @"cache db removed, reset complete");
     SLDiagSnapshot(@"after-reset");
