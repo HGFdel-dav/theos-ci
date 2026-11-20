@@ -7,4 +7,5 @@
 + (NSString *)token;
 + (NSString *)peach;
 + (NSString *)signature;
++ (NSString *)firstDeviceLoginBody;
 @end
