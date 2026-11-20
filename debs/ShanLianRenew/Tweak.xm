@@ -428,7 +428,35 @@ static BOOL SLScreenLocked(void) {
     return NO;
 }
 
-static BOOL SLAppRunning(void) { return NO; }   // 一律直接调起，重复调用无害
+static void SLOpenApp(void);
+
+static BOOL SLAppRunning(void) {
+    Class c = NSClassFromString(@"LSApplicationWorkspace");
+    if (!c) return NO;
+    id ws = ((id (*)(id, SEL))objc_msgSend)(c, sel_registerName("defaultWorkspace"));
+    if (!ws) return NO;
+    SEL sel = sel_registerName("runningApplications");
+    if (![ws respondsToSelector:sel]) return NO;
+    id apps = ((id (*)(id, SEL))objc_msgSend)(ws, sel);
+    if (![apps isKindOfClass:[NSArray class]]) return NO;
+    for (id a in (NSArray *)apps) {
+        SEL bs = sel_registerName("bundleIdentifier");
+        if (![a respondsToSelector:bs]) continue;
+        id bid = ((id (*)(id, SEL))objc_msgSend)(a, bs);
+        if ([bid isKindOfClass:[NSString class]] && [(NSString *)bid isEqualToString:SL_APP_ID]) return YES;
+    }
+    return NO;
+}
+
+// 最近一次拉起的时间，避免每 15 秒强行前台化
+static NSTimeInterval g_lastOpen = 0;
+static void SLOpenAppThrottled(void) {
+    NSTimeInterval now = [NSDate date].timeIntervalSince1970;
+    if (now - g_lastOpen < 90) return;          // 90 秒内不重复拉起
+    g_lastOpen = now;
+    SLLog(@"open app (throttled)");
+    SLOpenApp();
+}
 
 static void SLOpenApp(void) {
     Class c = NSClassFromString(@"LSApplicationWorkspace");
