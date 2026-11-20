@@ -190,6 +190,13 @@ static void SLHookViewDidAppear(id self, SEL _cmd, BOOL animated) {
 
 #pragma mark - 重置
 
+static NSUserDefaults *SLDefaults(void) {
+    NSUserDefaults *d = [[NSUserDefaults alloc] initWithSuiteName:SL_PREF_SUITE];
+    if (!d) d = [[NSUserDefaults alloc] initWithSuiteName:SL_APP_GROUP];
+    if (!d) d = [NSUserDefaults standardUserDefaults];
+    return d;
+}
+
 static void SLPerformReset(SLState *st) {
     NSUserDefaults *sd = [NSUserDefaults standardUserDefaults];
     NSDictionary *snap = [sd dictionaryRepresentation] ?: @{};
