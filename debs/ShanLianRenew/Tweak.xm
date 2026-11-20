@@ -238,7 +238,7 @@ static NSUserDefaults *SLDefaults(void) {
     return d;
 }
 
-static void SLPerformReset(SLState *st) {
+static __attribute__((unused)) void SLPerformReset(SLState *st) {
     // 先记下旧 token，用来判断 App 是否真的注册了新号
     st.snapToken = [SLHttp currentToken];
     st.phase = SLPhaseNeedFill;
@@ -403,7 +403,7 @@ static void SLRefreshDeadline(void) {
     }];
 }
 
-static void SLRunFillPhase(SLState *st) {
+static __attribute__((unused)) void SLRunFillPhase(SLState *st) {
     if (g_filling) return;
     g_filling = YES;
 
@@ -420,6 +420,38 @@ static void SLRunFillPhase(SLState *st) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), weakPoll);
     };
     poll();
+}
+
+
+// App 是否在前台（避免在用户正看着时退出它）
+static __attribute__((unused)) BOOL SLAppForeground(void) {
+    Class app = NSClassFromString(@"UIApplication");
+    if (!app) return NO;
+    id a = ((id (*)(id, SEL))objc_msgSend)(app, sel_registerName("sharedApplication"));
+    if (!a) return NO;
+    SEL s = sel_registerName("applicationState");
+    if (![a respondsToSelector:s]) return NO;
+    return ((NSInteger (*)(id, SEL))objc_msgSend)(a, s) == 0;  // 0 = active
+}
+
+
+// 让 App 立刻退回后台（用户几乎看不到）
+static __attribute__((unused)) void SLGoBackground(void) {
+    Class app = NSClassFromString(@"UIApplication");
+    if (!app) return;
+    id a = ((id (*)(id, SEL))objc_msgSend)(app, sel_registerName("sharedApplication"));
+    if (!a) return;
+    SEL s = sel_registerName("suspend");
+    if ([a respondsToSelector:s]) {
+        ((void (*)(id, SEL))objc_msgSend)(a, s);
+        SLLog(@"app suspended");
+        return;
+    }
+    SEL s2 = sel_registerName("_suspend");
+    if ([a respondsToSelector:s2]) {
+        ((void (*)(id, SEL))objc_msgSend)(a, s2);
+        SLLog(@"app _suspended");
+    }
 }
 
 static void SLOnLaunch(void) {
@@ -445,7 +477,7 @@ static void SLOnLaunch(void) {
 
 #pragma mark - 计时（桌面端）
 
-static BOOL SLScreenLocked(void) {
+static __attribute__((unused)) BOOL SLScreenLocked(void) {
     Class c = NSClassFromString(@"SBLockScreenManager");
     if (!c) return NO;
     id sh = ((id (*)(id, SEL))objc_msgSend)(c, sel_registerName("sharedInstance"));
@@ -455,9 +487,9 @@ static BOOL SLScreenLocked(void) {
     return NO;
 }
 
-static void SLOpenApp(void);
+static __attribute__((unused)) void SLOpenApp(void);
 
-static BOOL SLAppRunning(void) {
+static __attribute__((unused)) BOOL SLAppRunning(void) {
     Class c = NSClassFromString(@"LSApplicationWorkspace");
     if (!c) return NO;
     id ws = ((id (*)(id, SEL))objc_msgSend)(c, sel_registerName("defaultWorkspace"));
@@ -477,7 +509,30 @@ static BOOL SLAppRunning(void) {
 
 // 最近一次拉起的时间，避免每 15 秒强行前台化
 static NSTimeInterval g_lastOpen = 0;
-static void SLOpenAppThrottled(void) {
+
+// 后台静默启动：不切前台、无界面
+static void SLOpenAppSilently(void) {
+    Class c = NSClassFromString(@"LSApplicationWorkspace");
+    if (!c) return;
+    id ws = ((id (*)(id, SEL))objc_msgSend)(c, sel_registerName("defaultWorkspace"));
+    if (!ws) return;
+
+    // 1) launchApplicationWithIdentifier:suspended: —— 以挂起方式拉起，不出界面
+    SEL s1 = sel_registerName("launchApplicationWithIdentifier:suspended:");
+    if ([ws respondsToSelector:s1]) {
+        BOOL ok = ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(ws, s1, SL_APP_ID, YES);
+        SLLog(@"silent launch(suspended) ok=%d", ok);
+        if (ok) return;
+    }
+    // 2) 退而求其次：openApplicationWithBundleID:（会切前台，仅作兜底）
+    SEL s2 = sel_registerName("openApplicationWithBundleID:");
+    if ([ws respondsToSelector:s2]) {
+        ((void (*)(id, SEL, id))objc_msgSend)(ws, s2, SL_APP_ID);
+        SLLog(@"fallback open app");
+    }
+}
+
+static __attribute__((unused)) void SLOpenAppThrottled(void) {
     NSTimeInterval now = [NSDate date].timeIntervalSince1970;
     if (now - g_lastOpen < 90) return;          // 90 秒内不重复拉起
     g_lastOpen = now;
