@@ -578,16 +578,26 @@ static void SLOpenApp(void) {
 
 static void SLTick(void) {
     SLDiagCheckRequest();
-    // 观察版：桌面端不做任何动作（不拉起 App、不重置、不填码）
     SLState *st = [SLState load];
     double now = [NSDate date].timeIntervalSince1970;
     if (!st.enabled) return;
-    // 保留判据日志与投递通道，但观察期不实际开火
-    if (st.nextFire1 > 0 && now >= st.nextFire1) {
-        SLLog(@"fire locked=%d late=%d dl_in=%.0f (observe: skip)", 0, 0, st.deadline - now);
-        notify_post(kSLFireName);
+
+    // 换号/填码阶段：拉起 App 让它跑（App 会自己注册新号）
+    if (st.phase == SLPhaseResetting || st.phase == SLPhaseNeedFill) {
+        if (!SLAppRunning()) { SLOpenAppThrottled(); }
+        else if (st.phase == SLPhaseNeedFill) { notify_post(kSLFireName); }
+        return;
     }
-    return;
+    if (st.phase != SLPhaseArmed) return;
+
+    BOOL due = (st.nextFire1 > 0 && now >= st.nextFire1) || (st.nextFire2 > 0 && now >= st.nextFire2);
+    if (!due) return;
+    SLLog(@"fire locked=%d late=%d dl_in=%.0f", 0, 0, st.deadline - now);
+    st.phase = SLPhaseResetting;
+    st.attempt = 0;
+    [st save];
+    SLDiag(@"tick", @"fire -> resetting");
+    SLOpenApp();
 }
 
 
