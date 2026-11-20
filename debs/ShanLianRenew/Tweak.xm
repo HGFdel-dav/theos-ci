@@ -414,6 +414,7 @@ static void SLOnLaunch(void) {
         [st save];
     }
     if (st.phase == SLPhaseNeedFill) { SLRunFillPhase(st); return; }
+    [SLHttp warmup];
     [SLHttp probeNet];
     [SLHttp probeHeaders];
     SLRefreshDeadline();
