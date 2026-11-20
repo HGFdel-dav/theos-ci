@@ -210,6 +210,7 @@ static void SLPerformReset(SLState *st) {
     }
     [d setObject:g_fakeId forKey:SL_DEVICE_KEY];
     [d synchronize];
+    [SLHttp setDeviceId:g_fakeId];   // 真正生效的是钥匙串里那份
     SLLog(@"reset done id=%@ snap=%lu cleared=%d", g_fakeId, (unsigned long)snap.count, cleared);
 
     // 主队列正常退出；主线程若被卡住，全局队列兜底
@@ -322,16 +323,7 @@ static void SLRunFillPhase(SLState *st) {
     if (g_filling) return;
     g_filling = YES;
 
-    if (st.signerIdx < 0) {
-        [SLHttp calibrateSignerCompletion:^(NSInteger i) {
-            SLState *s2 = [SLState load]; s2.signerIdx = (int)i; [s2 save];
-            SLLog(@"signer=%ld", (long)i);
-            g_filling = NO;
-            SLRunFillPhase(s2);
-        }];
-        return;
-    }
-
+    st.signerIdx = 0;   // 使用固定签名，不需要校准
     NSString *old = st.snapToken ?: @"";
     __block int waited = 0;
     __block __weak void (^weakPoll)(void);
@@ -472,14 +464,5 @@ static void SLInitBody(void) {
         return;
     }
 
-    BOOL busy = (st.phase == SLPhaseNeedFill || st.phase == SLPhaseResetting);
-    if (st.signerIdx < 0 && !busy) {
-        [SLHttp calibrateSignerCompletion:^(NSInteger i) {
-            SLState *s2 = [SLState load]; s2.signerIdx = (int)i; [s2 save];
-            SLLog(@"signer=%ld", (long)i);
-            SLOnLaunch();
-        }];
-    } else {
-        SLOnLaunch();
-    }
+    SLOnLaunch();
 }
