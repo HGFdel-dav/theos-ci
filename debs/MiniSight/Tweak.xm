@@ -135,6 +135,7 @@ static void MiniSightRefreshRecorderSettingsThenReadActivity(void);
 
 static void MiniSightReplyToPluginProbe(void);
 static void MiniSightStopGravity(void);
+static void MiniSightStartGravity(void);
 // 浮窗载体：定义在文件前部，呈现协调（MiniSightReconcileAppPresentation）要先用到它。
 static UIWindow *gMiniSightWindow = nil;
 static MiniSightPetView *gMiniSightPet = nil; // Used by activity and prompt callbacks too.
@@ -725,7 +726,7 @@ static NSString *const kMiniSightCenterY   = @"MiniSightCenterY";
 static NSString *const kMiniSightText      = @"Minis 操作中";
 // 版本号：与 DEBIAN/control 的 Version 同步。诊断日志会打印它，
 // 便于装机后确认跑的是哪一版（strings MiniSight.dylib | grep 也能看到）。
-static NSString *const kMiniSightVersion   = @"0.8.49";
+static NSString *const kMiniSightVersion   = @"0.8.50";
 
 #pragma mark - 全局状态
 
@@ -783,6 +784,7 @@ static BOOL gMiniSightGravityRollValid = NO;
 static BOOL gMiniSightGravityShakeLatched = NO;
 static NSTimeInterval gMiniSightGravityLastImpulseTime = 0.0;
 static CFTimeInterval gMiniSightGravityLastSampleTime = 0.0;
+static CFTimeInterval gMiniSightMotionStartTime = 0.0;
 static NSUInteger gMiniSightGravitySampleCount = 0;
 static BOOL gMiniSightGravityConfigured = NO;
 static double gMiniSightBottomGap = 12;
@@ -872,6 +874,14 @@ static NSDictionary *MiniSightMusicPresentation(void) {
         @"settingsEpoch": @(gMiniSightSettingsEpoch), @"fadeEpoch": @(gMiniSightFadeEpoch),
         @"revision": [MiniSightPref(@"minisight.settings.revision") isKindOfClass:NSString.class] ? MiniSightPref(@"minisight.settings.revision") : @"legacy"};
 }
+// The bridge writes low-frequency position anchors. Correct delivery delay here;
+// PetEffects advances between anchors on its monotonic display clock.
+static NSTimeInterval MiniSightSnapshotMotionPosition(NSDictionary *snapshot) {
+    id pos = snapshot[@"motionTime"], stamp = snapshot[@"time"];
+    if (![pos isKindOfClass:NSNumber.class] || ![stamp isKindOfClass:NSNumber.class]) return 0.;
+    double age = NSDate.date.timeIntervalSince1970 - [stamp doubleValue];
+    return fmax(0., [pos doubleValue]) + fmin(5., fmax(0., age));
+}
 static void MiniSightUpdateMusic(void) {
     BOOL lyrics = [MiniSightPref(@"minisight.music.lyrics") boolValue];
     BOOL motion = [MiniSightPref(@"minisight.music.motion") boolValue];
@@ -879,6 +889,7 @@ static void MiniSightUpdateMusic(void) {
     MiniSightMusicMonitor *monitor = MiniSightMusicMonitor.shared;
     if (!monitor.updateHandler) monitor.updateHandler = ^(NSDictionary *snapshot) {
         gMiniSightPet.lyricsLine = [snapshot[@"line"] isKindOfClass:NSString.class] ? snapshot[@"line"] : nil;
+        gMiniSightPet.musicPosition = MiniSightSnapshotMotionPosition(snapshot);
         gMiniSightPet.musicPlaying = [snapshot[@"playing"] boolValue] && [snapshot[@"motionEnabled"] boolValue];
         gMiniSightPet.lyricsSuppressed = gMiniSightBubbleShown || gMiniSightConfirming ||
             MiniSightChatPanel.existingPanel.isVisible || gMiniSightBurst;
@@ -889,6 +900,7 @@ static void MiniSightUpdateMusic(void) {
     [monitor configureAllowed:allowed lyrics:lyrics motion:motion container:gMiniSightContainer presentation:presentation];
     NSDictionary *snapshot = monitor.snapshot;
     gMiniSightPet.lyricsLine = lyrics && allowed ? snapshot[@"line"] : nil;
+    gMiniSightPet.musicPosition = MiniSightSnapshotMotionPosition(snapshot);
     gMiniSightPet.musicPlaying = motion && allowed && [snapshot[@"playing"] boolValue];
     gMiniSightPet.lyricsSuppressed = gMiniSightBubbleShown || gMiniSightConfirming || MiniSightChatPanel.existingPanel.isVisible || gMiniSightBurst;
 }
@@ -913,17 +925,65 @@ static void MiniSightRefreshGravityConfiguration(void) {
     }
 }
 
+static void MiniSightApplyGravityConfiguration(void) {
+    BOOL wasConfigured = gMiniSightGravityConfigured;
+    BOOL wasRunning = gMiniSightMotionRunning || gMiniSightAccelerometerRunning;
+    BOOL wasFailed = gMiniSightMotionAttempt.source == MSMotionSourceFailed;
+    MiniSightRefreshGravityConfiguration();
+    BOOL requested = gMiniSightGravityConfigured;
+    if (!requested) {
+        BOOL needsStop = wasConfigured || wasRunning || wasFailed || gMiniSightPet.gravityEnabled ||
+            gMiniSightMotionAttempt.source != MSMotionSourceNone;
+        if (needsStop) MiniSightStopGravity();
+        MSDiagEvent(@"settings", @"apply", @"ok", @{ @"setting": @"minisight.gravity",
+            @"source": @"plugin", @"enabled": @NO, @"readback": @([MiniSightPref(@"minisight.gravity") boolValue]),
+            @"reason": @"disabled" });
+        return;
+    }
+    BOOL visible = MiniSightShown() && gMiniSightWindow && !gMiniSightWindow.hidden && gMiniSightPet && !MiniSightAppOwnsPresentation();
+    BOOL needsStart = !wasConfigured || (visible && !wasRunning && !wasFailed);
+    if (needsStart) {
+        // Stop clears a terminal sensor-failure state. Thus a real OFF→ON,
+        // failed-source, or visible-but-stopped state creates one fresh,
+        // generation-fenced attempt without restarting a healthy source.
+        MiniSightStopGravity();
+        if (visible) MiniSightStartGravity();
+    }
+    MSDiagEvent(@"settings", @"apply", visible ? @"pending" : @"skipped", @{ @"setting": @"minisight.gravity",
+        @"source": @"plugin", @"enabled": @YES, @"readback": @([MiniSightPref(@"minisight.gravity") boolValue]),
+        @"reason": visible ? @"host_configured" : @"hidden", @"generation": @(gMiniSightMotionAttempt.generation) });
+}
+
+static NSString *MiniSightGravityAllowedReason(NSString *state, NSString *detail) {
+    if ([state isEqualToString:@"first-sample"]) return @"first_sample";
+    if ([state isEqualToString:@"started"]) {
+        if (![detail containsString:@"accelerometer"]) return @"device_motion";
+        return [detail containsString:@"fallback"] ? @"accelerometer_fallback" : @"accelerometer";
+    }
+    if ([state isEqualToString:@"source-failed"]) {
+        if ([detail containsString:@"accelerometer-error"]) return @"accelerometer_error";
+        if ([detail containsString:@"first-sample-timeout"]) return @"first_sample_timeout";
+        return @"device_motion_error";
+    }
+    if ([state isEqualToString:@"unavailable"]) return @"sources_exhausted";
+    if ([state isEqualToString:@"disabled"]) return @"disabled";
+    if ([state isEqualToString:@"deferred"]) return @"hidden";
+    if ([state isEqualToString:@"shake"]) return @"gravity_shake";
+    return @"unknown";
+}
+
 static void MiniSightGravityDiagnostic(NSString *state, NSString *detail) {
     MSDiag(@"gravity %@ %@", state ?: @"", detail ?: @"");
     NSString *result = [@[@"unavailable", @"source-failed"] containsObject:state] ? @"failed" :
         ([@[@"disabled", @"deferred"] containsObject:state] ? @"skipped" :
          ([@[@"first-sample", @"shake"] containsObject:state] ? @"ok" : @"pending"));
+    NSString *reason = MiniSightGravityAllowedReason(state, detail);
     static NSString *lastState;
     static CFTimeInterval lastTime;
     CFTimeInterval now = CACurrentMediaTime();
     if (![lastState isEqualToString:state] || now - lastTime >= 10.0) {
         lastState = [state copy]; lastTime = now;
-        MSDiagEvent(@"gravity", @"state", result, @{ @"source": @"plugin", @"reason": state ?: @"unknown", @"generation": @(gMiniSightMotionAttempt.generation), @"enabled": @(gMiniSightGravityConfigured), @"visible": @(gMiniSightWindow && !gMiniSightWindow.hidden), @"samples": @(gMiniSightGravitySampleCount) });
+        MSDiagEvent(@"gravity", @"state", result, @{ @"source": @"plugin", @"reason": reason, @"generation": @(gMiniSightMotionAttempt.generation), @"enabled": @(gMiniSightGravityConfigured), @"visible": @(gMiniSightWindow && !gMiniSightWindow.hidden), @"samples": @(gMiniSightGravitySampleCount) });
     }
     NSString *container = [MiniSightAppContainer() copy];
     if (!container.length) return;
@@ -1025,6 +1085,7 @@ static void MiniSightStopGravity(void) {
     gMiniSightGravityShakeLatched = NO;
     gMiniSightGravityLastImpulseTime = 0.0;
     gMiniSightGravityLastSampleTime = 0.0;
+    gMiniSightMotionStartTime = 0.0;
     gMiniSightGravitySampleCount = 0;
     if (gMiniSightPet) {
         BOOL wasOn = gMiniSightPet.gravityEnabled;
@@ -1042,26 +1103,43 @@ static BOOL MiniSightMotionGateOpen(void) {
         MiniSightGravityEnabled());
 }
 
-static void MiniSightStartAccelerometerSource(void);
+static void MiniSightStartAccelerometerSource(BOOL fallback);
 
 static void MiniSightFailMotionSource(unsigned long generation, NSString *reason, NSInteger errorCode) {
     if (generation != gMiniSightMotionAttempt.generation || !MiniSightMotionGateOpen()) return;
+    MSMotionSource failedSource = gMiniSightMotionAttempt.source;
+    unsigned long samples = gMiniSightMotionAttempt.samples;
+    BOOL deviceAvailable = gMiniSightMotionManager.isDeviceMotionAvailable;
+    BOOL accelerometerAvailable = gMiniSightMotionManager.isAccelerometerAvailable;
+    BOOL sensorActive = failedSource == MSMotionSourceDevice
+        ? gMiniSightMotionManager.deviceMotionActive : gMiniSightMotionManager.accelerometerActive;
     if (gMiniSightFirstSampleWatchdog) dispatch_block_cancel(gMiniSightFirstSampleWatchdog);
     gMiniSightFirstSampleWatchdog = nil;
     [gMiniSightMotionManager stopDeviceMotionUpdates];
     [gMiniSightMotionManager stopAccelerometerUpdates];
     gMiniSightMotionRunning = NO;
     gMiniSightAccelerometerRunning = NO;
-    BOOL fallback = MSMotionFail(&gMiniSightMotionAttempt, generation,
-                                gMiniSightMotionManager.isAccelerometerAvailable);
+    BOOL fallback = MSMotionFail(&gMiniSightMotionAttempt, generation, accelerometerAvailable);
     MiniSightGravityDiagnostic(@"source-failed", [NSString stringWithFormat:
         @"generation=%lu reason=%@ code=%ld fallback=%d", generation, reason, (long)errorCode, fallback]);
-    if (fallback) MiniSightStartAccelerometerSource();
+    NSString *failureReason = MiniSightGravityAllowedReason(@"source-failed", reason);
+    BOOL timedOut = [reason containsString:@"timeout"];
+    NSInteger sampleAge = samples && gMiniSightGravityLastSampleTime > 0
+        ? (NSInteger)MAX(0., (CACurrentMediaTime() - gMiniSightGravityLastSampleTime) * 1000.) : -1;
+    MSDiagEvent(@"gravity", @"error", @"failed", @{ @"source": @"plugin",
+        @"sensor": failedSource == MSMotionSourceAccelerometer ? @"accelerometer" : @"device_motion",
+        @"sensor_domain": timedOut ? @"none" : @"core_motion", @"sensor_active": @(sensorActive),
+        @"device_available": @(deviceAvailable), @"accelerometer_available": @(accelerometerAvailable),
+        @"reason": failureReason, @"code": @(errorCode), @"fallback": @(fallback),
+        @"generation": @(generation), @"samples": @(samples),
+        @"latency_ms": @(gMiniSightMotionStartTime > 0 ? MAX(0., (CACurrentMediaTime() - gMiniSightMotionStartTime) * 1000.) : 0.),
+        @"sample_age_ms": @(sampleAge) });
+    if (fallback) MiniSightStartAccelerometerSource(YES);
     else {
         gMiniSightGravityRoll = 0;
         gMiniSightPet.gravityRoll = 0;
         MiniSightGravityDiagnostic(@"unavailable", @"sources exhausted; toggle or show again to retry");
-        MiniSightShowStatusLine(@"重力没有收到传感器数据，请重新开关重力再试");
+        MiniSightShowStatusLine(samples ? @"重力传感器中断，请重新开关重力再试" : @"重力没有收到传感器数据，请重新开关重力再试");
     }
 }
 
@@ -1083,20 +1161,30 @@ static MiniSightPetView *MiniSightAcceptMotionSample(unsigned long generation, M
         gMiniSightFirstSampleWatchdog = nil;
         MiniSightGravityDiagnostic(@"first-sample", [NSString stringWithFormat:
             @"generation=%lu source=%ld", generation, (long)source]);
+        MSDiagEvent(@"gravity", @"sample", @"ok", @{ @"source": @"plugin",
+            @"sensor": source == MSMotionSourceAccelerometer ? @"accelerometer" : @"device_motion",
+            @"sensor_domain": @"core_motion", @"sensor_active": @YES,
+            @"reason": @"first_sample", @"generation": @(generation), @"samples": @(gMiniSightMotionAttempt.samples) });
     }
     return gMiniSightPet;
 }
 
-static void MiniSightStartAccelerometerSource(void) {
+static void MiniSightStartAccelerometerSource(BOOL fallback) {
     const unsigned long generation = gMiniSightMotionAttempt.generation;
     if (!MSMotionAccepts(&gMiniSightMotionAttempt, generation, MSMotionSourceAccelerometer,
                         MiniSightMotionGateOpen())) return;
     gMiniSightLastAccelerationValid = NO;
     gMiniSightAccelerometerRunning = YES;
+    gMiniSightMotionStartTime = CACurrentMediaTime();
     gMiniSightMotionManager.accelerometerUpdateInterval = 1.0 / 30.0;
     MiniSightArmFirstSampleWatchdog(generation);
     MiniSightGravityDiagnostic(@"started", [NSString stringWithFormat:
-        @"accelerometer generation=%lu", generation]);
+        @"accelerometer %@ generation=%lu", fallback ? @"fallback" : @"initial", generation]);
+    MSDiagEvent(@"gravity", @"start", @"pending", @{ @"source": @"plugin", @"sensor": @"accelerometer",
+        @"sensor_domain": @"core_motion", @"fallback": @(fallback),
+        @"device_available": @(gMiniSightMotionManager.isDeviceMotionAvailable),
+        @"accelerometer_available": @(gMiniSightMotionManager.isAccelerometerAvailable),
+        @"reason": fallback ? @"accelerometer_fallback" : @"accelerometer", @"generation": @(generation), @"samples": @0 });
     [gMiniSightMotionManager startAccelerometerUpdatesToQueue:NSOperationQueue.mainQueue
         withHandler:^(CMAccelerometerData *data, NSError *error) {
         if (!MSMotionAccepts(&gMiniSightMotionAttempt, generation, MSMotionSourceAccelerometer,
@@ -1144,20 +1232,34 @@ static void MiniSightStartGravity(void) {
     MSMotionStart(&gMiniSightMotionAttempt, gMiniSightMotionManager.isDeviceMotionAvailable,
                   gMiniSightMotionManager.isAccelerometerAvailable);
     if (gMiniSightMotionAttempt.source == MSMotionSourceFailed) {
-        MiniSightGravityDiagnostic(@"unavailable", @"deviceMotion=0 accelerometer=0");
+        BOOL deviceAvailable = gMiniSightMotionManager.isDeviceMotionAvailable;
+        BOOL accelerometerAvailable = gMiniSightMotionManager.isAccelerometerAvailable;
+        MiniSightGravityDiagnostic(@"unavailable", [NSString stringWithFormat:
+            @"deviceMotion=%d accelerometer=%d", deviceAvailable, accelerometerAvailable]);
+        MSDiagEvent(@"gravity", @"error", @"failed", @{ @"source": @"plugin", @"sensor": @"none",
+            @"sensor_domain": @"core_motion", @"sensor_active": @NO,
+            @"device_available": @(deviceAvailable), @"accelerometer_available": @(accelerometerAvailable),
+            @"reason": @"sources_exhausted", @"fallback": @NO,
+            @"generation": @(gMiniSightMotionAttempt.generation), @"samples": @0 });
         MiniSightShowStatusLine(@"重力已开，但运动传感器不可用");
         return;
     }
     if (gMiniSightMotionAttempt.source == MSMotionSourceAccelerometer) {
-        MiniSightStartAccelerometerSource();
+        MiniSightStartAccelerometerSource(NO);
         return;
     }
     const unsigned long generation = gMiniSightMotionAttempt.generation;
     gMiniSightMotionRunning = YES;
+    gMiniSightMotionStartTime = CACurrentMediaTime();
     gMiniSightMotionManager.deviceMotionUpdateInterval = 1.0 / 30.0;
     MiniSightArmFirstSampleWatchdog(generation);
     MiniSightGravityDiagnostic(@"started", [NSString stringWithFormat:
         @"deviceMotion generation=%lu", generation]);
+    MSDiagEvent(@"gravity", @"start", @"pending", @{ @"source": @"plugin", @"sensor": @"device_motion",
+        @"sensor_domain": @"core_motion", @"fallback": @NO,
+        @"device_available": @(gMiniSightMotionManager.isDeviceMotionAvailable),
+        @"accelerometer_available": @(gMiniSightMotionManager.isAccelerometerAvailable),
+        @"reason": @"device_motion", @"generation": @(generation), @"samples": @0 });
     [gMiniSightMotionManager startDeviceMotionUpdatesToQueue:NSOperationQueue.mainQueue
         withHandler:^(CMDeviceMotion *motion, NSError *error) {
         if (!MSMotionAccepts(&gMiniSightMotionAttempt, generation, MSMotionSourceDevice,
@@ -2187,6 +2289,7 @@ static void MiniSightApplySettingsLive(void) {
         return;
     }
     MiniSightApplyShownReadback();
+    MiniSightApplyGravityConfiguration();
     MiniSightUpdateMusic();
     if (!gMiniSightWindow) {
         if (MiniSightShown() && !MiniSightAppOwnsPresentation()) MiniSightShow();

@@ -274,13 +274,29 @@ ok('1KB' in record_m or '1024' in record_m, '14d 成功最小字节校验被放�
 ok('isDeviceMotionAvailable' in tweak and 'isAccelerometerAvailable' in tweak,
    '15a 未检查两种传感器能力')
 ok('startAccelerometerUpdatesToQueue' in tweak and 'MSMotionFail(&gMiniSightMotionAttempt' in tweak and
-   'MSMotionSourceAccelerometer' in tweak and 'MiniSightStartAccelerometerSource();' in tweak,
+   'MSMotionSourceAccelerometer' in tweak and 'MiniSightStartAccelerometerSource(YES);' in tweak and
+   'MiniSightStartAccelerometerSource(NO);' in tweak,
    '15b deviceMotion 不可用时没有有限的加速度计回退')
 ok('gravity-last.json' in tweak and 'MiniSightGravityDiagnostic' in tweak,
    '15c 重力启动/回退/错误没有本地诊断')
 ok('MiniSightApplyGravitySample' in tweak and
    tweak.count('MiniSightApplyGravitySample(') >= 3,
    '15d 两种传感器没有共用倾斜/抖动应用链')
+settings_live = tweak[tweak.index('static void MiniSightApplySettingsLive(void) {'):]
+settings_live = settings_live[:settings_live.index('\n}\n')]
+config = tweak[tweak.index('static void MiniSightApplyGravityConfiguration(void) {'):]
+config = config[:config.index('\n}\n')]
+ok('MiniSightApplyShownReadback();' in settings_live and
+   'MiniSightApplyGravityConfiguration();' in settings_live and
+   settings_live.index('MiniSightApplyShownReadback();') < settings_live.index('MiniSightApplyGravityConfiguration();'),
+   '15e 设置读回后没有实时协调重力启停')
+ok('MiniSightRefreshGravityConfiguration();' in config and
+   'MiniSightStopGravity();' in config and 'MiniSightStartGravity();' in config and
+   'gMiniSightMotionAttempt.source != MSMotionSourceNone' in config,
+   '15f OFF→ON 没有清除失败代际后重新启动')
+ok('first_sample_timeout' in tweak and 'sample_age_ms' in tweak and
+   'accelerometer_available' in tweak and 'fallback' in tweak,
+   '15g 重力失败没有保留首帧/传感器能力/回退证据')
 
 # ---- 16. 诊断日志默认关闭、有上限、不记录内容 ----
 log_h = read('MiniSightLog.h')
