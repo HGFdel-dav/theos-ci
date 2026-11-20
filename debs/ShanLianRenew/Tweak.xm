@@ -379,8 +379,6 @@ static void SLFill(SLState *st, NSString *token) {
         NSString *rj = resp ? [[NSString alloc] initWithData:
             [NSJSONSerialization dataWithJSONObject:resp options:0 error:NULL]
             encoding:NSUTF8StringEncoding] : (err.localizedDescription ?: @"");
-        SLDiag(@"fill", @"resp http=%ld api=%ld body=%@", (long)status,
-               (long)[resp[@"code"] integerValue], rj ?: @"-");
         SLLog(@"fill resp http=%ld api=%ld body=%@", (long)status,
               (long)[resp[@"code"] integerValue],
               [rj substringToIndex:MIN((NSUInteger)220, rj.length)]);
@@ -484,39 +482,16 @@ static __attribute__((unused)) void SLRunFillPhase(SLState *st) {
     poll();
 }
 
-
-// App 是否在前台（避免在用户正看着时退出它）
-static __attribute__((unused)) BOOL SLAppForeground(void) {
-    Class app = NSClassFromString(@"UIApplication");
-    if (!app) return NO;
-    id a = ((id (*)(id, SEL))objc_msgSend)(app, sel_registerName("sharedApplication"));
-    if (!a) return NO;
-    SEL s = sel_registerName("applicationState");
-    if (![a respondsToSelector:s]) return NO;
-    return ((NSInteger (*)(id, SEL))objc_msgSend)(a, s) == 0;  // 0 = active
-}
-
-
-// 让 App 立刻退回后台（用户几乎看不到）
-static __attribute__((unused)) void SLGoBackground(void) {
-    Class app = NSClassFromString(@"UIApplication");
-    if (!app) return;
-    id a = ((id (*)(id, SEL))objc_msgSend)(app, sel_registerName("sharedApplication"));
-    if (!a) return;
-    // 先把移出屏幕的窗口放回去，别让下次打开是空的
-    @try {
-        id ws = ((id (*)(id, SEL))objc_msgSend)(a, sel_registerName("windows"));
-        if ([ws isKindOfClass:[NSArray class]]) {
-            for (id w in (NSArray *)ws) {
-                ((void (*)(id, SEL, CGAffineTransform))objc_msgSend)(
-                    w, sel_registerName("setTransform:"), CGAffineTransformIdentity);
-            }
-        }
-    } @catch (NSException *e) {}
-    SEL s = sel_registerName("suspend");
-    if ([a respondsToSelector:s]) {
-        ((void (*)(id, SEL))objc_msgSend)(a, s);
-        SLLog(@"app suspended");
+static void SLOnLaunch(void) {
+    SLState *st = [SLState load];
+    if (st.phase == SLPhaseResetting) {
+        // 只有锁屏时才真正换号（会退出 App），避免打断用户
+        if (!SLScreenLocked()) { SLLog(@"reset: not locked, defer"); return; }
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            SLState *s2 = [SLState load];
+            if (s2.phase == SLPhaseResetting) SLPerformReset(s2);
+        });
         return;
     }
     if (st.phase == SLPhaseNeedFill) { SLRunFillPhase(st); return; }
@@ -538,7 +513,35 @@ static __attribute__((unused)) BOOL SLScreenLocked(void) {
     return NO;
 }
 
-static BOOL SLAppRunning(void) { return NO; }   // 一律直接调起，重复调用无害
+static void SLOpenApp(void);
+
+static BOOL SLAppRunning(void) {
+    Class c = NSClassFromString(@"LSApplicationWorkspace");
+    if (!c) return NO;
+    id ws = ((id (*)(id, SEL))objc_msgSend)(c, sel_registerName("defaultWorkspace"));
+    if (!ws) return NO;
+    SEL sel = sel_registerName("runningApplications");
+    if (![ws respondsToSelector:sel]) return NO;
+    id apps = ((id (*)(id, SEL))objc_msgSend)(ws, sel);
+    if (![apps isKindOfClass:[NSArray class]]) return NO;
+    for (id a in (NSArray *)apps) {
+        SEL bs = sel_registerName("bundleIdentifier");
+        if (![a respondsToSelector:bs]) continue;
+        id bid = ((id (*)(id, SEL))objc_msgSend)(a, bs);
+        if ([bid isKindOfClass:[NSString class]] && [(NSString *)bid isEqualToString:SL_APP_ID]) return YES;
+    }
+    return NO;
+}
+
+// 最近一次拉起的时间，避免每 15 秒强行前台化
+static NSTimeInterval g_lastOpen = 0;
+static void SLOpenAppThrottled(void) {
+    NSTimeInterval now = [NSDate date].timeIntervalSince1970;
+    if (now - g_lastOpen < 90) return;          // 90 秒内不重复拉起
+    g_lastOpen = now;
+    SLLog(@"open app (throttled)");
+    SLOpenApp();
+}
 
 static void SLOpenApp(void) {
     Class c = NSClassFromString(@"LSApplicationWorkspace");
@@ -557,11 +560,16 @@ static void SLTick(void) {
     // 观察版：桌面端不做任何动作（不拉起 App、不重置、不填码）
     SLState *st = [SLState load];
     double now = [NSDate date].timeIntervalSince1970;
-    if (!st.enabled) return;
-    // 保留判据日志与投递通道，但观察期不实际开火
-    if (st.nextFire1 > 0 && now >= st.nextFire1) {
-        SLLog(@"fire locked=%d late=%d dl_in=%.0f (observe: skip)", 0, 0, st.deadline - now);
-        notify_post(kSLFireName);
+
+    // 换号/填码阶段同样只在锁屏时动作，避免打扰用户
+    if (st.phase == SLPhaseResetting || st.phase == SLPhaseNeedFill) {
+        if (!SLScreenLocked()) {
+            if ((int)now % 300 == 0) SLLog(@"phase=%d waiting for lock", (int)st.phase);
+            return;
+        }
+        if (!SLAppRunning()) SLOpenAppThrottled();
+        if (st.phase == SLPhaseNeedFill) notify_post(kSLFireName);
+        return;
     }
     if (st.phase != SLPhaseArmed) return;
 
