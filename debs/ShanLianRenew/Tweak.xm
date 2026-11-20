@@ -258,7 +258,12 @@ static void SLFill(SLState *st, NSString *token) {
     [SLHttp send:@"POST" path:@"/app/customer/slfillInviteCodefe"
            body:@{@"inviteCode": st.code ?: @"88888888"}
      completion:^(NSInteger status, NSDictionary *resp, NSError *err) {
-        SLLog(@"fill resp http=%ld api=%ld", (long)status, (long)[resp[@"code"] integerValue]);
+        NSString *rj = resp ? [[NSString alloc] initWithData:
+            [NSJSONSerialization dataWithJSONObject:resp options:0 error:NULL]
+            encoding:NSUTF8StringEncoding] : (err.localizedDescription ?: @"");
+        SLLog(@"fill resp http=%ld api=%ld body=%@", (long)status,
+              (long)[resp[@"code"] integerValue],
+              [rj substringToIndex:MIN((NSUInteger)220, rj.length)]);
         if ([resp[@"code"] integerValue] != 200) {
             g_filling = NO;
             SLFailOrRetry(st, [NSString stringWithFormat:@"fill %ld/%ld",
@@ -348,9 +353,22 @@ static void SLRunFillPhase(SLState *st) {
     poll();
 }
 
+
+// App 是否在前台（避免在用户正看着时退出它）
+static BOOL SLAppForeground(void) {
+    Class app = NSClassFromString(@"UIApplication");
+    if (!app) return NO;
+    id a = ((id (*)(id, SEL))objc_msgSend)(app, sel_registerName("sharedApplication"));
+    if (!a) return NO;
+    SEL s = sel_registerName("applicationState");
+    if (![a respondsToSelector:s]) return NO;
+    return ((NSInteger (*)(id, SEL))objc_msgSend)(a, s) == 0;  // 0 = active
+}
+
 static void SLOnLaunch(void) {
     SLState *st = [SLState load];
     if (st.phase == SLPhaseResetting) {
+        if (SLAppForeground()) { SLLog(@"reset: app in foreground, defer"); return; }
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
             SLState *s2 = [SLState load];
@@ -377,7 +395,58 @@ static BOOL SLScreenLocked(void) {
     return NO;
 }
 
-static BOOL SLAppRunning(void) { return NO; }   // 一律直接调起，重复调用无害
+static void SLOpenApp(void);
+
+static BOOL SLAppRunning(void) {
+    Class c = NSClassFromString(@"LSApplicationWorkspace");
+    if (!c) return NO;
+    id ws = ((id (*)(id, SEL))objc_msgSend)(c, sel_registerName("defaultWorkspace"));
+    if (!ws) return NO;
+    SEL sel = sel_registerName("runningApplications");
+    if (![ws respondsToSelector:sel]) return NO;
+    id apps = ((id (*)(id, SEL))objc_msgSend)(ws, sel);
+    if (![apps isKindOfClass:[NSArray class]]) return NO;
+    for (id a in (NSArray *)apps) {
+        SEL bs = sel_registerName("bundleIdentifier");
+        if (![a respondsToSelector:bs]) continue;
+        id bid = ((id (*)(id, SEL))objc_msgSend)(a, bs);
+        if ([bid isKindOfClass:[NSString class]] && [(NSString *)bid isEqualToString:SL_APP_ID]) return YES;
+    }
+    return NO;
+}
+
+// 最近一次拉起的时间，避免每 15 秒强行前台化
+static NSTimeInterval g_lastOpen = 0;
+
+// 后台静默启动：不切前台、无界面
+static void SLOpenAppSilently(void) {
+    Class c = NSClassFromString(@"LSApplicationWorkspace");
+    if (!c) return;
+    id ws = ((id (*)(id, SEL))objc_msgSend)(c, sel_registerName("defaultWorkspace"));
+    if (!ws) return;
+
+    // 1) launchApplicationWithIdentifier:suspended: —— 以挂起方式拉起，不出界面
+    SEL s1 = sel_registerName("launchApplicationWithIdentifier:suspended:");
+    if ([ws respondsToSelector:s1]) {
+        BOOL ok = ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(ws, s1, SL_APP_ID, YES);
+        SLLog(@"silent launch(suspended) ok=%d", ok);
+        if (ok) return;
+    }
+    // 2) 退而求其次：openApplicationWithBundleID:（会切前台，仅作兜底）
+    SEL s2 = sel_registerName("openApplicationWithBundleID:");
+    if ([ws respondsToSelector:s2]) {
+        ((void (*)(id, SEL, id))objc_msgSend)(ws, s2, SL_APP_ID);
+        SLLog(@"fallback open app");
+    }
+}
+
+static void SLOpenAppThrottled(void) {
+    NSTimeInterval now = [NSDate date].timeIntervalSince1970;
+    if (now - g_lastOpen < 90) return;          // 90 秒内不重复拉起
+    g_lastOpen = now;
+    SLLog(@"open app (throttled)");
+    SLOpenAppSilently();
+}
 
 static void SLOpenApp(void) {
     Class c = NSClassFromString(@"LSApplicationWorkspace");
@@ -396,8 +465,12 @@ static void SLTick(void) {
     if (!st.enabled) return;
     double now = [NSDate date].timeIntervalSince1970;
 
-    if (st.phase == SLPhaseResetting) { if (!SLAppRunning()) { SLLog(@"relaunch(reset)"); SLOpenApp(); } return; }
-    if (st.phase == SLPhaseNeedFill) { if (!SLAppRunning()) SLOpenApp(); notify_post(kSLFireName); return; }
+    // 换号/填码：随时进行，用后台静默方式拉起 App，不打扰用户
+    if (st.phase == SLPhaseResetting || st.phase == SLPhaseNeedFill) {
+        if (!SLAppRunning()) SLOpenAppThrottled();
+        if (st.phase == SLPhaseNeedFill) notify_post(kSLFireName);
+        return;
+    }
     if (st.phase != SLPhaseArmed) return;
 
     BOOL due = (st.nextFire1 > 0 && now >= st.nextFire1) || (st.nextFire2 > 0 && now >= st.nextFire2);
