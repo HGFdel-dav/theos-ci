@@ -220,12 +220,17 @@ static void SLCaptureRun(void) {
     void (^poll)(void);
     __block __weak void (^weakPoll)(void);
     weakPoll = poll = ^{
-        if (SLCaptureLoginBody()) { SLLog(@"capture: done"); return; }
-        if (++tries > 12) { SLLog(@"capture: body not found after %d tries", tries); return; }
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
+        if (SLCaptureLoginBody()) {
+            // 抓到加密串的同一刻，再取一次钥匙串，保证配对
+            SLCaptureKeychain();
+            SLLog(@"capture: paired sample done");
+            return;
+        }
+        if (++tries > 20) { SLLog(@"capture: body not found after %d tries", tries); return; }
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), weakPoll);
     };
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)),
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), poll);
 }
 
@@ -238,7 +243,7 @@ static NSUserDefaults *SLDefaults(void) {
     return d;
 }
 
-static __attribute__((unused)) void SLPerformReset(SLState *st) {
+static void SLPerformReset(SLState *st) {
     // 先记下旧 token，用来判断 App 是否真的注册了新号
     st.snapToken = [SLHttp currentToken];
     st.phase = SLPhaseNeedFill;
@@ -403,7 +408,7 @@ static void SLRefreshDeadline(void) {
     }];
 }
 
-static __attribute__((unused)) void SLRunFillPhase(SLState *st) {
+static void SLRunFillPhase(SLState *st) {
     if (g_filling) return;
     g_filling = YES;
 
@@ -455,21 +460,22 @@ static __attribute__((unused)) void SLGoBackground(void) {
 }
 
 static void SLOnLaunch(void) {
-    // —— 观察模式：只取样，不动任何东西 ——
-    // 每次 App 启动都记一份「密钥 + 缓存里的加密串」，供离线配对分析
+    // 取样：每次启动都记钥匙串；找到加密串时会再记一次（同一刻配对）
     SLCaptureRun();
 
     SLState *st = [SLState load];
     if (st.phase == SLPhaseResetting) {
-        // 观察版：不做重置，只记一笔
-        SLLog(@"observe-only: reset requested but skipped");
-        st.phase = SLPhaseIdle;
-        [st save];
+        SLLog(@"reset: scheduled");
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            SLState *s2 = [SLState load];
+            if (s2.phase == SLPhaseResetting) SLPerformReset(s2);
+        });
+        return;
     }
     if (st.phase == SLPhaseNeedFill) {
-        SLLog(@"observe-only: fill requested but skipped");
-        st.phase = SLPhaseIdle;
-        [st save];
+        SLRunFillPhase(st);
+        return;
     }
     [SLHttp warmup];
     SLRefreshDeadline();
