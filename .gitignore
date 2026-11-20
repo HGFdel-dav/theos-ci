@@ -1,2 +1,7 @@
 __pycache__/
 *.pyc
+.DS_Store
+
+# Theos recreates these compiler and package-build scratch directories.
+# Existing tracked .theos/_ package-stage snapshots are retained pending review.
+**/.theos/
