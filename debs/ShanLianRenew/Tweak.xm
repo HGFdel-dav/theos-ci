@@ -256,13 +256,26 @@ static NSUUID *SLHookAdid(id self, SEL _cmd) {
     return g_origAdid ? g_origAdid(self, _cmd) : nil;
 }
 
-
-static NSUserDefaults *SLDefaults(void) {
-    NSUserDefaults *d = [[NSUserDefaults alloc] initWithSuiteName:SL_PREF_SUITE];
-    if (!d) d = [[NSUserDefaults alloc] initWithSuiteName:SL_APP_GROUP];
-    if (!d) d = [NSUserDefaults standardUserDefaults];
-    return d;
+// —— 隐藏界面：App 照常跑，但不显示 ——
+static void (*g_origMakeKeyVisible)(id, SEL) = NULL;
+static void SLHookMakeKeyAndVisible(id self, SEL _cmd) {
+    // 不调用原实现 = 窗口永远不显示
+    SLLog(@"hidden-ui: suppressed makeKeyAndVisible %@", NSStringFromClass([self class]));
 }
+
+static void (*g_origViewDidAppear)(id, SEL, BOOL) = NULL;
+static void SLHookViewDidAppear(id self, SEL _cmd, BOOL animated) {
+    if (g_origViewDidAppear) g_origViewDidAppear(self, _cmd, animated);
+    // 界面出现后立刻把窗口藏起来
+    @try {
+        id v = ((id (*)(id, SEL))objc_msgSend)(self, sel_registerName("view"));
+        id w = v ? ((id (*)(id, SEL))objc_msgSend)(v, sel_registerName("window")) : nil;
+        if (w) {
+            ((void (*)(id, SEL, BOOL))objc_msgSend)(w, sel_registerName("setHidden:"), YES);
+        }
+    } @catch (NSException *e) {}
+}
+
 
 
 #pragma mark - 重置
