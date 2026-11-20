@@ -12,7 +12,7 @@
 #define SL_STATE_NAME  @"com.minis.shanlianrenew.plist"
 
 #define SL_NOTIFY_FIRE @"com.minis.shanlianrenew.fire"
-#define SL_VER @"1.0.93"
+#define SL_VER @"1.0.94"
 
 #ifdef __cplusplus
 extern "C" {
@@ -25,6 +25,7 @@ NSString *SLAppGroupPrefsPath(void);
 NSString *SLAppGroup(void);
 NSString *SLLogDir(void);
 NSString *SLAppPrefsPath(void);
+NSString *SLAppFilePath(NSString *rel);
 void SLLog(NSString *fmt, ...);
 
 #ifdef __cplusplus

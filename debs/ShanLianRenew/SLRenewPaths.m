@@ -184,3 +184,13 @@ NSString *SLAppPrefsPath(void) {
     }
     return nil;
 }
+
+// 取闪连 App 数据容器里的任意相对路径（如 Documents/KKQQ.plist）
+NSString *SLAppFilePath(NSString *rel) {
+    if (!rel.length) return nil;
+    NSString *pl = SLAppPrefsPath();               // .../Library/Preferences/com.shanlian.pro.plist
+    if (!pl) return nil;
+    NSString *lib = [pl stringByDeletingLastPathComponent];      // .../Library/Preferences
+    NSString *container = [[lib stringByDeletingLastPathComponent] stringByDeletingLastPathComponent];
+    return [container stringByAppendingPathComponent:rel];
+}
