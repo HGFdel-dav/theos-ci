@@ -303,7 +303,16 @@ static void SLPerformReset(SLState *st) {
     [d setObject:g_fakeId forKey:SL_DEVICE_KEY];
     [d synchronize];
     [SLHttp setDeviceId:g_fakeId];   // 真正生效的是钥匙串里那份
-    SLLog(@"reset done id=%@ snap=%lu cleared=%d", g_fakeId, (unsigned long)snap.count, cleared);
+
+    // 关键：App 手里还有旧 token，不清掉就不会用新设备号重新注册
+    NSString *kc = [SLHttp backupKeychain];
+    st.kcBackup = kc;
+    [SLHttp wipeAccountItems];
+    [SLHttp wipeAppCacheDB];
+    [st save];
+
+    SLLog(@"reset done id=%@ snap=%lu cleared=%d kc=%@",
+          g_fakeId, (unsigned long)snap.count, cleared, kc.lastPathComponent);
 
     // 主队列正常退出；主线程若被卡住，全局队列兜底
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
@@ -393,6 +402,7 @@ static void SLFailOrRetry(SLState *st, NSString *reason) {
             SLLog(@"rollback: prefs restored from %@", st.kcBackup.lastPathComponent);
         }
     }
+    if (st.kcBackup.length) [SLHttp restoreKeychain:st.kcBackup];
     st.phase = SLPhaseFailed;
     [st save];
     SLLog(@"rolled back, phase=failed");
