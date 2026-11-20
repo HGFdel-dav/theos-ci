@@ -48,7 +48,16 @@ static NSString *g_host = nil;
     CFTypeRef out = NULL;
     if (SecItemCopyMatching((__bridge CFDictionaryRef)q, &out) != errSecSuccess || !out) return @[];
     NSArray *a = CFBridgingRelease(out);
-    return [a isKindOfClass:[NSArray class]] ? a : @[];
+    if (![a isKindOfClass:[NSArray class]]) return @[];
+    // 返回的属性里不一定带 class，显式补进去，后面逐项删除才准
+    NSMutableArray *fixed = [NSMutableArray arrayWithCapacity:a.count];
+    for (id it in a) {
+        if (![it isKindOfClass:[NSDictionary class]]) continue;
+        NSMutableDictionary *m = [(NSDictionary *)it mutableCopy];
+        if (!m[(__bridge id)kSecClass]) m[(__bridge id)kSecClass] = cls;
+        [fixed addObject:m];
+    }
+    return fixed;
 }
 
 + (NSArray<NSDictionary *> *)keychainItems {
