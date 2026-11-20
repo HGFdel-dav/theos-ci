@@ -63,14 +63,6 @@ static NSString *g_host = nil;
     return all;
 }
 
-+ (NSArray<NSDictionary *> *)keychainItems {
-    NSMutableArray *all = [NSMutableArray array];
-    [all addObjectsFromArray:[self itemsClass:(__bridge id)kSecClassGenericPassword group:@""]];
-    [all addObjectsFromArray:[self itemsClass:(__bridge id)kSecClassInternetPassword group:@""]];
-    [all addObjectsFromArray:[self itemsClass:(__bridge id)kSecClassKey group:@""]];
-    return all;
-}
-
 + (NSString *)tokenFromItems:(NSArray *)items differentFrom:(NSString *)old {
     NSString *best = nil;
     int bestScore = -1;
