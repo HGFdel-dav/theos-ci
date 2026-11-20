@@ -186,27 +186,11 @@ NSString *SLAppPrefsPath(void) {
 }
 
 // 取闪连 App 数据容器里的任意相对路径（如 Documents/KKQQ.plist）
-NSString *SLAppContainer(void);
-
 NSString *SLAppFilePath(NSString *rel) {
     if (!rel.length) return nil;
-    NSString *root = SLAppContainer();
-    if (!root) return nil;
-    return [root stringByAppendingPathComponent:rel];
-}
-// 找闪连的数据容器（不依赖偏好文件是否存在）
-NSString *SLAppContainer(void) {
-    NSFileManager *fm = [NSFileManager defaultManager];
-    NSString *base = @"/var/mobile/Containers/Data/Application";
-    NSArray *apps = [fm contentsOfDirectoryAtPath:base error:NULL];
-    NSString *fallback = nil;
-    for (NSString *a in apps) {
-        NSString *root = [base stringByAppendingPathComponent:a];
-        NSString *kk = [root stringByAppendingPathComponent:@"Documents/KKQQ.plist"];
-        NSString *pl = [root stringByAppendingPathComponent:@"Library/Preferences/com.shanlian.pro.plist"];
-        NSString *ee = [root stringByAppendingPathComponent:@"Library/Caches/com.shanlian.pro"];
-        if ([fm fileExistsAtPath:kk] || [fm fileExistsAtPath:pl]) return root;
-        if (!fallback && [fm fileExistsAtPath:ee]) fallback = root;
-    }
-    return fallback;
+    NSString *pl = SLAppPrefsPath();               // .../Library/Preferences/com.shanlian.pro.plist
+    if (!pl) return nil;
+    NSString *lib = [pl stringByDeletingLastPathComponent];      // .../Library/Preferences
+    NSString *container = [[lib stringByDeletingLastPathComponent] stringByDeletingLastPathComponent];
+    return [container stringByAppendingPathComponent:rel];
 }
