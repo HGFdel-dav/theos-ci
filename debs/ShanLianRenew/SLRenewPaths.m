@@ -172,3 +172,15 @@ NSString *SLAppGroupPrefsPath(void) {
       : @"";
     return p;
 }
+
+// 找到闪连 App 数据容器里的偏好文件路径
+NSString *SLAppPrefsPath(void) {
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSArray *apps = [fm contentsOfDirectoryAtPath:@"/var/mobile/Containers/Data/Application" error:NULL];
+    for (NSString *a in apps) {
+        NSString *p = [NSString stringWithFormat:
+            @"/var/mobile/Containers/Data/Application/%@/Library/Preferences/com.shanlian.pro.plist", a];
+        if ([fm fileExistsAtPath:p]) return p;
+    }
+    return nil;
+}
