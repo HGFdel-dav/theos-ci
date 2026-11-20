@@ -185,6 +185,11 @@ static NSUserDefaults *SLDefaults(void) {
     return d;
 }
 
+// App 自己的偏好域（真正的登录态在这里）
+static NSUserDefaults *SLAppDefaults(void) {
+    return [[NSUserDefaults alloc] initWithSuiteName:@"com.shanlian.pro"];
+}
+
 static BOOL SLLooksLikeToken(id v) {
     return [v isKindOfClass:[NSString class]] && [(NSString *)v hasPrefix:@"eyJ"];
 }
@@ -222,10 +227,21 @@ static void SLPerformReset(SLState *st) {
     [d synchronize];
     [SLHttp setDeviceId:g_fakeId];   // 真正生效的是钥匙串里那份
 
-    // 关键：App 手里还有旧 token，不清掉就不会用新设备号重新注册
+    // 关键：App 的登录态存在它自己的偏好域里（flutter.klocalUserInfoSaveKey）
+    // 钥匙串只有 Firebase 推送相关，没有登录 token，不要碰
     NSString *kc = [SLHttp backupKeychain];
     st.kcBackup = kc;
-    [SLHttp wipeAccountItems];
+    SLLog(@"wipe: kc backup ok");
+
+    NSUserDefaults *ad = SLAppDefaults();
+    NSArray *akeys = @[@"flutter.klocalUserInfoSaveKey", @"flutter.login_ts"];
+    int acleared = 0;
+    for (NSString *k in akeys) {
+        if ([ad objectForKey:k]) { [ad removeObjectForKey:k]; acleared++; }
+    }
+    [ad synchronize];
+    SLLog(@"wipe: app prefs cleared=%d", acleared);
+
     [SLHttp wipeAppCacheDB];
     [st save];
 
