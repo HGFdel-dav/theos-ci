@@ -56,8 +56,8 @@ jobs:
             d=$(echo "$f" | cut -d/ -f2)
             if [ -n "$d" ] && [ -d "debs/$d" ]; then LIST="$LIST debs/$d"; fi
           done
-          LIST=$(printf '%s\n' $LIST | sort -u | tr '\n' ' ')
-          if [ -z "$LIST" ]; then
+          LIST=$(printf '%s\n' $LIST | sed '/^$/d' | sort -u | tr '\n' ' ')
+          if [ -z "$(echo "$LIST" | tr -d ' ')" ]; then
             LIST=$(ls -d debs/*/ 2>/dev/null | tr '\n' ' ')
             echo "::notice::没检测到改动项目，退回全量"
           fi
