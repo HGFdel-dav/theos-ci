@@ -272,40 +272,21 @@ static void SLPerformReset(SLState *st) {
     }
     SLDiag(@"reset", @"groups cleared");
 
-    // 3) 钥匙串逐项删除（照「一键重置」的做法：先拿完整属性，再逐项删）
-    NSArray *items = [SLHttp keychainItems];
-    SLDiag(@"reset", @"kc enumerate=%lu", (unsigned long)items.count);
-    for (NSDictionary *it in items) {
-        id cls = it[(__bridge id)kSecClass];
-        NSMutableDictionary *q = [NSMutableDictionary dictionary];
-        if (cls) q[(__bridge id)kSecClass] = cls;
-        id acc = it[(__bridge id)kSecAttrAccount];
-        id svc = it[(__bridge id)kSecAttrService];
-        id grp = it[(__bridge id)kSecAttrAccessGroup];
-        if (acc) q[(__bridge id)kSecAttrAccount] = acc;
-        if (svc) q[(__bridge id)kSecAttrService] = svc;
-        if (grp) q[(__bridge id)kSecAttrAccessGroup] = grp;
-        OSStatus st = (q.count > 0) ? SecItemDelete((__bridge CFDictionaryRef)q) : errSecParam;
-        SLDiag(@"reset", @"kc del acc=%@ svc=%@ grp=%@ st=%d",
-               [acc description] ?: @"-", [svc description] ?: @"-",
-               [grp description] ?: @"-", (int)st);
-    }
-    // 删完自检：还有剩的就记下来（防止再出现空壳）
-    NSArray *left = [SLHttp keychainItems];
-    SLDiag(@"reset", @"kc left=%lu", (unsigned long)left.count);
-    for (NSDictionary *it in left) {
-        SLDiag(@"reset", @"kc remained acc=%@ svc=%@",
-               [it[(__bridge id)kSecAttrAccount] description] ?: @"-",
-               [it[(__bridge id)kSecAttrService] description] ?: @"-");
-    }
+    // 先把加密密钥补回去（之前误删过）
+    [SLHttp seedSymKeyIfMissing];
 
-    // 4) 删 App 缓存库
+    // 3) 不删钥匙串：保留加密密钥（删了 App 就没法生成凭证，只能让你手动登录）
+    //    只把设备号写新的进去
+    NSString *newId = [[NSUUID UUID].UUIDString uppercaseString];
+    BOOL idOk = [SLHttp setDeviceId:newId];
+    SLDiag(@"reset", @"deviceId -> %@ ok=%d", newId, idOk);
+
     // 4) 关键：换掉 App 自己的设备身份文件，否则它认为“老设备没登录”，不注册新号
     NSString *kk = SLAppFilePath(@"Documents/KKQQ.plist");
     if (kk) {
         NSMutableDictionary *d = [NSMutableDictionary dictionaryWithContentsOfFile:kk];
         if (!d) d = [NSMutableDictionary dictionary];
-        NSString *newUuid = [[NSUUID UUID].UUIDString lowercaseString];
+        NSString *newUuid = [newId lowercaseString];
         d[@"uuid"] = newUuid;
         BOOL ok = [d writeToFile:kk atomically:YES];
         SLDiag(@"reset", @"KKQQ uuid -> %@ wrote=%d", newUuid, ok);
