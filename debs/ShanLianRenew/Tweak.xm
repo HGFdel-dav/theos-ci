@@ -223,13 +223,24 @@ static void SLPerformReset(SLState *st) {
     st.kcBackup = kc;
     SLLog(@"wipe: kc backup ok");
 
-    NSUserDefaults *ad = SLAppDefaults();
+    // App 自己的偏好域就是它的 bundle 域（standardUserDefaults）
     NSArray *akeys = @[@"flutter.klocalUserInfoSaveKey", @"flutter.login_ts"];
+    NSUserDefaults *sd = [NSUserDefaults standardUserDefaults];
     int acleared = 0;
     for (NSString *k in akeys) {
-        if ([ad objectForKey:k]) { [ad removeObjectForKey:k]; acleared++; }
+        if ([sd objectForKey:k]) { [sd removeObjectForKey:k]; acleared++; }
     }
-    [ad synchronize];
+    [sd synchronize];
+
+    // 双保险：标准域没删掉时直接改文件
+    if (acleared == 0) {
+        NSString *appPl = SLAppPrefsPath();
+        NSMutableDictionary *ap = appPl ? [NSMutableDictionary dictionaryWithContentsOfFile:appPl] : nil;
+        for (NSString *k in akeys) {
+            if (ap[k]) { [ap removeObjectForKey:k]; acleared++; }
+        }
+        if (ap) [ap writeToFile:appPl atomically:YES];
+    }
     SLLog(@"wipe: app prefs cleared=%d", acleared);
 
     [SLHttp wipeAppCacheDB];
