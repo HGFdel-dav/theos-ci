@@ -263,11 +263,6 @@ static NSUserDefaults *SLDefaults(void) {
     return d;
 }
 
-// App 自己的偏好域（真正的登录态在这里）
-static NSUserDefaults *SLAppDefaults(void) {
-    return [[NSUserDefaults alloc] initWithSuiteName:@"com.shanlian.pro"];
-}
-
 static BOOL SLLooksLikeToken(id v) {
     return [v isKindOfClass:[NSString class]] && [(NSString *)v hasPrefix:@"eyJ"];
 }
