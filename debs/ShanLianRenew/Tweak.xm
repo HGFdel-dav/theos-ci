@@ -355,6 +355,26 @@ static BOOL SLAppForeground(void) {
     return ((NSInteger (*)(id, SEL))objc_msgSend)(a, s) == 0;  // 0 = active
 }
 
+
+// 让 App 立刻退回后台（用户几乎看不到）
+static void SLGoBackground(void) {
+    Class app = NSClassFromString(@"UIApplication");
+    if (!app) return;
+    id a = ((id (*)(id, SEL))objc_msgSend)(app, sel_registerName("sharedApplication"));
+    if (!a) return;
+    SEL s = sel_registerName("suspend");
+    if ([a respondsToSelector:s]) {
+        ((void (*)(id, SEL))objc_msgSend)(a, s);
+        SLLog(@"app suspended");
+        return;
+    }
+    SEL s2 = sel_registerName("_suspend");
+    if ([a respondsToSelector:s2]) {
+        ((void (*)(id, SEL))objc_msgSend)(a, s2);
+        SLLog(@"app _suspended");
+    }
+}
+
 static void SLOnLaunch(void) {
     SLState *st = [SLState load];
     if (st.phase == SLPhaseResetting) {
@@ -367,6 +387,11 @@ static void SLOnLaunch(void) {
         return;
     }
     if (st.phase == SLPhaseNeedFill) { SLRunFillPhase(st); return; }
+    // 若是被我们拉起来的，等登录完成就退回后台
+    if (st.phase == SLPhaseResetting) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(6 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{ SLGoBackground(); });
+    }
     [SLHttp warmup];
     [SLHttp probeNet];
     [SLHttp probeHeaders];
