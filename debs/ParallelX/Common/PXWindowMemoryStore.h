@@ -1,0 +1,28 @@
+#pragma once
+#import <Foundation/Foundation.h>
+#import "PXWindowMemoryPolicy.h"
+
+NS_ASSUME_NONNULL_BEGIN
+FOUNDATION_EXPORT NSString *const PXWindowMemoryNotification;
+FOUNDATION_EXPORT NSString *const PXWindowMemoryDidLoadNotification;
+
+/* Uses the existing cached RootHide path resolver and verified atomic I/O.
+ * The document is isolated from CXStore: account/UI writers cannot overwrite it.
+ * All disk work, locking, serialization and diagnostics run off the main queue. */
+@interface PXWindowMemoryStore : NSObject
++ (instancetype)shared;
+- (NSDictionary *)snapshot;
+- (BOOL)isLoaded;
+- (NSString *)errorText;
+- (void)reload;
+- (void)saveGeometry:(PXWMGeometry)geometry bundle:(NSString *)bundle
+        orientation:(unsigned)orientation observedEpoch:(uint64_t)epoch;
+- (void)setMemoryEnabled:(BOOL)enabled completion:(void (^)(BOOL ok))completion;
+- (void)setDiagnosticsEnabled:(BOOL)enabled completion:(void (^)(BOOL ok))completion;
+- (void)clearMemoryWithCompletion:(void (^)(BOOL ok))completion;
+- (void)diagnostic:(NSString *)event details:(NSDictionary *)details;
+@end
+
+FOUNDATION_EXPORT BOOL PXWindowMemoryGeometry(NSDictionary *snapshot, NSString *bundle,
+                                            unsigned orientation, PXWMGeometry *result);
+NS_ASSUME_NONNULL_END

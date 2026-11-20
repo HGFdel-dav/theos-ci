@@ -13,6 +13,8 @@
 #import "Common/PXCloneRuntime.h"
 #import "Common/PXCloneURLRouter.h"
 #import "Common/PXCloneProbe.h"
+#import "Common/PXWindowMemory.h"
+#import "Common/PXWindowMemoryStore.h"
 
 #ifdef PXCLONE_STRIP_LOGS
 #define NSLog(...) ((void)0)
@@ -656,6 +658,7 @@ static void PXBootstrap(NSUInteger attempt) {
     if (!springboard) return;
     if (attempt == 0) {
         (void)PXClonePrefs.shared;
+        (void)PXWindowMemoryStore.shared;
         if (PXNotifyToken < 0) {
             int status = notify_register_dispatch(PXClonePrefsNotification.UTF8String, &PXNotifyToken,
                                                   dispatch_get_main_queue(), ^(int token) {
@@ -674,9 +677,11 @@ static void PXBootstrap(NSUInteger attempt) {
     BOOL refreshReady = PXInstallRefreshHooks();
     BOOL launchReady = [PXCloneLaunchController installNativeHooks];
     BOOL routingReady = PXInstallURLRoutingHook();
+    BOOL memoryReady = PXWindowMemoryInstall(PXResolveClass(@"PXPanelEntry"),
+                                            PXResolveClass(@"PXSceneBridge"), Nil);
     PXInstallProbeHooks();
     PXInstallExternalHooks();
-    if ((actionReady && refreshReady && launchReady && routingReady) || attempt >= PXHookAttemptLimit) return;
+    if ((actionReady && refreshReady && launchReady && routingReady && memoryReady) || attempt >= PXHookAttemptLimit) return;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, PXHookRetryDelayNS),
                    dispatch_get_main_queue(), ^{ PXBootstrap(attempt + 1); });
 }

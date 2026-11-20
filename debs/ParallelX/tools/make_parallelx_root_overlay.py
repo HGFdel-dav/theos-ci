@@ -22,5 +22,14 @@ if not any(item.get("detail") == entry["detail"]
                       if isinstance(item, dict) and item.get("id") == "launcher"), len(items))
     items.insert(insert_at, entry)
 out.parent.mkdir(parents=True, exist_ok=True)
+memory_entry = {
+    "cell": "PSLinkCell", "label": "窗口大小与位置记忆",
+    "detail": "PXWindowMemoryController", "isController": True,
+    "sfColor": "blue", "sfSymbol": "arrow.up.left.and.arrow.down.right",
+}
+if not any(isinstance(item, dict) and item.get("detail") == memory_entry["detail"] for item in items):
+    insert_at = next((i + 1 for i, item in enumerate(items)
+                      if isinstance(item, dict) and item.get("id") == "window"), len(items))
+    items.insert(insert_at, memory_entry)
 out.write_bytes(plistlib.dumps(data, fmt=plistlib.FMT_BINARY, sort_keys=False))
 print(out)

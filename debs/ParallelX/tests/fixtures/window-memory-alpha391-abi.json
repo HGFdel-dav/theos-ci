@@ -1,0 +1,13 @@
+{
+  "sample_sha256": "b1f4bd28bb6c6936be2b059140f1af38f4da25bb2eeb5c2380b9d0bf2a3c2ce6",
+  "sample": "vendor/alpha391/Library/MobileSubstrate/DynamicLibraries/ParallelX.dylib",
+  "source": "alpha391 __objc_methlist relative entries, independently checked with r2 icj and targeted disassembly",
+  "methods": [
+    {"owner":"PXPanelEntry", "kind":"instance", "selector":"resizeHost:", "entry":464620, "imp":266404, "encoding":"v24@0:8@16"},
+    {"owner":"PXPanelEntry", "kind":"instance", "selector":"moveHost:", "entry":464644, "imp":273708, "encoding":"v24@0:8@16"},
+    {"owner":"PXSceneBridge", "kind":"instance", "selector":"openApplication:inView:keyboardOverlay:completion:", "entry":466300, "imp":417736, "encoding":"v48@0:8@16@24@32@?40"},
+    {"owner":"PXSceneBridge", "kind":"instance", "selector":"layoutHost", "entry":465868, "imp":387544, "encoding":"v16@0:8"},
+    {"owner":"PXSceneBridge", "kind":"instance", "selector":"close", "entry":466324, "imp":420932, "encoding":"v16@0:8"},
+    {"owner":"PXHostViewController", "kind":"instance", "selector":"viewDidLayoutSubviews", "entry":465044, "imp":52832, "encoding":"v16@0:8"}
+  ]
+}

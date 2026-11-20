@@ -110,6 +110,18 @@ def main():
                  if x.get("detail") == "PXCloneAccountsController"]
         if len(entry) != 1 or not entry[0].get("isController") or "bundle" in entry[0]:
             raise ValueError("account entry not wired to injected controller")
+        memory_entry = [x for x in plistlib.loads(root.read_bytes())["items"]
+                        if x.get("detail") == "PXWindowMemoryController"]
+        if len(memory_entry) != 1 or not memory_entry[0].get("isController") or "bundle" in memory_entry[0]:
+            raise ValueError("window memory entry not wired to injected controller")
+        for binary, markers in {
+            "ParallelXClone": (b"PXWindowMemoryStore", b"native_open_observed", b"save_user_geometry", b"restore_geometry_applied"),
+            "ParallelXPrefsUI": (b"PXWindowMemoryController", b"PXWindowMemoryStore", b"confirmClear"),
+        }.items():
+            content = (lib / (binary + ".dylib")).read_bytes()
+            if not all(marker in content for marker in markers):
+                raise ValueError("window memory missing from " + binary)
+        report["window_memory_static"] = True
         if (prefix / "Library/PreferenceBundles/ParallelXClonePrefs.bundle").exists():
             raise ValueError("obsolete standalone prefs bundle still packaged")
         for name, bundle in (("ParallelXClone", None),
