@@ -425,6 +425,7 @@ static void SLFill(SLState *st, NSString *token) {
                 SLScheduleReminder(st);
                 SLLog(@"renew ok -> %.0f", ndv);
                 SLNotify(@"闪连已续上", [NSString stringWithFormat:@"到期 %@", data[@"deadline"] ?: @""]);
+                SLGoBackground();
             } else {
                 g_filling = NO;
                 SLFailOrRetry(st, @"deadline not extended");
@@ -453,6 +454,7 @@ static void SLFailOrRetry(SLState *st, NSString *reason) {
     [st save];
     SLLog(@"rolled back, phase=failed");
     SLNotify(@"闪连没续上", [NSString stringWithFormat:@"已退回旧号，需要你看一眼（%@）", reason ?: @"未知"]);
+    SLGoBackground();
 }
 
 #pragma mark - 流程（App 端）
@@ -564,6 +566,18 @@ static void SLPushOffscreen(id win) {
     SLLog(@"ui: offscreen %@", NSStringFromCGRect([(UIWindow *)win frame]));
 }
 
+static void SLHookMakeKeyAndVisible(id self, SEL _cmd) {
+    if (g_origMakeKeyAndVisible) g_origMakeKeyAndVisible(self, _cmd);
+    if (!SLSuppressUIActive()) return;
+    SLPushOffscreen(self);
+    // 布局/根控制器可能稍后覆盖，补一次
+    __weak id weakWin = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        id w = weakWin;
+        if (w && SLSuppressUIActive()) SLPushOffscreen(w);
+    });
+}
 
 static void SLOnLaunch(void) {
     SLDiag(@"boot", @"v=%@ bid=%@", SL_VER, [NSBundle mainBundle].bundleIdentifier ?: @"-");
@@ -645,8 +659,10 @@ static void SLOpenAppSilently(void) {
 }
 
 static __attribute__((unused)) void SLOpenAppThrottled(void) {
+    SLState *stp = [SLState load];
     NSTimeInterval now = [NSDate date].timeIntervalSince1970;
-    if (now - g_lastOpen < 90) return;          // 90 秒内不重复拉起
+    BOOL active = (stp.phase == SLPhaseResetting || stp.phase == SLPhaseNeedFill);
+    if (now - g_lastOpen < (active ? 4.0 : 90.0)) return;   // 续期进行中 4 秒重试
     g_lastOpen = now;
     SLLog(@"open app (throttled)");
     SLOpenApp();
@@ -716,6 +732,11 @@ static void SLInitBody(void) {
 
     if (isApp) g_fakeId = [SLDefaults() stringForKey:SL_DEVICE_KEY];
 
+    if (isApp) {
+        Class winCls = NSClassFromString(@"UIWindow");
+        if (winCls) MSHookMessageEx(winCls, @selector(makeKeyAndVisible),
+                                   (IMP)SLHookMakeKeyAndVisible, (IMP *)&g_origMakeKeyAndVisible);
+    }
 
     Class ud = NSClassFromString(@"UIDevice");
     if (ud) MSHookMessageEx(ud, @selector(identifierForVendor), (IMP)SLHookIdfv, (IMP *)&g_origIdfv);
