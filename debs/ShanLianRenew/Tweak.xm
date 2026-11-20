@@ -17,6 +17,7 @@
 #import "SLHttp.h"
 #import "SLSigner.h"
 #import "SLCacheDB.h"
+#import "SLDiag.h"
 
 static NSString *g_fakeId = nil;
 
@@ -250,7 +251,9 @@ static void SLPerformReset(SLState *st) {
         st.kcBackup = bak;
     }
     [st save];    // 必须在清域之前存，否则状态会被一起清掉
-    SLLog(@"reset: start backup=%@", bak.lastPathComponent);
+    SLDiag(@"reset", @"start backup=%@ oldTokenLen=%lu",
+           bak.lastPathComponent, (unsigned long)(st.snapToken ? st.snapToken.length : 0));
+    SLDiagSnapshot(@"before-reset");
 
     // —— 与「一键重置」完全一致：把 App 变回刚装好的状态 ——
     NSString *bid = [NSBundle mainBundle].bundleIdentifier ?: @"com.shanlian.pro";
@@ -259,7 +262,7 @@ static void SLPerformReset(SLState *st) {
     NSUserDefaults *sd = [NSUserDefaults standardUserDefaults];
     [sd removePersistentDomainForName:bid];
     [sd synchronize];
-    SLLog(@"wipe: own domain cleared");
+    SLDiag(@"reset", @"own domain cleared bid=%@", bid);
 
     // 2) 清两个 App Group 域（不含我们自己的状态域）
     for (NSString *g in @[SL_APP_GROUP, SL_APP_GROUP_OLD]) {
@@ -267,7 +270,7 @@ static void SLPerformReset(SLState *st) {
         NSUserDefaults *gd = [[NSUserDefaults alloc] initWithSuiteName:g];
         if (gd) { [gd removePersistentDomainForName:g]; [gd synchronize]; }
     }
-    SLLog(@"wipe: groups cleared");
+    SLDiag(@"reset", @"groups cleared");
 
     // 3) 钥匙串按 class 全删（不加 account/service 条件，才不会卡死）
     NSArray *classes = @[(__bridge id)kSecClassGenericPassword,
@@ -276,12 +279,13 @@ static void SLPerformReset(SLState *st) {
     for (NSUInteger i = 0; i < classes.count; i++) {
         NSDictionary *q = @{(__bridge id)kSecClass: classes[i]};
         OSStatus s = SecItemDelete((__bridge CFDictionaryRef)q);
-        SLLog(@"wipe: kc[%lu] st=%d", (unsigned long)i, (int)s);
+        SLDiag(@"reset", @"kc[%lu] delete st=%d", (unsigned long)i, (int)s);
     }
 
     // 4) 删 App 缓存库
     [SLHttp wipeAppCacheDB];
-    SLLog(@"wipe: done, app 将以全新状态启动");
+    SLDiag(@"reset", @"cache db removed, reset complete");
+    SLDiagSnapshot(@"after-reset");
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{ exit(0); });
@@ -320,6 +324,8 @@ static void SLFill(SLState *st, NSString *token) {
         NSString *rj = resp ? [[NSString alloc] initWithData:
             [NSJSONSerialization dataWithJSONObject:resp options:0 error:NULL]
             encoding:NSUTF8StringEncoding] : (err.localizedDescription ?: @"");
+        SLDiag(@"fill", @"resp http=%ld api=%ld body=%@", (long)status,
+               (long)[resp[@"code"] integerValue], rj ?: @"-");
         SLLog(@"fill resp http=%ld api=%ld body=%@", (long)status,
               (long)[resp[@"code"] integerValue],
               [rj substringToIndex:MIN((NSUInteger)220, rj.length)]);
@@ -409,8 +415,11 @@ static void SLRunFillPhase(SLState *st) {
     void (^poll)(void);
     weakPoll = poll = ^{
         NSString *t = [SLHttp newTokenDifferentFrom:old];
-        if (t) { SLLog(@"new token after %ds", waited); SLFill(st, t); return; }
-        if (waited % 15 == 0) SLLog(@"waiting token %ds", waited);
+        if (t) {
+            SLDiag(@"fill", @"new token after %ds len=%lu", waited, (unsigned long)t.length);
+            SLFill(st, t); return;
+        }
+        if (waited % 15 == 0) { SLDiag(@"fill", @"waiting token %ds", waited); SLDiagSnapshot(@"waiting-token"); }
         if (++waited > 90) { g_filling = NO; SLFailOrRetry(st, @"no new token"); return; }
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), weakPoll);
     };
@@ -450,6 +459,8 @@ static __attribute__((unused)) void SLGoBackground(void) {
 }
 
 static void SLOnLaunch(void) {
+    SLDiag(@"boot", @"v=%@ bid=%@", SL_VER, [NSBundle mainBundle].bundleIdentifier ?: @"-");
+    SLDiagCheckRequest();
     // 取样：每次启动都记钥匙串；找到加密串时会再记一次（同一刻配对）
     SLCaptureRun();
 
@@ -549,6 +560,7 @@ static void SLOpenApp(void) {
 }
 
 static void SLTick(void) {
+    SLDiagCheckRequest();
     // 观察版：桌面端不做任何动作（不拉起 App、不重置、不填码）
     SLState *st = [SLState load];
     double now = [NSDate date].timeIntervalSince1970;
