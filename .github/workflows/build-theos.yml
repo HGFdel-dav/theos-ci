@@ -5,6 +5,7 @@ on:
     branches-ignore: ['reynarddefault-1.5.34-click-fix', 'reynarddefault-1.5.35-plugin-only', 'reynarddefault-1.5.37-plugin-only', 'reynarddefault-1.5.39-plugin-only', 'reynarddefault-1.5.40-disable-helper-hook', 'reynarddefault-1.5.43-native-click', 'reynarddefault-1.5.44-firefox160']
     paths:
       - 'debs/**'
+      - '.github/workflows/build-theos.yml'
   workflow_dispatch:
 
 permissions:
@@ -42,11 +43,32 @@ jobs:
             "$RUNNER_TEMP/hmsdiag-test"
           fi
 
+      - name: Pick changed projects
+        run: |
+          set -e
+          BASE="${{ github.event.before }}"
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            BASE="HEAD^"
+          fi
+          CHANGED=$(git diff --name-only "$BASE" "${{ github.sha }}" -- debs 2>/dev/null || true)
+          LIST=""
+          for f in $CHANGED; do
+            d=$(echo "$f" | cut -d/ -f2)
+            if [ -n "$d" ] && [ -d "debs/$d" ]; then LIST="$LIST debs/$d"; fi
+          done
+          LIST=$(printf '%s\n' $LIST | sort -u | tr '\n' ' ')
+          if [ -z "$LIST" ]; then
+            LIST=$(ls -d debs/*/ 2>/dev/null | tr '\n' ' ')
+            echo "::notice::没检测到改动项目，退回全量"
+          fi
+          echo "PROJECTS=$LIST" >> "$GITHUB_ENV"
+          echo "本次只编: $LIST"
+
       - name: Build rootless arm64
         run: |
           set -e
           FAILED=""
-          for dir in debs/*/; do
+          for dir in $PROJECTS; do
             [ -f "$dir/Makefile" ] || continue
             if grep -q "roothide only" "$dir/Makefile"; then
               echo "==> rootless arm64: $dir（roothide only，跳过）"
@@ -65,7 +87,7 @@ jobs:
         run: |
           set -e
           FAILED=""
-          for dir in debs/*/; do
+          for dir in $PROJECTS; do
             [ -f "$dir/Makefile" ] || continue
             echo "==> roothide arm64e: $dir"
             ( cd "$dir" && make clean || true )
@@ -81,7 +103,7 @@ jobs:
           mkdir -p packages
           find debs -name '*.deb' -exec cp -v {} packages/ \; || true
           # 同时收集 dylib + 同名 plist（供 TrollFools / Patcher 注入使用）
-          for dir in debs/*/; do
+          for dir in $PROJECTS; do
             [ -f "$dir/Makefile" ] || continue
             find "$dir/.theos" -name '*.dylib' -exec cp -v {} packages/ \; 2>/dev/null || true
           done
