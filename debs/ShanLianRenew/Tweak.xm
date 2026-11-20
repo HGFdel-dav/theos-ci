@@ -307,6 +307,7 @@ static void SLPerformReset(SLState *st) {
 #pragma mark - 填码
 
 static void SLFailOrRetry(SLState *st, NSString *reason);
+static void SLGoBackground(void);
 static BOOL g_filling = NO;
 
 static NSDate *SLParseDeadline(NSDictionary *data) {
@@ -360,6 +361,7 @@ static void SLFill(SLState *st, NSString *token) {
                 [st save];
                 SLLog(@"renew ok -> %.0f", ndv);
                 SLNotify(@"闪连已续上", [NSString stringWithFormat:@"到期 %@", data[@"deadline"] ?: @""]);
+                SLGoBackground();
             } else {
                 g_filling = NO;
                 SLFailOrRetry(st, @"deadline not extended");
@@ -388,6 +390,7 @@ static void SLFailOrRetry(SLState *st, NSString *reason) {
     [st save];
     SLLog(@"rolled back, phase=failed");
     SLNotify(@"闪连没续上", [NSString stringWithFormat:@"已退回旧号，需要你看一眼（%@）", reason ?: @"未知"]);
+    SLGoBackground();
 }
 
 #pragma mark - 流程（App 端）
@@ -456,6 +459,16 @@ static __attribute__((unused)) void SLGoBackground(void) {
     if (!app) return;
     id a = ((id (*)(id, SEL))objc_msgSend)(app, sel_registerName("sharedApplication"));
     if (!a) return;
+    // 先把移出屏幕的窗口放回去，别让下次打开是空的
+    @try {
+        id ws = ((id (*)(id, SEL))objc_msgSend)(a, sel_registerName("windows"));
+        if ([ws isKindOfClass:[NSArray class]]) {
+            for (id w in (NSArray *)ws) {
+                ((void (*)(id, SEL, CGAffineTransform))objc_msgSend)(
+                    w, sel_registerName("setTransform:"), CGAffineTransformIdentity);
+            }
+        }
+    } @catch (NSException *e) {}
     SEL s = sel_registerName("suspend");
     if ([a respondsToSelector:s]) {
         ((void (*)(id, SEL))objc_msgSend)(a, s);
@@ -467,6 +480,38 @@ static __attribute__((unused)) void SLGoBackground(void) {
         ((void (*)(id, SEL))objc_msgSend)(a, s2);
         SLLog(@"app _suspended");
     }
+}
+
+// ---- 自动续期期间把界面移出屏幕（不隐藏窗口，渲染照常）----
+
+static void (*g_origMakeKeyAndVisible)(id, SEL) = NULL;
+
+static BOOL SLSuppressUIActive(void) {
+    @try {
+        SLState *st = [SLState load];
+        return (st.phase == SLPhaseResetting || st.phase == SLPhaseNeedFill);
+    } @catch (NSException *e) { return NO; }
+}
+
+static void SLPushOffscreen(id win) {
+    UIScreen *sc = [UIScreen mainScreen];
+    if (!sc) return;
+    CGFloat dx = sc.bounds.size.width * 2.0;
+    [(UIWindow *)win setTransform:CGAffineTransformMakeTranslation(dx, 0)];
+    SLLog(@"ui: offscreen %@", NSStringFromCGRect([(UIWindow *)win frame]));
+}
+
+static void SLHookMakeKeyAndVisible(id self, SEL _cmd) {
+    if (g_origMakeKeyAndVisible) g_origMakeKeyAndVisible(self, _cmd);
+    if (!SLSuppressUIActive()) return;
+    SLPushOffscreen(self);
+    // 布局/根控制器可能稍后覆盖，补一次
+    __weak id weakWin = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        id w = weakWin;
+        if (w && SLSuppressUIActive()) SLPushOffscreen(w);
+    });
 }
 
 static void SLOnLaunch(void) {
@@ -551,8 +596,10 @@ static void SLOpenAppSilently(void) {
 }
 
 static __attribute__((unused)) void SLOpenAppThrottled(void) {
+    SLState *stp = [SLState load];
     NSTimeInterval now = [NSDate date].timeIntervalSince1970;
-    if (now - g_lastOpen < 90) return;          // 90 秒内不重复拉起
+    BOOL active = (stp.phase == SLPhaseResetting || stp.phase == SLPhaseNeedFill);
+    if (now - g_lastOpen < (active ? 4.0 : 90.0)) return;   // 续期进行中 4 秒重试
     g_lastOpen = now;
     SLLog(@"open app (throttled)");
     SLOpenAppSilently();
@@ -632,6 +679,12 @@ static void SLInitBody(void) {
 
     if (isApp) g_fakeId = [SLDefaults() stringForKey:SL_DEVICE_KEY];
 
+    if (isApp) {
+        Class winCls = NSClassFromString(@"UIWindow");
+        if (winCls) MSHookMessageEx(winCls, @selector(makeKeyAndVisible),
+                                   (IMP)SLHookMakeKeyAndVisible, (IMP *)&g_origMakeKeyAndVisible);
+    }
+
     Class ud = NSClassFromString(@"UIDevice");
     if (ud) MSHookMessageEx(ud, @selector(identifierForVendor), (IMP)SLHookIdfv, (IMP *)&g_origIdfv);
 
@@ -650,7 +703,7 @@ static void SLInitBody(void) {
 
     if (isSB) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            [NSTimer scheduledTimerWithTimeInterval:15 repeats:YES block:^(NSTimer *t) { SLTick(); }];
+            [NSTimer scheduledTimerWithTimeInterval:3 repeats:YES block:^(NSTimer *t) { SLTick(); }];
             SLTick();
             [SLHttp probeNet];
             [SLHttp probeHeaders];
