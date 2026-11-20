@@ -176,6 +176,26 @@ static NSUUID *SLHookAdid(id self, SEL _cmd) {
     return g_origAdid ? g_origAdid(self, _cmd) : nil;
 }
 
+// —— 隐藏界面：App 照常跑，但不显示 ——
+static void (*g_origMakeKeyVisible)(id, SEL) = NULL;
+static void SLHookMakeKeyAndVisible(id self, SEL _cmd) {
+    // 不调用原实现 = 窗口永远不显示
+    SLLog(@"hidden-ui: suppressed makeKeyAndVisible %@", NSStringFromClass([self class]));
+}
+
+static void (*g_origViewDidAppear)(id, SEL, BOOL) = NULL;
+static void SLHookViewDidAppear(id self, SEL _cmd, BOOL animated) {
+    if (g_origViewDidAppear) g_origViewDidAppear(self, _cmd, animated);
+    // 界面出现后立刻把窗口藏起来
+    @try {
+        id v = ((id (*)(id, SEL))objc_msgSend)(self, sel_registerName("view"));
+        id w = v ? ((id (*)(id, SEL))objc_msgSend)(v, sel_registerName("window")) : nil;
+        if (w) {
+            ((void (*)(id, SEL, BOOL))objc_msgSend)(w, sel_registerName("setHidden:"), YES);
+        }
+    } @catch (NSException *e) {}
+}
+
 static NSString *SLNewUUID(void) { return [[NSUUID UUID].UUIDString uppercaseString]; }
 
 static NSUserDefaults *SLDefaults(void) {
@@ -552,6 +572,23 @@ static void SLInitBody(void) {
 
     Class ud = NSClassFromString(@"UIDevice");
     if (ud) MSHookMessageEx(ud, @selector(identifierForVendor), (IMP)SLHookIdfv, (IMP *)&g_origIdfv);
+
+    // 让 App 进程照常跑，但不显示任何界面（Flutter 逻辑与网络请求不受影响）
+    if (isApp) {
+        Class win = NSClassFromString(@"UIWindow");
+        if (win) {
+            MSHookMessageEx(win, @selector(makeKeyAndVisible),
+                            (IMP)SLHookMakeKeyAndVisible, (IMP *)&g_origMakeKeyVisible);
+            SLLog(@"hidden-ui: hooked UIWindow");
+        }
+        Class vc = NSClassFromString(@"UIViewController");
+        if (vc) {
+            MSHookMessageEx(vc, @selector(viewDidAppear:),
+                            (IMP)SLHookViewDidAppear, (IMP *)&g_origViewDidAppear);
+        }
+        Class fl = NSClassFromString(@"FlutterViewController");
+        if (fl) SLLog(@"hidden-ui: FlutterViewController found");
+    }
     MSHookFunction((void *)send, (void *)SLHookSend, (void **)&g_origSend);
     MSHookFunction((void *)write, (void *)SLHookWrite, (void **)&g_origWrite);
     MSHookFunction((void *)sendto, (void *)SLHookSendTo, (void **)&g_origSendTo);
