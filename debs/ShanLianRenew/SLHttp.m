@@ -603,10 +603,12 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
 
 
 static NSString *SLKcClassOf(id c) {
-    if ([(__bridge id)c isEqual:(__bridge id)kSecClassGenericPassword]) return @"genp";
-    if ([(__bridge id)c isEqual:(__bridge id)kSecClassInternetPassword]) return @"inet";
-    if ([(__bridge id)c isEqual:(__bridge id)kSecClassKey]) return @"key";
-    if ([(__bridge id)c isEqual:(__bridge id)kSecClassCertificate]) return @"cert";
+    if (!c) return @"?";
+    NSString *s = (NSString *)c;
+    if ([s isEqualToString:(__bridge NSString *)kSecClassGenericPassword]) return @"genp";
+    if ([s isEqualToString:(__bridge NSString *)kSecClassInternetPassword]) return @"inet";
+    if ([s isEqualToString:(__bridge NSString *)kSecClassKey]) return @"key";
+    if ([s isEqualToString:(__bridge NSString *)kSecClassCertificate]) return @"cert";
     return @"?";
 }
 
