@@ -439,6 +439,26 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
     return r;
 }
 
++ (BOOL)setDeviceId:(NSString *)nid {
+    if (!nid.length) return NO;
+    NSData *d = [nid dataUsingEncoding:NSUTF8StringEncoding];
+    NSDictionary *q = @{
+        (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
+        (__bridge id)kSecAttrAccount: SL_DEVICE_KEY,
+        (__bridge id)kSecAttrService: @"flutter_secure_storage_service",
+        (__bridge id)kSecAttrAccessGroup: SL_KEYCHAIN_GROUP,
+    };
+    NSDictionary *attrs = @{(__bridge id)kSecValueData: d};
+    OSStatus st = SecItemUpdate((__bridge CFDictionaryRef)q, (__bridge CFDictionaryRef)attrs);
+    if (st == errSecItemNotFound) {
+        NSMutableDictionary *a2 = [q mutableCopy];
+        a2[(__bridge id)kSecValueData] = d;
+        st = SecItemAdd((__bridge CFDictionaryRef)a2, NULL);
+    }
+    SLLog(@"setDeviceId %@ -> %d", nid, (int)st);
+    return st == errSecSuccess;
+}
+
 + (void)warmup {
     [self hosts];
     [SLCacheDB refresh:g_host];
