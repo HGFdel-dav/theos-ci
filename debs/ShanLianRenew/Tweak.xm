@@ -261,27 +261,13 @@ static NSUserDefaults *SLDefaults(void) {
     return d;
 }
 
+// App 自己的偏好域（真正的登录态在这里）
+static NSUserDefaults *SLAppDefaults(void) {
+    return [[NSUserDefaults alloc] initWithSuiteName:@"com.shanlian.pro"];
+}
 
-#pragma mark - 配对捕获（data + 密钥同刻取样）
-
-// 把钥匙串全部项完整写出（含完整 base64），用于和同一时刻的 data 配对解密
-static NSString *SLCaptureKeychain(void) {
-    NSMutableString *out = [NSMutableString string];
-    NSArray *items = [SLHttp keychainItems];
-    [out appendFormat:@"# count=%lu ts=%.0f\n", (unsigned long)items.count, [NSDate date].timeIntervalSince1970];
-    for (NSDictionary *d in items) {
-        NSString *acc = [d[(__bridge id)kSecAttrAccount] description] ?: @"";
-        NSString *svc = [d[(__bridge id)kSecAttrService] description] ?: @"";
-        NSString *grp = [d[(__bridge id)kSecAttrAccessGroup] description] ?: @"";
-        NSData *val = d[(__bridge id)kSecValueData];
-        NSString *b64 = [val isKindOfClass:[NSData class]] ? [val base64EncodedStringWithOptions:0] : @"";
-        [out appendFormat:@"%@\t%@\t%@\t%@\n", acc, svc, grp, b64];
-    }
-    NSString *p = [SLStateDir() stringByAppendingPathComponent:
-        [NSString stringWithFormat:@"cap-kc-%.0f.tsv", [NSDate date].timeIntervalSince1970]];
-    [out writeToFile:p atomically:YES encoding:NSUTF8StringEncoding error:NULL];
-    SLLog(@"capture: keychain -> %@ (%lu items)", p.lastPathComponent, (unsigned long)items.count);
-    return p;
+static BOOL SLLooksLikeToken(id v) {
+    return [v isKindOfClass:[NSString class]] && [(NSString *)v hasPrefix:@"eyJ"];
 }
 
 // 从 App 缓存里找 firstDeviceLogin 的请求体，原样写出
@@ -336,10 +322,21 @@ static void SLPerformReset(SLState *st) {
     [d synchronize];
     [SLHttp setDeviceId:g_fakeId];   // 真正生效的是钥匙串里那份
 
-    // 关键：App 手里还有旧 token，不清掉就不会用新设备号重新注册
+    // 关键：App 的登录态存在它自己的偏好域里（flutter.klocalUserInfoSaveKey）
+    // 钥匙串只有 Firebase 推送相关，没有登录 token，不要碰
     NSString *kc = [SLHttp backupKeychain];
     st.kcBackup = kc;
-    [SLHttp wipeAccountItems];
+    SLLog(@"wipe: kc backup ok");
+
+    NSUserDefaults *ad = SLAppDefaults();
+    NSArray *akeys = @[@"flutter.klocalUserInfoSaveKey", @"flutter.login_ts"];
+    int acleared = 0;
+    for (NSString *k in akeys) {
+        if ([ad objectForKey:k]) { [ad removeObjectForKey:k]; acleared++; }
+    }
+    [ad synchronize];
+    SLLog(@"wipe: app prefs cleared=%d", acleared);
+
     [SLHttp wipeAppCacheDB];
     [st save];
 
