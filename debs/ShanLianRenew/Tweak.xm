@@ -238,7 +238,7 @@ static NSUserDefaults *SLDefaults(void) {
     return d;
 }
 
-static void SLPerformReset(SLState *st) {
+static __attribute__((unused)) void SLPerformReset(SLState *st) {
     // 先记下旧 token，用来判断 App 是否真的注册了新号
     st.snapToken = [SLHttp currentToken];
     st.phase = SLPhaseNeedFill;
@@ -403,7 +403,7 @@ static void SLRefreshDeadline(void) {
     }];
 }
 
-static void SLRunFillPhase(SLState *st) {
+static __attribute__((unused)) void SLRunFillPhase(SLState *st) {
     if (g_filling) return;
     g_filling = YES;
 
@@ -487,9 +487,9 @@ static __attribute__((unused)) BOOL SLScreenLocked(void) {
     return NO;
 }
 
-static void SLOpenApp(void);
+static __attribute__((unused)) void SLOpenApp(void);
 
-static BOOL SLAppRunning(void) {
+static __attribute__((unused)) BOOL SLAppRunning(void) {
     Class c = NSClassFromString(@"LSApplicationWorkspace");
     if (!c) return NO;
     id ws = ((id (*)(id, SEL))objc_msgSend)(c, sel_registerName("defaultWorkspace"));
@@ -509,7 +509,30 @@ static BOOL SLAppRunning(void) {
 
 // 最近一次拉起的时间，避免每 15 秒强行前台化
 static NSTimeInterval g_lastOpen = 0;
-static void SLOpenAppThrottled(void) {
+
+// 后台静默启动：不切前台、无界面
+static void SLOpenAppSilently(void) {
+    Class c = NSClassFromString(@"LSApplicationWorkspace");
+    if (!c) return;
+    id ws = ((id (*)(id, SEL))objc_msgSend)(c, sel_registerName("defaultWorkspace"));
+    if (!ws) return;
+
+    // 1) launchApplicationWithIdentifier:suspended: —— 以挂起方式拉起，不出界面
+    SEL s1 = sel_registerName("launchApplicationWithIdentifier:suspended:");
+    if ([ws respondsToSelector:s1]) {
+        BOOL ok = ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(ws, s1, SL_APP_ID, YES);
+        SLLog(@"silent launch(suspended) ok=%d", ok);
+        if (ok) return;
+    }
+    // 2) 退而求其次：openApplicationWithBundleID:（会切前台，仅作兜底）
+    SEL s2 = sel_registerName("openApplicationWithBundleID:");
+    if ([ws respondsToSelector:s2]) {
+        ((void (*)(id, SEL, id))objc_msgSend)(ws, s2, SL_APP_ID);
+        SLLog(@"fallback open app");
+    }
+}
+
+static __attribute__((unused)) void SLOpenAppThrottled(void) {
     NSTimeInterval now = [NSDate date].timeIntervalSince1970;
     if (now - g_lastOpen < 90) return;          // 90 秒内不重复拉起
     g_lastOpen = now;
