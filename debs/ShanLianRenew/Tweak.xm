@@ -398,11 +398,6 @@ static void SLOnLaunch(void) {
         return;
     }
     if (st.phase == SLPhaseNeedFill) { SLRunFillPhase(st); return; }
-    // 若是被我们拉起来的，等登录完成就退回后台
-    if (st.phase == SLPhaseResetting) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(6 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{ SLGoBackground(); });
-    }
     [SLHttp warmup];
     [SLHttp probeNet];
     [SLHttp probeHeaders];
