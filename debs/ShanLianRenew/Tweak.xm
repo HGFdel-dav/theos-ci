@@ -353,11 +353,22 @@ static void SLRunFillPhase(SLState *st) {
     poll();
 }
 
+
+// App 是否在前台（避免在用户正看着时退出它）
+static BOOL SLAppForeground(void) {
+    Class app = NSClassFromString(@"UIApplication");
+    if (!app) return NO;
+    id a = ((id (*)(id, SEL))objc_msgSend)(app, sel_registerName("sharedApplication"));
+    if (!a) return NO;
+    SEL s = sel_registerName("applicationState");
+    if (![a respondsToSelector:s]) return NO;
+    return ((NSInteger (*)(id, SEL))objc_msgSend)(a, s) == 0;  // 0 = active
+}
+
 static void SLOnLaunch(void) {
     SLState *st = [SLState load];
     if (st.phase == SLPhaseResetting) {
-        // 只有锁屏时才真正换号（会退出 App），避免打断用户
-        if (!SLScreenLocked()) { SLLog(@"reset: not locked, defer"); return; }
+        if (SLAppForeground()) { SLLog(@"reset: app in foreground, defer"); return; }
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
             SLState *s2 = [SLState load];
@@ -406,12 +417,35 @@ static BOOL SLAppRunning(void) {
 
 // 最近一次拉起的时间，避免每 15 秒强行前台化
 static NSTimeInterval g_lastOpen = 0;
+
+// 后台静默启动：不切前台、无界面
+static void SLOpenAppSilently(void) {
+    Class c = NSClassFromString(@"LSApplicationWorkspace");
+    if (!c) return;
+    id ws = ((id (*)(id, SEL))objc_msgSend)(c, sel_registerName("defaultWorkspace"));
+    if (!ws) return;
+
+    // 1) launchApplicationWithIdentifier:suspended: —— 以挂起方式拉起，不出界面
+    SEL s1 = sel_registerName("launchApplicationWithIdentifier:suspended:");
+    if ([ws respondsToSelector:s1]) {
+        BOOL ok = ((BOOL (*)(id, SEL, id, BOOL))objc_msgSend)(ws, s1, SL_APP_ID, YES);
+        SLLog(@"silent launch(suspended) ok=%d", ok);
+        if (ok) return;
+    }
+    // 2) 退而求其次：openApplicationWithBundleID:（会切前台，仅作兜底）
+    SEL s2 = sel_registerName("openApplicationWithBundleID:");
+    if ([ws respondsToSelector:s2]) {
+        ((void (*)(id, SEL, id))objc_msgSend)(ws, s2, SL_APP_ID);
+        SLLog(@"fallback open app");
+    }
+}
+
 static void SLOpenAppThrottled(void) {
     NSTimeInterval now = [NSDate date].timeIntervalSince1970;
     if (now - g_lastOpen < 90) return;          // 90 秒内不重复拉起
     g_lastOpen = now;
     SLLog(@"open app (throttled)");
-    SLOpenApp();
+    SLOpenAppSilently();
 }
 
 static void SLOpenApp(void) {
@@ -431,12 +465,8 @@ static void SLTick(void) {
     if (!st.enabled) return;
     double now = [NSDate date].timeIntervalSince1970;
 
-    // 换号/填码阶段同样只在锁屏时动作，避免打扰用户
+    // 换号/填码：随时进行，用后台静默方式拉起 App，不打扰用户
     if (st.phase == SLPhaseResetting || st.phase == SLPhaseNeedFill) {
-        if (!SLScreenLocked()) {
-            if ((int)now % 300 == 0) SLLog(@"phase=%d waiting for lock", (int)st.phase);
-            return;
-        }
         if (!SLAppRunning()) SLOpenAppThrottled();
         if (st.phase == SLPhaseNeedFill) notify_post(kSLFireName);
         return;
