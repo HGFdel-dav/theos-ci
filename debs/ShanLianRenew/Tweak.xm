@@ -368,7 +368,8 @@ static BOOL SLAppForeground(void) {
 static void SLOnLaunch(void) {
     SLState *st = [SLState load];
     if (st.phase == SLPhaseResetting) {
-        if (SLAppForeground()) { SLLog(@"reset: app in foreground, defer"); return; }
+        // 只有锁屏时才真正换号（会退出 App），避免打断用户
+        if (!SLScreenLocked()) { SLLog(@"reset: not locked, defer"); return; }
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
             SLState *s2 = [SLState load];
@@ -395,7 +396,35 @@ static BOOL SLScreenLocked(void) {
     return NO;
 }
 
-static BOOL SLAppRunning(void) { return NO; }   // 一律直接调起，重复调用无害
+static void SLOpenApp(void);
+
+static BOOL SLAppRunning(void) {
+    Class c = NSClassFromString(@"LSApplicationWorkspace");
+    if (!c) return NO;
+    id ws = ((id (*)(id, SEL))objc_msgSend)(c, sel_registerName("defaultWorkspace"));
+    if (!ws) return NO;
+    SEL sel = sel_registerName("runningApplications");
+    if (![ws respondsToSelector:sel]) return NO;
+    id apps = ((id (*)(id, SEL))objc_msgSend)(ws, sel);
+    if (![apps isKindOfClass:[NSArray class]]) return NO;
+    for (id a in (NSArray *)apps) {
+        SEL bs = sel_registerName("bundleIdentifier");
+        if (![a respondsToSelector:bs]) continue;
+        id bid = ((id (*)(id, SEL))objc_msgSend)(a, bs);
+        if ([bid isKindOfClass:[NSString class]] && [(NSString *)bid isEqualToString:SL_APP_ID]) return YES;
+    }
+    return NO;
+}
+
+// 最近一次拉起的时间，避免每 15 秒强行前台化
+static NSTimeInterval g_lastOpen = 0;
+static void SLOpenAppThrottled(void) {
+    NSTimeInterval now = [NSDate date].timeIntervalSince1970;
+    if (now - g_lastOpen < 90) return;          // 90 秒内不重复拉起
+    g_lastOpen = now;
+    SLLog(@"open app (throttled)");
+    SLOpenApp();
+}
 
 static void SLOpenApp(void) {
     Class c = NSClassFromString(@"LSApplicationWorkspace");
@@ -414,8 +443,12 @@ static void SLTick(void) {
     if (!st.enabled) return;
     double now = [NSDate date].timeIntervalSince1970;
 
-    // 换号/填码：随时进行，用后台静默方式拉起 App，不打扰用户
+    // 换号/填码阶段同样只在锁屏时动作，避免打扰用户
     if (st.phase == SLPhaseResetting || st.phase == SLPhaseNeedFill) {
+        if (!SLScreenLocked()) {
+            if ((int)now % 300 == 0) SLLog(@"phase=%d waiting for lock", (int)st.phase);
+            return;
+        }
         if (!SLAppRunning()) SLOpenAppThrottled();
         if (st.phase == SLPhaseNeedFill) notify_post(kSLFireName);
         return;
