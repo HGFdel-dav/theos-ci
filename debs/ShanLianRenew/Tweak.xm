@@ -205,6 +205,40 @@ static void SLScheduleReminder(SLState *st) {
 
 static void (*g_origMakeKeyAndVisible_)(id, SEL) = NULL;
 
+// 点通知的回调：记下"这次是点通知进来的"，App 启动时据此立刻续期
+@interface SLNotifHandler : NSObject <UNUserNotificationCenterDelegate>
++ (instancetype)shared;
+@end
+
+@implementation SLNotifHandler
++ (instancetype)shared {
+    static SLNotifHandler *g = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ g = [SLNotifHandler new]; });
+    return g;
+}
+- (void)userNotificationCenter:(UNUserNotificationCenter *)center
+ didReceiveNotificationResponse:(UNNotificationResponse *)response
+          withCompletionHandler:(void (^)(void))completion {
+    @try {
+        NSDictionary *u = response.notification.request.content.userInfo;
+        if ([u[@"slrenew"] boolValue]) {
+            SLLog(@"notif tapped -> mark renew");
+            [SLDefaults() setBool:YES forKey:@"sl.lastNotifTap"];
+            [SLDefaults() synchronize];
+            SLState *st = [SLState load];
+            st.phase = SLPhaseResetting;
+            st.attempt = 0;
+            [st save];
+            SLLog(@"notif tap -> phase resetting");
+        }
+    } @catch (NSException *e) {
+        SLLog(@"notif tap exception %@", e.reason ?: @"-");
+    }
+    if (completion) completion();
+}
+@end
+
 static NSUUID *(*g_origIdfv)(id, SEL) = NULL;
 static NSUUID *SLHookIdfv(id self, SEL _cmd) {
     if (g_fakeId.length) return [[NSUUID alloc] initWithUUIDString:g_fakeId];
@@ -584,7 +618,13 @@ static void SLOnLaunch(void) {
     }
     // 到期提醒被点开（或用户自己打开）：时间已到就立刻续期
     double nowT = [NSDate date].timeIntervalSince1970;
-    if (st.enabled && st.phase == SLPhaseArmed && st.nextFire1 > 0 && nowT >= st.nextFire1 - 30) {
+    BOOL fromNotif = [SLDefaults() boolForKey:@"sl.lastNotifTap"];
+    if (fromNotif) {
+        SLLog(@"launched from notification tap");
+        [SLDefaults() removeObjectForKey:@"sl.lastNotifTap"];
+        [SLDefaults() synchronize];
+    }
+    if (st.enabled && st.phase == SLPhaseArmed && (fromNotif || (st.nextFire1 > 0 && nowT >= st.nextFire1 - 30))) {
         SLLog(@"renew triggered by user (now=%.0f fire=%.0f)", nowT, st.nextFire1);
         st.phase = SLPhaseResetting;
         st.attempt = 0;
@@ -744,20 +784,8 @@ static void SLInitBody(void) {
         @try {
             [UNUserNotificationCenter currentNotificationCenter].delegate = [SLNotifHandler shared];
             SLLog(@"notif delegate set");
-            [[NSNotificationCenter defaultCenter]
-                addObserverForName:UIApplicationDidBecomeActiveNotification
-                            object:nil
-                             queue:[NSOperationQueue mainQueue]
-                        usingBlock:^(NSNotification *n) {
-                SLState *cur = [SLState load];
-                if (!cur.enabled) return;
-                SLLog(@"became active -> check renew");
-                if (SLRenewIfDue()) return;
-                SLScheduleReminder(cur);
-            }];
         } @catch (NSException *e) { SLLog(@"delegate fail %@", e.reason ?: @"-"); }
     }
-
 
 
     Class ud = NSClassFromString(@"UIDevice");
