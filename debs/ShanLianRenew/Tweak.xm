@@ -18,6 +18,7 @@
 #import "SLSigner.h"
 #import "SLCacheDB.h"
 #import "SLDiag.h"
+#import "SLRenewFlow.h"
 
 static NSString *g_fakeId = nil;
 
@@ -608,16 +609,17 @@ static BOOL SLRenewIfDue(void) {
     if (!st.enabled || st.phase != SLPhaseArmed) return NO;
     double nowT = [NSDate date].timeIntervalSince1970;
     BOOL afterRemind = (st.remindAt > 0 && nowT >= st.remindAt);
-    if (!(afterRemind || (st.nextFire1 > 0 && nowT >= st.nextFire1 - 30))) return NO;
-    SLLog(@"renew due -> start (now=%.0f remindAt=%.0f next=%.0f)", nowT, st.remindAt, st.nextFire1);
-    st.phase = SLPhaseResetting;
-    st.attempt = 0;
+    BOOL dueByFire = (st.nextFire1 > 0 && nowT >= st.nextFire1 - 30);
+    BOOL due = (afterRemind || dueByFire);
+    SLLog(@"renew-check enabled=%d phase=%d now=%.0f remindAt=%.0f next=%.0f afterRemind=%d dueByFire=%d",
+          st.enabled, (int)st.phase, nowT, st.remindAt, st.nextFire1, afterRemind, dueByFire);
+    if (!st.enabled || st.phase != SLPhaseArmed) { SLLog(@"renew-check skip: not armed/enabled"); return NO; }
+    if (!due) { SLLog(@"renew-check skip: not due yet"); return NO; }
+    SLLog(@"renew due -> start flow (now=%.0f remindAt=%.0f next=%.0f)", nowT, st.remindAt, st.nextFire1);
+    st.phase = SLPhaseIdle;      // 由新流程接管，旧状态机不再介入
+    st.testSecs = 0;
     [st save];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        SLState *s2 = [SLState load];
-        if (s2.phase == SLPhaseResetting) SLPerformReset(s2);
-    });
+    [SLRenewFlow startWithReason:@"due"];
     return YES;
 }
 
