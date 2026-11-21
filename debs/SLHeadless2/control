@@ -1,0 +1,9 @@
+Package: com.minis.slheadless2
+Name: SL Headless 2
+Version: 0.1.0
+Architecture: iphoneos-arm64
+Description: headless flutter in cranehelperd
+Maintainer: Minis
+Author: Minis
+Section: Tweaks
+Depends: mobilesubstrate, firmware (>= 15.0)
