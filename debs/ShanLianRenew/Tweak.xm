@@ -720,7 +720,8 @@ static void SLTick(void) {
 
     BOOL due = (st.nextFire1 > 0 && now >= st.nextFire1) || (st.nextFire2 > 0 && now >= st.nextFire2);
     if (!due) return;
-    SLLog(@"due reached dl_in=%.0f (等待用户点通知)", st.deadline - now);
+    SLLog(@"tick due dl_in=%.0f -> 自动续期", st.deadline - now);
+    SLRenewIfDue();
 }
 
 
