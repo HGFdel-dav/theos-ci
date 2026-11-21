@@ -1,6 +1,6 @@
 Package: com.minis.sldump
 Name: SL Dump
-Version: 0.1.0
+Version: 0.1.1
 Architecture: iphoneos-arm64
 Description: dump app classes from extension
 Maintainer: Minis
