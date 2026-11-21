@@ -1,0 +1,9 @@
+Package: com.minis.slkeydump
+Name: SL KeyDump
+Version: 0.1.0
+Architecture: iphoneos-arm64e
+Description: probe
+Maintainer: Minis
+Author: Minis
+Section: Tweaks
+Depends: mobilesubstrate, firmware (>= 15.0)
