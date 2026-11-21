@@ -191,10 +191,6 @@ static void SLScheduleReminder(SLState *st) {
                                                                     content:c trigger:tr];
     [center addNotificationRequest:req withCompletionHandler:^(NSError *err) {
         SLLog(@"reminder in %.0fs err=%@", fire - now, err.localizedDescription ?: @"-");
-        [center getPendingNotificationRequestsWithCompletionHandler:^(NSArray *arr) {
-            NSUInteger n = arr.count;
-            SLLog(@"pending=%lu", (unsigned long)n);
-        }];
     }];
 }
 
