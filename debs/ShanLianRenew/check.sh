@@ -44,8 +44,8 @@ grep -q '88888888' SLRenewState.m || bad '缺默认码'
 grep -q 'PreferenceBundles' Makefile && bad '仍引用已删除的面板'
 grep -q 'com.minis.shanlianrenew.log' SLRenewPaths.m || bad '缺文件日志'
 grep -q 'calib try' SLHttp.m || bad '缺签名校准日志'
-grep -q 'due reached dl_in=' Tweak.xm || bad '缺到期判据日志'
-grep -q 'renew due -> start' Tweak.xm || bad '缺点击续期日志'
+grep -q 'due reached, notify only' Tweak.xm || bad '缺到期判据日志'
+grep -q 'renew triggered by user' Tweak.xm || bad '缺点击续期日志'
 grep -q 'rolled back' Tweak.xm || bad '缺回滚日志'
 
 if [ "$FAIL" = 0 ]; then say 'ALL STATIC CHECKS PASS'; else say 'STATIC CHECKS FAILED'; fi
