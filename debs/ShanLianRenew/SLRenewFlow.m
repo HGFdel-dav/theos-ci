@@ -75,18 +75,31 @@ static id g_center = nil;
     // 1. 重置
     if (![self craneWipe]) { FL(@"abort: wipe failed"); g_running = NO; return; }
 
-    // 2. 起 App（会闪一下）
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
+    // 2. 重置会把状态目录一起清掉，这里先重建状态：交给 App 里的流程继续
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        [self launchApp];
-        // 3. 等 App 注册出新号（轮询 token 变化）
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8.0 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{ [self waitNewAccount:0]; });
+        SLState *st = [SLState load];
+        st.enabled = YES;
+        st.phase = SLPhaseNeedFill;     // App 起来后据此执行"等新号→填码→验证→通知"
+        st.attempt = 0;
+        st.lastError = @"";
+        st.testSecs = 0;
+        st.deadline = 0;
+        [st save];
+        FL(@"state written phase=NeedFill path=%@", SLStatePath());
+
+        // 3. 起 App（会闪一下），剩下的在 App 里完成
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{ [self launchApp]; });
     });
 }
 
 + (void)waitNewAccount:(int)tries {
-    if (tries > 40) { FL(@"abort: no new account in time"); g_running = NO; return; }
+    if (tries > 40) {
+        FL(@"abort: no new account in time"); g_running = NO;
+        [self notifyTitle:@"闪连没续上" body:@"自动续期失败，需要你手动看一下"];
+        return;
+    }
     NSString *t = [SLHttp currentToken];
     if (t.length > 40) {
         FL(@"got token len=%lu try=%d", (unsigned long)t.length, tries);
@@ -126,9 +139,9 @@ static id g_center = nil;
         FL(@"verify try=%d user=%@ deadline=%@ expired=%d", tries, d[@"userName"] ?: @"-", dl ?: @"-", expired);
         if (dl.length && !expired) {
             g_running = NO;
-            [self notifyTitle:@"闪连已续上"
-                         body:[NSString stringWithFormat:@"新账号 %@，到期 %@", d[@"userName"] ?: @"", dl]];
-            FL(@"=== flow done ===");
+            FL(@"=== flow done: user=%@ deadline=%@ (静默，不通知) ===", d[@"userName"] ?: @"-", dl);
+            // 做完让 App 自己退回后台，不留界面
+            notify_post("com.minis.shanlianrenew.done");
             return;
         }
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(4 * NSEC_PER_SEC)),
