@@ -3,6 +3,11 @@
 This is not an iOS build and does not execute the Objective-C/private APIs.
 """
 from pathlib import Path
+import hashlib
+import json
+import os
+import platform
+import plistlib
 import re
 import shutil
 import subprocess
@@ -259,6 +264,187 @@ class LaunchSourceGuards(unittest.TestCase):
         self.assertIn('openURL:options:completionHandler:', TWEAK)
         self.assertIn('openSensitiveURL:withOptions:', TWEAK)
         self.assertIn('PXCloneClassInstanceMethodMatches(app, options', TWEAK)
+
+class LaunchDiagnosticProductionTests(unittest.TestCase):
+    def compile_harness(self, root, output):
+        cc = shutil.which('cc') or shutil.which('clang')
+        self.assertIsNotNone(cc)
+        subprocess.run([cc, '-std=c11', '-Wall', '-Wextra', '-Werror',
+                        str(root / 'tests/launch_diagnostics_harness.c'), '-o', str(output)],
+                       check=True, capture_output=True, text=True)
+
+    def test_real_diagnostic_policy_selection_and_pinned_disk_roundtrip(self):
+        with tempfile.TemporaryDirectory() as temp:
+            exe = Path(temp) / 'launch-diagnostics'
+            self.compile_harness(ROOT, exe)
+            result = subprocess.check_output([str(exe)], text=True)
+        self.assertGreater(int(re.search(r'launch_diagnostics_checks=(\d+)', result)[1]), 8400)
+
+    def test_production_mutations_are_caught_not_just_marker_strings(self):
+        changes = [
+            ('PXCloneLaunchDiagnostics.h', 'return checked & ~passed & PXLaunchDiagAll;', 'return checked & passed & PXLaunchDiagAll;'),
+            ('PXCloneLaunchDiagnostics.h', 'if (!force && state->hasWritten)', 'if (state->hasWritten)'),
+            ('PXCloneTraceHistory.h', 'if (duplicate) continue;', 'if (duplicate) { /* deliberate mutation */ }'),
+            ('PXCloneTraceHistory.h', 'before.st_size > PXCloneTraceReadLimit', 'before.st_size > PXCloneTraceReadLimit + 10'),
+        ]
+        for name, old, new in changes:
+            with self.subTest(header=name, mutation=old), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                (root / 'Common').mkdir(); (root / 'tests').mkdir()
+                for file in ('PXCloneLaunchDiagnostics.h', 'PXCloneTraceHistory.h', 'PXCloneTraceIO.h'):
+                    shutil.copy(ROOT / 'Common' / file, root / 'Common' / file)
+                shutil.copy(ROOT / 'tests/launch_diagnostics_harness.c', root / 'tests')
+                path = root / 'Common' / name
+                text = path.read_text(); self.assertEqual(text.count(old), 1)
+                path.write_text(text.replace(old, new))
+                exe = root / 'mutant'; self.compile_harness(root, exe)
+                import resource
+                def no_core(): resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+                result = subprocess.run([str(exe)], capture_output=True, preexec_fn=no_core)
+                self.assertNotEqual(result.returncode, 0, 'mutated production policy escaped executable negative test')
+
+    def test_existing_visibility_loop_is_byte_identical_to_published_baseline(self):
+        loop = LAUNCH.split('- (void)pollOpened:(uint64_t)token {', 1)[1]
+        loop = loop.split('    NSArray *candidates', 1)[1].split('    if (_pending)', 1)[0]
+        # b6e3f2d alpha437+clone0.95: all original gates and early exits retained.
+        self.assertEqual(hashlib.sha256(loop.encode()).hexdigest(),
+                         '9789e316362d2a14822fd1b6cb9d349c2fd367d7de9492d11422f7e47d0d6188')
+        self.assertNotIn('PXLaunchDiagnostic', loop)
+        self.assertIn('if (++_attempt >= 100)', LAUNCH)
+        self.assertIn('if (_splitRetries < 2)', LAUNCH)
+        self.assertIn('if (_pending)', LAUNCH)
+
+    def test_last_snapshot_is_forced_before_native_cleanup(self):
+        finish = LAUNCH.split('- (void)finish:(uint64_t)token error:(NSError *)error {', 1)[1].split('- (void)record:', 1)[0]
+        self.assertLess(finish.index('recordOpenDiagnostic:@"open_before_cleanup" force:YES'),
+                        finish.index('@"switcherRemovedApplication:"'))
+        self.assertLess(finish.index('@"switcherRemovedApplication:"'),finish.index('record:@"failed"'))
+        self.assertLess(finish.index('record:@"failed"'),finish.index('showError:error.localizedDescription'))
+        self.assertIn('PXCloneTrace writeEvents:snapshot completion:',LAUNCH)
+        writer_tail=LAUNCH.split('PXCloneTrace writeEvents:snapshot completion:',1)[1].split('    }];',1)[0]
+        self.assertIn('self->_reportedTraceState = state;',writer_tail)
+        self.assertNotIn('showError:',writer_tail)
+        self.assertNotIn('_pendingErrorNotices',LAUNCH)
+        self.assertIn('@"CXLaunchFailures": mergedFailures', (ROOT/'Common/PXCloneTrace.m').read_text())
+        self.assertIn('lastOpen', LAUNCH)
+        self.assertIn('failureID', LAUNCH)
+        self.assertNotIn('NSNull', LAUNCH)  # NSNull is not property-list encodable (offscreen intersection!)
+        self.assertIn('@"valid": @NO', LAUNCH)
+        observer = LAUNCH.split('- (void)observeOpenCandidates:(NSArray *)candidates visible:(BOOL)visible active:(NSString *)active {', 1)[1].split('- (void)recordOpenDiagnostic:', 1)[0]
+        for forbidden in ('finish:', 'retrySplit:', 'PXCloneFlowMaySucceed', 'switcherRemovedApplication:', 'PXRequestTermination'):
+            self.assertNotIn(forbidden, observer)
+        self.assertIn('@catch', observer)
+
+    def test_history_is_loaded_and_only_committed_after_verified_write(self):
+        writer = (ROOT / 'Common/PXCloneTrace.m').read_text()
+        self.assertLess(writer.index('PXCloneReadTraceAt('), writer.index('PXCloneWriteTraceAt('))
+        self.assertLess(writer.index('PXCloneWriteTraceAt('), writer.index('failures = mergedFailures;'))
+        self.assertIn('@"CXLaunchTrace": limited ?: @[]', writer)
+        self.assertIn('@"CXLaunchFailures": mergedFailures', writer)
+        self.assertIn('PXCloneTraceStateReadbackFailure', writer)
+        self.assertIn('data.length > PXCloneTraceReadLimit', writer)
+        self.assertIn('PXCloneTraceImportLegacyEvents', writer)
+
+
+@unittest.skipUnless(platform.system() == 'Darwin' and shutil.which('xcrun'),
+                     'Apple Foundation/notify runtime required; portable C and I/O tests execute separately')
+class LaunchTraceAppleWriterTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.build = tempfile.TemporaryDirectory()
+        cls.binary = Path(cls.build.name) / 'trace-writer'
+        subprocess.run(['xcrun', 'clang', '-fobjc-arc', '-fblocks', '-Wall', '-Wextra', '-Werror',
+                        '-Wno-unused-parameter', '-framework', 'Foundation',
+                        str(ROOT / 'tests/trace_writer_host.m'), str(ROOT / 'Common/PXCloneTrace.m'),
+                        '-o', str(cls.binary)], check=True)
+    @classmethod
+    def tearDownClass(cls): cls.build.cleanup()
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name).resolve() / 'Containers/Shared/AppGroup/.jbroot-fixture'
+        self.parent = self.root / 'var/mobile/Library/Preferences'
+        self.parent.mkdir(parents=True)
+        self.env = {**os.environ, 'PXTRACE_TEST_ROOT': str(self.root)}
+        self.file = self.parent / 'fixture.launch-trace.plist'
+    def tearDown(self): self.temp.cleanup()
+    def action(self, action):
+        result = subprocess.run([str(self.binary), action], env=self.env, capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        return json.loads(result.stdout)['state']
+    def read(self): return plistlib.loads(self.file.read_bytes())
+
+    def test_failure_survives_successes_and_writer_process_restarts(self):
+        self.assertEqual(self.action('fail'), 1)
+        saved = self.read()['CXLaunchFailures'][0]
+        for _ in range(5): self.assertEqual(self.action('success'), 1)
+        doc = self.read()
+        self.assertEqual(doc['CXLaunchFailures'], [saved])
+        self.assertEqual(saved['code'], 19)
+        self.assertEqual(saved['summary']['lastOpen']['poll'], 100)
+        self.assertLessEqual(len(saved['events']), 12)
+        self.assertEqual(len(doc['CXLaunchTrace']), 32)
+        self.assertFalse(any(e['stage'] == 'failed' for e in doc['CXLaunchTrace']))
+        self.assertEqual(self.file.stat().st_mode & 0o777, 0o600)
+
+    def test_repeated_snapshots_deduplicate_and_fifth_failure_evicts_only_oldest(self):
+        self.assertEqual(self.action('duplicate'), 1)
+        self.assertEqual(len(self.read()['CXLaunchFailures']), 1)
+        first = self.read()['CXLaunchFailures'][0]['failureID']
+        for _ in range(4): self.assertEqual(self.action('fail'), 1)
+        history = self.read()['CXLaunchFailures']
+        self.assertEqual(len(history), 4)
+        self.assertNotIn(first, [item['failureID'] for item in history])
+
+    def test_legacy_failed_summary_is_imported_without_inventing_gate(self):
+        self.file.write_bytes(plistlib.dumps({'CXLaunchTrace': [
+            {'stage': 'failed', 'code': 19, 'token': 1, 'time': 100.0}]}))
+        self.assertEqual(self.action('success'), 1)
+        failure = self.read()['CXLaunchFailures'][0]
+        self.assertEqual(failure['code'], 19)
+        self.assertTrue(failure['summary']['legacy'])
+        self.assertNotIn('lastOpen', failure['summary'])
+
+    def test_corrupt_file_is_preserved_not_replaced_by_success(self):
+        original = b'broken prior evidence'
+        self.file.write_bytes(original)
+        self.assertEqual(self.action('success'), 5)
+        self.assertEqual(self.file.read_bytes(), original)
+
+    def test_symlink_cannot_redirect_history_read_or_write(self):
+        target = Path(self.temp.name) / 'protected'
+        target.write_bytes(b'keep this')
+        self.file.symlink_to(target)
+        self.assertEqual(self.action('success'), 5)
+        self.assertEqual(target.read_bytes(), b'keep this')
+
+    def test_account_configuration_is_never_rewritten(self):
+        account = self.parent / 'com.niubiprass.clonex.plist'
+        original = plistlib.dumps({'CXStore': {'fixture': ['preserve']}})
+        account.write_bytes(original)
+        self.assertEqual(self.action('fail'), 1)
+        self.assertEqual(self.action('success'), 1)
+        self.assertEqual(account.read_bytes(), original)
+
+class QuietDiagnosticSourceTests(unittest.TestCase):
+    def test_original_error_ui_remains_byte_identical(self):
+        start=LAUNCH.index('- (void)showError:(NSString *)message {')
+        end=LAUNCH.index('\n@end',start)
+        self.assertEqual(hashlib.sha256(LAUNCH[start:end].encode()).hexdigest(),
+                         '28e3793f4066e88abc58b8b0236416134403cb3969902ab377b82ebc10083345')
+        for text in ('诊断编号', '日志已保存', '日志未确认保存', 'PXCloneFailureNotice', '_pendingErrorNotices'):
+            self.assertNotIn(text,LAUNCH)
+
+    def test_failure_id_and_final_snapshot_are_retained_without_user_input(self):
+        record=LAUNCH.split('- (void)record:(NSString *)stage code:(NSInteger)code {',1)[1].split('- (void)showError:',1)[0]
+        self.assertIn('NSString *failureID = NSUUID.UUID.UUIDString;',record)
+        self.assertIn('entry[@"failureID"] = failureID;',record)
+        self.assertIn('@"lastOpen": _lastOpenDiagnostic ?: @{}',record)
+        writer=record.split('PXCloneTrace writeEvents:snapshot completion:',1)[1]
+        self.assertNotIn('showError:',writer)
+        history=(ROOT/'Common/PXCloneTraceHistory.h').read_text()
+        self.assertIn('record[@"events"] = transaction;',history)
+        self.assertIn('PXCloneFailureLimit = 4',history)
+        self.assertIn('PXCloneFailureEventLimit = 12',history)
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

@@ -38,7 +38,10 @@ class WindowMemoryPolicy(unittest.TestCase):
                      ('!normalGeometry && samples < maximumSamples','true'),
                      ('if (!*known) { *known = true; *gestureKey = currentKey; return true; }',
                       '{ *known = true; *gestureKey = currentKey; return true; }'),
-                     ('return *gestureKey == currentKey;','return true;')]),
+                     ('return *gestureKey == currentKey;','return true;'),
+                     ('currentTicket && nativeEntering && cleanupSeen && !cancelled','currentTicket && nativeEntering'),
+                     ('owns && matchingCanvasAndBundle && loaded && enabled &&','owns &&'),
+                     ('!resolved && !interacting && !savePending;','!resolved;')]),
         ]
         for source, mutations in policies:
             for old,new in mutations:
@@ -134,7 +137,7 @@ class WindowMemorySourceGuards(unittest.TestCase):
         start=source.index('static void PXWMOpen(')
         end=source.index('static void PXWMLayout(',start)
         method=source[start:end]
-        forwarded=method.rindex('PXWMOriginalOpen(self,command,bundle,canvas,overlay,completion)')
+        forwarded=method.rindex('PXWMOriginalOpen(self,command,bundle,canvas,overlay,forwardCompletion)')
         publish=method.index('objc_setAssociatedObject(self, PXWMContextKey, ticket')
         self.assertLess(method.index('objc_setAssociatedObject(self, PXWMOpenTicketKey, ticket'),forwarded)
         self.assertLess(forwarded,method.index('PXWMNativeReturned(&ticket->native'))
@@ -144,6 +147,62 @@ class WindowMemorySourceGuards(unittest.TestCase):
         self.assertIn('PXWMNativeClose(&ticket->native)',close)
         self.assertIn('if (PXWMOriginalClose) PXWMOriginalClose(self,command);',close)
         self.assertNotIn('return;',close)
+
+    def test_initial_geometry_is_prepared_before_native_content_layout(self):
+        source=(ROOT/'Common/PXWindowMemory.m').read_text()
+        method=source.split('static void PXWMLayout(id self,SEL command) {',1)[1].split('static void PXWMClose(',1)[0]
+        self.assertLess(method.index('PXWMPrepareInitialLayout(context)'),method.index('PXWMOriginalLayout(self,command)'))
+        self.assertIn('PXWMOpenTicketKey',method)
+        prepare=source.split('static BOOL PXWMPrepareInitialLayout(',1)[1].split('static void PXWMTryRestore(',1)[0]
+        for check in ('PXWMMayPrepareInitialLayout(', 'context->native.initialCleanupSeen',
+                      'PXWMReadGeometry(context, YES', 'PXWindowMemoryGeometry(snapshot, context.bundle, key',
+                      'PXWMRestore(saved, native.reference, native.frame', 'restore_initial_geometry_prepared'):
+            self.assertIn(check,prepare)
+        self.assertNotIn('PXCloneSendVoid',prepare)  # Never recursively invoke native layout.
+        self.assertNotIn('saveGeometry:',prepare)   # Preparing a record is not a user save.
+        normal=source.split('static BOOL PXWMNormalGeometry(',1)[1].split('static void PXWMVerifyRestore(',1)[0]
+        self.assertIn('PXWMReadGeometry(context, NO',normal)
+        for forbidden in ('card.hidden =','card.alpha =','window.hidden =','removeAllAnimations',
+                          'setAnimationDuration:0','setFrame:(CGRect)'):
+            self.assertNotIn(forbidden,source)
+
+    def test_initial_geometry_requires_native_source_size_not_default_canvas_axes(self):
+        source=(ROOT/'Common/PXWindowMemory.m').read_text()
+        read=source.split('static BOOL PXWMReadGeometry(',1)[1].split('static BOOL PXWMNormalGeometry(',1)[0]
+        self.assertIn('CGSize content = CGSizeZero;',read)
+        self.assertIn('else if (!preparingInitialLayout)',read)
+        self.assertIn('!isfinite(content.width)',read)
+        self.assertIn('content.width <= 0 || content.height <= 0',read)
+        self.assertIn('if (!preparingInitialLayout)',read)
+        self.assertIn('!PXWMObject(context.bridge, @"scene")',read)
+        self.assertIn('hasHostedSurface',read)
+        check=source.split('static void PXWMVerifyRestore(',1)[1].split('static BOOL PXWMPrepareInitialLayout(',1)[0]
+        self.assertIn('PXWMBindingIsActive(check)',check)
+        self.assertIn('check.generation != expectedGeneration',check)
+        self.assertIn('check.savePending',check)
+        self.assertIn('unsignedLongLongValue] != epoch',check)
+
+    def test_alpha437_native_layout_reads_actual_source_size(self):
+        fixture=json.loads((ROOT/'tests/fixtures/window-memory-alpha437-abi.json').read_text())
+        image=(ROOT/fixture['sample']).read_bytes()
+        self.assertEqual(hashlib.sha256(image).hexdigest(),fixture['sample_sha256'])
+        def word(pos): return struct.unpack_from('<I',image,pos)[0]
+        def sign(n,bits): return (n^(1<<(bits-1)))-(1<<(bits-1))
+        def target(pos): return pos+4*sign(word(pos)&0x3ffffff,26)
+        # Exact alpha437 method body/stub bytes, not a guessed Swift IMP call.
+        self.assertEqual(word(0x637d8)>>26,0b100101)
+        self.assertEqual(target(0x637d8),0x766c0)
+        self.assertEqual(word(0x645b8)>>26,0b000101)
+        self.assertEqual(target(0x645b8),0x766c0)
+        stub=0x766c0
+        a,l=word(stub),word(stub+4)
+        self.assertEqual(a&0x9f00001f,0x90000001)
+        self.assertEqual(l&0xffc003ff,0xf9400021)
+        pages=sign(((a>>5)&0x7ffff)*4+((a>>29)&3),21)
+        ref=(stub&~4095)+(pages<<12)+((l>>10)&0xfff)*8
+        self.assertEqual(ref,0x92fa0)
+        name=struct.unpack_from('<Q',image,ref)[0]&0xffffffff
+        self.assertEqual(image[name:image.index(b'\x00',name)],b'sourceSize')
 
     def test_only_user_completed_geometry_can_save(self):
         source=(ROOT/'Common/PXWindowMemory.m').read_text()
@@ -274,6 +333,6 @@ class WindowMemoryAppleStorage(unittest.TestCase):
         self.assertLessEqual(len(logs),256)
         self.assertGreater(len(logs),200)
         self.assertTrue(any(event['event']=='fixture' for event in logs))
-        self.assertTrue(all(event['build']=='clone0.95' for event in logs))
+        self.assertTrue(all(event['build']=='clone0.96' for event in logs))
 
 if __name__ == '__main__': unittest.main(verbosity=2)

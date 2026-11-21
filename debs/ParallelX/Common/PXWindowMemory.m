@@ -30,6 +30,8 @@ typedef NS_ENUM(unsigned, PXWMGeometryGate) {
 @property(nonatomic) unsigned geometryGate;
 @property(nonatomic) NSUInteger restoreRetryAttempts;
 @property(nonatomic) BOOL restoreRetryScheduled;
+@property(nonatomic) unsigned restoreRetryLoggedGate;
+@property(nonatomic) CFTimeInterval openedAt;
 @end
 @implementation PXWMContext
 @end
@@ -79,6 +81,8 @@ static void PXWMLog(PXWMContext *context, NSString *event, NSDictionary *details
         state[@"generation"] = @(context.generation);
         state[@"openSerial"] = @(context->native.serial);
         state[@"orientation"] = @(context.key);
+        if (context.openedAt > 0)
+            state[@"elapsedMs"] = @((unsigned long long)(1000 * (CACurrentMediaTime() - context.openedAt)));
     }
     [PXWindowMemoryStore.shared diagnostic:event details:state];
 }
@@ -103,20 +107,33 @@ static BOOL PXWMBindingIsActive(PXWMContext *context) {
 
 /* The host UIWindow covers the display; native resizing changes its inner
  * PXHostCard, not the display-filling window or the hosted content transform. */
-static BOOL PXWMNormalGeometry(PXWMContext *context, PXWMGeometry *out, unsigned *key) {
-    if (!PXWMBindingIsActive(context)) { context.geometryGate = PXWMGateBinding; return NO; }
+static BOOL PXWMReadGeometry(PXWMContext *context, BOOL preparingInitialLayout,
+                             PXWMGeometry *out, unsigned *key) {
+    BOOL active = PXWMBindingIsActive(context);
+    BOOL currentTicket = context && context.bridge &&
+        objc_getAssociatedObject(context.bridge, PXWMOpenTicketKey) == context;
+    BOOL entering = currentTicket && context->native.entering &&
+        context->native.initialCleanupSeen && !context->native.cancelled;
+    if (!active && !(preparingInitialLayout && entering)) {
+        context.geometryGate = PXWMGateBinding; return NO;
+    }
     UIView *canvas = context.canvas;
     UIView *card = PXWMFindCard(canvas);
     UIWindow *window = card.window;
     context.geometryGate = PXWMGateView;
-    if (!card || !canvas || !window || !card.superview || window.screen != UIScreen.mainScreen ||
-        window.hidden || window.alpha <= 0.1) return NO;
-    for (UIView *view = card; view; view = view.superview)
-        if (view.hidden || view.alpha <= 0.1) return NO;
+    if (!card || !canvas || !window || !card.superview || window.screen != UIScreen.mainScreen) return NO;
+    // A new host has valid geometry while its window is still hidden. Requiring
+    // visibility here used to postpone memory until AFTER the default appeared.
+    if (!preparingInitialLayout) {
+        if (window.hidden || window.alpha <= 0.1) return NO;
+        for (UIView *view = card; view; view = view.superview)
+            if (view.hidden || view.alpha <= 0.1) return NO;
+    }
     context.geometryGate = PXWMGateScene;
-    if (!canvas.userInteractionEnabled || PXWMObject(context.bridge, @"canvas") != canvas ||
-        ![PXWMObject(context.bridge, @"bundleID") isEqual:context.bundle] ||
-        !PXWMObject(context.bridge, @"scene") || !PXWMBool(context.bridge, @"hasHostedSurface")) return NO;
+    if (PXWMObject(context.bridge, @"canvas") != canvas ||
+        ![PXWMObject(context.bridge, @"bundleID") isEqual:context.bundle]) return NO;
+    if (!preparingInitialLayout && (!canvas.userInteractionEnabled ||
+        !PXWMObject(context.bridge, @"scene") || !PXWMBool(context.bridge, @"hasHostedSurface"))) return NO;
     context.geometryGate = PXWMGateTransient;
     if (!CGAffineTransformIsIdentity(card.transform) || PXWMBool(context.bridge, @"fullscreenHandoff") ||
         PXWMBool(context.bridge, @"isHostedKeyboardVisible")) return NO;
@@ -130,12 +147,16 @@ static BOOL PXWMNormalGeometry(PXWMContext *context, PXWMGeometry *out, unsigned
                         [window convertRect:window.bounds toView:card.superview]);
     /* Native root controllers can rotate their coordinate space while the
      * UIWindow stays portrait. Use the card's reference axes, not screen axes. */
-    CGSize content = canvas.bounds.size;
+    CGSize content = CGSizeZero;
     SEL source = NSSelectorFromString(@"hostedSourceSize");
     if (PXCloneInstanceMethodMatches(context.bridge, source, @encode(CGSize), @[])) {
         @try { content = ((CGSize (*)(id,SEL))objc_msgSend)(context.bridge, source); }
         @catch (__unused NSException *exception) { return NO; }
+    } else if (!preparingInitialLayout) {
+        content = canvas.bounds.size;
     }
+    // Initial restore never guesses content axes from a still-default canvas.
+    // alpha437's hostedSourceSize forwards to its real sourceSize, cleared by close.
     if (!isfinite(content.width) || !isfinite(content.height) || content.width <= 0 || content.height <= 0) return NO;
     PXWMGeometry geometry = {PXWMFromRect(card.frame), PXWMFromRect(reference)};
     if (!PXWMValidGeometry(geometry)) return NO;
@@ -145,6 +166,75 @@ static BOOL PXWMNormalGeometry(PXWMContext *context, PXWMGeometry *out, unsigned
     if (key) *key = PXWMOrientationKey(reference.size.width > reference.size.height,
                                       content.width > content.height);
     return YES;
+}
+
+static BOOL PXWMNormalGeometry(PXWMContext *context, PXWMGeometry *out, unsigned *key) {
+    return PXWMReadGeometry(context, NO, out, key);
+}
+
+static void PXWMVerifyRestore(PXWMContext *context, PXWMRect restored, unsigned key, uint64_t epoch) {
+    NSUInteger expectedGeneration = context.generation;
+    __weak PXWMContext *weakContext = context;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,250*NSEC_PER_MSEC),dispatch_get_main_queue(), ^{
+        PXWMContext *check = weakContext;
+        if (!PXWMBindingIsActive(check) || check.generation != expectedGeneration ||
+            check.interacting || check.savePending || check.key != key ||
+            [PXWindowMemoryStore.shared.snapshot[@"epoch"] unsignedLongLongValue] != epoch) return;
+        PXWMGeometry later;
+        unsigned laterKey = 0;
+        BOOL normal = PXWMNormalGeometry(check, &later, &laterKey);
+        BOOL stable = normal && laterKey == key && fabs(later.frame.x-restored.x)<1 &&
+            fabs(later.frame.y-restored.y)<1 && fabs(later.frame.width-restored.width)<1 &&
+            fabs(later.frame.height-restored.height)<1;
+        PXWMLog(check, !normal ? @"restore_postlayout_geometry_pending" :
+                (stable ? @"restore_postlayout_geometry_verified" : @"restore_postlayout_geometry_changed"),
+                @{@"normal":@(normal),@"matches":@(stable),@"gate":@(check.geometryGate)});
+    });
+}
+
+/* Native layoutHost already has the true sourceSize, before it fits hosted
+ * content. Prepare its outer hostCard here, not after scene visibility. Keep
+ * the original layout call and its animations; never hide a window or edit a
+ * hosted content transform to disguise a late correction. */
+static BOOL PXWMPrepareInitialLayout(PXWMContext *context) {
+    if (!context || context.restoring) return NO;
+    id bridge = context.bridge;
+    BOOL currentTicket = bridge && objc_getAssociatedObject(bridge, PXWMOpenTicketKey) == context;
+    BOOL matching = bridge && context.canvas && PXWMObject(bridge, @"canvas") == context.canvas &&
+        [PXWMObject(bridge, @"bundleID") isEqual:context.bundle];
+    PXWindowMemoryStore *store = PXWindowMemoryStore.shared;
+    NSDictionary *snapshot = store.snapshot;
+    if (!PXWMMayPrepareInitialLayout(PXWMBindingIsActive(context), currentTicket,
+          context->native.entering, context->native.initialCleanupSeen, context->native.cancelled,
+          matching, store.isLoaded, [snapshot[@"enabled"] boolValue], context.resolved,
+          context.interacting, context.savePending)) return NO;
+    PXWMGeometry native, saved;
+    unsigned key = 0;
+    if (!PXWMReadGeometry(context, YES, &native, &key) ||
+        !PXWindowMemoryGeometry(snapshot, context.bundle, key, &saved)) return NO;
+    PXWMRect restored;
+    if (!PXWMRestore(saved, native.reference, native.frame, &restored)) return NO;
+    UIView *card = context.card;
+    context.restoring = YES;
+    [UIView performWithoutAnimation:^{
+        card.frame = PXWMToRect(restored);
+        [card setNeedsLayout]; [card layoutIfNeeded];
+    }];
+    context.restoring = NO;
+    CGRect actual = card.frame;
+    BOOL matched = fabs(actual.origin.x-restored.x)<1 && fabs(actual.origin.y-restored.y)<1 &&
+        fabs(actual.size.width-restored.width)<1 && fabs(actual.size.height-restored.height)<1;
+    if (matched) {
+        context.key = key; context.keyKnown = YES; context.resolved = YES;
+    }
+    PXWMLog(context, matched ? @"restore_initial_geometry_prepared" : @"restore_initial_geometry_rejected",
+            @{@"x":@(actual.origin.x),@"y":@(actual.origin.y),@"w":@(actual.size.width),@"h":@(actual.size.height),
+              @"beforeW":@(native.frame.width),@"beforeH":@(native.frame.height),
+              @"expectedW":@(restored.width),@"expectedH":@(restored.height),
+              @"windowHidden":@(card.window.hidden),@"surface":@(PXWMBool(bridge,@"hasHostedSurface")),
+              @"nativeEntering":@(context->native.entering),@"revision":snapshot[@"revision"] ?: @0});
+    if (matched) PXWMVerifyRestore(context, restored, key, [snapshot[@"epoch"] unsignedLongLongValue]);
+    return matched;
 }
 
 static void PXWMTryRestore(PXWMContext *context) {
@@ -189,21 +279,10 @@ static void PXWMTryRestore(PXWMContext *context) {
     PXWMLog(context, matched ? @"restore_geometry_applied" : @"restore_native_layout_changed",
             @{ @"x": @(actual.origin.x), @"y": @(actual.origin.y), @"w": @(actual.size.width),
                @"h": @(actual.size.height), @"expectedW":@(requested.size.width), @"expectedH":@(requested.size.height),
+               @"beforeW":@(native.frame.width), @"beforeH":@(native.frame.height),
+               @"windowHidden":@(card.window.hidden),
                @"revision":snapshot[@"revision"] ?: @0, @"surface":@(PXWMBool(context.bridge,@"hasHostedSurface")) });
-    NSUInteger expectedGeneration = context.generation;
-    __weak PXWMContext *weakContext = context;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,250*NSEC_PER_MSEC),dispatch_get_main_queue(), ^{
-        PXWMContext *check = weakContext;
-        if (!check || check.generation != expectedGeneration || check.interacting || check.key != key) return;
-        PXWMGeometry later;
-        unsigned laterKey = 0;
-        BOOL normal = PXWMNormalGeometry(check, &later, &laterKey);
-        BOOL stable = normal && laterKey == key && fabs(later.frame.x-restored.x)<1 &&
-            fabs(later.frame.y-restored.y)<1 && fabs(later.frame.width-restored.width)<1 &&
-            fabs(later.frame.height-restored.height)<1;
-        PXWMLog(check, stable ? @"restore_postlayout_geometry_verified" : @"restore_postlayout_geometry_changed",
-                @{@"normal":@(normal),@"matches":@(stable)});
-    });
+    PXWMVerifyRestore(context, restored, key, [snapshot[@"epoch"] unsignedLongLongValue]);
 }
 
 /* Geometry may not have a live scene/hostedSurface at the instant the user
@@ -386,17 +465,33 @@ static void PXWMOpen(id self,SEL command,id bundle,id canvas,id overlay,void (^c
     PXWMContext *ticket = nil;
     if ([bundle isKindOfClass:NSString.class] && [bundle length] && [canvas isKindOfClass:UIView.class]) {
         ticket = [PXWMContext new];
+        ticket.openedAt = CACurrentMediaTime();
         ticket.bridge = self; ticket.canvas = canvas; ticket.bundle = bundle;
         if (++PXWMNextSerial == 0) ++PXWMNextSerial;
         PXWMNativeBegin(&ticket->native, PXWMNextSerial);
         PXWMLog(ticket, @"native_open_observed", @{});
     }
     objc_setAssociatedObject(self, PXWMOpenTicketKey, ticket, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    void (^forwardCompletion)(BOOL) = completion;
+    if (ticket && completion) {
+        void (^nativeCompletion)(BOOL) = [completion copy];
+        forwardCompletion = ^(BOOL ok) {
+            @try {
+                PXWMContext *current = objc_getAssociatedObject(self, PXWMContextKey) ?: ticket;
+                if (NSThread.isMainThread) {
+                    PXWMPrepareInitialLayout(current);
+                } else {
+                    dispatch_sync(dispatch_get_main_queue(), ^{ PXWMPrepareInitialLayout(current); });
+                }
+            } @catch (__unused NSException *exception) {
+                PXWMLog(ticket, @"restore_initial_geometry_exception", @{});
+            }
+            nativeCompletion(ok);
+        };
+    }
     BOOL returnedNormally = NO;
     @try {
-        // Forward the native arguments and completion unchanged; never delay
-        // or send a new open on behalf of this UI-only feature.
-        PXWMOriginalOpen(self,command,bundle,canvas,overlay,completion);
+        PXWMOriginalOpen(self,command,bundle,canvas,overlay,forwardCompletion);
         returnedNormally = YES;
     } @finally {
         if (ticket) {
@@ -439,9 +534,20 @@ static void PXWMOpen(id self,SEL command,id bundle,id canvas,id overlay,void (^c
     });
 }
 static void PXWMLayout(id self,SEL command) {
+    PXWMContext *context = nil;
+    if (NSThread.isMainThread) {
+        // The synchronous initial close must still run. Only the current
+        // post-cleanup ticket can prepare geometry inside native open.
+        context = objc_getAssociatedObject(self,PXWMOpenTicketKey) ?: objc_getAssociatedObject(self,PXWMContextKey);
+        PXWMPrepareInitialLayout(context);
+    }
     if (PXWMOriginalLayout) PXWMOriginalLayout(self,command);
     if (NSThread.isMainThread) {
-        PXWMContext *context = objc_getAssociatedObject(self,PXWMContextKey);
+        // Native layout establishes hostCard's default geometry and sourceSize.
+        // Apply saved geometry now, before alpha437 returns to its reveal/centering
+        // completion; otherwise the first visible frame can still be the default.
+        if (context && context->native.entering)
+            PXWMPrepareInitialLayout(context);
         PXWMTryRestore(context);
         if (context && !context.resolved) PXWMScheduleRestore(context);
     }
@@ -553,7 +659,10 @@ static void PXWMScheduleRestore(PXWMContext *context) {
     unsigned observedKey = context.key;
     BOOL keyKnown = context.keyKnown;
     context.restoreRetryScheduled = YES;
-    PXWMLog(context, @"restore_retry_scheduled", @{@"attempt":@(attempt),@"gate":@(context.geometryGate)});
+    if (PXWMShouldLogRestoreWait((unsigned)attempt, context.geometryGate, context.restoreRetryLoggedGate)) {
+        context.restoreRetryLoggedGate = context.geometryGate;
+        PXWMLog(context, @"restore_retry_scheduled", @{@"attempt":@(attempt),@"gate":@(context.geometryGate)});
+    }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,100*NSEC_PER_MSEC),dispatch_get_main_queue(), ^{
         context.restoreRetryScheduled = NO;
         if (!PXWMBindingIsActive(context) || context.generation != generation ||

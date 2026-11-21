@@ -62,9 +62,48 @@ static void native_gesture_policy(void) {
     CHECK(!PXWMMayCommitGesture(true,0,0,4,5));
 }
 
+static void initial_layout_policy(void) {
+    // All eleven inputs are exercised independently, including a stale ticket,
+    // native cleanup, user ownership, unavailable storage, and disabled memory.
+    for (unsigned mask=0; mask<2048; ++mask) {
+        bool b[11];
+        for (unsigned bit=0;bit<11;++bit) b[bit]=(mask&(1u<<bit))!=0;
+        bool allowed=true;
+        if (!b[0] && (!b[1] || !b[2] || !b[3] || b[4])) allowed=false;
+        if (!b[5] || !b[6] || !b[7] || b[8] || b[9] || b[10]) allowed=false;
+        CHECK(PXWMMayPrepareInitialLayout(b[0],b[1],b[2],b[3],b[4],b[5],
+                                         b[6],b[7],b[8],b[9],b[10])==allowed);
+    }
+    unsigned logCount=0;
+    for (unsigned attempt=1;attempt<=100;++attempt) {
+        bool logged=PXWMShouldLogRestoreWait(attempt,3,3);
+        CHECK(logged==(attempt==1 || attempt==25 || attempt==50 || attempt==75 || attempt==100));
+        if (logged) ++logCount;
+        CHECK(PXWMShouldLogRestoreWait(attempt,3,2));
+    }
+    CHECK(logCount==5);
+    // The first internal close must remain native, while early geometry may
+    // be prepared in its subsequent layout without publishing the binding.
+    PXWMNativeLifecycle state={0};
+    PXWMNativeBegin(&state,91);
+    CHECK(!PXWMMayPrepareInitialLayout(false,true,state.entering,state.initialCleanupSeen,
+          state.cancelled,true,true,true,false,false,false));
+    CHECK(PXWMNativeClose(&state));
+    CHECK(PXWMMayPrepareInitialLayout(false,true,state.entering,state.initialCleanupSeen,
+          state.cancelled,true,true,true,false,false,false));
+    CHECK(!PXWMNativeBindingActive(&state,91));
+    CHECK(PXWMNativeReturned(&state,true,true,true));
+    CHECK(PXWMNativeBindingActive(&state,91));
+    CHECK(!PXWMMayPrepareInitialLayout(true,false,false,true,false,true,true,true,true,false,false));
+    CHECK(!PXWMNativeClose(&state));
+    CHECK(!PXWMMayPrepareInitialLayout(false,false,state.entering,state.initialCleanupSeen,
+          state.cancelled,true,true,true,false,false,false));
+}
+
 int main(void) {
     native_lifecycle();
     native_gesture_policy();
+    initial_layout_policy();
     PXWMGeometry saved={{50,140,260,520},{0,0,390,844}};
     PXWMRect native={10,70,320,640}, out={-7,-7,-7,-7};
     CHECK(PXWMValidGeometry(saved));

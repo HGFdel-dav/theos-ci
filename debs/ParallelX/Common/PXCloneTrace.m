@@ -2,6 +2,7 @@
 #import "PXClonePaths.h"
 #import "PXCloneRootPolicy.h"
 #import "PXCloneTraceIO.h"
+#import "PXCloneTraceHistory.h"
 #import <notify.h>
 #include <limits.h>
 #include <stdlib.h>
@@ -82,6 +83,8 @@ static BOOL PXTraceDirectoryIsCurrent(NSString *root, NSString *parent, int dire
     static NSString *rootPath;
     static int directory = -1;
     static struct stat rootIdentity;
+    static NSArray<NSDictionary *> *failures;
+    static BOOL failuresLoaded;
     static dispatch_once_t once;
     dispatch_once(&once, ^{ worker = dispatch_queue_create("com.niubiprass.parallelxclone.trace-writer", DISPATCH_QUEUE_SERIAL); });
     NSArray *snapshot = [events copy];
@@ -117,12 +120,43 @@ static BOOL PXTraceDirectoryIsCurrent(NSString *root, NSString *parent, int dire
                 PXTraceError(PXCloneTraceStatePathFailure, @"缓存隐根或目录已变化，未改写其他位置", nil), done);
             return;
         }
+        if (!failuresLoaded) {
+            void *bytes = NULL;
+            size_t length = 0;
+            int readError = 0;
+            PXCloneTraceReadResult read = PXCloneReadTraceAt(directory, tracePath.lastPathComponent.fileSystemRepresentation,
+                                                            &bytes, &length, &readError);
+            NSDictionary *old = nil;
+            if (read == PXCloneTraceReadOK) {
+                NSData *saved = [NSData dataWithBytesNoCopy:bytes length:length freeWhenDone:YES];
+                id value = [NSPropertyListSerialization propertyListWithData:saved options:NSPropertyListImmutable
+                                              format:NULL error:&error];
+                if ([value isKindOfClass:NSDictionary.class]) old = value;
+            }
+            id archive = old[@"CXLaunchFailures"];
+            if (read == PXCloneTraceReadFailed || (read == PXCloneTraceReadOK &&
+                (!old || ![old[@"CXLaunchTrace"] isKindOfClass:NSArray.class] ||
+                 (archive && (![archive isKindOfClass:NSArray.class] || [archive count] > PXCloneFailureLimit))))) {
+                NSError *cause = error ?: [NSError errorWithDomain:NSPOSIXErrorDomain code:readError ?: EIO userInfo:nil];
+                // Do not erase an unreadable prior failure archive merely to
+                // report a later success. Existing failure state is published.
+                PXPublishTraceState(PXCloneTraceStateReadbackFailure,
+                    PXTraceError(PXCloneTraceStateReadbackFailure, @"已有失败记录无法安全读回，未覆盖原文件", cause), done);
+                return;
+            }
+            failures = PXCloneTraceMergeFailures(archive ?: @[],
+                PXCloneTraceImportLegacyEvents(old[@"CXLaunchTrace"] ?: @[]));
+            failuresLoaded = YES;
+        }
         NSArray *limited = snapshot.count > 32 ?
             [snapshot subarrayWithRange:NSMakeRange(snapshot.count - 32, 32)] : snapshot;
-        NSDictionary *document = @{ @"CXLaunchTrace": limited ?: @[] };
+        NSArray *mergedFailures = PXCloneTraceMergeFailures(failures, limited ?: @[]);
+        // CXLaunchTrace remains the same <=32 event array for old readers.
+        // The independent archive is not displaced by successful transactions.
+        NSDictionary *document = @{ @"CXLaunchTrace": limited ?: @[], @"CXLaunchFailures": mergedFailures };
         NSData *data = [NSPropertyListSerialization dataWithPropertyList:document
                          format:NSPropertyListBinaryFormat_v1_0 options:0 error:&error];
-        if (!data) {
+        if (!data || data.length > PXCloneTraceReadLimit) {
             PXPublishTraceState(PXCloneTraceStateSerializationFailure,
                 PXTraceError(PXCloneTraceStateSerializationFailure, @"记录编码失败", error), done);
             return;
@@ -142,6 +176,7 @@ static BOOL PXTraceDirectoryIsCurrent(NSString *root, NSString *parent, int dire
                 PXTraceError(PXCloneTraceStatePathFailure, @"记录目录身份变化，未确认保存", nil), done);
             return;
         }
+        failures = mergedFailures;
         PXPublishTraceState(PXCloneTraceStatePersisted, nil, done);
     });
 }

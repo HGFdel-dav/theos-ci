@@ -4,12 +4,14 @@
 #import "PXCloneRuntime.h"
 #import "PXClonePaths.h"
 #import "PXCloneTrace.h"
+#import "PXCloneLaunchDiagnostics.h"
 #import "PXCloneURLRouter.h"
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
 #include <errno.h>
+#include <math.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -63,6 +65,92 @@ static BOOL PXLaunchBridgeCoversScreen(id bridge) {
         if (ancestor.hidden || ancestor.alpha <= 0.1) return NO;
     CGRect rect = [view convertRect:view.bounds toView:window];
     return !CGRectIsEmpty(CGRectIntersection(rect, window.bounds));
+}
+
+// Read-only observations: pollOpened below retains its original success gates.
+static id PXLaunchDiagnosticRect(CGRect rect) {
+    if (CGRectIsNull(rect) || CGRectIsInfinite(rect) || !isfinite(rect.origin.x) ||
+        !isfinite(rect.origin.y) || !isfinite(rect.size.width) || !isfinite(rect.size.height)) return @{ @"valid": @NO };
+    return @{ @"valid": @YES, @"xywh": @[@(rect.origin.x), @(rect.origin.y), @(rect.size.width), @(rect.size.height)] };
+}
+
+static NSDictionary *PXLaunchCandidateDiagnostic(id bridge, NSString *bundle,
+                                                 BOOL completionGate, BOOL account) {
+    uint32_t checked = PXLaunchDiagBridge | PXLaunchDiagCompletion | PXLaunchDiagAccount;
+    uint32_t passed = (bridge ? PXLaunchDiagBridge : 0) |
+                      (completionGate ? PXLaunchDiagCompletion : 0) |
+                      (account ? PXLaunchDiagAccount : 0);
+    NSMutableDictionary *detail = [NSMutableDictionary dictionary];
+    if (bridge) {
+        if (PXCloneInstanceMethodMatches(bridge, NSSelectorFromString(@"bundleID"), @encode(id), @[])) {
+            checked |= PXLaunchDiagBundle;
+            if ([PXLaunchObject(bridge, @"bundleID") isEqual:bundle]) passed |= PXLaunchDiagBundle;
+        }
+        if (PXCloneInstanceMethodMatches(bridge, NSSelectorFromString(@"scene"), @encode(id), @[])) {
+            checked |= PXLaunchDiagScene;
+            if (PXLaunchObject(bridge, @"scene")) passed |= PXLaunchDiagScene;
+        }
+        if (PXCloneInstanceMethodMatches(bridge, NSSelectorFromString(@"hasHostedSurface"), @encode(BOOL), @[])) {
+            checked |= PXLaunchDiagSurface;
+            if (PXLaunchBool(bridge, @"hasHostedSurface")) passed |= PXLaunchDiagSurface;
+        }
+        BOOL canvasKnown = PXCloneInstanceMethodMatches(bridge, NSSelectorFromString(@"canvas"), @encode(id), @[]);
+        if (canvasKnown) checked |= PXLaunchDiagCanvas;
+        id canvas = canvasKnown ? PXLaunchObject(bridge, @"canvas") : nil;
+        if ([canvas isKindOfClass:UIView.class]) {
+            passed |= PXLaunchDiagCanvas;
+            UIView *view = canvas;
+            UIWindow *window = view.window;
+            checked |= PXLaunchDiagWindow;
+            detail[@"canvasBounds"] = PXLaunchDiagnosticRect(view.bounds);
+            NSUInteger depth = 0, hidden = 0, lowAlpha = 0;
+            UIView *ancestor = view;
+            for (; ancestor && depth < 128; ancestor = ancestor.superview, ++depth) {
+                if (ancestor.hidden) ++hidden;
+                if (ancestor.alpha <= 0.1) ++lowAlpha;
+            }
+            detail[@"hierarchyDepth"] = @(depth);
+            detail[@"hierarchyHidden"] = @(hidden);
+            detail[@"hierarchyLowAlpha"] = @(lowAlpha);
+            detail[@"hierarchyTruncated"] = @(ancestor != nil);
+            if (!ancestor) {
+                checked |= PXLaunchDiagHierarchy;
+                if (!hidden && !lowAlpha) passed |= PXLaunchDiagHierarchy;
+            }
+            if (window) {
+                passed |= PXLaunchDiagWindow;
+                checked |= PXLaunchDiagWindowVisible | PXLaunchDiagWindowIntersection;
+                if (!window.hidden && window.alpha > 0.1) passed |= PXLaunchDiagWindowVisible;
+                CGRect rect = [view convertRect:view.bounds toView:window];
+                CGRect intersection = CGRectIntersection(rect, window.bounds);
+                if (!CGRectIsEmpty(intersection)) passed |= PXLaunchDiagWindowIntersection;
+                detail[@"windowHidden"] = @(window.hidden);
+                detail[@"windowAlpha"] = @(window.alpha);
+                detail[@"windowBounds"] = PXLaunchDiagnosticRect(window.bounds);
+                detail[@"canvasInWindow"] = PXLaunchDiagnosticRect(rect);
+                detail[@"windowIntersection"] = PXLaunchDiagnosticRect(intersection);
+                // Auxiliary screen intersection is NOT an added success gate.
+                UIScreen *screen = window.screen;
+                detail[@"screenChecked"] = @(screen != nil);
+                if (screen) {
+                    CGRect onScreen = [window convertRect:rect toCoordinateSpace:screen.coordinateSpace];
+                    CGRect screenIntersection = CGRectIntersection(onScreen, screen.bounds);
+                    detail[@"canvasOnScreen"] = PXLaunchDiagnosticRect(onScreen);
+                    detail[@"screenBounds"] = PXLaunchDiagnosticRect(screen.bounds);
+                    detail[@"screenIntersection"] = PXLaunchDiagnosticRect(screenIntersection);
+                    detail[@"intersectsScreen"] = @(!CGRectIsEmpty(screenIntersection));
+                }
+            }
+        }
+    }
+    detail[@"checkedMask"] = @(checked);
+    detail[@"passedMask"] = @(passed);
+    detail[@"failedMask"] = @(PXLaunchDiagnosticFailed(checked, passed));
+    detail[@"unknownMask"] = @(PXLaunchDiagnosticUnknown(checked));
+    unsigned gate = PXLaunchDiagnosticFirstGate(checked, passed);
+    detail[@"firstFailedGate"] = @(gate);
+    detail[@"firstFailedGateName"] = [NSString stringWithUTF8String:PXLaunchDiagnosticGateName(gate)];
+    return detail;
 }
 
 static NSError *PXLaunchError(NSInteger code, NSString *message) {
@@ -175,6 +263,13 @@ static pid_t PXProcessPID(id process) {
     CFAbsoluteTime _flowStart;
     PXCloneTraceState _reportedTraceState;
     NSMutableArray *_trace;
+    NSDictionary *_lastOpenDiagnostic;
+    NSDictionary *_recordDetail;
+    PXLaunchDiagnosticThrottle _openDiagnosticThrottle;
+    NSUInteger _bridgeArrivals;
+    BOOL _completionReceived, _completionRawOK, _completionOriginalPresent;
+    BOOL _completionForwarded, _completionThrew, _completionAccepted;
+    double _completionQueueMS;
 }
 - (void)startPending;
 - (void)pollClosed:(uint64_t)token;
@@ -191,6 +286,11 @@ static pid_t PXProcessPID(id process) {
 - (BOOL)blocksFullscreen:(NSString *)bundle;
 - (uint64_t)tokenForOpeningBundle:(id)bundle;
 - (void)captureOpeningBridge:(id)bridge;
+- (void)resetOpenDiagnostic;
+- (void)observeOpenCandidates:(NSArray *)candidates visible:(BOOL)visible active:(NSString *)active;
+- (void)recordOpenDiagnostic:(NSString *)stage force:(BOOL)force;
+- (void)completionReceived:(BOOL)raw original:(BOOL)present queuedAt:(CFAbsoluteTime)time bridge:(id)bridge token:(uint64_t)token;
+- (void)completionForwarded:(BOOL)accepted threw:(BOOL)threw bridge:(id)bridge token:(uint64_t)token;
 - (void)showError:(NSString *)message;
 @end
 
@@ -207,15 +307,21 @@ static void PXHostedOpen(id self, SEL command, id bundle, id canvas, id overlay,
     void (^original)(BOOL) = [completion copy];
     __block BOOL completionDelivered = NO;
     void (^wrapped)(BOOL) = ^(BOOL ok) {
+        CFAbsoluteTime receivedAt = CFAbsoluteTimeGetCurrent();
         dispatch_async(dispatch_get_main_queue(), ^{
             if (completionDelivered) return;
             completionDelivered = YES;
+            @try { [controller completionReceived:ok original:original != nil queuedAt:receivedAt bridge:weakBridge token:token]; }
+            @catch (__unused NSException *exception) { /* Observation cannot suppress the native continuation. */ }
             BOOL accepted = ok;
+            BOOL originalThrew = NO;
             // Always let PX release/update its own transaction. Its native
             // generation guards stale work; only the controller callback is
             // gated by our current transaction token.
             @try { if (original) original(accepted); }
-            @catch (__unused NSException *exception) { accepted = NO; }
+            @catch (__unused NSException *exception) { accepted = NO; originalThrew = YES; }
+            @try { [controller completionForwarded:accepted threw:originalThrew bridge:weakBridge token:token]; }
+            @catch (__unused NSException *exception) { /* Preserve the original accepted result. */ }
             if ([controller tokenForOpeningBundle:bundle] == token && weakBridge)
                 [controller nativeOpenReturned:accepted bridge:weakBridge token:token];
         });
@@ -281,7 +387,85 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
 }
 
 - (void)captureOpeningBridge:(id)bridge {
-    if (NSThread.isMainThread) _openingBridge = bridge;
+    if (NSThread.isMainThread) {
+        _openingBridge = bridge;
+        ++_bridgeArrivals;
+        [self record:@"native_bridge_arrived" code:0];
+    }
+}
+
+- (void)resetOpenDiagnostic {
+    _lastOpenDiagnostic = nil;
+    _openDiagnosticThrottle = (PXLaunchDiagnosticThrottle){0};
+    _bridgeArrivals = 0;
+    _completionReceived = _completionRawOK = _completionOriginalPresent = NO;
+    _completionForwarded = _completionThrew = _completionAccepted = NO;
+    _completionQueueMS = 0;
+}
+
+- (void)completionReceived:(BOOL)raw original:(BOOL)present queuedAt:(CFAbsoluteTime)time bridge:(id)bridge token:(uint64_t)token {
+    if (!PXCloneFlowIsCurrent(&_flow, token) || _flow.phase != PXCloneFlowOpening || bridge != _openingBridge) return;
+    _completionReceived = YES;
+    _completionRawOK = raw;
+    _completionOriginalPresent = present;
+    _completionQueueMS = (CFAbsoluteTimeGetCurrent() - time) * 1000.0;
+    _recordDetail = @{ @"rawOK": @(raw), @"originalPresent": @(present), @"queueMS": @(_completionQueueMS) };
+    [self record:@"native_completion_received" code:0];
+    _recordDetail = nil;
+}
+
+- (void)completionForwarded:(BOOL)accepted threw:(BOOL)threw bridge:(id)bridge token:(uint64_t)token {
+    if (!PXCloneFlowIsCurrent(&_flow, token) || _flow.phase != PXCloneFlowOpening || bridge != _openingBridge) return;
+    _completionForwarded = YES;
+    _completionThrew = threw;
+    _completionAccepted = accepted;
+    _recordDetail = @{ @"accepted": @(accepted), @"originalThrew": @(threw) };
+    [self record:@"native_completion_forwarded" code:0];
+    _recordDetail = nil;
+}
+
+- (void)observeOpenCandidates:(NSArray *)candidates visible:(BOOL)visible active:(NSString *)active {
+    @try {
+    NSMutableArray *samples = [NSMutableArray array];
+    BOOL verified = [active isEqual:_container];
+    uint64_t signature = PXLaunchDiagnosticMix(0, candidates.count);
+    signature = PXLaunchDiagnosticMix(signature, (uint64_t)visible | ((uint64_t)verified << 1) |
+        ((uint64_t)_completionReceived << 2) | ((uint64_t)_completionForwarded << 3) |
+        ((uint64_t)_completionRawOK << 4) | ((uint64_t)_completionAccepted << 5) |
+        ((uint64_t)_completionThrew << 6) | ((uint64_t)(active.length > 0) << 7));
+    NSUInteger count = MIN(candidates.count, (NSUInteger)4);
+    for (NSUInteger index = 0; index < MAX(count, (NSUInteger)1); ++index) {
+        NSDictionary *sample = PXLaunchCandidateDiagnostic(count ? candidates[index] : nil, _bundle,
+                                                           _reuse || _nativeOpenReturned, verified);
+        [samples addObject:sample];
+        signature = PXLaunchDiagnosticMix(signature, [sample[@"checkedMask"] unsignedIntValue]);
+        signature = PXLaunchDiagnosticMix(signature, [sample[@"passedMask"] unsignedIntValue]);
+        signature = PXLaunchDiagnosticMix(signature, [sample[@"intersectsScreen"] boolValue]);
+    }
+    _lastOpenDiagnostic = @{ @"candidateCount": @(candidates.count), @"sampleTruncated": @(candidates.count > count),
+        @"candidates": samples, @"bridgeArrivals": @(_bridgeArrivals), @"openingBridge": @(_openingBridge != nil),
+        @"poll": @(_attempt + 1), @"retry": @(_splitRetries), @"reuse": @(_reuse),
+        @"completionReceived": @(_completionReceived), @"completionRawOK": @(_completionRawOK),
+        @"completionOriginalPresent": @(_completionOriginalPresent), @"completionForwarded": @(_completionForwarded),
+        @"completionThrew": @(_completionThrew), @"completionAccepted": @(_completionAccepted),
+        @"nativeOpenReturned": @(_nativeOpenReturned), @"completionQueueMS": @(_completionQueueMS),
+        @"accountReadbackPresent": @(active.length > 0), @"accountMatches": @(verified),
+        @"visibleGate": @(visible), @"signature": @(signature),
+        @"elapsedMS": @((CFAbsoluteTimeGetCurrent() - _flowStart) * 1000.0) };
+    } @catch (__unused NSException *exception) {
+        _lastOpenDiagnostic = @{ @"observationException": @YES, @"unknownMask": @(PXLaunchDiagAll),
+                                 @"poll": @(_attempt + 1), @"retry": @(_splitRetries) };
+    }
+}
+
+- (void)recordOpenDiagnostic:(NSString *)stage force:(BOOL)force {
+    if (!_lastOpenDiagnostic) return;
+    if (!PXLaunchDiagnosticShouldWrite(&_openDiagnosticThrottle,
+        [_lastOpenDiagnostic[@"signature"] unsignedLongLongValue],
+        [_lastOpenDiagnostic[@"poll"] unsignedIntValue], force)) return;
+    _recordDetail = _lastOpenDiagnostic;
+    [self record:stage code:0];
+    _recordDetail = nil;
 }
 
 - (BOOL)blocksFullscreen:(NSString *)bundle {
@@ -331,6 +515,7 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     _splitRetries = 0;
     _openingBridge = nil;
     _nativeOpenReturned = NO;
+    [self resetOpenDiagnostic];
     _terminationRequested = NO;
     _forceTerminated = NO;
     _reuse = NO;
@@ -538,6 +723,7 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     _attempt = 0;
     _openingBridge = nil;
     _nativeOpenReturned = NO;
+    [self resetOpenDiagnostic];
     [self record:@"native_retry" code:(NSInteger)_splitRetries];
     // A failed host can leave a half-built context behind. Clear it first so
     // the retry starts from the same state a fresh open would see.
@@ -562,6 +748,9 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     _nativeOpenReturned = ok;
     [self record:ok ? @"native_completion_ok" : @"native_completion_failed" code:ok ? 0 : 17];
     if (!ok) {
+        [self observeOpenCandidates:bridge ? @[bridge] : @[] visible:NO
+                            active:[PXCloneCrane activeContainerForBundle:_bundle]];
+        [self recordOpenDiagnostic:@"open_before_retry_or_failure" force:YES];
         // Record what the panel actually handed us before deciding anything.
         id canvas = PXLaunchObject(bridge, @"canvas");
         NSArray *live = PXRunningProcesses(_bundle, NULL);
@@ -605,7 +794,10 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
         [self finish:token error:nil];
         return;
     }
-    BOOL verified = [[PXCloneCrane activeContainerForBundle:_bundle] isEqual:_container];
+    NSString *active = [PXCloneCrane activeContainerForBundle:_bundle];
+    BOOL verified = [active isEqual:_container];
+    [self observeOpenCandidates:candidates visible:visible active:active];
+    [self recordOpenDiagnostic:@"open_visibility" force:NO];
     if (PXCloneFlowMaySucceed(&_flow, token, verified, visible)) {
         _hostedContainers[_bundle] = _container;
         NSArray *processes = PXRunningProcesses(_bundle, NULL);
@@ -624,6 +816,12 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     if (!PXCloneFlowIsCurrent(&_flow, token)) return;
     if (error) {
         if (_flow.phase == PXCloneFlowOpening) {
+            if (!_lastOpenDiagnostic)
+                [self observeOpenCandidates:_openingBridge ? @[_openingBridge] : _bridges[_bundle].allObjects
+                                    visible:NO active:[PXCloneCrane activeContainerForBundle:_bundle]];
+            // The latest poll is kept in memory even when its disk write was
+            // throttled. Save it BEFORE cleanup destroys the evidence.
+            [self recordOpenDiagnostic:@"open_before_cleanup" force:YES];
             // Invalidate PX's native generation and remove this bundle's
             // context before a newer transaction may start. Late callbacks
             // cannot resurrect the stale account or launch it fullscreen.
@@ -654,18 +852,25 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     // A bounded, content-free event ring survives a missed live log capture.
     // No account display names, credentials, messages or app content.
     NSDictionary *event = @{ @"time": @(NSDate.date.timeIntervalSince1970),
-                             @"build": @"clone0.95", @"token": @(_flow.token),
+                             @"build": @"clone0.96", @"token": @(_flow.token),
                              @"stage": stage, @"code": @(code),
                              @"bundle": _bundle ?: @"", @"targetHash": @(_container.hash) };
-    [_trace addObject:event];
+    NSMutableDictionary *entry = [event mutableCopy];
+    if (_recordDetail) entry[@"detail"] = _recordDetail;
+    if ([stage isEqual:@"failed"]) {
+        NSString *failureID = NSUUID.UUID.UUIDString;
+        entry[@"failureID"] = failureID;
+        entry[@"summary"] = @{ @"phase": @(_flow.phase), @"retry": @(_splitRetries),
+            @"elapsedMS": @((CFAbsoluteTimeGetCurrent() - _flowStart) * 1000.0),
+            @"lastOpen": _lastOpenDiagnostic ?: @{} };
+    }
+    [_trace addObject:[entry copy]];
     if (_trace.count > 32) [_trace removeObjectAtIndex:0];
     NSArray *snapshot = [_trace copy];
     [PXCloneTrace writeEvents:snapshot completion:^(PXCloneTraceState state, NSError *error) {
         (void)error;
-        // Diagnostics must never interrupt: the state is already published
-        // through Darwin notify and rendered in the settings page. A respring
-        // starts a fresh process, so the old first-write toast reappeared
-        // after EVERY respring even though the switch itself was fine.
+        // Saving and readback stay in the diagnostic channel. The user should
+        // never have to read a toast ID or wait for logging to see an error.
         self->_reportedTraceState = state;
     }];
 }

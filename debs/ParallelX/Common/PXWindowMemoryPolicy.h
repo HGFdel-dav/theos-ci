@@ -149,10 +149,29 @@ static inline bool PXWMNativeBindingActive(const PXWMNativeLifecycle *state, uin
            !state->entering && !state->cancelled;
 }
 
+/* Geometry preparation is permitted inside the native open only after its
+ * old-scene cleanup and assignment of this canvas/bundle. Saves still require
+ * the complete visible, bound host. No ownership is inferred from a pointer. */
+static inline bool PXWMMayPrepareInitialLayout(bool activeBinding, bool currentTicket,
+                                              bool nativeEntering, bool cleanupSeen,
+                                              bool cancelled, bool matchingCanvasAndBundle,
+                                              bool loaded, bool enabled, bool resolved,
+                                              bool interacting, bool savePending) {
+    bool owns = activeBinding || (currentTicket && nativeEntering && cleanupSeen && !cancelled);
+    return owns && matchingCanvasAndBundle && loaded && enabled &&
+           !resolved && !interacting && !savePending;
+}
+
 static inline bool PXWMMayScheduleRestore(bool bound, bool resolved, bool interacting,
                                          bool savePending, bool loaded,
                                          unsigned attempts, unsigned maximum) {
     return bound && !resolved && !interacting && !savePending && loaded && attempts < maximum;
+}
+
+/* Keep the bounded diagnostics useful: stable retries must not evict saves
+ * and failures with one event per display-poll interval. */
+static inline bool PXWMShouldLogRestoreWait(unsigned attempt, unsigned gate, unsigned lastGate) {
+    return attempt == 1 || gate != lastGate || attempt % 25 == 0;
 }
 
 /* A user resize may start before the native content orientation exists.
