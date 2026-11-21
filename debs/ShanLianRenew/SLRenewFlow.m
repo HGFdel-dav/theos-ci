@@ -5,7 +5,6 @@
 #import "SLDiag.h"
 #import <objc/message.h>
 #import <notify.h>
-#import <UserNotifications/UserNotifications.h>
 
 static NSString *const kFL = @"/var/mobile/Containers/Shared/AppGroup/FE3195E7-59B2-4284-BCCD-C16BE374F8BF/Library/Preferences/renew-flow.log";
 
