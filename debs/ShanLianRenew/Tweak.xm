@@ -441,7 +441,11 @@ static void SLFill(SLState *st, NSString *token) {
                 [st save];
                 SLScheduleReminder(st);
                 SLLog(@"renew ok -> %.0f", ndv);
-                SLNotify(@"闪连已续上", [NSString stringWithFormat:@"到期 %@", data[@"deadline"] ?: @""]);
+                SLNotify(@"闪连已续上",
+                         [NSString stringWithFormat:@"新账号 %@，到期 %@",
+                          data[@"userName"] ?: @"", data[@"deadline"] ?: @""]);
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
+                               dispatch_get_main_queue(), ^{ SLGoBackground(); });
             } else {
                 g_filling = NO;
                 SLFailOrRetry(st, @"deadline not extended");
@@ -469,7 +473,9 @@ static void SLFailOrRetry(SLState *st, NSString *reason) {
     st.phase = SLPhaseFailed;
     [st save];
     SLLog(@"rolled back, phase=failed");
-    SLNotify(@"闪连没续上", [NSString stringWithFormat:@"已退回旧号，需要你看一眼（%@）", reason ?: @"未知"]);
+    SLNotify(@"闪连没续上", [NSString stringWithFormat:@"需要你看一眼（%@）", reason ?: @"未知"]);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{ SLGoBackground(); });
 }
 
 #pragma mark - 流程（App 端）
