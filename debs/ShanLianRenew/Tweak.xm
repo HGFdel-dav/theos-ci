@@ -640,7 +640,6 @@ static void SLOnLaunch(void) {
         [st save];
     }
     // 到期提醒被点开（或用户自己打开）：时间已到就立刻续期
-    double nowT = [NSDate date].timeIntervalSince1970;
     BOOL fromNotif = [SLDefaults() boolForKey:@"sl.lastNotifTap"];
     if (fromNotif) {
         SLLog(@"launched from notification tap");
