@@ -17,8 +17,6 @@ typedef NS_ENUM(NSInteger, SLPhase) {
 @property (nonatomic) NSString *code;
 @property (nonatomic) BOOL notifyOnFail;
 @property (nonatomic) BOOL dueNotified;
-@property (nonatomic) double testSecs;
-@property (nonatomic) double remindAt;
 @property (nonatomic) BOOL resetFallback;
 @property (nonatomic) int maxAttempts;
 // 运行
