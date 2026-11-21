@@ -602,6 +602,25 @@ static void SLHookMakeKeyAndVisible(id self, SEL _cmd) {
     });
 }
 
+// 到期且用户已点开（或已过提醒时刻）-> 立刻续期；返回 YES 表示已接管
+static BOOL SLRenewIfDue(void) {
+    SLState *st = [SLState load];
+    if (!st.enabled || st.phase != SLPhaseArmed) return NO;
+    double nowT = [NSDate date].timeIntervalSince1970;
+    BOOL afterRemind = (st.remindAt > 0 && nowT >= st.remindAt);
+    if (!(afterRemind || (st.nextFire1 > 0 && nowT >= st.nextFire1 - 30))) return NO;
+    SLLog(@"renew due -> start (now=%.0f remindAt=%.0f next=%.0f)", nowT, st.remindAt, st.nextFire1);
+    st.phase = SLPhaseResetting;
+    st.attempt = 0;
+    [st save];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        SLState *s2 = [SLState load];
+        if (s2.phase == SLPhaseResetting) SLPerformReset(s2);
+    });
+    return YES;
+}
+
 static void SLOnLaunch(void) {
     SLDiag(@"boot", @"v=%@ bid=%@", SL_VER, [NSBundle mainBundle].bundleIdentifier ?: @"-");
     SLDiagCheckRequest();
@@ -628,20 +647,7 @@ static void SLOnLaunch(void) {
         [SLDefaults() removeObjectForKey:@"sl.lastNotifTap"];
         [SLDefaults() synchronize];
     }
-    BOOL afterRemind = (st.remindAt > 0 && nowT >= st.remindAt);
-    if (st.enabled && st.phase == SLPhaseArmed &&
-        (fromNotif || afterRemind || (st.nextFire1 > 0 && nowT >= st.nextFire1 - 30))) {
-        SLLog(@"renew triggered by user (now=%.0f fire=%.0f)", nowT, st.nextFire1);
-        st.phase = SLPhaseResetting;
-        st.attempt = 0;
-        [st save];
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{
-            SLState *s2 = [SLState load];
-            if (s2.phase == SLPhaseResetting) SLPerformReset(s2);
-        });
-        return;
-    }
+    if (SLRenewIfDue()) return;
     [SLHttp warmup];
     SLRefreshDeadline();
 }
@@ -784,6 +790,17 @@ static void SLInitBody(void) {
         @try {
             [UNUserNotificationCenter currentNotificationCenter].delegate = [SLNotifHandler shared];
             SLLog(@"notif delegate set");
+            [[NSNotificationCenter defaultCenter]
+                addObserverForName:UIApplicationDidBecomeActiveNotification
+                            object:nil
+                             queue:[NSOperationQueue mainQueue]
+                        usingBlock:^(NSNotification *n) {
+                SLState *cur = [SLState load];
+                if (!cur.enabled) return;
+                SLLog(@"became active -> check renew");
+                if (SLRenewIfDue()) return;
+                SLScheduleReminder(cur);
+            }];
         } @catch (NSException *e) { SLLog(@"delegate fail %@", e.reason ?: @"-"); }
     }
 
