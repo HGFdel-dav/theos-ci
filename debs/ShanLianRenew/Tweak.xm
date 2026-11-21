@@ -761,6 +761,17 @@ static void SLInitBody(void) {
           [[NSDictionary dictionaryWithContentsOfFile:SLStatePath()] objectForKey:@"ver"] ?: @"-", 0);
 
     if (isApp) {
+        // 自动续期流程里：先把"已同意隐私协议"写进 App 自己的偏好，避免停在协议页
+        @try {
+            SLState *st0 = [SLState load];
+            if (st0.phase == SLPhaseNeedFill || st0.phase == SLPhaseResetting) {
+                NSUserDefaults *sd = [NSUserDefaults standardUserDefaults];
+                [sd setBool:YES forKey:@"flutter.agree"];
+                [sd setBool:NO forKey:@"flutter.kisAppFirstLaunchedKey"];
+                [sd synchronize];
+                SLLog(@"app-side agree seeded");
+            }
+        } @catch (NSException *e) {}
         g_fakeId = [SLDefaults() stringForKey:SL_DEVICE_KEY];
         @try {
             [UNUserNotificationCenter currentNotificationCenter].delegate = [SLNotifHandler shared];
