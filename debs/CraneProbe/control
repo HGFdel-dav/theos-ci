@@ -1,0 +1,9 @@
+Package: com.minis.craneprobe
+Name: Crane Probe
+Version: 0.1.0
+Architecture: iphoneos-arm64e
+Description: read-only probe for Crane manager API
+Maintainer: Minis
+Author: Minis
+Section: Tweaks
+Depends: mobilesubstrate, firmware (>= 15.0)
