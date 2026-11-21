@@ -1,11 +1,18 @@
-# ParallelX alpha437 + clone0.97｜已获授权推送并监控 CI
+# ParallelX alpha437 + clone0.98｜已获推送及 CI 监控授权
 
 ## 本轮状态（2026-11-21，优先于下方归档）
-- 用户已明确批准 0.97 正常推送、GitHub CI 监控、构建日志及 DEB 验包；不包括安装、设备写入、注销或重启。
+- 用户已明确授权 0.98 正常推送、GitHub CI 监控、日志检查和产物验包；未授权安装、设备写入、注销或重启。
+- 当前手机实装0.97；用户视频显示App内容未随浮窗正确缩放，且每次开窗出现移位/闪动。录屏保留于 `evidence/USER-097-REGRESSION.mp4`，SHA256 `0ddd4aa357782f246a64cd97e4aaea1b840267b6d333b82c679781f15827b1d7`。
+- 源码对照确认0.97在 `PXWMTryRestore` 中把原版 `layoutHost` 调用移到记忆外框赋值之前，并新增只改外框、不重算内容的后置重复回压。0.98从已推送0.96恢复该生产源码逐字节基线；额外版本/诊断标记/状态/测试更改除外。厂商原版二进制未动。
+- 原版 `layoutHost` 静态反汇编显示会以源内容尺寸和窗口边界计算等比缩放并设置宿主变换；记录于 `evidence/native-layout/README.md`。这是静态调用证据，非当前手机运行时追踪。
+- 最终完整检查：181项测试，166项执行通过、15项Apple专用测试在iSH跳过；`tools/validate.py`、`--pinned-vendor`、三个生产Objective-C文件arm64e/iOS15.5语法及`git diff --check`均通过。原版vendor无变化。
+- 相对0.97共11个文件差异：生产布局恢复顺序回到0.96、诊断构建标记、control版本、布局顺序测试、静态证据及STATUS；未改付款/分身路由或原版二进制。主`/tmp/ci-work` HEAD仍0ae2d109，仅既有STATUS笔记dirty未碰。
+- 0.98尚未推送、未触发CI、未构建或验包、未安装/写设备；内容跟随与闪动仍待装机真机验收。当前`push_authorized_preflight_passed`。本轮授权仅推送+CI/验包；安装另问，注销/重启未授权。
 - 设备当前实装为用户自行安装的 0.96，RootHide 根 `.jbroot-142AF1688D97DF62`。只读诊断显示恢复后有原版布局回调将部分有记忆窗口改回默认的事件，但该判断仍需 0.97 真机验收。
 - 0.97 候选仅对当前打开时确实命中手动记忆的窗口，记录本次恢复的目标；原版后续 layoutHost/控制器布局覆盖后，无动画重应用该目标。手势开始或方向改变即解除保护。未命中手动记忆的 App 仍走原版默认布局；本地代码路径与回归断言覆盖此条件。
-- 本地检查：180 项 unittest，165 项执行通过、15 项 Apple 专用测试在 iSH 跳过；`tools/validate.py` 与 `--pinned-vendor` 全通过；3 个生产 Objective-C 文件 arm64e `-fsyntax-only` 通过。未运行 Apple GitHub CI、未验包、未在手机验证实际首帧。
-- 0.97 当前状态：`push_authorized_preflight_passed`；正在准备普通推送，CI、验包和真机结果以实际运行后为准。授权不包括安装/设备写入、注销或重启。
+- 最终本地检查：181 项 unittest，166 项执行通过、15 项 Apple 专用测试在 iSH 跳过；定向窗口测试22项中13项执行通过、9项Apple专用跳过。`tools/validate.py`、`--pinned-vendor`及三个生产Objective-C文件的arm64e/iOS15.5语法检查均通过；厂商原版载荷逐字节无变化。
+- 相对已推送0.96只有诊断构建标记、版本号、布局顺序回归测试和状态/静态证据变化；`PXWindowMemory.m`生产实现与0.96逐字节一致。这个回退消除了0.97新增的相反调用顺序；不能因此宣称真机内容跟随已经验收。
+- 0.98尚未推送、未触发CI、未构建DEB、未安装/写设备；录屏中的内容对齐、首开跳闪和手动拖动保存仍待新版本真机验收。状态：`local_checks_complete_waiting_push_approval`；若用户同意推送，安装另行确认，注销/重启未授权。
 
 ---
 

@@ -15,7 +15,7 @@ spec.loader.exec_module(reader)
 
 class SavedFailureReaderTests(unittest.TestCase):
     def failure(self, time=100.0):
-        return {'stage': 'failed', 'time': time, 'code': 19, 'build': 'clone0.97',
+        return {'stage': 'failed', 'time': time, 'code': 19, 'build': 'clone0.98',
                 'bundle': 'com.tencent.xin', 'token': 1,
                 'failureID': '00000000-0000-0000-0000-000000000001',
                 'summary': {'lastOpen': {'poll': 100, 'completionReceived': True,

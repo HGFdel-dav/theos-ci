@@ -31,11 +31,6 @@ typedef NS_ENUM(unsigned, PXWMGeometryGate) {
 @property(nonatomic) NSUInteger restoreRetryAttempts;
 @property(nonatomic) BOOL restoreRetryScheduled;
 @property(nonatomic) unsigned restoreRetryLoggedGate;
-@property(nonatomic) BOOL initialRestoreActive;
-@property(nonatomic) PXWMRect initialRestoreGeometry;
-@property(nonatomic) unsigned initialRestoreKey;
-@property(nonatomic) uint64_t initialRestoreEpoch;
-@property(nonatomic) CFTimeInterval initialRestoreDeadline;
 @property(nonatomic) CFTimeInterval openedAt;
 @end
 @implementation PXWMContext
@@ -67,9 +62,6 @@ static void (*PXWMOriginalMove)(id, SEL, id);
 static void (*PXWMOriginalResize)(id, SEL, id);
 static void (*PXWMOriginalControllerLayout)(id, SEL);
 static void PXWMScheduleRestore(PXWMContext *context);
-static BOOL PXWMReapplyInitialGeometry(PXWMContext *context);
-static void PXWMRememberInitialRestore(PXWMContext *context, PXWMRect geometry,
-                                       unsigned key, uint64_t epoch);
 
 static id PXWMObject(id target, NSString *name) {
     SEL selector = NSSelectorFromString(name);
@@ -194,17 +186,9 @@ static void PXWMVerifyRestore(PXWMContext *context, PXWMRect restored, unsigned 
         BOOL stable = normal && laterKey == key && fabs(later.frame.x-restored.x)<1 &&
             fabs(later.frame.y-restored.y)<1 && fabs(later.frame.width-restored.width)<1 &&
             fabs(later.frame.height-restored.height)<1;
-        BOOL reapplied = normal && !stable && PXWMReapplyInitialGeometry(check);
-        if (reapplied) {
-            normal = PXWMNormalGeometry(check, &later, &laterKey);
-            stable = normal && laterKey == key && fabs(later.frame.x-restored.x)<1 &&
-                fabs(later.frame.y-restored.y)<1 && fabs(later.frame.width-restored.width)<1 &&
-                fabs(later.frame.height-restored.height)<1;
-        }
         PXWMLog(check, !normal ? @"restore_postlayout_geometry_pending" :
-                (reapplied ? @"restore_postlayout_geometry_reapplied" :
-                 (stable ? @"restore_postlayout_geometry_verified" : @"restore_postlayout_geometry_changed")),
-                @{@"normal":@(normal),@"matches":@(stable),@"reapplied":@(reapplied),@"gate":@(check.geometryGate)});
+                (stable ? @"restore_postlayout_geometry_verified" : @"restore_postlayout_geometry_changed"),
+                @{@"normal":@(normal),@"matches":@(stable),@"gate":@(check.geometryGate)});
     });
 }
 
@@ -240,9 +224,9 @@ static BOOL PXWMPrepareInitialLayout(PXWMContext *context) {
     CGRect actual = card.frame;
     BOOL matched = fabs(actual.origin.x-restored.x)<1 && fabs(actual.origin.y-restored.y)<1 &&
         fabs(actual.size.width-restored.width)<1 && fabs(actual.size.height-restored.height)<1;
-    if (matched)
-        PXWMRememberInitialRestore(context, restored, key,
-                                   [snapshot[@"epoch"] unsignedLongLongValue]);
+    if (matched) {
+        context.key = key; context.keyKnown = YES; context.resolved = YES;
+    }
     PXWMLog(context, matched ? @"restore_initial_geometry_prepared" : @"restore_initial_geometry_rejected",
             @{@"x":@(actual.origin.x),@"y":@(actual.origin.y),@"w":@(actual.size.width),@"h":@(actual.size.height),
               @"beforeW":@(native.frame.width),@"beforeH":@(native.frame.height),
@@ -250,71 +234,6 @@ static BOOL PXWMPrepareInitialLayout(PXWMContext *context) {
               @"windowHidden":@(card.window.hidden),@"surface":@(PXWMBool(bridge,@"hasHostedSurface")),
               @"nativeEntering":@(context->native.entering),@"revision":snapshot[@"revision"] ?: @0});
     if (matched) PXWMVerifyRestore(context, restored, key, [snapshot[@"epoch"] unsignedLongLongValue]);
-    return matched;
-}
-
-static void PXWMRememberInitialRestore(PXWMContext *context, PXWMRect geometry,
-                                       unsigned key, uint64_t epoch) {
-    if (!context || !PXWMValidRect(geometry)) return;
-    context.key = key;
-    context.keyKnown = YES;
-    context.resolved = YES;
-    context.initialRestoreGeometry = geometry;
-    context.initialRestoreKey = key;
-    context.initialRestoreEpoch = epoch;
-    context.initialRestoreDeadline = CACurrentMediaTime() + 10.0;
-    context.initialRestoreActive = YES;
-    PXWMLog(context, @"restore_initial_geometry_armed", @{@"key":@(key), @"epoch":@(epoch)});
-}
-
-static BOOL PXWMReapplyInitialGeometry(PXWMContext *context) {
-    if (!context || context.restoring) return NO;
-    id bridge = context.bridge;
-    BOOL currentTicket = bridge && objc_getAssociatedObject(bridge, PXWMOpenTicketKey) == context;
-    BOOL entering = currentTicket && context->native.entering;
-    PXWindowMemoryStore *store = PXWindowMemoryStore.shared;
-    NSDictionary *snapshot = store.snapshot;
-    BOOL active = PXWMBindingIsActive(context);
-    if (!PXWMMayReapplyInitialGeometry(active, currentTicket, entering,
-          context->native.initialCleanupSeen, context->native.cancelled,
-          context.initialRestoreActive, [snapshot[@"enabled"] boolValue],
-          [snapshot[@"epoch"] unsignedLongLongValue] == context.initialRestoreEpoch,
-          context.initialRestoreDeadline > 0 && CACurrentMediaTime() <= context.initialRestoreDeadline,
-          context.interacting, context.savePending)) return NO;
-    PXWMGeometry current;
-    unsigned key = 0;
-    BOOL readable = entering ? PXWMReadGeometry(context, YES, &current, &key) :
-                               PXWMNormalGeometry(context, &current, &key);
-    if (!readable) return NO;
-    if (key != context.initialRestoreKey) {
-        context.initialRestoreActive = NO;
-        PXWMLog(context, @"restore_initial_geometry_direction_released", @{ @"key": @(key) });
-        return NO;
-    }
-    PXWMRect expected = context.initialRestoreGeometry;
-    BOOL changed = fabs(current.frame.x - expected.x) >= 1 ||
-                   fabs(current.frame.y - expected.y) >= 1 ||
-                   fabs(current.frame.width - expected.width) >= 1 ||
-                   fabs(current.frame.height - expected.height) >= 1;
-    if (!changed) return NO;
-    UIView *card = context.card;
-    context.restoring = YES;
-    [UIView performWithoutAnimation:^{
-        card.frame = PXWMToRect(expected);
-        [card setNeedsLayout]; [card layoutIfNeeded];
-    }];
-    context.restoring = NO;
-    CGRect actual = card.frame;
-    BOOL matched = fabs(actual.origin.x - expected.x) < 1 &&
-                   fabs(actual.origin.y - expected.y) < 1 &&
-                   fabs(actual.size.width - expected.width) < 1 &&
-                   fabs(actual.size.height - expected.height) < 1;
-    PXWMLog(context, matched ? @"restore_initial_geometry_reapplied" :
-             @"restore_initial_geometry_reapply_failed",
-             @{ @"beforeW": @(current.frame.width), @"beforeH": @(current.frame.height),
-                @"afterW": @(actual.size.width), @"afterH": @(actual.size.height),
-                @"expectedW": @(expected.width), @"expectedH": @(expected.height),
-                @"key": @(key) });
     return matched;
 }
 
@@ -345,13 +264,13 @@ static void PXWMTryRestore(PXWMContext *context) {
     CGRect requested = PXWMToRect(restored);
     context.restoring = YES;
     [UIView performWithoutAnimation:^{
+        card.frame = requested;
+        [card setNeedsLayout]; [card layoutIfNeeded];
         [card.window.rootViewController.view setNeedsLayout];
         [card.window.rootViewController.view layoutIfNeeded];
         SEL layout = NSSelectorFromString(@"layoutHost");
         if (PXCloneInstanceMethodMatches(context.bridge, layout, @encode(void), @[]))
             PXCloneSendVoid(context.bridge, layout);
-        card.frame = requested;
-        [card setNeedsLayout]; [card layoutIfNeeded];
     }];
     context.restoring = NO;
     CGRect actual = card.frame;
@@ -363,9 +282,6 @@ static void PXWMTryRestore(PXWMContext *context) {
                @"beforeW":@(native.frame.width), @"beforeH":@(native.frame.height),
                @"windowHidden":@(card.window.hidden),
                @"revision":snapshot[@"revision"] ?: @0, @"surface":@(PXWMBool(context.bridge,@"hasHostedSurface")) });
-    if (matched)
-        PXWMRememberInitialRestore(context, restored, key,
-                                   [snapshot[@"epoch"] unsignedLongLongValue]);
     PXWMVerifyRestore(context, restored, key, [snapshot[@"epoch"] unsignedLongLongValue]);
 }
 
@@ -486,7 +402,6 @@ static void PXWMGestureAction(id panel, SEL command, UIGestureRecognizer *gestur
         PXWMContext *context = PXWMContextForGesture(gesture);
         if (context) {
             context.generation++; context.interacting = YES; context.resolved = YES; context.savePending = NO;
-            context.initialRestoreActive = NO;
             PXWMGesture *stamp = [PXWMGesture new];
             stamp.context = context; stamp.generation = context.generation;
             stamp.epoch = [PXWindowMemoryStore.shared.snapshot[@"epoch"] unsignedLongLongValue];
@@ -633,8 +548,7 @@ static void PXWMLayout(id self,SEL command) {
         // completion; otherwise the first visible frame can still be the default.
         if (context && context->native.entering)
             PXWMPrepareInitialLayout(context);
-        if (!PXWMReapplyInitialGeometry(context))
-            PXWMTryRestore(context);
+        PXWMTryRestore(context);
         if (context && !context.resolved) PXWMScheduleRestore(context);
     }
 }
@@ -655,7 +569,7 @@ static void PXWMControllerLayout(id self,SEL command) {
     UIWindow *window = [self isKindOfClass:UIViewController.class] ? [(UIViewController *)self view].window : nil;
     for (PXWMContext *context in PXWMContexts.allObjects) {
         if (!window || context.canvas.window != window) continue;
-        if (!PXWMReapplyInitialGeometry(context)) PXWMTryRestore(context);
+        PXWMTryRestore(context);
         if (!context.resolved) PXWMScheduleRestore(context);
     }
 }

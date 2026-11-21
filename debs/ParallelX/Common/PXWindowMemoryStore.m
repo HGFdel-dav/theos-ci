@@ -264,7 +264,7 @@ static BOOL PXWMValidState(id value) {
         NSMutableDictionary *safe = [NSMutableDictionary dictionary];
         for (NSString *key in values)
             if ([key isKindOfClass:NSString.class] && [values[key] isKindOfClass:NSNumber.class]) safe[key] = values[key];
-        [events addObject:@{ @"time": @(NSDate.date.timeIntervalSince1970), @"build": @"clone0.97",
+        [events addObject:@{ @"time": @(NSDate.date.timeIntervalSince1970), @"build": @"clone0.98",
                              @"pid": @(getpid()), @"event": name ?: @"unknown", @"state": safe }];
         while (events.count > 256) [events removeObjectAtIndex:0];
         [self writeDocument:events name:PXWMLogFile error:NULL];

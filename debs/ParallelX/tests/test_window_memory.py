@@ -39,13 +39,9 @@ class WindowMemoryPolicy(unittest.TestCase):
                      ('if (!*known) { *known = true; *gestureKey = currentKey; return true; }',
                       '{ *known = true; *gestureKey = currentKey; return true; }'),
                      ('return *gestureKey == currentKey;','return true;'),
-                     ('bool owns = activeBinding || (currentTicket && nativeEntering && cleanupSeen && !cancelled);\n    return owns && matchingCanvasAndBundle && loaded && enabled &&',
-                      'bool owns = activeBinding || (currentTicket && nativeEntering);\n    return owns && matchingCanvasAndBundle && loaded && enabled &&'),
+                     ('currentTicket && nativeEntering && cleanupSeen && !cancelled','currentTicket && nativeEntering'),
                      ('owns && matchingCanvasAndBundle && loaded && enabled &&','owns &&'),
-                     ('!resolved && !interacting && !savePending;','!resolved;'),
-                     ('return owns && initialRestoreActive && enabled && epochMatches && withinInitialWindow &&\n           !interacting && !savePending;', 'return owns;'),
-                     ('bool owns = activeBinding || (currentTicket && nativeEntering && cleanupSeen && !cancelled);\n    return owns && initialRestoreActive && enabled && epochMatches && withinInitialWindow &&',
-                      'bool owns = activeBinding || currentTicket;\n    return owns && initialRestoreActive && enabled && epochMatches && withinInitialWindow &&')]),
+                     ('!resolved && !interacting && !savePending;','!resolved;')]),
         ]
         for source, mutations in policies:
             for old,new in mutations:
@@ -135,12 +131,6 @@ class WindowMemorySourceGuards(unittest.TestCase):
                       (ROOT/'tests/window_memory_harness.c').read_text())
         self.assertIn('PXWMCaptureGestureOrientation(context, &startingKey)',source)
         self.assertIn('PXWMMayWaitForGestureGeometry',source)
-        self.assertIn('context.initialRestoreActive = NO;',source)
-        self.assertIn('context.initialRestoreGeometry = geometry;',source)
-        self.assertIn('PXWMRememberInitialRestore(context, restored, key,',source)
-        self.assertIn('restore_initial_geometry_reapplied',source)
-        self.assertIn('PXWMMayReapplyInitialGeometry(',source)
-        self.assertIn('if (!PXWMReapplyInitialGeometry(context))',source)
 
     def test_memory_binding_is_published_only_after_native_open_returns(self):
         source=(ROOT/'Common/PXWindowMemory.m').read_text()
@@ -175,6 +165,19 @@ class WindowMemorySourceGuards(unittest.TestCase):
         for forbidden in ('card.hidden =','card.alpha =','window.hidden =','removeAllAnimations',
                           'setAnimationDuration:0','setFrame:(CGRect)'):
             self.assertNotIn(forbidden,source)
+
+    def test_saved_frame_precedes_native_content_recalculation(self):
+        source=(ROOT/'Common/PXWindowMemory.m').read_text()
+        restore=source.split('static void PXWMTryRestore(',1)[1].split('static BOOL PXWMCaptureGestureOrientation(',1)[0]
+        perform=restore.split('[UIView performWithoutAnimation:^{',1)[1].split('}];',1)[0]
+        self.assertLess(perform.index('card.frame = requested;'),perform.index('PXCloneSendVoid(context.bridge, layout)'))
+        self.assertLess(restore.index('PXCloneSendVoid(context.bridge, layout)'),restore.index('CGRect actual = card.frame'))
+        initial=source.split('static BOOL PXWMPrepareInitialLayout(',1)[1].split('static void PXWMTryRestore(',1)[0]
+        self.assertNotIn('PXWMOriginalLayout(context.bridge',initial)
+        open_method=source.split('static void PXWMOpen(',1)[1].split('static void PXWMLayout(',1)[0]
+        completion=open_method.split('forwardCompletion = ^(BOOL ok) {',1)[1].split('nativeCompletion(ok);',1)[0]
+        self.assertNotIn('PXWMOriginalLayout(self, NSSelectorFromString(@"layoutHost"))',completion)
+        self.assertIn('0x63788', (ROOT/'evidence/native-layout/README.md').read_text())
 
     def test_initial_geometry_requires_native_source_size_not_default_canvas_axes(self):
         source=(ROOT/'Common/PXWindowMemory.m').read_text()
@@ -343,6 +346,6 @@ class WindowMemoryAppleStorage(unittest.TestCase):
         self.assertLessEqual(len(logs),256)
         self.assertGreater(len(logs),200)
         self.assertTrue(any(event['event']=='fixture' for event in logs))
-        self.assertTrue(all(event['build']=='clone0.97' for event in logs))
+        self.assertTrue(all(event['build']=='clone0.98' for event in logs))
 
 if __name__ == '__main__': unittest.main(verbosity=2)
