@@ -192,6 +192,8 @@ static void SLScheduleReminder(SLState *st) {
     [center addNotificationRequest:req withCompletionHandler:^(NSError *err) {
         SLLog(@"reminder in %.0fs err=%@", fire - now, err.localizedDescription ?: @"-");
     }];
+    st.remindAt = fire;
+    [st save];
 }
 
 
@@ -592,7 +594,9 @@ static void SLOnLaunch(void) {
         [SLDefaults() removeObjectForKey:@"sl.lastNotifTap"];
         [SLDefaults() synchronize];
     }
-    if (st.enabled && st.phase == SLPhaseArmed && (fromNotif || (st.nextFire1 > 0 && nowT >= st.nextFire1 - 30))) {
+    BOOL afterRemind = (st.remindAt > 0 && nowT >= st.remindAt);
+    if (st.enabled && st.phase == SLPhaseArmed &&
+        (fromNotif || afterRemind || (st.nextFire1 > 0 && nowT >= st.nextFire1 - 30))) {
         SLLog(@"renew triggered by user (now=%.0f fire=%.0f)", nowT, st.nextFire1);
         st.phase = SLPhaseResetting;
         st.attempt = 0;
@@ -703,12 +707,7 @@ static void SLTick(void) {
 
     BOOL due = (st.nextFire1 > 0 && now >= st.nextFire1) || (st.nextFire2 > 0 && now >= st.nextFire2);
     if (!due) return;
-    if (st.dueNotified) return;          // 只提醒一次，绝不自己弹出来
-    st.dueNotified = YES;
-    [st save];
-    SLLog(@"due reached, notify only (dl_in=%.0f)", st.deadline - now);
-    SLDiag(@"tick", @"due -> notify");
-    SLLog(@"due reached, waiting for app-side reminder (SB 发不出通知)");
+    SLLog(@"due reached dl_in=%.0f (等待用户点通知)", st.deadline - now);
 }
 
 

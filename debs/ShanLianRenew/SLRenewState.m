@@ -17,6 +17,7 @@
         if (d[@"notifyOnFail"]) s.notifyOnFail = [d[@"notifyOnFail"] boolValue];
         if (d[@"dueNotified"]) s.dueNotified = [d[@"dueNotified"] boolValue];
         s.testSecs = [d[@"testSecs"] doubleValue];
+        s.remindAt = [d[@"remindAt"] doubleValue];
         if (d[@"resetFallback"]) s.resetFallback = [d[@"resetFallback"] boolValue];
         if (d[@"maxAttempts"]) s.maxAttempts = [d[@"maxAttempts"] intValue];
         if (d[@"phase"]) s.phase = (SLPhase)[d[@"phase"] integerValue];
@@ -49,6 +50,7 @@
     d[@"notifyOnFail"] = @(self.notifyOnFail);
     d[@"dueNotified"] = @(self.dueNotified);
     d[@"testSecs"] = @(self.testSecs);
+    d[@"remindAt"] = @(self.remindAt);
     d[@"resetFallback"] = @(self.resetFallback);
     d[@"maxAttempts"] = @(self.maxAttempts);
     d[@"phase"] = @(self.phase);
