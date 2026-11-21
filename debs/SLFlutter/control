@@ -1,0 +1,9 @@
+Package: com.minis.slflutter
+Name: SL Flutter Probe
+Version: 0.1.0
+Architecture: iphoneos-arm64e
+Description: probe flutter load in extension
+Maintainer: Minis
+Author: Minis
+Section: Tweaks
+Depends: mobilesubstrate, firmware (>= 15.0)
