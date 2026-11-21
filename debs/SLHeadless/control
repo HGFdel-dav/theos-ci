@@ -1,0 +1,9 @@
+Package: com.minis.slheadless
+Name: SL Headless
+Version: 0.1.0
+Architecture: iphoneos-arm64
+Description: headless flutter runner
+Maintainer: Minis
+Author: Minis
+Section: Utilities
+Depends: firmware (>= 15.0)
