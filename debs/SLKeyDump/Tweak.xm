@@ -4,7 +4,7 @@
 #import <dlfcn.h>
 #import <mach-o/dyld.h>
 
-#define L @"/var/mobile/Library/Preferences/sl-dlopen.log"
+#define L @"/tmp/sl-dlopen.log"
 
 static void WL(NSString *fmt, ...) {
     va_list ap; va_start(ap, fmt);
@@ -20,7 +20,9 @@ __attribute__((constructor)) static void Init(void) {
     if (![[NSBundle mainBundle].bundleIdentifier isEqualToString:@"com.apple.springboard"]) return;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        WL(@"=== dlopen test ===");
+        WL(@"=== alive, about to dup ===");
+        NSDictionary *pl = [NSDictionary dictionaryWithContentsOfFile:@"/var/mobile/Library/Preferences/com.opa334.craneprefs.plist"];
+        WL(@"prefs read ok, keys=%lu", (unsigned long)pl.count);
         const char *path = "/var/containers/Bundle/Application/B50A8D68-54AA-47F7-9273-F3EB11B692B1/Runner.app/Runner";
         void *h = dlopen(path, RTLD_LAZY | RTLD_GLOBAL);
         WL(@"dlopen(%s) = %p, err=%s", path, h, dlerror() ?: "-");
