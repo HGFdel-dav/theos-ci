@@ -10,7 +10,7 @@ static unsigned checks;
 static NSFileManager *fm;
 static BOOL Directory(NSString *p){return [fm createDirectoryAtPath:p withIntermediateDirectories:YES attributes:nil error:NULL];}
 static BOOL File(NSString *p){return Directory(p.stringByDeletingLastPathComponent)&&[[@"fixture only: not code" dataUsingEncoding:NSUTF8StringEncoding] writeToFile:p atomically:YES];}
-static NSString *Marker(NSString *p){return [p stringByAppendingPathComponent:@"Library/MobileSubstrate/DynamicLibraries/LocalCleanStatusAnimations.dylib"];}
+static NSString *LCSFixtureAnimationMarker(NSString *p){return [p stringByAppendingPathComponent:@"Library/MobileSubstrate/DynamicLibraries/LocalCleanStatusAnimations.dylib"];}
 static NSString *Tool(NSString *p){return [p stringByAppendingPathComponent:@"usr/libexec/LocalCleanStatus/LocalCleanStatusSIMTool"];}
 int main(int argc,char **argv){@autoreleasepool {
     if(argc!=3)return 64;
@@ -28,7 +28,7 @@ int main(int argc,char **argv){@autoreleasepool {
             if(symlinkRoot){REQUIRE(Directory(program));REQUIRE([fm createSymbolicLinkAtPath:root withDestinationPath:program error:NULL]);}
             else REQUIRE(Directory(root));
             if(!unranked) {
-                REQUIRE(File(Marker(flat?root:program)));
+                REQUIRE(File(LCSFixtureAnimationMarker(flat?root:program)));
                 if(!flat&&!symlinkRoot)REQUIRE([fm createSymbolicLinkAtPath:[root stringByAppendingPathComponent:@".jbroot"] withDestinationPath:program error:NULL]);
             }
         }
