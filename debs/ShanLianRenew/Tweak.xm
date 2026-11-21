@@ -173,6 +173,7 @@ static void SLScheduleReminder(SLState *st) {
 
     double now = [NSDate date].timeIntervalSince1970;
     double fire = (st.nextFire1 > now + 5) ? st.nextFire1 : now + 30;
+    if (st.testSecs > 1) { fire = now + st.testSecs; SLLog(@"TEST reminder in %.0fs", st.testSecs); }
 
     NSDate *dl = [NSDate dateWithTimeIntervalSince1970:(st.deadline > 0 ? st.deadline : now)];
     NSDateFormatter *df = [NSDateFormatter new];
@@ -190,6 +191,9 @@ static void SLScheduleReminder(SLState *st) {
                                                                     content:c trigger:tr];
     [center addNotificationRequest:req withCompletionHandler:^(NSError *err) {
         SLLog(@"reminder in %.0fs err=%@", fire - now, err.localizedDescription ?: @"-");
+        [center getPendingNotificationRequestsWithCompletionHandler:^(NSArray *arr) {
+            SLLog(@"pending=%lu", (unsigned long)arr.count);
+        }];
     }];
 }
 
@@ -665,8 +669,7 @@ static void SLTick(void) {
     [st save];
     SLLog(@"due reached, notify only (dl_in=%.0f)", st.deadline - now);
     SLDiag(@"tick", @"due -> notify");
-    SLNotify(@"闪连快到期了",
-             [NSString stringWithFormat:@"打开闪连就会自动续期（还有 %.0f 分钟）", (st.deadline - now) / 60.0]);
+    SLLog(@"due reached, waiting for app-side reminder (SB 发不出通知)");
 }
 
 
