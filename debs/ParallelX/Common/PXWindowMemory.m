@@ -280,9 +280,14 @@ static void PXWMSettleSave(PXWMGesture *stamp, NSUInteger attempt) {
         PXWMLog(context, @"save_skipped_non_normal_or_reset", @{ @"gate":@(context.geometryGate), @"samples":@(stamp.samples) });
         return;
     }
-    if (!PXWMResolveGestureOrientation(YES, &stamp.orientationKnown, &stamp.orientation, key)) {
+    BOOL orientationKnown = stamp.orientationKnown;
+    unsigned orientation = stamp.orientation;
+    BOOL orientationResolved = PXWMResolveGestureOrientation(YES, &orientationKnown, &orientation, key);
+    stamp.orientationKnown = orientationKnown;
+    stamp.orientation = orientation;
+    if (!orientationResolved) {
         context.savePending = NO;
-        PXWMLog(context, @"save_skipped_direction_change", @{ @"known":@(stamp.orientationKnown), @"started":@(stamp.orientation), @"current":@(key) });
+        PXWMLog(context, @"save_skipped_direction_change", @{ @"known":@(orientationKnown), @"started":@(orientation), @"current":@(key) });
         return;
     }
     if (!PXWMMayStoreGesture(stamp.orientationKnown, stamp.orientation, key,
@@ -321,7 +326,6 @@ static void PXWMGestureAction(id panel, SEL command, UIGestureRecognizer *gestur
             PXWMGesture *stamp = [PXWMGesture new];
             stamp.context = context; stamp.generation = context.generation;
             stamp.epoch = [PXWindowMemoryStore.shared.snapshot[@"epoch"] unsignedLongLongValue];
-            PXWMGeometry startingGeometry;
             unsigned startingKey = 0;
             stamp.orientationKnown = PXWMCaptureGestureOrientation(context, &startingKey);
             stamp.orientation = startingKey;
@@ -413,10 +417,11 @@ static void PXWMOpen(id self,SEL command,id bundle,id canvas,id overlay,void (^c
     BOOL knownSize = NO;
     if (ticket.bundle.length) {
         NSDictionary *snapshot = PXWindowMemoryStore.shared.snapshot;
-        knownSize = PXWindowMemoryGeometry(snapshot, ticket.bundle, 0, NULL) ||
-                    PXWindowMemoryGeometry(snapshot, ticket.bundle, 1, NULL) ||
-                    PXWindowMemoryGeometry(snapshot, ticket.bundle, 2, NULL) ||
-                    PXWindowMemoryGeometry(snapshot, ticket.bundle, 3, NULL);
+        PXWMGeometry savedGeometry;
+        knownSize = PXWindowMemoryGeometry(snapshot, ticket.bundle, 0, &savedGeometry) ||
+                    PXWindowMemoryGeometry(snapshot, ticket.bundle, 1, &savedGeometry) ||
+                    PXWindowMemoryGeometry(snapshot, ticket.bundle, 2, &savedGeometry) ||
+                    PXWindowMemoryGeometry(snapshot, ticket.bundle, 3, &savedGeometry);
     }
     PXWMLog(ticket, knownSize ? @"native_window_bound_with_memory" : @"native_window_bound_default",
             @{@"memoryLoaded":@(PXWindowMemoryStore.shared.isLoaded)});
