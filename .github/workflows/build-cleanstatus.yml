@@ -1,8 +1,8 @@
-name: CleanStatus 0.3.2
+name: CleanStatus 0.3.3
 
 on:
   push:
-    branches: [cleanstatus-0.3.2-cellular-20261121]
+    branches: [cleanstatus-0.3.3-path-reuse-20261121]
     paths:
       - 'debs/CleanStatus/**'
       - '.github/workflows/build-cleanstatus.yml'
@@ -61,16 +61,16 @@ jobs:
           rm -rf .theos
           sh build.sh 2>&1 | tee out/checks/build.txt
           mkdir -p out/symbols
-          cp packages/com.local.cleanstatus_0.3.2_iphoneos-arm64e.deb out/
+          cp packages/com.local.cleanstatus_0.3.3_iphoneos-arm64e.deb out/
           python3 tools/verify_deb.py out/*.deb out/checks | tee out/checks/package.txt
           find .theos -name '*.dSYM' -type d -prune -exec cp -R '{}' out/symbols/ \;
           find .theos/obj -type f \( -name '*.dylib' -o -name 'LocalCleanStatusPrefs' -o -name 'LocalCleanStatusDataSwitch' -o -name 'LocalCleanStatusSystemActions' -o -name 'LocalCleanStatusSIMTool' \) -exec cp '{}' out/symbols/ \;
-          python3 tools/package_source.py out/CleanStatus-0.3.2-Source.zip
+          python3 tools/package_source.py out/CleanStatus-0.3.3-Source.zip
           python3 -c 'import hashlib,json,os; from pathlib import Path; root=Path("out"); meta={"commit":os.environ["GITHUB_SHA"],"run_id":os.environ["GITHUB_RUN_ID"],"sdk":"15.5","scheme":"roothide","runtime_verified":False}; (root/"BUILD-PROVENANCE.json").write_text(json.dumps(meta,indent=2)+"\n"); files=sorted(p for p in root.rglob("*") if p.is_file() and p.name!="SHA256SUMS"); (root/"SHA256SUMS").write_text("".join(hashlib.sha256(p.read_bytes()).hexdigest()+"  "+p.relative_to(root).as_posix()+"\n" for p in files))'
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: CleanStatus-0.3.2-roothide-${{ github.sha }}
+          name: CleanStatus-0.3.3-roothide-${{ github.sha }}
           path: ${{ env.PROJECT_DIR }}/out/
           if-no-files-found: error
           retention-days: 30

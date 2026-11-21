@@ -9,10 +9,17 @@ int main(void) {
     @autoreleasepool {
         NSFileManager *fm=NSFileManager.defaultManager;
         NSString *base=[NSTemporaryDirectory() stringByAppendingPathComponent:[NSUUID.UUID UUIDString]];
-        NSString *root=[base stringByAppendingPathComponent:@"root"];
+        NSString *root=[base stringByAppendingPathComponent:@".jbroot-CURRENT"];
+        NSString *program=[base stringByAppendingPathComponent:@"program"];
         [fm createDirectoryAtPath:root withIntermediateDirectories:YES attributes:nil error:NULL];
-        setenv("LCS_CELLULAR_FIXTURE_ROOT",root.fileSystemRepresentation,1);
+        NSString *marker=[program stringByAppendingPathComponent:@"Library/MobileSubstrate/DynamicLibraries/LocalCleanStatusAnimations.dylib"];
+        [fm createDirectoryAtPath:marker.stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:NULL];
+        REQUIRE([[@"fixture only" dataUsingEncoding:NSUTF8StringEncoding] writeToFile:marker atomically:YES]);
+        REQUIRE([fm createSymbolicLinkAtPath:[root stringByAppendingPathComponent:@".jbroot"] withDestinationPath:program error:NULL]);
+        setenv("LCS_CELLULAR_FIXTURE_GROUP",base.fileSystemRepresentation,1);
+        setenv("LCS_CELLULAR_FIXTURE_ROOTLESS",[base stringByAppendingPathComponent:@"unused-rootless"].fileSystemRepresentation,1);
         REQUIRE([LCSCellularRoot() isEqualToString:root]);
+        REQUIRE(![fm fileExistsAtPath:[root stringByAppendingPathComponent:@"Library/MobileSubstrate"]]);
         REQUIRE(![LCSCellularReadPreferences()[@"simManager"] boolValue]);
         REQUIRE(![LCSCellularReadPreferences()[@"dataSwitch"] boolValue]);
         REQUIRE([LCSCellularReadPreferences()[@"diagnostics"] boolValue]);
@@ -68,7 +75,7 @@ int main(void) {
         [fm removeItemAtPath:parent error:NULL];[fm moveItemAtPath:moved toPath:parent error:NULL];
         NSString *different=[base stringByAppendingPathComponent:@"new-root"];
         [fm createDirectoryAtPath:different withIntermediateDirectories:YES attributes:nil error:NULL];
-        setenv("LCS_CELLULAR_FIXTURE_ROOT",different.fileSystemRepresentation,1);
+        setenv("LCS_CELLULAR_FIXTURE_GROUP",different.fileSystemRepresentation,1);
         REQUIRE([LCSCellularRoot() isEqualToString:root]); // Cached once, not reranked on every write.
         [fm removeItemAtPath:root error:NULL];REQUIRE(!LCSCellularSaveSetting(@"simManager",YES,&error));
         [fm removeItemAtPath:base error:NULL];

@@ -1,4 +1,16 @@
-# CleanStatus 0.3.2 cellular features — local candidate
+# CleanStatus 0.3.3 — local reuse of the existing preference-path implementation
+
+## Current authorization and result (2026-11-21)
+- User instructed: use the way the existing source-available plugin already works. Scope is local correction only, NOT push/CI/device writes/install/respring/reboot.
+- Installed 0.3.2 was confirmed in the preceding read-only investigation; user installed it independently. Its new cellular resolver rejected valid split program/data roots. The old animation code already handles the data root's `.jbroot` backlink.
+- Cellular Settings now directly calls `local_cleanstatus_animationPreferencesPath()` and uses its separate sibling cellular filename. The unchanged old Animation/LocalCleanStatusAnimationPreferences.m is linked once into each additional image; Prefs already links it. No animation settings are read/written and its original build target is unchanged.
+- Removed duplicate cellular root discovery and selected-root injection in tests. Existing atomic write/readback, migration, notifications, containment/no-follow checks and diagnostics are unchanged. Tool lookup follows the same old selected root's direct/backlink relationship.
+- UI/card/header/glyphs, module implementation, hooks, subscription service, helper source/permissions and all old feature source files remain byte-identical to released 0.3.2. Changed scope: cellular path code, three build wires, candidate versions, tests and records.
+- SDK15.5/arm64e/RootHide remains fixed. LOCAL source only; no iOS machine code or 0.3.3 package generated.
+- New native fixtures execute the unchanged old root-discovery algorithm with only temporary filesystem prefixes substituted: split/flat roots, rejection/fallback/escape/stale cases, roundtrip and separate writer/reader processes. Native execution on this Linux host is an explicit SKIP, not a pass.
+- Current details: docs/PATH-REUSE-LOCAL-RESULT.md. Push/CI and install require separate approval. The following 0.3.2 record is historical.
+
+# Historical: CleanStatus 0.3.2 cellular local-candidate record
 
 ## User-confirmed behavior and authorization
 - User explicitly approved local implementation after confirming: the existing iOS cellular-data CC button must keep its short-tap ON/OFF behavior; long press opens the SIM-line manager to enable/disable each SIM. Add one separate Control Center module for choosing which SIM is the default cellular-data line.

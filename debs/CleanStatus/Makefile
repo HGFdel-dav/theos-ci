@@ -18,8 +18,8 @@ LocalCleanStatusAnimations_FRAMEWORKS = UIKit Foundation CoreFoundation QuartzCo
 LocalCleanStatusAnimations_LIBRARIES = substrate
 LocalCleanStatusAnimations_LDFLAGS = -Wl,-x -Wl,-dead_strip -Wl,-S
 # Separate code image only: UI still uses the stock cellular button plus one DataSwitch module.
-LocalCleanStatusCellular_FILES = Cellular/LCSCellularHooks.m Cellular/LCSCellularPanel.m Cellular/LCSCellularService.m Cellular/LCSCellularSettings.m
-LocalCleanStatusCellular_CFLAGS = -g -Os -fobjc-arc -I./Cellular -fvisibility=hidden -DCLEANSTATUS_STRIP_LOGS=1 -Wall -Wextra -Werror
+LocalCleanStatusCellular_FILES = Cellular/LCSCellularHooks.m Cellular/LCSCellularPanel.m Cellular/LCSCellularService.m Cellular/LCSCellularSettings.m Animation/LocalCleanStatusAnimationPreferences.m
+LocalCleanStatusCellular_CFLAGS = -g -Os -fobjc-arc -I./Cellular -I./Sources -fvisibility=hidden -DCLEANSTATUS_STRIP_LOGS=1 -Wall -Wextra -Werror
 LocalCleanStatusCellular_FRAMEWORKS = UIKit Foundation CoreFoundation CoreGraphics QuartzCore CoreTelephony
 LocalCleanStatusCellular_LIBRARIES = substrate
 LocalCleanStatusCellular_LDFLAGS = -Wl,-x -Wl,-dead_strip -Wl,-S

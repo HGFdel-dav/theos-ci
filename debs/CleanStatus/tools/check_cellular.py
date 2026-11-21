@@ -19,7 +19,7 @@ def main():
     old_items=protected['original_root_items'];need(root_items[:len(old_items)]==old_items and len(root_items)==len(old_items)+2,'all 0.3.1 preference rows unchanged; only two appended')
     for line in protected['original_target_lines']:need(line in text('Makefile').splitlines(),'original target input unchanged: '+line.split('=')[0])
     info=plistlib.loads((ROOT/'LocalCleanStatusPrefs/Resources/Info.plist').read_bytes())
-    for key,value in protected['original_preferences_info'].items():need(info.get(key)==('0.3.2' if key in ('CFBundleVersion','CFBundleShortVersionString') else value),'old bundle metadata except version preserved: '+key)
+    for key,value in protected['original_preferences_info'].items():need(info.get(key)==('0.3.3' if key in ('CFBundleVersion','CFBundleShortVersionString') else value),'old bundle metadata except version preserved: '+key)
     for n in ('Cellular/LCSCellularPanel.h','Cellular/LCSCellularPanel.m','Cellular/LCSCellularService.m','LocalCleanStatusDataSwitch/Makefile','LocalCleanStatusDataSwitch/LocalCleanStatusDataModule.m','LocalCleanStatusSIMTool/main.m','LocalCleanStatusSIMTool/Makefile','LocalCleanStatusSIMTool/entitlements.plist'):
         need((ROOT/n).is_file() and (ROOT/n).stat().st_size>50,'missing real implementation '+n)
     panel=text('Cellular/LCSCellularPanel.m');service=text('Cellular/LCSCellularService.m');hook=text('Cellular/LCSCellularHooks.m');settings=text('Cellular/LCSCellularSettings.m');module=text('LocalCleanStatusDataSwitch/LocalCleanStatusDataModule.m');helper=text('LocalCleanStatusSIMTool/main.m')
@@ -61,13 +61,14 @@ def main():
     need(plistlib.loads((ROOT/'LocalCleanStatusCellular.plist').read_bytes())=={'Filter':{'Bundles':['com.apple.springboard']}},'SpringBoard-only injection')
     with tempfile.TemporaryDirectory(prefix='cellular-policy-') as tmp:
         binary=str(Path(tmp)/'policy');subprocess.run(['cc','-std=c11','-O2','-Wall','-Wextra','-Werror','-I'+str(ROOT/'Cellular'),str(ROOT/'tests/cellular/policy_test.c'),'-lm','-o',binary],check=True);subprocess.run([binary],check=True)
-    for n in ('storage_native','service_native'):
-        if platform.system()!='Darwin':print('SKIP Apple Foundation '+n+': this is not an Apple runtime; no result claimed.')
-        else:
-            with tempfile.TemporaryDirectory(prefix='cellular-native-') as tmp:
-                binary=str(Path(tmp)/n)
-                sources=[str(ROOT/'tests/cellular'/f'{n}.m'),str(ROOT/'Cellular'/('LCSCellularSettings.m' if n=='storage_native' else 'LCSCellularService.m'))]
-                subprocess.run(['xcrun','clang','-fobjc-arc','-fblocks','-Wall','-Wextra','-Werror',('-DLCS_CELLULAR_STORAGE_TEST=1' if n=='storage_native' else '-DLCS_CELLULAR_SERVICE_TEST=1'),'-I'+str(ROOT/'Cellular'),*sources,'-framework','Foundation','-framework','CoreFoundation','-o',binary],check=True);subprocess.run([binary],check=True,timeout=45)
+    subprocess.run([sys.executable,str(ROOT/'tools/test_cellular_path_reuse.py')],check=True)
+    subprocess.run([sys.executable,str(ROOT/'tools/run_cellular_storage_native.py')],check=True)
+    if platform.system()!='Darwin':print('SKIP Apple Foundation service_native: this is not an Apple runtime; no result claimed.')
+    else:
+        with tempfile.TemporaryDirectory(prefix='cellular-native-') as tmp:
+            binary=str(Path(tmp)/'service_native')
+            sources=[str(ROOT/'tests/cellular/service_native.m'),str(ROOT/'Cellular/LCSCellularService.m')]
+            subprocess.run(['xcrun','clang','-fobjc-arc','-fblocks','-Wall','-Wextra','-Werror','-DLCS_CELLULAR_SERVICE_TEST=1','-I'+str(ROOT/'Cellular'),*sources,'-framework','Foundation','-framework','CoreFoundation','-o',binary],check=True);subprocess.run([binary],check=True,timeout=45)
     subprocess.run([sys.executable,str(ROOT/'tools/test_cellular_ui.py')],check=True)
     print(f'PASS cellular source/preservation checks: {count}; protected original files: {len(protected["files"])}. No UIKit runtime/radio verification.')
 if __name__=='__main__':main()

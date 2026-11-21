@@ -1,7 +1,7 @@
 #import "LCSCellularSettings.h"
 #import "LCSCellularRuntime.h"
 #import <CoreFoundation/CoreFoundation.h>
-#import <dlfcn.h>
+#import "../Sources/LocalCleanStatusAnimationPreferences.h"
 #include <stdatomic.h>
 #include <sys/stat.h>
 #include <sys/file.h>
@@ -11,7 +11,9 @@
 #include <errno.h>
 
 NSString * const LCSCellularPreferencesDidChange=@"com.local.cleanstatus.cellular-changed";
+#ifndef LCS_CELLULAR_STORAGE_TEST
 static NSString * const LCSGroup=@"/var/mobile/Containers/Shared/AppGroup";
+#endif
 static NSString * const LCSRelative=@"var/mobile/Library/Preferences/com.local.cleanstatus.cellular.plist";
 static atomic_uint LCSConfiguration=4; // Both features OFF; diagnostic recording ON.
 static dispatch_queue_t LCSConfigQueue;
@@ -19,6 +21,7 @@ static dispatch_queue_t LCSConfigQueue;
 static NSError *LCSError(NSInteger code,NSString *message) {
     return [NSError errorWithDomain:@"com.local.cleanstatus.cellular" code:code userInfo:@{NSLocalizedDescriptionKey:message}];
 }
+#ifndef LCS_CELLULAR_STORAGE_TEST
 static BOOL LCSHiddenRoot(NSString *root) {
     return root.isAbsolutePath&&[root.stringByDeletingLastPathComponent isEqualToString:LCSGroup]&&
         [root.lastPathComponent hasPrefix:@".jbroot-"]&&root.lastPathComponent.length>8;
@@ -26,44 +29,20 @@ static BOOL LCSHiddenRoot(NSString *root) {
 static BOOL LCSDirectory(NSString *path) {
     struct stat s;return lstat(path.fileSystemRepresentation,&s)==0&&S_ISDIR(s.st_mode);
 }
-static int LCSRootRank(NSString *root) {
-    NSFileManager *fm=NSFileManager.defaultManager;
-    for(NSString *rel in @[@"Library/MobileSubstrate/DynamicLibraries/LocalCleanStatusCellular.dylib",@"usr/lib/TweakInject/LocalCleanStatusCellular.dylib"])
-        if([fm fileExistsAtPath:[root stringByAppendingPathComponent:rel]])return 3;
-    if(LCSDirectory([root stringByAppendingPathComponent:@"Library/MobileSubstrate"]))return 2;
-    return LCSDirectory([root stringByAppendingPathComponent:@"usr/lib"])?1:0;
-}
-NSString *LCSCellularRoot(void) {
-    static NSString *selected;static dispatch_once_t once;
-    dispatch_once(&once,^{
-#ifdef LCS_CELLULAR_STORAGE_TEST
-        NSString *fixture=NSProcessInfo.processInfo.environment[@"LCS_CELLULAR_FIXTURE_ROOT"];
-        if(fixture.isAbsolutePath&&LCSDirectory(fixture)){selected=[fixture copy];return;}
 #endif
-        Dl_info image={0};
-        if(dladdr((const void *)&LCSCellularRoot,&image)&&image.dli_fname) {
-            NSString *file=[NSString stringWithUTF8String:image.dli_fname];
-            for(NSString *p=file.stringByDeletingLastPathComponent;p.length>1;p=p.stringByDeletingLastPathComponent)
-                if(LCSHiddenRoot(p)&&LCSDirectory(p)){selected=p;return;}
-        }
-        const char *(*mapper)(const char *)=(const char *(*)(const char *))dlsym(RTLD_DEFAULT,"jbroot");
-        const char *mapped=mapper?mapper("/"):NULL;
-        NSString *mappedRoot=mapped?[NSString stringWithUTF8String:mapped]:nil;
-        if(LCSHiddenRoot(mappedRoot)&&LCSDirectory(mappedRoot)&&LCSRootRank(mappedRoot)==3){selected=mappedRoot;return;}
-        int best=0;NSTimeInterval newest=-1;BOOL anyRoot=NO;
-        for(NSString *name in [NSFileManager.defaultManager contentsOfDirectoryAtPath:LCSGroup error:NULL]) {
-            NSString *candidate=[LCSGroup stringByAppendingPathComponent:name];
-            if(!LCSHiddenRoot(candidate)||!LCSDirectory(candidate))continue;
-            anyRoot=YES;int rank=LCSRootRank(candidate);
-            NSDate *time=[NSFileManager.defaultManager attributesOfItemAtPath:candidate error:NULL][NSFileModificationDate];
-            if(rank>best||(rank>0&&rank==best&&time.timeIntervalSince1970>newest)){selected=candidate;best=rank;newest=time.timeIntervalSince1970;}
-        }
-        if(!selected&&!anyRoot&&LCSDirectory(@"/var/jb/usr/lib"))selected=@"/var/jb";
-    });
-    return selected;
+// Reuse the existing animation store's path discovery, including its .jbroot
+// backlink handling for split program/data roots. Do not maintain another resolver.
+// Only the sibling cellular filename differs; no animation values are read/written.
+NSString *LCSCellularRoot(void) {
+    NSString *path=local_cleanstatus_animationPreferencesPath();
+    NSString *suffix=@"/var/mobile/Library/Preferences/com.local.cleanstatus.animations.plist";
+    if(!path.length||![path hasSuffix:suffix]||path.length<=suffix.length)return nil;
+    return [path substringToIndex:path.length-suffix.length];
 }
 NSString *LCSCellularPreferencesPath(void) {
-    NSString *root=LCSCellularRoot();return root.length?[root stringByAppendingPathComponent:LCSRelative]:nil;
+    NSString *path=local_cleanstatus_animationPreferencesPath();
+    if(!path.length||!LCSCellularRoot().length)return nil;
+    return [path.stringByDeletingLastPathComponent stringByAppendingPathComponent:LCSRelative.lastPathComponent];
 }
 NSDictionary *LCSCellularDefaults(void) {return @{@"schema":@1,@"simManager":@NO,@"dataSwitch":@NO,@"diagnostics":@YES};}
 static NSDictionary *LCSSanitize(id input) {
@@ -234,8 +213,15 @@ BOOL LCSCellularMayMutate(LCSCellularKind kind) {
 }
 NSString *LCSCellularSIMToolPath(void) {
     NSString *root=LCSCellularRoot();if(!root.length)return nil;
-    NSString *path=[root stringByAppendingPathComponent:@"usr/libexec/LocalCleanStatus/LocalCleanStatusSIMTool"];
-    struct stat s;return lstat(path.fileSystemRepresentation,&s)==0&&S_ISREG(s.st_mode)&&s.st_nlink==1&&access(path.fileSystemRepresentation,X_OK)==0?path:nil;
+    // Same direct-or-.jbroot relationship used by the reused animation resolver.
+    // A split data root has no usr/; its backlink reaches this installation's code.
+    for(NSString *prefix in @[@"",@".jbroot"]) {
+        NSString *base=prefix.length?[root stringByAppendingPathComponent:prefix]:root;
+        NSString *path=[base stringByAppendingPathComponent:@"usr/libexec/LocalCleanStatus/LocalCleanStatusSIMTool"];
+        struct stat s;
+        if(lstat(path.fileSystemRepresentation,&s)==0&&S_ISREG(s.st_mode)&&s.st_nlink==1&&access(path.fileSystemRepresentation,X_OK)==0)return path;
+    }
+    return nil;
 }
 void LCSCellularLog(LCSCellularKind kind,NSString *event,NSString *reason,NSInteger slot) {
     if(!LCSCellularKindValid(kind)||!(atomic_load_explicit(&LCSConfiguration,memory_order_acquire)&4U))return;
