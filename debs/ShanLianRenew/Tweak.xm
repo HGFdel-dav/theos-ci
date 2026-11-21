@@ -201,47 +201,9 @@ static void SLScheduleReminder(SLState *st) {
     [center addNotificationRequest:req withCompletionHandler:^(NSError *err) {
         SLLog(@"reminder in %.0fs err=%@", fire - now, err.localizedDescription ?: @"-");
     }];
-    st.remindAt = fire;
-    [st save];
 }
 
 static void (*g_origMakeKeyAndVisible_)(id, SEL) = NULL;
-
-static NSUserDefaults *SLDefaults(void);
-
-// 点通知的回调：记下"这次是点通知进来的"，App 启动时据此立刻续期
-@interface SLNotifHandler : NSObject <UNUserNotificationCenterDelegate>
-+ (instancetype)shared;
-@end
-
-@implementation SLNotifHandler
-+ (instancetype)shared {
-    static SLNotifHandler *g = nil;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{ g = [SLNotifHandler new]; });
-    return g;
-}
-- (void)userNotificationCenter:(UNUserNotificationCenter *)center
- didReceiveNotificationResponse:(UNNotificationResponse *)response
-          withCompletionHandler:(void (^)(void))completion {
-    @try {
-        NSDictionary *u = response.notification.request.content.userInfo;
-        if ([u[@"slrenew"] boolValue]) {
-            SLLog(@"notif tapped -> mark renew");
-            [SLDefaults() setBool:YES forKey:@"sl.lastNotifTap"];
-            [SLDefaults() synchronize];
-            SLState *st = [SLState load];
-            st.phase = SLPhaseResetting;
-            st.attempt = 0;
-            [st save];
-            SLLog(@"notif tap -> phase resetting");
-        }
-    } @catch (NSException *e) {
-        SLLog(@"notif tap exception %@", e.reason ?: @"-");
-    }
-    if (completion) completion();
-}
-@end
 
 static NSUUID *(*g_origIdfv)(id, SEL) = NULL;
 static NSUUID *SLHookIdfv(id self, SEL _cmd) {
@@ -464,7 +426,6 @@ static void SLFill(SLState *st, NSString *token) {
                 SLScheduleReminder(st);
                 SLLog(@"renew ok -> %.0f", ndv);
                 SLNotify(@"闪连已续上", [NSString stringWithFormat:@"到期 %@", data[@"deadline"] ?: @""]);
-                SLGoBackground();
             } else {
                 g_filling = NO;
                 SLFailOrRetry(st, @"deadline not extended");
@@ -493,7 +454,6 @@ static void SLFailOrRetry(SLState *st, NSString *reason) {
     [st save];
     SLLog(@"rolled back, phase=failed");
     SLNotify(@"闪连没续上", [NSString stringWithFormat:@"已退回旧号，需要你看一眼（%@）", reason ?: @"未知"]);
-    SLGoBackground();
 }
 
 #pragma mark - 流程（App 端）
@@ -636,6 +596,20 @@ static void SLOnLaunch(void) {
         st.phase = SLPhaseIdle;
         [st save];
     }
+    // 到期提醒被点开（或用户自己打开）：时间已到就立刻续期
+    double nowT = [NSDate date].timeIntervalSince1970;
+    if (st.enabled && st.phase == SLPhaseArmed && st.nextFire1 > 0 && nowT >= st.nextFire1 - 30) {
+        SLLog(@"renew triggered by user (now=%.0f fire=%.0f)", nowT, st.nextFire1);
+        st.phase = SLPhaseResetting;
+        st.attempt = 0;
+        [st save];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            SLState *s2 = [SLState load];
+            if (s2.phase == SLPhaseResetting) SLPerformReset(s2);
+        });
+        return;
+    }
     [SLHttp warmup];
     SLRefreshDeadline();
 }
@@ -730,7 +704,17 @@ static void SLTick(void) {
         SLLog(@"fire locked=%d late=%d dl_in=%.0f (observe: skip)", 0, 0, st.deadline - now);
         notify_post(kSLFireName);
     }
-    return;
+    if (st.phase != SLPhaseArmed) return;
+
+    BOOL due = (st.nextFire1 > 0 && now >= st.nextFire1) || (st.nextFire2 > 0 && now >= st.nextFire2);
+    if (!due) return;
+    if (st.dueNotified) return;          // 只提醒一次，绝不自己弹出来
+    st.dueNotified = YES;
+    [st save];
+    SLLog(@"due reached, notify only (dl_in=%.0f)", st.deadline - now);
+    SLDiag(@"tick", @"due -> notify");
+    SLNotify(@"闪连快到期了",
+             [NSString stringWithFormat:@"打开闪连就会自动续期（还有 %.0f 分钟）", (st.deadline - now) / 60.0]);
 }
 
 
@@ -778,11 +762,6 @@ static void SLInitBody(void) {
     }
 
 
-    if (isApp) {
-        Class winCls = NSClassFromString(@"UIWindow");
-        if (winCls) MSHookMessageEx(winCls, @selector(makeKeyAndVisible),
-                                   (IMP)SLHookMakeKeyAndVisible, (IMP *)&g_origMakeKeyAndVisible);
-    }
 
     Class ud = NSClassFromString(@"UIDevice");
     if (ud) MSHookMessageEx(ud, @selector(identifierForVendor), (IMP)SLHookIdfv, (IMP *)&g_origIdfv);
@@ -815,12 +794,17 @@ static void SLInitBody(void) {
     SLState *st = [SLState load];
     BOOL fresh = ![SL_VER isEqualToString:(st.ver ?: @"")];
     if (fresh) {
+        BOOL busy = (st.phase == SLPhaseResetting || st.phase == SLPhaseNeedFill);
         st.ver = SL_VER;
-        st.phase = SLPhaseIdle;
-        st.attempt = 0;
-        st.lastError = @"";
+        if (!busy) {
+            st.phase = SLPhaseIdle;
+            st.attempt = 0;
+            st.lastError = @"";
+        }
         [st save];
-        SLLog(@"fresh %@ state=%@ logdir=%@", SL_VER, SLStatePath(), SLLogDir());
+        SLLog(@"fresh %@ state=%@ busy=%d logdir=%@", SL_VER, SLStatePath(), busy, SLLogDir());
+        SLOnLaunch();
+        return;
     }
 
     SLOnLaunch();
