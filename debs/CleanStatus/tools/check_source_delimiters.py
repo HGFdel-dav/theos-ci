@@ -2,7 +2,7 @@
 """Lexical delimiter check, not an Objective-C compiler."""
 from pathlib import Path
 root=Path(__file__).resolve().parents[1]
-files=[p for folder in ('Animation','Sources','Headers','Hooks','LocalCleanStatusPrefs','Shared','LocalCleanStatusSystemActions') for p in (root/folder).rglob('*') if p.suffix in ('.h','.m','.xm','.c')]
+files=[p for folder in ('Animation','Sources','Headers','Hooks','LocalCleanStatusPrefs','Shared','LocalCleanStatusSystemActions','Cellular','LocalCleanStatusDataSwitch','LocalCleanStatusSIMTool','tests/cellular') for p in (root/folder).rglob('*') if p.suffix in ('.h','.m','.xm','.c')]
 for path in files:
     s=path.read_text(); stack=[]; i=0; line=1
     while i<len(s):

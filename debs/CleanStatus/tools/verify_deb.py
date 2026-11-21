@@ -8,7 +8,8 @@ def u32(b,p,end='<'): return struct.unpack_from(end+'I',b,p)[0]
 def require(ok,why):
     if not ok: raise ValueError(why)
 def version(value): return '.'.join(str((value>>s)&255) for s in (16,8,0))
-def macho(path):
+HELPER_ENTITLEMENTS={'platform-application':True,'com.apple.CommCenter.fine-grained':['cellular-plan','spi','preferences-write']}
+def macho(path,expected_entitlements=None):
     b=path.read_bytes()
     require(b[:4]==b'\xcf\xfa\xed\xfe','must be thin Mach-O64')
     require(u32(b,4)==0x100000c,'CPU arm64')
@@ -45,7 +46,7 @@ def macho(path):
         require(cl>=8 and at+cl<=length,'slot body')
         if slot==5:
             require(cm==0xfade7171,'entitlement slot magic')
-            ent=plistlib.loads(blob[at+8:at+cl]); require(not ent,'unexpected entitlements')
+            ent=plistlib.loads(blob[at+8:at+cl]); require(ent==(expected_entitlements or {}),'unexpected entitlements')
             entitlements.append(ent)
         if slot==7: raise ValueError('unexpected DER entitlements; inspect before release')
         if slot!=0 and not 0x1000<=slot<0x2000: continue
@@ -73,6 +74,7 @@ def macho(path):
             if matching is not None: require(want==hasher(matching).digest()[:hs],'special slot hash')
             else: require(want==bytes(hs),'missing hashed special slot')
         directories.append({'hash_type':ht,'pages':ncode})
+    if expected_entitlements: require(entitlements==[expected_entitlements],'required helper entitlements missing/duplicated')
     require(any(d['hash_type'] in (2,3) for d in directories),'SHA256 directory required')
     return dict(file=path.name,architecture='arm64e',subtype=hex(subtype),sdk=version(sdk),
                 minimum_ios=version(minimum),directories=directories,entitlements=entitlements,dependencies=deps)
@@ -83,7 +85,7 @@ def inspect(deb,out):
     for line in raw.splitlines():
         if line and not line.startswith(' ') and ':' in line:
             key,val=line.split(':',1);fields[key]=val.strip()
-    for key,want in {'Package':'com.local.cleanstatus','Version':'0.3.1','Architecture':'iphoneos-arm64e'}.items():
+    for key,want in {'Package':'com.local.cleanstatus','Version':'0.3.2','Architecture':'iphoneos-arm64e'}.items():
         require(fields.get(key)==want,key+' mismatch')
     report={'deb':deb.name,'sha256':hashlib.sha256(deb.read_bytes()).hexdigest(),'fields':fields}
     with tempfile.TemporaryDirectory(prefix='cleanstatus-deb-') as temp:
@@ -92,7 +94,8 @@ def inspect(deb,out):
         subprocess.run(['dpkg-deb','-e',str(deb),str(control)],check=True)
         require(not any(p.name in ('preinst','postinst','prerm','postrm','config','triggers') for p in control.iterdir()),'unexpected maintainer actions')
         files=sorted(p.relative_to(payload).as_posix() for p in payload.rglob('*') if p.is_file())
-        require(files and all(x.startswith('Library/') for x in files),'RootHide payload paths')
+        helper_path='usr/libexec/LocalCleanStatus/LocalCleanStatusSIMTool'
+        require(files and all(x.startswith('Library/') or x==helper_path for x in files),'RootHide payload paths plus exactly one identity-checked helper')
         require(not any('/var/' in '/'+x or any(t in Path(x).parts for t in ('.git','.theos','packages','Sources','Headers','tools','tests')) for x in files),'unwanted payload')
         require(not any(p.is_symlink() for p in payload.rglob('*')),'unexpected payload symlinks')
         dyn=payload/'Library/MobileSubstrate/DynamicLibraries'
@@ -101,7 +104,7 @@ def inspect(deb,out):
         pref=payload/'Library/PreferenceBundles/LocalCleanStatusPrefs.bundle'
         info=plistlib.loads((pref/'Info.plist').read_bytes())
         require(info['CFBundleExecutable']=='LocalCleanStatusPrefs' and info['NSPrincipalClass']=='LocalCleanStatusRootListController','panel linkage')
-        require(info['CFBundleVersion']==info['CFBundleShortVersionString']=='0.3.1','panel version')
+        require(info['CFBundleVersion']==info['CFBundleShortVersionString']=='0.3.2','panel version')
         require((pref/'LocalCleanStatusRoot.plist').is_file(),'missing specifiers')
         for name in ('LocalCleanStatusAnimations.plist','LocalCleanStatusAnimationsAdvanced.plist'):
             require(isinstance(plistlib.loads((pref/name).read_bytes()).get('items'),list),'missing animation panel '+name)
@@ -121,8 +124,20 @@ def inspect(deb,out):
         for name,size in (('SettingsIcon.png',29),('SettingsIcon@2x.png',58),('SettingsIcon@3x.png',87)):
             raw=(module/name).read_bytes()
             require(raw.startswith(bytes.fromhex('89504e470d0a1a0a')) and int.from_bytes(raw[16:20],'big')==size and int.from_bytes(raw[20:24],'big')==size,'bad module settings icon '+name)
-        binaries=[dyn/'LocalCleanStatus.dylib',dyn/'LocalCleanStatusAnimations.dylib',pref/'LocalCleanStatusPrefs',module/'LocalCleanStatusSystemActions']
-        report['binaries']=[macho(p) for p in binaries]
+        data=payload/'Library/ControlCenter/Bundles/LocalCleanStatusDataSwitch.bundle'
+        data_info=plistlib.loads((data/'Info.plist').read_bytes())
+        require(data_info.get('NSPrincipalClass')=='LCSDataSwitchModule' and data_info.get('CFBundleExecutable')=='LocalCleanStatusDataSwitch','data module linkage')
+        require(data_info.get('CFBundleVersion')==data_info.get('CFBundleShortVersionString')=='0.3.2','data module version')
+        require(data_info.get('CCSModuleSize')=={'Portrait':{'Width':1,'Height':1},'Landscape':{'Width':1,'Height':1}},'data module 1x1')
+        require(plistlib.loads((dyn/'LocalCleanStatusCellular.plist').read_bytes())=={'Filter':{'Bundles':['com.apple.springboard']}},'cellular injection must be SpringBoard only')
+        require((pref/'LocalCleanStatusCellular.plist').is_file(),'cellular panel shipped')
+        for directory,stem,base in ((data,'SettingsIcon',29),(data,'DataSwitch',50),(pref,'CellularIcon',29)):
+            for scale,suffix in ((1,''),(2,'@2x'),(3,'@3x')):
+                raw=(directory/(stem+suffix+'.png')).read_bytes()
+                require(raw.startswith(bytes.fromhex('89504e470d0a1a0a')) and struct.unpack('>II',raw[16:24])==(base*scale,base*scale),'cellular icon '+stem+suffix)
+        require(sorted(p.name for p in (payload/'Library/ControlCenter/Bundles').iterdir())==['LocalCleanStatusDataSwitch.bundle','LocalCleanStatusSystemActions.bundle'],'exactly one added CC module')
+        binaries=[dyn/'LocalCleanStatus.dylib',dyn/'LocalCleanStatusAnimations.dylib',pref/'LocalCleanStatusPrefs',module/'LocalCleanStatusSystemActions',dyn/'LocalCleanStatusCellular.dylib',data/'LocalCleanStatusDataSwitch',payload/helper_path]
+        report['binaries']=[macho(p,HELPER_ENTITLEMENTS if p==payload/helper_path else None) for p in binaries]
         for p in binaries:
             require(os.access(p,os.X_OK),'binary executable permission')
         report['files']=files

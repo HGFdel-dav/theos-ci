@@ -1,9 +1,9 @@
 include ../LocalCleanStatusBuild.mk
 include $(THEOS)/makefiles/common.mk
 BUNDLE_NAME = LocalCleanStatusPrefs
-LocalCleanStatusPrefs_FILES = $(wildcard *.m) ../Sources/LocalCleanStatusPaths.m ../Animation/LocalCleanStatusAnimationPreferences.m
+LocalCleanStatusPrefs_FILES = $(wildcard *.m) ../Sources/LocalCleanStatusPaths.m ../Animation/LocalCleanStatusAnimationPreferences.m ../Cellular/LCSCellularSettings.m
 LocalCleanStatusPrefs_CFLAGS = -g -Os -fobjc-arc -I../Sources -fvisibility=hidden -DCLEANSTATUS_STRIP_LOGS=1 -Wall -Wextra
-LocalCleanStatusPrefs_RESOURCE_FILES = Resources/icon.png Resources/icon@2x.png Resources/icon@3x.png
+LocalCleanStatusPrefs_RESOURCE_FILES = Resources/icon.png Resources/icon@2x.png Resources/icon@3x.png Resources/CellularIcon.png Resources/CellularIcon@2x.png Resources/CellularIcon@3x.png Resources/LocalCleanStatusCellular.plist
 LocalCleanStatusPrefs_FRAMEWORKS = UIKit Foundation CoreFoundation
 LocalCleanStatusPrefs_PRIVATE_FRAMEWORKS = Preferences
 LocalCleanStatusPrefs_INSTALL_PATH = /Library/PreferenceBundles

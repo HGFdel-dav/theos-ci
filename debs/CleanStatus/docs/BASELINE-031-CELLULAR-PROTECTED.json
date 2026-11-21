@@ -1,0 +1,328 @@
+{
+  "baseline_commit": "a1bf667d09fbdc48bf09beee04ef0c88800848c9",
+  "source_zip_sha256": "2982f3ba0458da1a920da3cbe85d6540656398683f6b4a7f187c4cf9922606bb",
+  "allowed_changes": [
+    "Makefile",
+    "control",
+    "STATUS.md",
+    "LocalCleanStatusPrefs/Makefile",
+    "LocalCleanStatusPrefs/Resources/Info.plist",
+    "LocalCleanStatusPrefs/Resources/LocalCleanStatusRoot.plist",
+    "tools/check.py",
+    "tools/check_source_delimiters.py",
+    "tools/verify_deb.py"
+  ],
+  "files": {
+    "Animation/COMPATIBILITY.md": "e45babb192fd96724b9a66533249990d361a2587ba2386729284b8f0e8dd9a2d",
+    "Animation/LCSAAnimationMigration.h": "840d4c69a8fd2f55f0758f15818fdf53e6cbd6167ae3b21d9456804316391b11",
+    "Animation/LCSAAnimationSupport.h": "ae17cbbf8232e4010e7add4e0ca96bad4c251ab3c352962e6ee68896966cd24d",
+    "Animation/LCSAGenieEngine.h": "e0568524de2596cd0f56ddb287606d6966f1fed724ae3c4c7fd71988a3c2ce13",
+    "Animation/LCSANativeMesh.h": "a1a44a3d8c6a91fe9082ffe096e996d32ba785e391129c8a80c64bfe76f26916",
+    "Animation/LCSANativeProfiles.h": "e8419b5b54a79257998fd191b98bb4c03de33f26b014f0ddc1814ebc8e137f9f",
+    "Animation/LCSASpringMath.h": "4ece3102e391a34c8623482bc8ec9cc9d527c25f7a3607506f1058a74d359faa",
+    "Animation/LCSATypeEncoding.h": "43322410ccbf5f6bf64e4f95eb6444f5358adbc8c0647c2d5dd5be232139b781",
+    "Animation/LocalCleanStatusAnimationPreferences.m": "53d1a89b98be5853fe22777af9742801009a4b768a10269e825f1b87ff5bd2c9",
+    "Animation/LocalCleanStatusAnimations.xm": "2902dd3691d69c3dc1398b7977f898e5b0a7c19eb440585e7e5c9fef58815d07",
+    "Animation/UPSTREAM-VERSION.txt": "0f034fc504de0c7995fc5daff469b2b234b0caeb68362cbb1824cd37fc89755a",
+    "Animation/portable_validation.c": "18c51525e2880ebc077c2835cf2ab5dae1866618530ddbc784b8b6998b2f34d1",
+    "Headers/LocalCleanStatusPrivate.h": "f3a4737a4bf57f011c5aa94639241fb38a894e7cce5a3424d09fbaf83582ba93",
+    "Headers/LocalCleanStatusRuntime.h": "7dd253654add6370cee71f083fa5392a5fcd5e50ff6cf13eac698b7281a3377c",
+    "Hooks/LocalCleanStatusMain.xm": "0645467ccaa65622ef4b7ef1af7035fa7239e76f3d67260a0eb3218af9d39022",
+    "LocalCleanStatus.plist": "062f76c0c653258859281d39297f774d2d2fcdb6e11f11bfbd031de61344cb44",
+    "LocalCleanStatusAnimations.plist": "5607e236ec11e8703fd426a89232ebc41a27fe806356ed4930b15e12595f528b",
+    "LocalCleanStatusBuild.mk": "7f7deec3e6c71edf5e969147efc66c7cfc37b106b61b955f4e00515389bfeb9e",
+    "LocalCleanStatusPrefs/LocalCleanStatusAnimationsController.h": "307d587bc2a3a291746aef6485b06e049fb1061c9d54ff632c67b357941c34c3",
+    "LocalCleanStatusPrefs/LocalCleanStatusAnimationsController.m": "b811cac59989b498ab029e8e43676a219c2d77e5e447cb998f1fca1c5b7a8ff9",
+    "LocalCleanStatusPrefs/LocalCleanStatusRootListController.h": "53a071f6051be3d2c1e3ebcdc66aa8614cf7630a8b870de44465fd49470758af",
+    "LocalCleanStatusPrefs/LocalCleanStatusRootListController.m": "cbe9de6691a4d59d8490703a4ae8ecd898e924f741808c024cb297f5fd7c2428",
+    "LocalCleanStatusPrefs/Resources/LocalCleanStatusAnimations.plist": "36f5ca6c77b43f870e1ede2cdff4cb7e7160f95f330f7aff0723060982b7ffe9",
+    "LocalCleanStatusPrefs/Resources/LocalCleanStatusAnimationsAdvanced.plist": "8c70efce3419e2927f8eece66bfa6c7c1583ad3b38896337eff5b462c1ba665f",
+    "LocalCleanStatusPrefs/Resources/icon.png": "8351fec65b0c55f06410ed4813ded84e2a3d6971ed4ac4d51a8dfc813330f201",
+    "LocalCleanStatusPrefs/Resources/icon@2x.png": "b2d96c2c921225c3be3f826a859ef12a884dd4c31965ad59c31d6ce532f9a9b4",
+    "LocalCleanStatusPrefs/Resources/icon@3x.png": "b22960a0e4f59fc395ebd25b37027e41c5cfe0eacf1f337eb1965e4f9a218458",
+    "LocalCleanStatusSystemActions/Headers/ControlCenterUIKit/CCUIButtonModuleViewController.h": "bc596211a777e7c5c9b7fdee36ce24dc7e5ebecbf83548a8302c25c7a5251b40",
+    "LocalCleanStatusSystemActions/Headers/ControlCenterUIKit/CCUIContentModule.h": "5364386ae21abbd9bdb5c7a3199e6a6cd1c6fc86c34125d4c4c2a01da3d58d59",
+    "LocalCleanStatusSystemActions/Headers/ControlCenterUIKit/CCUIContentModuleContext.h": "c9d018f0b93520e961883af58c855aba67354924c0620f08e18a25fb9c6056fc",
+    "LocalCleanStatusSystemActions/Headers/ControlCenterUIKit/CCUIMenuModuleViewController.h": "875f43d31571e94d10c583d8f61c81a9d5bc5977b56e10272b4bb2babdf253df",
+    "LocalCleanStatusSystemActions/LocalCleanStatusSystemActions.m": "d72d6426598850bb071effff686f4c098e42dd44364e1dfb5774e2e5b3213bd0",
+    "LocalCleanStatusSystemActions/Makefile": "cb45605d88963995d9df60aaeafd60bde8edb4684284f31fc533a581da8e6671",
+    "LocalCleanStatusSystemActions/Resources/Info.plist": "2c38a5b151cea75a4fd60f9867bfa3d0676afa13bf580a0213d6284ef3208685",
+    "LocalCleanStatusSystemActions/Resources/SettingsIcon.png": "fe726c7896950f9bd726d708756a64f937a9c916d4f4d535360eaf0d747f19ae",
+    "LocalCleanStatusSystemActions/Resources/SettingsIcon@2x.png": "353c0b6f120c0a8f2d2afb1e297d0e256f8d1da2cc10727b333f3d194c83f19f",
+    "LocalCleanStatusSystemActions/Resources/SettingsIcon@3x.png": "fdf6dc1efffb8a5e9dac8bf074c97e5bdb67309291330525623330ea248076d3",
+    "STATUS-CC-20261106.md": "8e404d17b4986c55a811b2eeffb04eb1808a4cdd28f2efdb7d66341a6638102d",
+    "Shared/LocalCleanStatusCCDiagnostics.h": "6196137463b94b8b21d6ce22c9d387ebf2110a2f0d2ebbced047fd8977c75e82",
+    "Shared/LocalCleanStatusCCDiagnostics.m": "3cf92d6dbe54654b134d68dab49bf885bac99ab01cf4a13a8d3678dc07c48911",
+    "Shared/LocalCleanStatusCCEnvironment.h": "bcfb0577ab1461c8fa6e61b71f5c300d99f95b4dea382f0c9d5213192fe9c41b",
+    "Shared/LocalCleanStatusCCEnvironment.m": "8ac55265e9c2046ccf845f4521eb2dacddaf79b906fdc8ab89a36cab861bb793",
+    "Shared/LocalCleanStatusCCPolicy.h": "149bcf59c602be38d9f6a014b7cfa765d2fa4541b984deaeac9def4e7d0c8c5a",
+    "Shared/LocalCleanStatusCCRuntime.h": "12e94b69e60995ff31012d50729396f7581b80783c4ccd31ad878ba850b302f8",
+    "Sources/LocalCleanStatusAnimationCapabilities.h": "eba0eb58b381436fda75e2e34d3fc3e31b9320b4835f0a5e38c27cf05e95f298",
+    "Sources/LocalCleanStatusAnimationPolicy.h": "26210cd2cdd1b5c3c7c309e07cbfb95f703575fedd3f80fab5b3c793204dd0ad",
+    "Sources/LocalCleanStatusAnimationPreferences.h": "00618b7ebcee6b903a97d35da03170b1674d085c900b1a96cedf116e777354f5",
+    "Sources/LocalCleanStatusBattery.m": "b7b20c271905e0ce313bf9fdac47fad295dbe01c4de95a91ec02119f4478706b",
+    "Sources/LocalCleanStatusCCBackend.h": "1c22cde784b1e262e282d65b0f6a5adcf6be53abdb050c01e47c89a4f0c5944f",
+    "Sources/LocalCleanStatusCCBackend.m": "a765b16d1912a2e0ebb58b05e56d9fc1d4129ff6ece14313aedbe5f597b88414",
+    "Sources/LocalCleanStatusCCListViewController.h": "10f6bc291cd5098793bc34e72d7ccae7c9299febee2fd5c80996fdc8dac1b1c7",
+    "Sources/LocalCleanStatusCCListViewController.m": "7f4eef6b2dcb605456d861f4b8209105da18c38651645bc0a2d3e190212fd0f6",
+    "Sources/LocalCleanStatusConfig.h": "d1ef091b4212d468dc16c094c76da8f94a530fd82201360e0d9a75a831d0ec9a",
+    "Sources/LocalCleanStatusConfig.m": "5c331bafcc41ea5f1ff4ff7889837457c235eb116d5af6a3429f444230ab8d8b",
+    "Sources/LocalCleanStatusControlCenter.m": "fabd91ca509e9c72bb342ec1f9565d6288cdb13ba56e7e36d99988ceff4c856a",
+    "Sources/LocalCleanStatusCore.h": "eaaeeac27ea33daff5b0c93362b886019cd93f914eec9cc8e07f27da7e2cd35a",
+    "Sources/LocalCleanStatusLowPower.m": "060f51b15fe8c344edfbf0d3629e5ab4a932fa977a052d899b7ade11c8dbbe46",
+    "Sources/LocalCleanStatusPaths.h": "7e0b76ca043e5aa4cb54574436d2806336dd1069efd01a1b11411f95737d2a2b",
+    "Sources/LocalCleanStatusPaths.m": "c9039863b376c2a0397fa37659e34fb83503a7febd7435a3e18e4b95d28295a5",
+    "Sources/LocalCleanStatusPreferences.h": "fc88f41318e13049152811e6278e951ae1455107d8043b94773f05c057fac09e",
+    "Sources/LocalCleanStatusStatus.m": "ac0d6a64149f5ed60ba26b5ea8c5d31623cf2982ae11da4172d930b15ddfb84a",
+    "Sources/LocalCleanStatusUnknownParts.m": "cfb266ebf0545a3ba8979ec85278b9b845e33ac17c813eb996f52ea26110e697",
+    "build.sh": "bda93091eec3c819527b857011653f6668dd15f4605a3b380013568ab731084d",
+    "docs/API-EVIDENCE.md": "061758128ed16727304a5084080ab77467925ca4eacaa4e1e17eadc128ca61ed",
+    "docs/BASELINE-0.2.5-PROTECTED.json": "1a4323d5661ae30e3b540d70c0ec9d20de82ec8d7e24f714017559b7f276cd13",
+    "layout/Library/PreferenceLoader/Preferences/LocalCleanStatusPrefs.plist": "d1b5814a8240fa97e1cf9b54c900fffcfe2106891f4197352559243b3374403d",
+    "tests/animation_policy_test.c": "82e215b0766f2c3d48a274060b53fe8055315b4b3a7d7ad7df8c81c03f57d3d9",
+    "tests/cc_policy_test.c": "ca4e68e3c7516792580d77010bd0fb9d74d9ab844a75ef825d40a0bdb6377442",
+    "tests/core_test.c": "731b14b8f8d1587d8e13b37267b00d5d2be9e851620c14b096ac30d84b13171c",
+    "tools/check_animations.py": "fe02030077ab53492e71083cb187c0d3f6628255b9dd59069acd58dc8bd7aa0e",
+    "tools/check_preserved_features.py": "50a75e28ea6bbe5cfb3ef9cbdbbf6889fddac17feac1b3188a9069b3393745c1",
+    "tools/draw_icon.py": "1db178d67d9653f9d558aa9196c03d65edb84a45f8e472166bdf409b5b6969dd",
+    "tools/package_source.py": "ea2457cbf80161d0cece4c5cbed9afdfe17d0492021e96bcb800002bdc210bfd",
+    "tools/panel_routes.py": "3f167bcb9e55986074a7c9568a72b052046e6ecf618d9ad3ff0739258af40217",
+    "tools/test_panel_routes.py": "0d7b23c27902246606d651f5fa2c333b945c0a0f923479e122a744d46574bd68",
+    "tools/test_paths.py": "24ee70112137da14be0951f396251ac96e38afe794534c92abc76fcda1701f91",
+    "tools/test_verify.py": "5b51a36beb1fda742559b02b4e0345c5ea294b35e3bc0986ed49d3ebfe9315a5",
+    "tweak.json": "d4c3d744aed063a645fcdc12d4247be2106fef56137b70f7a74d502af49ed6ad"
+  },
+  "original_root_items": [
+    {
+      "cell": "PSGroupCell",
+      "label": "CleanStatus 0.2.0",
+      "footerText": "除“隐藏未知部件提示”默认开启外，其余默认关闭。修改后点右上角“应用”。关闭总开关并应用可恢复系统显示。"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "启用插件",
+      "key": "enabled",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSGroupCell",
+      "label": "状态栏",
+      "footerText": "只隐藏状态图标，不停用系统功能；Siri/CarPlay 仅针对状态栏指示，不隐藏 Siri 界面或车辆仪表。"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "隐藏飞行模式",
+      "key": "hideAirplane",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "隐藏闹钟",
+      "key": "hideAlarm",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "隐藏蓝牙",
+      "key": "hideBluetooth",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "隐藏 Siri",
+      "key": "hideSiri",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "隐藏 CarPlay",
+      "key": "hideCarPlay",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "隐藏勿扰 / 专注模式",
+      "key": "hideFocus",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "隐藏定位",
+      "key": "hideLocation",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "隐藏旋转锁",
+      "key": "hideRotationLock",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "隐藏信号",
+      "key": "hideCellular",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "隐藏 VPN",
+      "key": "hideVPN",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "隐藏 Wi-Fi",
+      "key": "hideWiFi",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSGroupCell",
+      "label": "未知部件提示",
+      "footerText": "隐藏电池健康警告、关于本机的未知部件行和设置角标；只改显示，不改健康数据。"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "隐藏未知部件提示",
+      "key": "hideUnknownParts",
+      "defaults": "com.local.cleanstatus",
+      "default": true,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSGroupCell",
+      "label": "控制中心",
+      "footerText": "长按控制中心的 Wi-Fi / 蓝牙按钮直接选网络或设备；普通点击和展开菜单保持原生。系统操作需另装 CCSupport 后加入控制中心。仅 iOS 15 生效。"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "Wi-Fi 长按快捷选择",
+      "key": "ccWiFiLongPress",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "蓝牙长按快捷选择",
+      "key": "ccBluetoothLongPress",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "系统操作模块",
+      "key": "ccSystemActions",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSGroupCell",
+      "label": "电池",
+      "footerText": "数字内嵌样式；轻点功能仅在解锁后有效。与其他状态栏、电池插件同时开启可能冲突。"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "现代电池",
+      "key": "modernBattery",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "隐藏充电闪电",
+      "key": "hideChargingBolt",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSSwitchCell",
+      "label": "轻点电池切换低电量模式",
+      "key": "tapLowPower",
+      "defaults": "com.local.cleanstatus",
+      "default": false,
+      "get": "readPreferenceValue:",
+      "set": "setPreferenceValue:specifier:"
+    },
+    {
+      "cell": "PSGroupCell",
+      "label": "动画效果",
+      "footerText": "独立设置应用开合、神灯收缩与通知中心图标飞入。动画选项自动保存。"
+    },
+    {
+      "cell": "PSLinkCell",
+      "label": "动画效果",
+      "detail": "LocalCleanStatusAnimationsController",
+      "isController": true,
+      "id": "localCleanStatusAnimations"
+    }
+  ],
+  "original_target_lines": [
+    "LocalCleanStatus_FILES = $(wildcard Hooks/*.xm Sources/*.m) Shared/LocalCleanStatusCCDiagnostics.m Shared/LocalCleanStatusCCEnvironment.m",
+    "LocalCleanStatus_CFLAGS = -g -Os -fobjc-arc -I./Headers -I./Sources -I./Shared -fvisibility=hidden -DCLEANSTATUS_STRIP_LOGS=1 -Wall -Wextra",
+    "LocalCleanStatus_FRAMEWORKS = UIKit Foundation CoreFoundation QuartzCore",
+    "LocalCleanStatus_LIBRARIES = substrate",
+    "LocalCleanStatus_LDFLAGS = -Wl,-x -Wl,-dead_strip -Wl,-S",
+    "LocalCleanStatus_EXTRA_CFLAGS = -DLOCAL_CLEANSTATUS_ROOTHIDE_ONLY=1",
+    "LocalCleanStatusAnimations_FILES = Animation/LocalCleanStatusAnimations.xm Animation/LocalCleanStatusAnimationPreferences.m",
+    "LocalCleanStatusAnimations_CFLAGS = -g -Os -fobjc-arc -I. -I./Headers -I./Sources -I./Animation -fvisibility=hidden -DCLEANSTATUS_STRIP_LOGS=1 -Wall -Wextra",
+    "LocalCleanStatusAnimations_CCFLAGS = -std=c++14",
+    "LocalCleanStatusAnimations_FRAMEWORKS = UIKit Foundation CoreFoundation QuartzCore CoreGraphics",
+    "LocalCleanStatusAnimations_LIBRARIES = substrate",
+    "LocalCleanStatusAnimations_LDFLAGS = -Wl,-x -Wl,-dead_strip -Wl,-S"
+  ],
+  "original_preferences_info": {
+    "CFBundleExecutable": "LocalCleanStatusPrefs",
+    "CFBundleIdentifier": "com.local.cleanstatus.preferences",
+    "CFBundleName": "CleanStatus",
+    "CFBundlePackageType": "BNDL",
+    "CFBundleShortVersionString": "0.3.1",
+    "CFBundleVersion": "0.3.1",
+    "NSPrincipalClass": "LocalCleanStatusRootListController"
+  }
+}

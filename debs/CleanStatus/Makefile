@@ -2,7 +2,7 @@ DEBUG = 0
 FINALPACKAGE = 1
 include LocalCleanStatusBuild.mk
 include $(THEOS)/makefiles/common.mk
-TWEAK_NAME = LocalCleanStatus LocalCleanStatusAnimations
+TWEAK_NAME = LocalCleanStatus LocalCleanStatusAnimations LocalCleanStatusCellular
 LocalCleanStatus_FILES = $(wildcard Hooks/*.xm Sources/*.m) Shared/LocalCleanStatusCCDiagnostics.m Shared/LocalCleanStatusCCEnvironment.m
 LocalCleanStatus_CFLAGS = -g -Os -fobjc-arc -I./Headers -I./Sources -I./Shared -fvisibility=hidden -DCLEANSTATUS_STRIP_LOGS=1 -Wall -Wextra
 LocalCleanStatus_FRAMEWORKS = UIKit Foundation CoreFoundation QuartzCore
@@ -17,8 +17,14 @@ LocalCleanStatusAnimations_CCFLAGS = -std=c++14
 LocalCleanStatusAnimations_FRAMEWORKS = UIKit Foundation CoreFoundation QuartzCore CoreGraphics
 LocalCleanStatusAnimations_LIBRARIES = substrate
 LocalCleanStatusAnimations_LDFLAGS = -Wl,-x -Wl,-dead_strip -Wl,-S
+# Separate code image only: UI still uses the stock cellular button plus one DataSwitch module.
+LocalCleanStatusCellular_FILES = Cellular/LCSCellularHooks.m Cellular/LCSCellularPanel.m Cellular/LCSCellularService.m Cellular/LCSCellularSettings.m
+LocalCleanStatusCellular_CFLAGS = -g -Os -fobjc-arc -I./Cellular -fvisibility=hidden -DCLEANSTATUS_STRIP_LOGS=1 -Wall -Wextra -Werror
+LocalCleanStatusCellular_FRAMEWORKS = UIKit Foundation CoreFoundation CoreGraphics QuartzCore CoreTelephony
+LocalCleanStatusCellular_LIBRARIES = substrate
+LocalCleanStatusCellular_LDFLAGS = -Wl,-x -Wl,-dead_strip -Wl,-S
 # Marker consumed by the shared CI workflow; this project is roothide only and emits arm64e.
 LOCAL_CLEANSTATUS_ROOTHIDE_ONLY = 1
 include $(THEOS_MAKE_PATH)/tweak.mk
-SUBPROJECTS += LocalCleanStatusPrefs LocalCleanStatusSystemActions
+SUBPROJECTS += LocalCleanStatusPrefs LocalCleanStatusSystemActions LocalCleanStatusDataSwitch LocalCleanStatusSIMTool
 include $(THEOS_MAKE_PATH)/aggregate.mk

@@ -1,32 +1,39 @@
-# CleanStatus 0.3.1 动画子页面入口修复：本地候选
+# CleanStatus 0.3.2 cellular features — local candidate
 
-## 当前授权
-用户在只读核查结论后明确说「修复」，随后明确说「推送」。本轮已授权本候选 commit/push/CI 和下载验包；仍未授权安装、注销、重启或设备配置写入。旧版安装/推送结果不扩展到本候选。
+## User-confirmed behavior and authorization
+- User explicitly approved local implementation after confirming: the existing iOS cellular-data CC button must keep its short-tap ON/OFF behavior; long press opens the SIM-line manager to enable/disable each SIM. Add one separate Control Center module for choosing which SIM is the default cellular-data line.
+- Do not swap these two functions. Do not modify original status-bar, battery, animation, Wi-Fi/Bluetooth picker, or system-action behavior except the narrowly scoped new long-press integration on the stock cellular-data tile.
+- Latest UI correction (2026-11-21): user explicitly requested BOTH the separate DataSwitch expansion and stock-button SIM-manager presentation match the uploaded video's compact dark material cards. The previous settings-sheet/table appearance was not accepted as video-aligned. This grant covers local UI changes and checks only; backend/identity/settings/hooks remain frozen.
+- Authorized: local source modifications and portable/static tests only. Not authorized: device reads/writes, build/CI, commit/push, install, respring/reboot, or settings changes.
 
-## 故障与已核对事实
-- 手机实装0.3.0；设置 → 状态栏 → 动画效果，显示 preference bundle loading error / (null)。
-- preferenceloader.top 2.2.8-2；手机设置包的类/资源齐全，代码与交付一致。之前记录“未安装”已过时。
-- 主因高度疑似同包子页面错误带 bundle 字段；实装 Choicy/ParallelX 和公开成熟源码均不带此字段。实装 libprefs 错误分支匹配已查源码，但未取得点击时实际 lazy bundle path，仍不称真机定因。
-- 证据报告：../CleanStatus-animation-0.3.0/research/panel-load-audit/REPORT.md（从项目父目录 shared 起）。
+## Baseline
+- Exact source archive from CleanStatus 0.3.1 commit `a1bf667d09fbdc48bf09beee04ef0c88800848c9`, SHA256 `2982f3ba0458da1a920da3cbe85d6540656398683f6b4a7f187c4cf9922606bb`; frozen manifest in `reference/BASELINE-031.json`.
+- Target: iPhone 12 / iOS 15.5 / RootHide / arm64e / iPhoneOS15.5 SDK / version 0.3.2.
+- Modules install under logical `/Library/ControlCenter/Bundles`; the new helper resolves beneath one cached current hidden root. Only when no RootHide root exists can the shared resolver fall back to `/var/jb`; it never writes preferences to real var or hard-codes a root UUID.
+- The opaque uploaded CCSIMTool and all uploaded graphics are excluded from production. The candidate now contains its own source-built, identity-checked SIM tool and nine original PNG resources; reference packages remain outside the source tree.
 
-## 基线与改动
-- 0.3.0精确提交：a470c85eada0a7e3e3ae670d4d9f6a66007fa3da。该版CI159/42601772989成功，但真机动画设置入口失败。
-- 隔离工作目录：/var/minis/shared/CleanStatus-panel-0.3.1/source。
-- 对照基线：../research/baseline-0.3.0；旧0.2.5保护清单：docs/BASELINE-0.2.5-PROTECTED.json。
-- LocalCleanStatusRoot.plist 的动画入口、LocalCleanStatusAnimations.plist 的高级入口，各仅删除 bundle=LocalCleanStatusPrefs；保留 detail/isController。
-- 顶层 PreferenceLoader entry、原控制器、原24项设置、所有动画实现和保存/通知/恢复代码保持。
-- 包control和设置包Info版本升0.3.1；核验工具同步版本并添加两级入口正反例。原系统操作模块的代码和版本保持原样。
+## Research evidence
+- Author SIMControl v1.0.1 source snapshot `SorenNing/SIMControl@4216d49e7c85c81fad663bfeef3f8d18945fa285`; package requires iOS >=16 and contains a precompiled CCSIMTool with special entitlements. Not a ready-made iOS 15.5 build.
+- Author DataSwitch v1.0 source snapshot `SorenNing/DataSwitch@301e2510b2448a8781e0c08496b76641afbb471c`; package requires iOS >=16. Its private CoreTelephony APIs also appear in public iOS 15.3.1 Runtime-Headers commit `yuzhouheike/iOS15.3.1-Runtime-Headers@44a5b62df41f5f20d8af6dead3b426a7b401e118`: `CoreTelephonyClient` has `getCurrentDataSubscriptionContextSync:`, `getSubscriptionInfoWithError:`, `getSIMStatus:error:`, and `setActiveUserDataSelection:error:` (void); `CTXPCServiceSubscriptionContext` has slotID/UUID/userDataPreferred.
+- Existing 0.3.1 CC tweak hooks `CCUIConnectivityWifiViewController` and Bluetooth equivalents; no cellular hook yet.
+- Public iOS 15 EVOCenter bundle strings identify `CCUIConnectivityCellularDataViewController` as the stock module content controller; this is a candidate runtime class identity, not a proof of the device's exact loaded class/gesture lifecycle.
+- iOS 15.3.1 headers show `CTCellularPlanManager` and `didSelectPlanItem:isEnable:`. SIMControl helper signatures/entitlement path remain privileged and not yet proven accepted on RootHide iOS 15.5.
 
-## 已完成的本地检查
-- 原功能0.2.5的31份 .h/.m/.xm 哈希一致；0.3.0的49份 .h/.m/.xm/.c 文件全部逐字节一致。
-- 两个设置资源的语义差异仅为各删除一个bundle字段；顶层入口文件逐字节一致。
-- 原0.3.0实际入口被新增检查拒绝；修复候选通过。入口、错误detail、缺资源、缺类、误删顶层bundle等10个正反例通过。
-- 核心5,252,881项、控制中心策略658项、源不变量354项、路径模型37例、Mach-O核验器46例通过。
-- 动画参数/关闭门控、数学/接口编码测试和46文件括号检查通过。以上均为本地静态/便携检查。
-- 新入口检查已接入tools/check.py及verify_deb.py；以后验实际DEB中的入口，而不只查源码资源存在。
+## Implementation invariants and tests to add
+- Preserve the native cellular button's existing short tap; the new long press must be recognized only on the uniquely matched stock cellular module round button, unlocked/visible/SpringBoard/iOS15, and must cancel the pending native tap only after the long-press threshold.
+- UI reflects read-back system state; never claim a SIM or default-data switch succeeded based only on helper exit/request return. Revalidate selected subscription UUID immediately before data switch and reread afterwards.
+- Two SIM slots must map by slotID and subscription UUID, never array order. Missing, ambiguous, absent, locked, stale or failed reads fail closed; no action when selection identity cannot be proven.
+- EVERY SIM-off action requires confirmation. Telephony/storage work uses worker queues; UI and SpringBoard lock-state reads run on main. Cancellation/dismissal invalidates callbacks; requests already sent cannot be rolled back. UI completion is bounded, but a blocked synchronous private API may retain its worker/operation lock until the system call returns.
+- Preserve existing control-center lock guard, modal ownership, QuickCC2 conflict behavior for Wi-Fi/Bluetooth, and original cell tap. Ordinary open, short tap, pan, cancellation, disabled feature, no SIM, dual-SIM, request failure and unavailable helper need explicit checks.
+- Static/iSH tests are not iOS compilation, package verification, loader validation, or true-device functional evidence.
 
-## 未验证与下一步
-- 未编译iOS、未触发CI、无0.3.1 DEB、未安装/注销/重启。
-- 真实设置页面打开、进入高级页及返回、自动保存到运行端效果、开关关闭恢复仍需安装后单独验收。
-- 动画接口及第三方插件共存的旧未验证项全部保留，不以本次入口静态修复声称解决。
-- 待用户单独确认推送0.3.1候选；构建验包后另问安装，注销/重启另问。
+## Current phase — local source complete; NOT a built/tested release
+- The missing UI, backend service and SIM-tool sources are now present. The two previous subagent completions contained no deliverable and were NOT counted as implementation or review success.
+- Original behavior files remain byte-identical: 78 protected 0.3.1 files, including original Sources/Hooks/Shared/Animation and original SystemActions inputs. The remaining nine baseline files are limited to build wiring, preference entry/version, checking tools and this status record; original preference rows and target definitions are separately checked.
+- BOTH UI surfaces now use compact 336x216-at-standard-text rounded cards: small top glyph, centered heading, two centered rows with green/gray observed-state badges. SIM management uses a centered dark-material modal with outside-tap/VoiceOver close; DataSwitch retains the native CC expanded platter with the same shared compact sizing. No settings table, UISwitch, checkmark accessory or Done button remains. Errors retain full messages/retry inside a scrollable card; header tap refreshes. No exact native/video parity is claimed before a device render.
+- The UI-only manifest additionally protects 119 pre-existing candidate files byte-for-byte, including backend, helper, settings, original hooks and all old behavior. Row taps retain observed-state targets, confirmation, tokens and post-request readback.
+- Passed: original core 5,252,881 checks; CC policy 658; cellular production-C policy 6,291; card layout/badges 1,248; UI structure/scope 155; cellular source/preservation 151; main source invariants 431; panel routing 10; path model 37; synthetic signature verification 46 + 10. These are not radio/runtime proofs.
+- Fourteen new-source/conditional-build cases are parsed with clang `-fsyntax-only` against the actual fixed iPhoneOS15.5 SDK. No iOS object, dylib, executable or DEB was generated.
+- Apple Foundation storage/migration and mock-service tests are supplied but not executed here (two explicit SKIPs). UIKit appearance, stock short-tap/long-press arbitration, current class image/ABI, CCSupport loading, helper signature/permissions/parent query, keybag+UI lock-state semantics and plan-manager `isSelected` versus actual radio state remain unverified on iOS15.5.
+- No device access, real SIM changes, commit, push, CI, installation, respring or reboot occurred. Next gate is a separate user decision on push/CI; package verification must follow any successful build, and installation requires separate permission.
+- Details: `docs/CELLULAR-LOCAL-RESULT.md`; local evidence is outside the shipping source tree in the candidate's `evidence/` directory.

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>title</key><string>蜂窝快捷功能</string>
+<key>items</key><array>
+<dict><key>cell</key><string>PSGroupCell</string><key>label</key><string>原蜂窝数据按钮</string><key>footerText</key><string>轻点仍开关蜂窝数据；开启下方选项后，长按打开两张 SIM 线路的启用和停用管理。停用线路可能中断通话或移动数据。新功能默认关闭，不改变其他控制中心功能。修改会自动保存。</string></dict>
+<dict><key>cell</key><string>PSSwitchCell</string><key>label</key><string>长按蜂窝数据管理 SIM</string><key>key</key><string>simManager</string><key>defaults</key><string>com.local.cleanstatus.cellular</string><key>default</key><false/><key>get</key><string>readPreferenceValue:</string><key>set</key><string>setPreferenceValue:specifier:</string></dict>
+<dict><key>cell</key><string>PSGroupCell</string><key>label</key><string>另一个独立模块</string><key>footerText</key><string>在系统“设置 → 控制中心”添加“数据切换”。它负责选择哪张 SIM 用于上网，不是开关整条 SIM 线路。系统状态无法确认时，不显示假成功。</string></dict>
+<dict><key>cell</key><string>PSSwitchCell</string><key>label</key><string>启用数据切换模块</string><key>key</key><string>dataSwitch</string><key>defaults</key><string>com.local.cleanstatus.cellular</string><key>default</key><false/><key>get</key><string>readPreferenceValue:</string><key>set</key><string>setPreferenceValue:specifier:</string></dict>
+<dict><key>cell</key><string>PSGroupCell</string><key>label</key><string>排查记录</string><key>footerText</key><string>只记录入口、拒绝原因、请求及读回结果；不记录号码、运营商账号、SIM 标识或密钥。最多保留最近 128 条，供助手排查。</string></dict>
+<dict><key>cell</key><string>PSSwitchCell</string><key>label</key><string>保留限量诊断</string><key>key</key><string>diagnostics</string><key>defaults</key><string>com.local.cleanstatus.cellular</string><key>default</key><true/><key>get</key><string>readPreferenceValue:</string><key>set</key><string>setPreferenceValue:specifier:</string></dict>
+</array></dict></plist>

@@ -370,6 +370,18 @@
 			<key>id</key>
 			<string>localCleanStatusAnimations</string>
 		</dict>
+		<dict>
+			<key>cell</key><string>PSGroupCell</string>
+			<key>label</key><string>蜂窝快捷功能</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSLinkCell</string>
+			<key>label</key><string>蜂窝快捷功能</string>
+			<key>detail</key><string>LocalCleanStatusCellularController</string>
+			<key>isController</key><true/>
+			<key>id</key><string>localCleanStatusCellular</string>
+			<key>icon</key><string>CellularIcon.png</string>
+		</dict>
 	</array>
 </dict>
 </plist>

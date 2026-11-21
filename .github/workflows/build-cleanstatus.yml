@@ -1,10 +1,10 @@
-name: CleanStatus 0.1.11
+name: CleanStatus 0.3.2
 
 on:
   push:
-    branches: [cleanstatus-0.1.11]
+    branches: [cleanstatus-0.3.2-cellular-20261121]
     paths:
-      - 'CleanStatus/**'
+      - 'debs/CleanStatus/**'
       - '.github/workflows/build-cleanstatus.yml'
   workflow_dispatch:
 
@@ -21,13 +21,13 @@ jobs:
     timeout-minutes: 30
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
-      PROJECT_DIR: CleanStatus
+      PROJECT_DIR: debs/CleanStatus
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           filter: blob:none
           sparse-checkout: |
-            CleanStatus
+            debs/CleanStatus
             .github/workflows/build-cleanstatus.yml
       - name: Host checks
         working-directory: ${{ env.PROJECT_DIR }}
@@ -36,6 +36,7 @@ jobs:
           mkdir -p out/checks
           python3 tools/check.py | tee out/checks/host.txt
           python3 tools/test_verify.py | tee out/checks/verifier.txt
+          python3 tools/test_verify_cellular.py | tee out/checks/verifier-cellular.txt
           python3 tools/test_paths.py | tee out/checks/paths.txt
       - name: Fixed toolchain and iPhoneOS15.5.sdk
         run: |
@@ -56,18 +57,19 @@ jobs:
         run: |
           set -euo pipefail
           export THEOS="$HOME/theos"
+          rm -rf .theos
           sh build.sh 2>&1 | tee out/checks/build.txt
           mkdir -p out/symbols
-          cp packages/*.deb out/
+          cp packages/com.local.cleanstatus_0.3.2_iphoneos-arm64e.deb out/
           python3 tools/verify_deb.py out/*.deb out/checks | tee out/checks/package.txt
           find .theos -name '*.dSYM' -type d -prune -exec cp -R '{}' out/symbols/ \;
-          find .theos/obj -type f \( -name 'LocalCleanStatus.dylib' -o -name 'LocalCleanStatusPrefs' \) -exec cp '{}' out/symbols/ \;
-          python3 tools/package_source.py out/CleanStatus-0.1.11-Source.zip
+          find .theos/obj -type f \( -name '*.dylib' -o -name 'LocalCleanStatusPrefs' -o -name 'LocalCleanStatusDataSwitch' -o -name 'LocalCleanStatusSystemActions' -o -name 'LocalCleanStatusSIMTool' \) -exec cp '{}' out/symbols/ \;
+          python3 tools/package_source.py out/CleanStatus-0.3.2-Source.zip
           python3 -c 'import hashlib,json,os; from pathlib import Path; root=Path("out"); meta={"commit":os.environ["GITHUB_SHA"],"run_id":os.environ["GITHUB_RUN_ID"],"sdk":"15.5","scheme":"roothide","runtime_verified":False}; (root/"BUILD-PROVENANCE.json").write_text(json.dumps(meta,indent=2)+"\n"); files=sorted(p for p in root.rglob("*") if p.is_file() and p.name!="SHA256SUMS"); (root/"SHA256SUMS").write_text("".join(hashlib.sha256(p.read_bytes()).hexdigest()+"  "+p.relative_to(root).as_posix()+"\n" for p in files))'
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: CleanStatus-0.1.11-roothide-${{ github.sha }}
+          name: CleanStatus-0.3.2-roothide-${{ github.sha }}
           path: ${{ env.PROJECT_DIR }}/out/
           if-no-files-found: error
           retention-days: 30
