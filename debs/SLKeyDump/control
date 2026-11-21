@@ -1,6 +1,6 @@
 Package: com.minis.slkeydump
 Name: SL KeyDump
-Version: 0.1.0
+Version: 0.1.1
 Architecture: iphoneos-arm64e
 Description: probe
 Maintainer: Minis
