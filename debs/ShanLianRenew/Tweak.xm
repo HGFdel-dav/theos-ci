@@ -203,7 +203,6 @@ static void SLScheduleReminder(SLState *st) {
     }];
 }
 
-static void (*g_origMakeKeyAndVisible_)(id, SEL) = NULL;
 
 static NSUUID *(*g_origIdfv)(id, SEL) = NULL;
 static NSUUID *SLHookIdfv(id self, SEL _cmd) {
@@ -565,18 +564,6 @@ static void SLPushOffscreen(id win) {
     SLLog(@"ui: offscreen %@", NSStringFromCGRect([(UIWindow *)win frame]));
 }
 
-static void SLHookMakeKeyAndVisible(id self, SEL _cmd) {
-    if (g_origMakeKeyAndVisible) g_origMakeKeyAndVisible(self, _cmd);
-    if (!SLSuppressUIActive()) return;
-    SLPushOffscreen(self);
-    // 布局/根控制器可能稍后覆盖，补一次
-    __weak id weakWin = self;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        id w = weakWin;
-        if (w && SLSuppressUIActive()) SLPushOffscreen(w);
-    });
-}
 
 static void SLOnLaunch(void) {
     SLDiag(@"boot", @"v=%@ bid=%@", SL_VER, [NSBundle mainBundle].bundleIdentifier ?: @"-");
