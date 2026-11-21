@@ -79,6 +79,20 @@ static id g_center = nil;
     // 2. 重置会把状态目录一起清掉，这里先重建状态：交给 App 里的流程继续
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.2 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
+        // 重置也清掉了"已同意隐私协议"，先写回去，否则 App 会停在协议页
+        NSString *prefs = SLAppPrefsPath();
+        if (prefs.length) {
+            NSMutableDictionary *d = [NSMutableDictionary dictionary];
+            NSDictionary *old = [NSDictionary dictionaryWithContentsOfFile:prefs];
+            if (old) [d addEntriesFromDictionary:old];
+            d[@"flutter.agree"] = @YES;
+            d[@"flutter.kisAppFirstLaunchedKey"] = @NO;
+            BOOL w = [d writeToFile:prefs atomically:YES];
+            FL(@"prefs agree written=%d path=%@", w, prefs.lastPathComponent);
+        } else {
+            FL(@"prefs path nil");
+        }
+
         SLState *st = [SLState load];
         st.enabled = YES;
         st.phase = SLPhaseNeedFill;     // App 起来后据此执行"等新号→填码→验证→通知"
