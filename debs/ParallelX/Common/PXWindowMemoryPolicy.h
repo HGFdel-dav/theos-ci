@@ -75,6 +75,19 @@ static inline bool PXWMMayRestoreLayout(bool resolved, bool keyKnown,
            (!resolved || (keyKnown && previousKey != currentKey));
 }
 
+/* A just-opened native ticket may still be inside alpha437's synchronous
+ * layout. It can reapply only the geometry it already matched, and only while
+ * storage remains enabled at the same clear/reset epoch. */
+static inline bool PXWMMayReapplyInitialGeometry(bool activeBinding, bool currentTicket,
+                                                bool nativeEntering, bool cleanupSeen,
+                                                bool cancelled, bool initialRestoreActive,
+                                                bool enabled, bool epochMatches, bool withinInitialWindow,
+                                                bool interacting, bool savePending) {
+    bool owns = activeBinding || (currentTicket && nativeEntering && cleanupSeen && !cancelled);
+    return owns && initialRestoreActive && enabled && epochMatches && withinInitialWindow &&
+           !interacting && !savePending;
+}
+
 static inline bool PXWMMayCommitGesture(bool orientationKnown, unsigned gestureKey,
                                       unsigned currentKey, uint64_t gestureGeneration,
                                       uint64_t currentGeneration) {

@@ -180,6 +180,17 @@ int main(void) {
     CHECK(!PXWMMayRestoreLayout(false,true,0,2,true,false));
     CHECK(!PXWMMayRestoreLayout(true,true,0,2,false,true));
     CHECK(PXWMMayRestoreLayout(true,true,0,2,false,false));
+    CHECK(PXWMMayReapplyInitialGeometry(true,false,false,true,false,true,true,true,true,false,false));
+    CHECK(PXWMMayReapplyInitialGeometry(false,true,true,true,false,true,true,true,true,false,false));
+    CHECK(!PXWMMayReapplyInitialGeometry(false,true,true,false,false,true,true,true,true,false,false));
+    CHECK(!PXWMMayReapplyInitialGeometry(false,true,true,true,true,true,true,true,true,false,false));
+    CHECK(!PXWMMayReapplyInitialGeometry(true,false,false,true,false,false,true,true,true,false,false));
+    CHECK(!PXWMMayReapplyInitialGeometry(true,false,false,true,false,true,false,true,true,false,false));
+    CHECK(!PXWMMayReapplyInitialGeometry(true,false,false,true,false,true,true,false,true,false,false));
+    CHECK(!PXWMMayReapplyInitialGeometry(true,false,false,true,false,true,true,true,false,false,false));
+    CHECK(!PXWMMayReapplyInitialGeometry(true,false,false,true,false,true,true,true,true,true,false));
+    CHECK(!PXWMMayReapplyInitialGeometry(true,false,false,true,false,true,true,true,true,false,true));
+    CHECK(PXWMMayReapplyInitialGeometry(false,true,true,true,false,true,true,true,true,false,false));
     CHECK(PXWMMayCommitGesture(true,0,0,7,7));
     CHECK(!PXWMMayCommitGesture(true,0,2,7,7));
     CHECK(!PXWMMayCommitGesture(false,0,0,7,7));
