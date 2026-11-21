@@ -15,6 +15,7 @@
         if (d[@"lead2"]) s.lead2 = [d[@"lead2"] intValue];
         if ([d[@"code"] isKindOfClass:[NSString class]]) s.code = d[@"code"];
         if (d[@"notifyOnFail"]) s.notifyOnFail = [d[@"notifyOnFail"] boolValue];
+        if (d[@"dueNotified"]) s.dueNotified = [d[@"dueNotified"] boolValue];
         if (d[@"resetFallback"]) s.resetFallback = [d[@"resetFallback"] boolValue];
         if (d[@"maxAttempts"]) s.maxAttempts = [d[@"maxAttempts"] intValue];
         if (d[@"phase"]) s.phase = (SLPhase)[d[@"phase"] integerValue];
@@ -45,6 +46,7 @@
     d[@"lead2"] = @(self.lead2);
     d[@"code"] = self.code ?: @"";
     d[@"notifyOnFail"] = @(self.notifyOnFail);
+    d[@"dueNotified"] = @(self.dueNotified);
     d[@"resetFallback"] = @(self.resetFallback);
     d[@"maxAttempts"] = @(self.maxAttempts);
     d[@"phase"] = @(self.phase);
