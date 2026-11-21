@@ -28,6 +28,8 @@ typedef NS_ENUM(unsigned, PXWMGeometryGate) {
 @property(nonatomic) BOOL keyKnown;
 @property(nonatomic) unsigned key;
 @property(nonatomic) unsigned geometryGate;
+@property(nonatomic) NSUInteger restoreRetryAttempts;
+@property(nonatomic) BOOL restoreRetryScheduled;
 @end
 @implementation PXWMContext
 @end
@@ -35,6 +37,7 @@ typedef NS_ENUM(unsigned, PXWMGeometryGate) {
 @interface PXWMGesture : NSObject
 @property(nonatomic, weak) PXWMContext *context;
 @property(nonatomic) NSUInteger generation;
+@property(nonatomic) NSUInteger samples;
 @property(nonatomic) uint64_t epoch;
 @property(nonatomic) unsigned orientation;
 @property(nonatomic) BOOL orientationKnown;
@@ -48,13 +51,15 @@ static const void *PXWMGestureKey = &PXWMGestureKey;
 static uint64_t PXWMNextSerial;
 static NSHashTable<PXWMContext *> *PXWMContexts;
 static Class PXWMCardClass;
-static BOOL PXWMNotifying;
+static BOOL PXWMForegroundNotifying;
+static BOOL PXWMLoadNotifying;
 static void (*PXWMOriginalOpen)(id, SEL, id, id, id, void (^)(BOOL));
 static void (*PXWMOriginalClose)(id, SEL);
 static void (*PXWMOriginalLayout)(id, SEL);
 static void (*PXWMOriginalMove)(id, SEL, id);
 static void (*PXWMOriginalResize)(id, SEL, id);
 static void (*PXWMOriginalControllerLayout)(id, SEL);
+static void PXWMScheduleRestore(PXWMContext *context);
 
 static id PXWMObject(id target, NSString *name) {
     SEL selector = NSSelectorFromString(name);
@@ -201,6 +206,34 @@ static void PXWMTryRestore(PXWMContext *context) {
     });
 }
 
+/* Geometry may not have a live scene/hostedSurface at the instant the user
+ * begins resizing the just-opened window. Direction is a weaker fact than
+ * permission to save: derive only host/content axes from the visible view tree,
+ * then the normal full gate revalidates those axes and the frame at gesture end. */
+static BOOL PXWMCaptureGestureOrientation(PXWMContext *context, unsigned *key) {
+    if (!PXWMBindingIsActive(context) || !context.canvas.userInteractionEnabled) return NO;
+    UIView *canvas = context.canvas;
+    UIView *card = PXWMFindCard(canvas);
+    UIWindow *window = canvas.window;
+    if (!card || !window || !card.superview || window.screen != UIScreen.mainScreen ||
+        window.hidden || window.alpha <= 0.1 || !CGAffineTransformIsIdentity(card.transform)) return NO;
+    for (UIView *view = card; view; view = view.superview)
+        if (view.hidden || view.alpha <= 0.1) return NO;
+    UIView *parent = card.superview;
+    CGRect visibleHost = CGRectIntersection(parent.bounds, [window convertRect:window.bounds toView:parent]);
+    if (CGRectIsEmpty(visibleHost) || CGRectIsNull(visibleHost)) return NO;
+    CGSize content = canvas.bounds.size;
+    SEL source = NSSelectorFromString(@"hostedSourceSize");
+    if (PXCloneInstanceMethodMatches(context.bridge, source, @encode(CGSize), @[])) {
+        @try { content = ((CGSize (*)(id, SEL))objc_msgSend)(context.bridge, source); }
+        @catch (__unused NSException *exception) { return NO; }
+    }
+    if (!isfinite(content.width) || !isfinite(content.height) || content.width <= 0 || content.height <= 0) return NO;
+    if (key) *key = PXWMOrientationKey(visibleHost.size.width > visibleHost.size.height,
+                                      content.width > content.height);
+    return YES;
+}
+
 static PXWMContext *PXWMContextForGesture(UIGestureRecognizer *gesture) {
     UIWindow *window = gesture.view.window;
     if (!window) return nil;
@@ -235,13 +268,33 @@ static void PXWMSettleSave(PXWMGesture *stamp, NSUInteger attempt) {
         }); return;
     }
     BOOL normal = PXWMNormalGeometry(context, &geometry, &key);
-    context.savePending = NO;
-    if (normal && !PXWMMayCommitGesture(stamp.orientationKnown, stamp.orientation, key,
-                                        stamp.generation, context.generation)) {
-        PXWMLog(context, @"save_skipped_direction_change", @{@"known":@(stamp.orientationKnown),
-                   @"started":@(stamp.orientation), @"current":@(key)});
-        PXWMTryRestore(context); return;
+    if (PXWMMayWaitForGestureGeometry(normal, stamp.samples, 30)) {
+        stamp.samples++;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,100*NSEC_PER_MSEC),dispatch_get_main_queue(),^{
+            PXWMSettleSave(stamp,attempt);
+        });
+        return; // keep savePending set so a late restore cannot overwrite the user
     }
+    if (!normal) {
+        context.savePending = NO;
+        PXWMLog(context, @"save_skipped_non_normal_or_reset", @{ @"gate":@(context.geometryGate), @"samples":@(stamp.samples) });
+        return;
+    }
+    if (!PXWMResolveGestureOrientation(YES, &stamp.orientationKnown, &stamp.orientation, key)) {
+        context.savePending = NO;
+        PXWMLog(context, @"save_skipped_direction_change", @{ @"known":@(stamp.orientationKnown), @"started":@(stamp.orientation), @"current":@(key) });
+        return;
+    }
+    if (!PXWMMayStoreGesture(stamp.orientationKnown, stamp.orientation, key,
+                              stamp.generation, context.generation, NO) ||
+        !PXWMMayCommitGesture(stamp.orientationKnown, stamp.orientation, key,
+                              stamp.generation, context.generation)) {
+        context.savePending = NO;
+        PXWMLog(context, @"save_skipped_direction_change", @{ @"known":@(stamp.orientationKnown),
+                   @"started":@(stamp.orientation), @"current":@(key), @"samples":@(stamp.samples) });
+        return;
+    }
+    context.savePending = NO;
     NSDictionary *snapshot = PXWindowMemoryStore.shared.snapshot;
     if (!PXWMMaySave([snapshot[@"enabled"] boolValue], stamp.epoch,
                     [snapshot[@"epoch"] unsignedLongLongValue], !animation, normal, YES)) {
@@ -270,7 +323,7 @@ static void PXWMGestureAction(id panel, SEL command, UIGestureRecognizer *gestur
             stamp.epoch = [PXWindowMemoryStore.shared.snapshot[@"epoch"] unsignedLongLongValue];
             PXWMGeometry startingGeometry;
             unsigned startingKey = 0;
-            stamp.orientationKnown = PXWMNormalGeometry(context, &startingGeometry, &startingKey);
+            stamp.orientationKnown = PXWMCaptureGestureOrientation(context, &startingKey);
             stamp.orientation = startingKey;
             if (stamp.orientationKnown) { context.keyKnown = YES; context.key = startingKey; }
             objc_setAssociatedObject(gesture,PXWMGestureKey,stamp,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -357,19 +410,36 @@ static void PXWMOpen(id self,SEL command,id bundle,id canvas,id overlay,void (^c
             }
         }
     }
-    if (!PXWMBindingIsActive(ticket)) return;
-    PXWMTryRestore(ticket);
+    BOOL knownSize = NO;
+    if (ticket.bundle.length) {
+        NSDictionary *snapshot = PXWindowMemoryStore.shared.snapshot;
+        knownSize = PXWindowMemoryGeometry(snapshot, ticket.bundle, 0, NULL) ||
+                    PXWindowMemoryGeometry(snapshot, ticket.bundle, 1, NULL) ||
+                    PXWindowMemoryGeometry(snapshot, ticket.bundle, 2, NULL) ||
+                    PXWindowMemoryGeometry(snapshot, ticket.bundle, 3, NULL);
+    }
+    PXWMLog(ticket, knownSize ? @"native_window_bound_with_memory" : @"native_window_bound_default",
+            @{@"memoryLoaded":@(PXWindowMemoryStore.shared.isLoaded)});
+    BOOL geometryReady = PXWMNormalGeometry(ticket, NULL, NULL);
+    if (!ticket.resolved) {
+        if (geometryReady) PXWMTryRestore(ticket);
+        if (!ticket.resolved) PXWMScheduleRestore(ticket);
+    }
     __weak PXWMContext *weakContext = ticket;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,10*NSEC_PER_SEC),dispatch_get_main_queue(), ^{
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,3*NSEC_PER_SEC),dispatch_get_main_queue(), ^{
         PXWMContext *pending = weakContext;
         if (PXWMBindingIsActive(pending) && !pending.resolved && !pending.interacting)
             PXWMLog(pending, @"restore_waiting_native_geometry", @{@"gate":@(pending.geometryGate),
-                     @"loaded":@(PXWindowMemoryStore.shared.isLoaded)});
+                     @"attempts":@(pending.restoreRetryAttempts), @"loaded":@(PXWindowMemoryStore.shared.isLoaded)});
     });
 }
 static void PXWMLayout(id self,SEL command) {
     if (PXWMOriginalLayout) PXWMOriginalLayout(self,command);
-    if (NSThread.isMainThread) PXWMTryRestore(objc_getAssociatedObject(self,PXWMContextKey));
+    if (NSThread.isMainThread) {
+        PXWMContext *context = objc_getAssociatedObject(self,PXWMContextKey);
+        PXWMTryRestore(context);
+        if (context && !context.resolved) PXWMScheduleRestore(context);
+    }
 }
 static void PXWMClose(id self,SEL command) {
     if (NSThread.isMainThread) {
@@ -386,8 +456,11 @@ static void PXWMControllerLayout(id self,SEL command) {
     if (PXWMOriginalControllerLayout) PXWMOriginalControllerLayout(self,command);
     if (!NSThread.isMainThread) return;
     UIWindow *window = [self isKindOfClass:UIViewController.class] ? [(UIViewController *)self view].window : nil;
-    for (PXWMContext *context in PXWMContexts.allObjects)
-        if (window && context.canvas.window == window) PXWMTryRestore(context);
+    for (PXWMContext *context in PXWMContexts.allObjects) {
+        if (!window || context.canvas.window != window) continue;
+        PXWMTryRestore(context);
+        if (!context.resolved) PXWMScheduleRestore(context);
+    }
 }
 static Class PXWMVendorClass(NSString *suffix) {
     unsigned count = 0;
@@ -402,9 +475,19 @@ static Class PXWMVendorClass(NSString *suffix) {
 }
 BOOL PXWindowMemoryInstall(Class panel,Class bridge,Class hostController) {
     if (!NSThread.isMainThread) return NO;
+    PXWindowMemoryStore *store = PXWindowMemoryStore.shared;
+    if (!PXWMForegroundNotifying) {
+        PXWMForegroundNotifying = YES;
+        [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidBecomeActiveNotification
+                    object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+            (void)note;
+            [store reload];
+            [store diagnostic:@"springboard_foreground_reload" details:@{}];
+        }];
+    }
     if (PXWMOriginalOpen && PXWMOriginalMove && PXWMOriginalResize && PXWMOriginalLayout &&
         PXWMOriginalClose && PXWMOriginalControllerLayout) return YES;
-    PXWindowMemoryStore *store = PXWindowMemoryStore.shared;
+    [store reload];
     PXWMCardClass = PXWMVendorClass(@"PXHostCard");
     if (!hostController) hostController = PXWMVendorClass(@"PXHostViewController");
     NSArray *objects = @[@"@"];
@@ -431,18 +514,63 @@ BOOL PXWindowMemoryInstall(Class panel,Class bridge,Class hostController) {
     PXWM_HOOK(bridge,close,PXWMClose,PXWMOriginalClose,void (*)(id,SEL));
     PXWM_HOOK(hostController,controllerLayout,PXWMControllerLayout,PXWMOriginalControllerLayout,void (*)(id,SEL));
 #undef PXWM_HOOK
-    if (!PXWMNotifying) {
-        PXWMNotifying = YES;
-        [NSNotificationCenter.defaultCenter addObserverForName:PXWindowMemoryDidLoadNotification object:store
+    if (!PXWMLoadNotifying) {
+        PXWMLoadNotifying = YES;
+        [NSNotificationCenter.defaultCenter addObserverForName:PXWindowMemoryDidLoadNotification
+              object:store
               queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
             (void)note;
             [store diagnostic:@"runtime_snapshot_received" details:@{@"loaded":@(store.isLoaded),
                        @"revision":store.snapshot[@"revision"] ?: @0}];
-            for (PXWMContext *context in PXWMContexts.allObjects) PXWMTryRestore(context);
+            for (PXWMContext *context in PXWMContexts.allObjects) {
+                PXWMTryRestore(context);
+                if (context && !context.resolved) PXWMScheduleRestore(context);
+            }
         }];
     }
     BOOL ready = PXWMOriginalOpen && PXWMOriginalMove && PXWMOriginalResize && PXWMOriginalLayout &&
                  PXWMOriginalClose && PXWMOriginalControllerLayout;
     [store diagnostic:@"hook_status" details:@{@"ready":@(ready)}];
     return ready;
+}
+
+/* alpha437 can bind a valid app window before its source geometry is ready.
+ * Retry only this geometry read for a bounded 10 seconds; no reopen, no
+ * process termination, no window-frame polling loop and no user action is sent. */
+static void PXWMScheduleRestore(PXWMContext *context) {
+    const NSUInteger maxAttempts = 100;
+    if (!context || !PXWMBindingIsActive(context) || context.resolved || context.interacting ||
+        context.restoreRetryScheduled || context.restoreRetryAttempts >= maxAttempts ||
+        !PXWindowMemoryStore.shared.isLoaded) return;
+    context.restoreRetryAttempts++;
+    NSUInteger attempt = context.restoreRetryAttempts;
+    NSUInteger generation = context.generation;
+    unsigned observedKey = context.key;
+    BOOL keyKnown = context.keyKnown;
+    context.restoreRetryScheduled = YES;
+    PXWMLog(context, @"restore_retry_scheduled", @{@"attempt":@(attempt),@"gate":@(context.geometryGate)});
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,100*NSEC_PER_MSEC),dispatch_get_main_queue(), ^{
+        context.restoreRetryScheduled = NO;
+        if (!PXWMBindingIsActive(context) || context.generation != generation ||
+            context.interacting || context.savePending || context.resolved) return;
+        PXWMGeometry geometry;
+        unsigned key = 0;
+        if (!PXWMNormalGeometry(context,&geometry,&key)) {
+            if (context.restoreRetryAttempts >= maxAttempts)
+                PXWMLog(context,@"restore_retry_limit",@{@"attempt":@(attempt),@"gate":@(context.geometryGate)});
+            else PXWMScheduleRestore(context);
+            return;
+        }
+        if (keyKnown && key != observedKey) {
+            context.key = key;
+            context.keyKnown = YES;
+            context.resolved = YES;
+            PXWMLog(context,@"restore_retry_direction_changed",@{@"from":@(observedKey),@"to":@(key)});
+            return;
+        }
+        context.key = key;
+        context.keyKnown = YES;
+        PXWMLog(context,@"restore_geometry_ready",@{@"attempt":@(attempt)});
+        PXWMTryRestore(context);
+    });
 }

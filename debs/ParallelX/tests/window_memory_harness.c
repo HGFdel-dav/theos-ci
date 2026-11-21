@@ -51,8 +51,20 @@ static void native_lifecycle(void) {
     CHECK(!PXWMNativeClose(NULL));
 }
 
+static void native_gesture_policy(void) {
+    CHECK(PXWMMayWaitForGestureGeometry(false,0,30));
+    CHECK(PXWMMayWaitForGestureGeometry(false,29,30));
+    CHECK(!PXWMMayWaitForGestureGeometry(false,30,30));
+    CHECK(!PXWMMayWaitForGestureGeometry(true,0,30));
+    CHECK(PXWMMayCommitGesture(false,0,0,4,4)==false);
+    CHECK(PXWMMayCommitGesture(true,0,0,4,4));
+    CHECK(!PXWMMayCommitGesture(true,0,1,4,4));
+    CHECK(!PXWMMayCommitGesture(true,0,0,4,5));
+}
+
 int main(void) {
     native_lifecycle();
+    native_gesture_policy();
     PXWMGeometry saved={{50,140,260,520},{0,0,390,844}};
     PXWMRect native={10,70,320,640}, out={-7,-7,-7,-7};
     CHECK(PXWMValidGeometry(saved));
@@ -82,6 +94,44 @@ int main(void) {
     CHECK(!PXWMMaySave(true,2,2,false,true,true));
     CHECK(!PXWMMaySave(true,2,2,true,false,true));
     CHECK(!PXWMMaySave(true,2,2,true,true,false));
+    CHECK(PXWMMayScheduleRestore(true,false,false,false,true,0,24));
+    CHECK(!PXWMMayScheduleRestore(true,true,false,false,true,0,24));
+    CHECK(!PXWMMayScheduleRestore(true,false,true,false,true,0,24));
+    CHECK(!PXWMMayScheduleRestore(true,false,false,true,true,0,24));
+    CHECK(!PXWMMayScheduleRestore(true,false,false,false,false,0,24));
+    CHECK(!PXWMMayScheduleRestore(false,false,false,false,true,0,24));
+    CHECK(!PXWMMayScheduleRestore(true,false,false,false,true,24,24));
+    CHECK(PXWMMayStoreGesture(true,0,0,7,7,false));
+    CHECK(!PXWMMayStoreGesture(false,0,0,7,7,false));
+    CHECK(!PXWMMayStoreGesture(true,0,2,7,7,false));
+    CHECK(!PXWMMayStoreGesture(true,0,0,7,8,false));
+    CHECK(!PXWMMayStoreGesture(true,0,0,7,7,true));
+    PXWMNativeLifecycle restoreState={0};
+    PXWMNativeBegin(&restoreState,20);
+    CHECK(PXWMNativeClose(&restoreState));
+    CHECK(PXWMNativeReturned(&restoreState,true,true,true));
+    CHECK(PXWMNativeBindingActive(&restoreState,20));
+    /* User starts before a normal layout reports orientation. First valid
+     * geometry at gesture end establishes the key; a true later rotation fails. */
+    bool known=false; unsigned firstKey=0;
+    CHECK(PXWMResolveGestureOrientation(true,&known,&firstKey,0));
+    CHECK(known && firstKey==0);
+    CHECK(PXWMMayWaitForGestureGeometry(false,0,30));
+    CHECK(PXWMMayWaitForGestureGeometry(false,29,30));
+    CHECK(!PXWMMayWaitForGestureGeometry(false,30,30));
+    CHECK(!PXWMMayWaitForGestureGeometry(true,0,30));
+    CHECK(PXWMResolveGestureOrientation(true,&known,&firstKey,0));
+    CHECK(!PXWMResolveGestureOrientation(true,&known,&firstKey,1));
+    CHECK(firstKey==0);
+    /* First geometry preflight not-ready leaves restore pending while the
+     * native scene later lays out; it must not disarm the committed record. */
+    bool restoreResolved=false;
+    for(unsigned attempt=0; attempt<24 && !restoreResolved; ++attempt)
+        restoreResolved = PXWMMayScheduleRestore(PXWMNativeBindingActive(&restoreState,20),
+                         restoreResolved,false,false,true,attempt,24) && attempt==6;
+    CHECK(restoreResolved);
+    CHECK(PXWMNativeBindingActive(&restoreState,20));
+    CHECK(!PXWMMayScheduleRestore(true,false,false,false,true,24,24));
     /* Storage-load notification after Ended must not override the user's
      * layout, even if the first orientation observation hasn't happened. */
     CHECK(PXWMMayRestoreLayout(false,false,0,0,false,false));

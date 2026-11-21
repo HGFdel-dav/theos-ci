@@ -27,23 +27,30 @@ class WindowMemoryPolicy(unittest.TestCase):
 
     def test_real_harness_rejects_broken_epoch_and_bounds(self):
         policy = (ROOT/'Common/PXWindowMemoryPolicy.h').read_text()
-        for old,new in [('observedEpoch == currentEpoch','(observedEpoch == currentEpoch || true)'),
-                        ('g.frame.x >= g.reference.x - tolerance','true'),
-                        ('(!resolved || (keyKnown && previousKey != currentKey))',
-                         '(!resolved || !keyKnown || previousKey != currentKey)'),
-                        ('orientationKnown && gestureKey == currentKey &&', 'orientationKnown &&'),
-                        ('!state->initialCleanupSeen && !state->cancelled', '!state->cancelled'),
-                        ('matchingCanvasAndBundle && state->initialCleanupSeen', 'state->initialCleanupSeen')]:
-            with self.subTest(old=old), tempfile.TemporaryDirectory() as temp:
-                target=Path(temp)
-                (target/'Common').mkdir(); (target/'tests').mkdir()
-                self.assertEqual(policy.count(old),1)
-                (target/'Common/PXWindowMemoryPolicy.h').write_text(policy.replace(old,new))
-                shutil.copy2(ROOT/'tests/window_memory_harness.c',target/'tests/harness.c')
-                binary=target/'negative'
-                subprocess.run(['cc','-std=c11','-Wno-unused-parameter',str(target/'tests/harness.c'),'-lm','-o',str(binary)],check=True)
-                run=subprocess.run([str(binary)],capture_output=True,text=True)
-                self.assertNotEqual(run.returncode,0)
+        policies = [
+            (policy,[('observedEpoch == currentEpoch','(observedEpoch == currentEpoch || true)'),
+                     ('g.frame.x >= g.reference.x - tolerance','true'),
+                     ('(!resolved || (keyKnown && previousKey != currentKey))','(!resolved || !keyKnown || previousKey != currentKey)'),
+                     ('orientationKnown && gestureKey == currentKey &&','orientationKnown &&'),
+                     ('!state->initialCleanupSeen && !state->cancelled','!state->cancelled'),
+                     ('matchingCanvasAndBundle && state->initialCleanupSeen','state->initialCleanupSeen'),
+                     ('directionKnown && gestureKey == currentKey &&','directionKnown &&'),
+                     ('!normalGeometry && samples < maximumSamples','true'),
+                     ('if (!*known) { *known = true; *gestureKey = currentKey; return true; }',
+                      '{ *known = true; *gestureKey = currentKey; return true; }'),
+                     ('return *gestureKey == currentKey;','return true;')]),
+        ]
+        for source, mutations in policies:
+            for old,new in mutations:
+                with self.subTest(old=old), tempfile.TemporaryDirectory() as temp:
+                    target=Path(temp); (target/'Common').mkdir(); (target/'tests').mkdir()
+                    self.assertEqual(source.count(old),1,old)
+                    (target/'Common/PXWindowMemoryPolicy.h').write_text(source.replace(old,new))
+                    shutil.copy2(ROOT/'tests/window_memory_harness.c',target/'tests/harness.c')
+                    binary=target/'negative'
+                    subprocess.run(['cc','-std=c11','-Wno-unused-parameter',str(target/'tests/harness.c'),'-lm','-o',str(binary)],check=True)
+                    run=subprocess.run([str(binary)],capture_output=True,text=True)
+                    self.assertNotEqual(run.returncode,0)
 
     def test_native_method_table_bytes_match_fixture(self):
         fixture=json.loads((ROOT/'tests/fixtures/window-memory-alpha437-abi.json').read_text())
@@ -96,6 +103,29 @@ class WindowMemorySourceGuards(unittest.TestCase):
                           'object_getIvar','PXCloneFunctionAt','method_setImplementation'):
             self.assertNotIn(forbidden,source)
         self.assertIn('PXWindowMemoryInstall(', (ROOT/'Tweak.xm').read_text())
+        self.assertIn('PXWMScheduleRestore(ticket)',source)
+        self.assertIn('restore_retry_scheduled',source)
+        self.assertIn('static BOOL PXWMForegroundNotifying;',source)
+        self.assertIn('static BOOL PXWMLoadNotifying;',source)
+        self.assertIn('if (!PXWMForegroundNotifying)',source)
+        self.assertIn('if (!PXWMLoadNotifying)',source)
+        self.assertIn('if (context && !context.resolved) PXWMScheduleRestore(context)',source)
+        self.assertLess(source.index('if (!PXWMForegroundNotifying)'),source.index('if (!PXWMLoadNotifying)') )
+        self.assertIn('restore_geometry_ready',source)
+        self.assertIn('save_skipped_non_normal_or_reset',source)
+        self.assertIn('PXWMResolveGestureOrientation(YES, &stamp.orientationKnown, &stamp.orientation, key)',source)
+        self.assertIn('PXWMMayWaitForGestureGeometry(normal, stamp.samples, 30)',source)
+        self.assertIn('context.savePending = NO',source)
+        self.assertIn('currentEpoch',source)
+        self.assertIn('UIApplicationDidBecomeActiveNotification',source)
+        self.assertIn('restore_retry_limit',source)
+        self.assertIn('restore_retry_direction_changed',source)
+        self.assertIn('const NSUInteger maxAttempts = 100',source)
+        self.assertIn('if (animation && attempt < 20)',source)
+        self.assertIn('PXWMResolveGestureOrientation(true,&known,&firstKey,0)',
+                      (ROOT/'tests/window_memory_harness.c').read_text())
+        self.assertIn('PXWMCaptureGestureOrientation(context, &startingKey)',source)
+        self.assertIn('PXWMMayWaitForGestureGeometry',source)
 
     def test_memory_binding_is_published_only_after_native_open_returns(self):
         source=(ROOT/'Common/PXWindowMemory.m').read_text()
@@ -242,6 +272,6 @@ class WindowMemoryAppleStorage(unittest.TestCase):
         self.assertLessEqual(len(logs),256)
         self.assertGreater(len(logs),200)
         self.assertTrue(any(event['event']=='fixture' for event in logs))
-        self.assertTrue(all(event['build']=='clone0.94' for event in logs))
+        self.assertTrue(all(event['build']=='clone0.95' for event in logs))
 
 if __name__ == '__main__': unittest.main(verbosity=2)

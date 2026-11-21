@@ -82,6 +82,20 @@ static inline bool PXWMMayCommitGesture(bool orientationKnown, unsigned gestureK
            gestureGeneration == currentGeneration;
 }
 
+static inline bool PXWMMayWaitForGestureGeometry(bool normalGeometry, unsigned samples,
+                                                  unsigned maximumSamples) {
+    return !normalGeometry && samples < maximumSamples;
+}
+
+/* If direction was unavailable when a user starts the first resize, bind it
+ * once the final host geometry becomes readable. Never guess an unknown key. */
+static inline bool PXWMResolveGestureOrientation(bool geometryReady, bool *known,
+                                                  unsigned *gestureKey, unsigned currentKey) {
+    if (!geometryReady || !known || !gestureKey) return false;
+    if (!*known) { *known = true; *gestureKey = currentKey; return true; }
+    return *gestureKey == currentKey;
+}
+
 /* Stable, non-account identifier for joining per-App diagnostics across
  * processes. Only hashes a public bundle identifier, never account content. */
 static inline uint64_t PXWMIdentifierHash(const char *identifier) {
@@ -133,4 +147,19 @@ static inline bool PXWMNativeReturned(PXWMNativeLifecycle *state, bool currentTi
 static inline bool PXWMNativeBindingActive(const PXWMNativeLifecycle *state, uint64_t serial) {
     return state && serial && state->serial == serial && state->bound &&
            !state->entering && !state->cancelled;
+}
+
+static inline bool PXWMMayScheduleRestore(bool bound, bool resolved, bool interacting,
+                                         bool savePending, bool loaded,
+                                         unsigned attempts, unsigned maximum) {
+    return bound && !resolved && !interacting && !savePending && loaded && attempts < maximum;
+}
+
+/* A user resize may start before the native content orientation exists.
+ * Do not write a speculative orientation; retry reading it from the same host. */
+static inline bool PXWMMayStoreGesture(bool directionKnown, unsigned gestureKey,
+                                      unsigned currentKey, uint64_t gestureGeneration,
+                                      uint64_t currentGeneration, bool nativeClose) {
+    return directionKnown && gestureKey == currentKey &&
+           gestureGeneration == currentGeneration && !nativeClose;
 }
