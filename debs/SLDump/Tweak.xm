@@ -18,13 +18,13 @@ static void LG(NSString *fmt, ...) {
     else { [fh seekToEndOfFile]; [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]]; [fh closeFile]; }
 }
 
-#define MARKER GDIR "/sl-dump.ran"
+static NSString *const kMarker = @"/var/mobile/Containers/Shared/AppGroup/FE3195E7-59B2-4284-BCCD-C16BE374F8BF/Library/Preferences/sl-dump.ran";
 
 __attribute__((constructor)) static void Init(void) {
     if (![[NSBundle mainBundle].bundleIdentifier hasPrefix:@"com.shanlian.pro"]) return;
     // 保险：只跑一次。崩了下次直接跳过，绝不循环
-    if ([[NSFileManager defaultManager] fileExistsAtPath:@MARKER]) return;
-    [[NSFileManager defaultManager] createFileAtPath:@MARKER contents:[NSData data] attributes:nil];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:kMarker]) return;
+    [[NSFileManager defaultManager] createFileAtPath:kMarker contents:[NSData data] attributes:nil];
     LG(@"=== dump start (one-shot) ===");
     NSString *runner = [APP stringByAppendingPathComponent:@"Runner"];
     void *h = dlopen(runner.UTF8String, RTLD_LAZY);
