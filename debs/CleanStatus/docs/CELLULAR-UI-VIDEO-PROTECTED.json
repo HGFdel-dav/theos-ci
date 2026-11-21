@@ -6,7 +6,8 @@
     "LocalCleanStatusDataSwitch/LocalCleanStatusDataModule.m",
     "tools/check_cellular.py",
     "docs/CELLULAR-LOCAL-RESULT.md",
-    "STATUS.md"
+    "STATUS.md",
+    "tools/verify_deb.py"
   ],
   "protected": {
     "LocalCleanStatusCellular.plist": "5607e236ec11e8703fd426a89232ebc41a27fe806356ed4930b15e12595f528b",
@@ -38,7 +39,6 @@
     "tools/check_animations.py": "fe02030077ab53492e71083cb187c0d3f6628255b9dd59069acd58dc8bd7aa0e",
     "tools/panel_routes.py": "3f167bcb9e55986074a7c9568a72b052046e6ecf618d9ad3ff0739258af40217",
     "tools/test_paths.py": "24ee70112137da14be0951f396251ac96e38afe794534c92abc76fcda1701f91",
-    "tools/verify_deb.py": "bfcd54e4d9c195d9ef5845fd08a7582187576c7584ddf24cdd6a4cd7890c264f",
     "LocalCleanStatusDataSwitch/Makefile": "a51512c9a1ff5194772c94f4f0de54ced42af7c051430bdac0380eb724e2d831",
     "tests/cc_policy_test.c": "ca4e68e3c7516792580d77010bd0fb9d74d9ab844a75ef825d40a0bdb6377442",
     "tests/animation_policy_test.c": "82e215b0766f2c3d48a274060b53fe8055315b4b3a7d7ad7df8c81c03f57d3d9",
@@ -129,5 +129,12 @@
     "LocalCleanStatusSystemActions/Headers/ControlCenterUIKit/CCUIMenuModuleViewController.h": "875f43d31571e94d10c583d8f61c81a9d5bc5977b56e10272b4bb2babdf253df",
     "LocalCleanStatusSystemActions/Headers/ControlCenterUIKit/CCUIContentModuleContext.h": "c9d018f0b93520e961883af58c855aba67354924c0620f08e18a25fb9c6056fc"
   },
-  "native_rendering": "NOT VERIFIED; schematic previews are not screenshots of UIKit"
+  "native_rendering": "NOT VERIFIED; schematic previews are not screenshots of UIKit",
+  "build_validation_amendment": {
+    "reason": "CI built successfully, then refused ldid DER entitlement slot. Strict XML/DER/CodeDirectory checking added; no permission relaxation.",
+    "path": "tools/verify_deb.py",
+    "before_sha256": "bfcd54e4d9c195d9ef5845fd08a7582187576c7584ddf24cdd6a4cd7890c264f",
+    "after_sha256": "1c7af569ae9a73862e62d80c327becbff0efda687206d76a8ca99145d4b28c89",
+    "production_ui_backend_settings_helper_hooks_unchanged": true
+  }
 }

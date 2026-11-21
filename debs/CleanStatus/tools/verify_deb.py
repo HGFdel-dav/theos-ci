@@ -3,6 +3,7 @@
 import hashlib, json, os, plistlib, struct, subprocess, sys, tempfile
 from pathlib import Path
 from panel_routes import validate_panel_routes
+from der_entitlements import decode_der_entitlements
 
 def u32(b,p,end='<'): return struct.unpack_from(end+'I',b,p)[0]
 def require(ok,why):
@@ -38,17 +39,23 @@ def macho(path,expected_entitlements=None):
     blob=b[off:off+size]
     magic,length,count=struct.unpack_from('>III',blob)
     require(magic==0xfade0cc0 and length<=len(blob) and 12+count*8<=length,'superblob bounds')
-    directories=[]; entitlements=[]
+    directories=[]; entitlements=[]; der_entitlements=[]; entitlement_slots=set()
     for i in range(count):
         slot,at=struct.unpack_from('>II',blob,12+8*i)
         require(at+8<=length,'slot header')
         cm,cl=struct.unpack_from('>II',blob,at)
         require(cl>=8 and at+cl<=length,'slot body')
+        if slot in (5,7):
+            require(slot not in entitlement_slots,'duplicate entitlement slot')
+            entitlement_slots.add(slot)
         if slot==5:
             require(cm==0xfade7171,'entitlement slot magic')
             ent=plistlib.loads(blob[at+8:at+cl]); require(ent==(expected_entitlements or {}),'unexpected entitlements')
             entitlements.append(ent)
-        if slot==7: raise ValueError('unexpected DER entitlements; inspect before release')
+        if slot==7:
+            require(expected_entitlements is not None and cm==0xfade7172,'DER only permitted for the explicitly entitled helper')
+            ent=decode_der_entitlements(blob[at+8:at+cl]); require(ent==expected_entitlements,'unexpected DER entitlement permissions')
+            der_entitlements.append(ent)
         if slot!=0 and not 0x1000<=slot<0x2000: continue
         require(cm==0xfade0c02 and cl>=44,'CodeDirectory')
         cd=blob[at:at+cl]
@@ -64,7 +71,9 @@ def macho(path,expected_entitlements=None):
             actual=hasher(b[k*page:min((k+1)*page,limit)]).digest()[:hs]
             require(actual==cd[hashoff+k*hs:hashoff+(k+1)*hs],f'{path.name}: signature code page {k}')
         for special,special_slot in ((5,5),(7,7)):
-            if special>nsp: continue
+            if special>nsp:
+                require(not any(u32(blob,12+j*8,'>')==special_slot for j in range(count)),'entitlement present but not covered by CodeDirectory')
+                continue
             want=cd[hashoff-special*hs:hashoff-(special-1)*hs]
             matching=None
             for j in range(count):
@@ -75,9 +84,10 @@ def macho(path,expected_entitlements=None):
             else: require(want==bytes(hs),'missing hashed special slot')
         directories.append({'hash_type':ht,'pages':ncode})
     if expected_entitlements: require(entitlements==[expected_entitlements],'required helper entitlements missing/duplicated')
+    if der_entitlements: require(der_entitlements==entitlements==[expected_entitlements],'XML/DER entitlement mismatch')
     require(any(d['hash_type'] in (2,3) for d in directories),'SHA256 directory required')
     return dict(file=path.name,architecture='arm64e',subtype=hex(subtype),sdk=version(sdk),
-                minimum_ios=version(minimum),directories=directories,entitlements=entitlements,dependencies=deps)
+                minimum_ios=version(minimum),directories=directories,entitlements=entitlements,der_entitlements=der_entitlements,dependencies=deps)
 
 def inspect(deb,out):
     fields={}

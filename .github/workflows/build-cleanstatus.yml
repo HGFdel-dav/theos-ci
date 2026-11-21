@@ -37,6 +37,7 @@ jobs:
           python3 tools/check.py | tee out/checks/host.txt
           python3 tools/test_verify.py | tee out/checks/verifier.txt
           python3 tools/test_verify_cellular.py | tee out/checks/verifier-cellular.txt
+          python3 tools/test_der_entitlements.py | tee out/checks/verifier-der.txt
           python3 tools/test_paths.py | tee out/checks/paths.txt
       - name: Fixed toolchain and iPhoneOS15.5.sdk
         run: |
