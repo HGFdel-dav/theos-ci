@@ -548,22 +548,8 @@ static __attribute__((unused)) void SLGoBackground(void) {
 
 // ---- 自动续期期间把界面移出屏幕（不隐藏窗口，渲染照常）----
 
-static void (*g_origMakeKeyAndVisible)(id, SEL) = NULL;
 
-static BOOL SLSuppressUIActive(void) {
-    @try {
-        SLState *st = [SLState load];
-        return (st.phase == SLPhaseResetting || st.phase == SLPhaseNeedFill);
-    } @catch (NSException *e) { return NO; }
-}
 
-static void SLPushOffscreen(id win) {
-    UIScreen *sc = [UIScreen mainScreen];
-    if (!sc) return;
-    CGFloat dx = sc.bounds.size.width * 2.0;
-    [(UIWindow *)win setTransform:CGAffineTransformMakeTranslation(dx, 0)];
-    SLLog(@"ui: offscreen %@", NSStringFromCGRect([(UIWindow *)win frame]));
-}
 
 static void SLHookMakeKeyAndVisible(id self, SEL _cmd) {
     if (g_origMakeKeyAndVisible) g_origMakeKeyAndVisible(self, _cmd);
