@@ -168,7 +168,8 @@ static void SLNotify(NSString *title, NSString *body) {
 
 // 到期提醒：由 App 自己排一条本地通知，点它会打开 App，App 起来就自动续期
 static void SLScheduleReminder(SLState *st) {
-    if (!st.enabled) return;
+    if (!st.enabled) { SLLog(@"reminder skip: disabled"); return; }
+    if (st.phase != SLPhaseArmed) { SLLog(@"reminder skip: phase=%d", (int)st.phase); return; }
     Class unc = NSClassFromString(@"UNUserNotificationCenter");
     if (!unc) return;
     UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
@@ -605,13 +606,18 @@ static void SLHookMakeKeyAndVisible(id self, SEL _cmd) {
 // 到期且用户已点开（或已过提醒时刻）-> 立刻续期；返回 YES 表示已接管
 static BOOL SLRenewIfDue(void) {
     SLState *st = [SLState load];
-    if (!st.enabled || st.phase != SLPhaseArmed) return NO;
     double nowT = [NSDate date].timeIntervalSince1970;
     BOOL afterRemind = (st.remindAt > 0 && nowT >= st.remindAt);
-    if (!(afterRemind || (st.nextFire1 > 0 && nowT >= st.nextFire1 - 30))) return NO;
+    BOOL dueByFire = (st.nextFire1 > 0 && nowT >= st.nextFire1 - 30);
+    BOOL due = (afterRemind || dueByFire);
+    SLLog(@"renew-check enabled=%d phase=%d now=%.0f remindAt=%.0f next=%.0f afterRemind=%d dueByFire=%d",
+          st.enabled, (int)st.phase, nowT, st.remindAt, st.nextFire1, afterRemind, dueByFire);
+    if (!st.enabled || st.phase != SLPhaseArmed) { SLLog(@"renew-check skip: not armed/enabled"); return NO; }
+    if (!due) { SLLog(@"renew-check skip: not due yet"); return NO; }
     SLLog(@"renew due -> start (now=%.0f remindAt=%.0f next=%.0f)", nowT, st.remindAt, st.nextFire1);
     st.phase = SLPhaseResetting;
     st.attempt = 0;
+    st.testSecs = 0;      // 测试开关一次性，防止反复弹
     [st save];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
