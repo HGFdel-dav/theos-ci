@@ -43,7 +43,7 @@ jobs:
           set -euo pipefail
           brew install ldid xz dpkg
           git clone --no-checkout https://github.com/roothide/theos.git "$HOME/theos"
-          git -C "$HOME/theos" checkout 3ac89c984ec652fd16bcd91b33ae16de45ce76fa
+          git -C "$HOME/theos" checkout 958fea4f779943505b15b93c88bb4db8d97b346d
           git -C "$HOME/theos" submodule update --init --recursive --depth 1
           git clone --filter=blob:none --no-checkout https://github.com/xybp888/iOS-SDKs.git "$HOME/sdks"
           git -C "$HOME/sdks" sparse-checkout set iPhoneOS15.5.sdk
