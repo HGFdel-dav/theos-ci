@@ -423,7 +423,7 @@ static void SLScanBuf(const char *buf, NSUInteger n, NSString **best) {
         NSData *key = [SLSigner keychainKey];   // 只在需要时才碰钥匙串
         if (key) [r setValue:[SLSigner signPeach:peach key:key idx:st.signerIdx] forHTTPHeaderField:@"lightningx"];
     }
-    [r setValue:@"4.5.4" forHTTPHeaderField:@"version"];
+    [r setValue:@"4.5.3" forHTTPHeaderField:@"version"];
     [r setValue:@"15.5" forHTTPHeaderField:@"system-version"];
     [r setValue:@"1" forHTTPHeaderField:@"platform"];
     [r setValue:@"true" forHTTPHeaderField:@"virtual_machine"];
