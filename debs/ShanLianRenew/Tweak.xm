@@ -784,6 +784,16 @@ static void SLInitBody(void) {
         @try {
             [UNUserNotificationCenter currentNotificationCenter].delegate = [SLNotifHandler shared];
             SLLog(@"notif delegate set");
+            [[NSNotificationCenter defaultCenter]
+                addObserverForName:UIApplicationDidBecomeActiveNotification
+                            object:nil
+                             queue:[NSOperationQueue mainQueue]
+                        usingBlock:^(NSNotification *n) {
+                SLState *cur = [SLState load];
+                if (!cur.enabled) return;
+                SLLog(@"became active -> reschedule reminder");
+                SLScheduleReminder(cur);
+            }];
         } @catch (NSException *e) { SLLog(@"delegate fail %@", e.reason ?: @"-"); }
     }
 
