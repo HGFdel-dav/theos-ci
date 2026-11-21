@@ -4,7 +4,7 @@
 #import <dlfcn.h>
 #import <mach-o/dyld.h>
 
-#define L @"/tmp/sl-dlopen.log"
+#define L @"/var/mobile/Library/Preferences/sl-probe2.log"
 
 static void WL(NSString *fmt, ...) {
     va_list ap; va_start(ap, fmt);
