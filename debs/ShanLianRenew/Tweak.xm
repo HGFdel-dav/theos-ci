@@ -195,6 +195,8 @@ static void SLScheduleReminder(SLState *st) {
 }
 
 
+static NSUserDefaults *SLDefaults(void);
+
 // 点通知的回调：记下"这次是点通知进来的"，App 启动时据此立刻续期
 @interface SLNotifHandler : NSObject <UNUserNotificationCenterDelegate>
 + (instancetype)shared;
