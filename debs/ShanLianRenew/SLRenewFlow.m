@@ -47,12 +47,22 @@ static id g_center = nil;
     if (!mgr) { FL(@"crane: no class"); return NO; }
     id inst = ((id (*)(id, SEL))objc_msgSend)(mgr, sel_registerName("sharedManager"));
     if (!inst) { FL(@"crane: no manager"); return NO; }
-    SEL w = sel_registerName("wipeContainerWithIdentifier:forApplicationWithIdentifier:shouldRepopulate:");
-    if (![inst respondsToSelector:w]) { FL(@"crane: no wipe sel"); return NO; }
-    FL(@"crane: wipe start");
-    ((void (*)(id, SEL, id, id, BOOL))objc_msgSend)(inst, w, @"DEFAULT", @"com.shanlian.pro", YES);
-    FL(@"crane: wipe issued");
-    return YES;
+    // 只清内容、不重建容器（重建会复制出第二个 App，导致黑屏）
+    SEL dc = sel_registerName("deleteContentOfContainerWithIdentifier:forApplicationWithIdentifier:");
+    SEL dk = sel_registerName("deleteKeychainItemsForContainerWithIdentifier:forApplicationIdentifier:");
+    BOOL ok = NO;
+    if ([inst respondsToSelector:dc]) {
+        FL(@"crane: deleteContent");
+        ((void (*)(id, SEL, id, id))objc_msgSend)(inst, dc, @"DEFAULT", @"com.shanlian.pro");
+        ok = YES;
+    }
+    if ([inst respondsToSelector:dk]) {
+        FL(@"crane: deleteKeychain");
+        ((void (*)(id, SEL, id, id))objc_msgSend)(inst, dk, @"DEFAULT", @"com.shanlian.pro");
+        ok = YES;
+    }
+    if (!ok) FL(@"crane: no usable selector");
+    return ok;
 }
 
 #pragma mark - 起 App
