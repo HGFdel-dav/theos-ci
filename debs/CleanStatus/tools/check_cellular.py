@@ -19,7 +19,7 @@ def main():
     old_items=protected['original_root_items'];need(root_items[:len(old_items)]==old_items and len(root_items)==len(old_items)+2,'all 0.3.1 preference rows unchanged; only two appended')
     for line in protected['original_target_lines']:need(line in text('Makefile').splitlines(),'original target input unchanged: '+line.split('=')[0])
     info=plistlib.loads((ROOT/'LocalCleanStatusPrefs/Resources/Info.plist').read_bytes())
-    for key,value in protected['original_preferences_info'].items():need(info.get(key)==('0.3.4' if key in ('CFBundleVersion','CFBundleShortVersionString') else value),'old bundle metadata except version preserved: '+key)
+    for key,value in protected['original_preferences_info'].items():need(info.get(key)==('0.3.5' if key in ('CFBundleVersion','CFBundleShortVersionString') else value),'old bundle metadata except version preserved: '+key)
     for n in ('Cellular/LCSCellularPanel.h','Cellular/LCSCellularPanel.m','Cellular/LCSCellularService.m','LocalCleanStatusDataSwitch/Makefile','LocalCleanStatusDataSwitch/LocalCleanStatusDataModule.m','LocalCleanStatusSIMTool/main.m','LocalCleanStatusSIMTool/Makefile','LocalCleanStatusSIMTool/entitlements.plist'):
         need((ROOT/n).is_file() and (ROOT/n).stat().st_size>50,'missing real implementation '+n)
     panel=text('Cellular/LCSCellularPanel.m');service=text('Cellular/LCSCellularService.m');hook=text('Cellular/LCSCellularHooks.m');settings=text('Cellular/LCSCellularSettings.m');module=text('LocalCleanStatusDataSwitch/LocalCleanStatusDataModule.m');helper=text('LocalCleanStatusSIMTool/main.m')
