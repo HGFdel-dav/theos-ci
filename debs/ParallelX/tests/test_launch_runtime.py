@@ -215,7 +215,20 @@ class LaunchSourceGuards(unittest.TestCase):
         self.assertIn('PXCloneFlowMaySucceed', LAUNCH)
         self.assertIn('activeContainerForBundle:_bundle', LAUNCH)
 
-    def test_late_callbacks_and_quarantine_are_guarded(self):
+    def test_missing_native_completion_retries_only_without_weakening_success_gates(self):
+        self.assertIn('if (!_reuse && _openingBridge && !_completionReceived && _splitRetries < 2)', LAUNCH)
+        self.assertIn('[self recordOpenDiagnostic:@"open_timeout_before_retry" force:YES];', LAUNCH)
+        start=LAUNCH.index('- (void)retrySplit:(uint64_t)token {')
+        end=LAUNCH.index('- (void)nativeOpenReturned:',start)
+        retry=LAUNCH[start:end]
+        self.assertIn('activeContainerForBundle:self->_bundle', retry)
+        self.assertIn('native_retry_account_mismatch', retry)
+        self.assertIn('if (_pending) { [self finish:token error:nil]; return; }', retry)
+        succeed=LAUNCH.split('if (PXCloneFlowMaySucceed(',1)[1].split('}',1)[0]
+        self.assertIn('verified, visible', succeed)
+        self.assertIn('_nativeOpenReturned', LAUNCH)
+        self.assertIn('hasHostedSurface', LAUNCH)
+
         self.assertIn('if ([controller tokenForOpeningBundle:bundle] == token && weakBridge)', LAUNCH)
         self.assertIn('if (completionDelivered)', LAUNCH)
         self.assertIn('completionDelivered = YES;', LAUNCH)

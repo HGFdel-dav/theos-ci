@@ -153,7 +153,7 @@ class WindowMemorySourceGuards(unittest.TestCase):
         method=source.split('static void PXWMLayout(id self,SEL command) {',1)[1].split('static void PXWMClose(',1)[0]
         self.assertLess(method.index('PXWMPrepareInitialLayout(context)'),method.index('PXWMOriginalLayout(self,command)'))
         self.assertIn('PXWMOpenTicketKey',method)
-        prepare=source.split('static BOOL PXWMPrepareInitialLayout(',1)[1].split('static void PXWMTryRestore(',1)[0]
+        prepare=source.split('static BOOL PXWMPrepareInitialLayoutWithNativeFrame(PXWMContext *context,\n                                                   const PXWMRect *nativeFrameOverride) {',1)[1].split('static BOOL PXWMPrepareInitialLayout(',1)[0]
         for check in ('PXWMMayPrepareInitialLayout(', 'context->native.initialCleanupSeen',
                       'PXWMReadGeometry(context, YES', 'PXWindowMemoryGeometry(snapshot, context.bundle, key',
                       'PXWMRestore(saved, native.reference, native.frame', 'restore_initial_geometry_prepared'):
@@ -172,7 +172,7 @@ class WindowMemorySourceGuards(unittest.TestCase):
         perform=restore.split('[UIView performWithoutAnimation:^{',1)[1].split('}];',1)[0]
         self.assertLess(perform.index('card.frame = requested;'),perform.index('PXCloneSendVoid(context.bridge, layout)'))
         self.assertLess(restore.index('PXCloneSendVoid(context.bridge, layout)'),restore.index('CGRect actual = card.frame'))
-        initial=source.split('static BOOL PXWMPrepareInitialLayout(',1)[1].split('static void PXWMTryRestore(',1)[0]
+        initial=source.split('static BOOL PXWMPrepareInitialLayoutWithNativeFrame(PXWMContext *context,\n                                                   const PXWMRect *nativeFrameOverride) {',1)[1].split('static BOOL PXWMPrepareInitialLayout(',1)[0]
         self.assertNotIn('PXWMOriginalLayout(context.bridge',initial)
         open_method=source.split('static void PXWMOpen(',1)[1].split('static void PXWMLayout(',1)[0]
         completion=open_method.split('forwardCompletion = ^(BOOL ok) {',1)[1].split('nativeCompletion(ok);',1)[0]
@@ -183,6 +183,10 @@ class WindowMemorySourceGuards(unittest.TestCase):
         source=(ROOT/'Common/PXWindowMemory.m').read_text()
         hook=source.split('static void PXWMCardSetFrame(',1)[1].split('static void PXWMScheduleInitialSettle(',1)[0]
         self.assertIn('context.initialTargetActive',hook)
+        self.assertIn('context->native.entering && context->native.initialCleanupSeen',hook)
+        self.assertIn('PXWMPrepareInitialLayoutWithNativeFrame(context, &pendingNative)',hook)
+        self.assertIn('PXWMReadGeometry(context, YES, nativeFrameOverride, &native, &key)',source)
+        self.assertIn('if (ticket && PXWMContexts) [PXWMContexts addObject:ticket];',source)
         self.assertIn('CACurrentMediaTime() < context.initialTargetDeadline',hook)
         self.assertIn('frame = target;',hook)
         self.assertIn('context.initialNativeFrame',hook)
@@ -198,7 +202,7 @@ class WindowMemorySourceGuards(unittest.TestCase):
                         settle.index('PXWMOriginalLayout(current.bridge, NSSelectorFromString(@"layoutHost"))'))
         self.assertIn('current.initialContentRefreshed = YES;',settle)
         self.assertNotIn('PXWMScheduleInitialSettle(current)',settle)
-        prepare=source.split('static BOOL PXWMPrepareInitialLayout(',1)[1].split('static void PXWMTryRestore(',1)[0]
+        prepare=source.split('static BOOL PXWMPrepareInitialLayoutWithNativeFrame(PXWMContext *context,\n                                                   const PXWMRect *nativeFrameOverride) {',1)[1].split('static BOOL PXWMPrepareInitialLayout(',1)[0]
         self.assertIn('context.initialTargetDeadline = CACurrentMediaTime() + 2.0;',prepare)
         self.assertIn('PXWMScheduleInitialSettle(context);',prepare)
         gesture=source.split('static void PXWMGestureAction(',1)[1].split('static void PXWMMove(',1)[0]
@@ -376,6 +380,6 @@ class WindowMemoryAppleStorage(unittest.TestCase):
         self.assertLessEqual(len(logs),256)
         self.assertGreater(len(logs),200)
         self.assertTrue(any(event['event']=='fixture' for event in logs))
-        self.assertTrue(all(event['build']=='clone0.100' for event in logs))
+        self.assertTrue(all(event['build']=='clone0.101' for event in logs))
 
 if __name__ == '__main__': unittest.main(verbosity=2)

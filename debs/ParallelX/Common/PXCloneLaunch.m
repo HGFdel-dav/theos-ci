@@ -733,6 +733,12 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     @catch (__unused NSException *exception) { }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(900 * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
         if (!PXCloneFlowIsCurrent(&self->_flow, token) || self->_flow.phase != PXCloneFlowOpening) return;
+        if (_pending) { [self finish:token error:nil]; return; }
+        NSString *active = [PXCloneCrane activeContainerForBundle:self->_bundle];
+        if (![active isEqual:self->_container]) {
+            [self record:@"native_retry_account_mismatch" code:18];
+            [self finish:token error:PXLaunchError(18, @"重试前账号已变化，已停止分屏")]; return;
+        }
         Class target = PXLaunchClass(@"PXPanelEntry");
         SEL open = NSSelectorFromString(@"externalOpenApplication:");
         @try { ((void (*)(id, SEL, id))objc_msgSend)((id)target, open, self->_bundle); }
@@ -808,7 +814,16 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
         [self finish:token error:nil]; return;
     }
     if (!verified) { [self finish:token error:PXLaunchError(18, @"打开期间账号发生变化，已停止分屏")]; return; }
-    if (++_attempt >= 100) { [self finish:token error:PXLaunchError(19, @"未确认分屏窗口可见，没有转为全屏")]; return; }
+    if (++_attempt >= 100) {
+        if (!_reuse && _openingBridge && !_completionReceived && _splitRetries < 2) {
+            [self recordOpenDiagnostic:@"open_timeout_before_retry" force:YES];
+            _splitRetries++;
+            [self record:@"native_completion_timeout_retry" code:(NSInteger)_splitRetries];
+            [self retrySplit:token];
+            return;
+        }
+        [self finish:token error:PXLaunchError(19, @"未确认分屏窗口可见，没有转为全屏")]; return;
+    }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 100 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ [self pollOpened:token]; });
 }
 
@@ -852,7 +867,7 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     // A bounded, content-free event ring survives a missed live log capture.
     // No account display names, credentials, messages or app content.
     NSDictionary *event = @{ @"time": @(NSDate.date.timeIntervalSince1970),
-                             @"build": @"clone0.100", @"token": @(_flow.token),
+                             @"build": @"clone0.101", @"token": @(_flow.token),
                              @"stage": stage, @"code": @(code),
                              @"bundle": _bundle ?: @"", @"targetHash": @(_container.hash) };
     NSMutableDictionary *entry = [event mutableCopy];

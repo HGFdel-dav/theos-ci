@@ -1,3 +1,15 @@
+# ParallelX alpha437 + clone0.101｜跨 App 首显记忆恢复与分屏超时恢复（本地候选）
+
+## 当前状态（2026-11-22）
+- 生产基线：clone0.100 提交 `527a48b982cd759daa9d85f8f5648345cf60b347`。用户授权：本地修改和测试，适用于所有 App 的记忆窗口恢复以及分屏流程；未授权推送、CI、构建验包、安装或设备读写，注销/重启也未授权。
+- 通用窗口候选：在开窗期间把当前票据放入弱上下文表；当原版首次给 `PXHostCard` 写入新默认外框时，用该次即将写入的真实外框、当前屏幕参考尺寸和已保存的方向记录计算恢复目标，并在转发该帧之前应用。只在原版开窗票据、初始清理完成且原版仍处于 entering 时执行；平常 resize、gesture、无记忆 App 路径原样转发。此路径针对所有 App，不含 CHiQ 特判。
+- 分屏候选：若目标账号仍读回匹配、原版桥已到达，但 10 秒内一直没有原版 completion，则保留失败快照并做最多两次已有的原生 close/open 重试；每次真正重开前再次核对账号，发现新目标或账号变化即停止。成功门槛未放宽：仍需目标账号匹配、native completion/正确桥接、正确 bundle/scene/hosted surface 和窗口可见；不转全屏、不杀应用进程。
+- 本地回归：完整 unittest 182 项通过（15 项 Apple Foundation 专用跳过）；窗口记忆 23 项（9 skip）、分屏运行时 32 项（6 skip）；`tools/validate.py --pinned-vendor` 全量通过；两个改动的 Objective-C 文件以 iPhoneOS15.5 SDK、arm64e `clang -fsyntax-only` 通过。
+- **尚未证明修复**：窗口首帧恢复、原版内容布局、上滑关闭/底部双击长按缩小，均未真机验收；起点读书的缺失 completion 是否能由受限重试恢复也未实测。测试和语法检查不等于安装加载/真机成功。未做 CI/机器码构建/DEB 验包/安装/设备操作。
+- 候选目录：`source/`；只读设备证据及详细判断见 `evidence/LOCAL-REVIEW-STATUS.md`。
+
+---
+
 # ParallelX alpha437 + clone0.100｜尺寸记忆窄修，已推送待CI
 
 ## 当前候选（2026-11-22）
