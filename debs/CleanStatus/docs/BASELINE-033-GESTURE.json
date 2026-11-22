@@ -12,7 +12,8 @@
     "LocalCleanStatusPrefs/Resources/Info.plist",
     "LocalCleanStatusDataSwitch/Resources/Info.plist",
     "STATUS.md",
-    "docs/CELLULAR-UI-VIDEO-PROTECTED.json"
+    "docs/CELLULAR-UI-VIDEO-PROTECTED.json",
+    "tools/run_cellular_storage_native.py"
   ],
   "files": {
     "LocalCleanStatusCellular.plist": "5607e236ec11e8703fd426a89232ebc41a27fe806356ed4930b15e12595f528b",
@@ -144,5 +145,6 @@
   },
   "metadata_only_exceptions": {
     "docs/CELLULAR-UI-VIDEO-PROTECTED.json": "Historical file-scope metadata was updated to record this crash repair; not a UI production source. Four actual card files remain separately verified byte-identical to 0.3.3."
-  }
+  },
+  "build_fixture_note": "SDK syntax fixture is run after the workflow installs THEOS and the pinned iPhoneOS15.5.sdk. The fixture consumes THEOS from environment; it never skips on CI."
 }

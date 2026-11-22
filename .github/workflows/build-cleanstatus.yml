@@ -28,6 +28,8 @@ jobs:
           filter: blob:none
           sparse-checkout: |
             debs/CleanStatus
+            Animation
+            Sources
             .github/workflows/build-cleanstatus.yml
       - name: Host checks
         working-directory: ${{ env.PROJECT_DIR }}
@@ -54,6 +56,12 @@ jobs:
           mkdir -p "$HOME/theos/sdks"
           cp -R "$HOME/sdks/iPhoneOS15.5.sdk" "$HOME/theos/sdks/"
           python3 -c 'import json,os; from pathlib import Path; p=Path(os.environ["HOME"])/"theos/sdks/iPhoneOS15.5.sdk/SDKSettings.json"; assert json.loads(p.read_text())["Version"]=="15.5"'
+      - name: Parse original-root fixture units with fixed SDK (no code generation)
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -euo pipefail
+          export THEOS="$HOME/theos"
+          python3 tools/run_cellular_storage_native.py --syntax-only | tee out/checks/root-fixture-syntax.txt
       - name: Compile release and retain debug symbols
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
