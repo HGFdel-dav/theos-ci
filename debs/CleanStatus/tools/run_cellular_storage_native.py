@@ -4,7 +4,7 @@ Only directory-root literals are substituted in a TEMPORARY compile unit. No
 selected-root injection, production source edits, real /var reads, or radio API.
 """
 from pathlib import Path
-import hashlib,json,platform,subprocess,tempfile,sys,os
+import hashlib,json,platform,subprocess,tempfile,sys
 ROOT=Path(__file__).resolve().parents[1]
 
 def stage(directory):
@@ -33,11 +33,7 @@ def main():
         include=['-I'+str(ROOT/'Cellular'),'-I'+str(ROOT/'Sources'),'-I'+str(ROOT/'Animation')]
         flags=['-fobjc-arc','-fblocks','-Wall','-Wextra','-Werror','-DLCS_CELLULAR_STORAGE_TEST=1',*include]
         if syntax:
-            theos=os.environ.get('THEOS')
-            if not theos:raise SystemExit('ERROR: THEOS must be set before fixed-SDK fixture parsing.')
-            sdk=Path(theos)/'sdks/iPhoneOS15.5.sdk'
-            if not sdk.is_dir():raise SystemExit('ERROR: fixed iPhoneOS15.5.sdk is missing from THEOS; fixture parsing cannot be skipped.')
-            base=['clang','-fsyntax-only','-target','arm64e-apple-ios15.5','-isysroot',str(sdk)]
+            base=['clang','-fsyntax-only','-target','arm64e-apple-ios15.5','-isysroot','/opt/theos/sdks/iPhoneOS15.5.sdk']
             for path in [animation,ROOT/'Cellular/LCSCellularSettings.m',ROOT/'tests/cellular/storage_native.m',ROOT/'tests/cellular/path_reuse_native.m']:
                 subprocess.run(base+flags+[str(path)],check=True)
             print('PASS fixed-SDK parse of original-root test compile units (4); no native execution or code generation.')

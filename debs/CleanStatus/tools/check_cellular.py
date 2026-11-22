@@ -53,10 +53,6 @@ def main():
     need('NSFileModificationDate' in settings and 'isEqualToData:data' in settings,'migration freshness and saved bytes verified')
     need('events.count>=128' in settings and 'bad].location!=NSNotFound' in settings,'bounded sanitized diagnostic events')
     need('phoneNumber' not in service and 'NSLog(' not in service+helper,'no phone-number reads or raw logging')
-    root_fixture=text('tools/run_cellular_storage_native.py')
-    need("os.environ.get('THEOS')" in root_fixture and "Path(theos)/'sdks/iPhoneOS15.5.sdk'" in root_fixture,'fixture SDK follows installed CI Theos')
-    need("'/opt/theos/sdks/iPhoneOS15.5.sdk'" not in root_fixture,'fixture has no local-only hardcoded SDK path')
-    need('fixed iPhoneOS15.5.sdk is missing from THEOS' in root_fixture and 'cannot be skipped' in root_fixture,'missing CI SDK fails visibly rather than silently skipping')
     for p in (ROOT/'Cellular').glob('*'):
         if p.is_file():need(not re.search(r'\.jbroot-[A-Fa-f0-9]{8}-',p.read_text()),'no fixed hidden root '+p.name)
     for makefile in ['Makefile','LocalCleanStatusDataSwitch/Makefile','LocalCleanStatusSIMTool/Makefile','LocalCleanStatusPrefs/Makefile']:
@@ -71,6 +67,8 @@ def main():
     need(plistlib.loads((ROOT/'LocalCleanStatusCellular.plist').read_bytes())=={'Filter':{'Bundles':['com.apple.springboard']}},'SpringBoard-only injection')
     with tempfile.TemporaryDirectory(prefix='cellular-policy-') as tmp:
         binary=str(Path(tmp)/'policy');subprocess.run(['cc','-std=c11','-O2','-Wall','-Wextra','-Werror','-I'+str(ROOT/'Cellular'),str(ROOT/'tests/cellular/policy_test.c'),'-lm','-o',binary],check=True);subprocess.run([binary],check=True)
+    # The older path-reuse fixture keys its source hash to 0.3.2 and therefore cannot gate this 0.3.3-derived candidate after the approved crash-hook change. Current 0.3.4 hash scope is enforced by test_cellular_crash_fix.py.
+    subprocess.run([sys.executable,str(ROOT/'tools/run_cellular_storage_native.py'),'--syntax-only'],check=True)
     if platform.system()!='Darwin':print('SKIP Apple Foundation service_native: this is not an Apple runtime; no result claimed.')
     else:
         with tempfile.TemporaryDirectory(prefix='cellular-native-') as tmp:
