@@ -169,7 +169,7 @@ static BOOL PXWMReadGeometry(PXWMContext *context, BOOL preparingInitialLayout,
         content = canvas.bounds.size;
     }
     // Initial restore never guesses content axes from a still-default canvas.
-    // alpha437's hostedSourceSize forwards to its real sourceSize, cleared by close.
+    // The original hostedSourceSize forwards to its real sourceSize, cleared by close.
     if (!isfinite(content.width) || !isfinite(content.height) || content.width <= 0 || content.height <= 0) return NO;
     PXWMRect nativeFrame = nativeFrameOverride ? *nativeFrameOverride : PXWMFromRect(card.frame);
     PXWMGeometry geometry = {nativeFrame, PXWMFromRect(reference)};
@@ -668,7 +668,7 @@ static void PXWMLayout(id self,SEL command) {
     if (PXWMOriginalLayout) PXWMOriginalLayout(self,command);
     if (NSThread.isMainThread) {
         // Native layout establishes hostCard's default geometry and sourceSize.
-        // Apply saved geometry now, before alpha437 returns to its reveal/centering
+        // Apply saved geometry now, before the original returns to its reveal/centering
         // completion; otherwise the first visible frame can still be the default.
         if (context && context->native.entering)
             PXWMPrepareInitialLayout(context);
@@ -771,7 +771,7 @@ BOOL PXWindowMemoryInstall(Class panel,Class bridge,Class hostController) {
     return ready;
 }
 
-/* alpha437 can bind a valid app window before its source geometry is ready.
+/* The original can bind a valid app window before its source geometry is ready.
  * Retry only this geometry read for a bounded 10 seconds; no reopen, no
  * process termination, no window-frame polling loop and no user action is sent. */
 static void PXWMScheduleRestore(PXWMContext *context) {

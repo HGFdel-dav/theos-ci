@@ -56,7 +56,7 @@ class WindowMemoryPolicy(unittest.TestCase):
                     self.assertNotEqual(run.returncode,0)
 
     def test_native_method_table_bytes_match_fixture(self):
-        fixture=json.loads((ROOT/'tests/fixtures/window-memory-alpha437-abi.json').read_text())
+        fixture=json.loads((ROOT/'tests/fixtures/window-memory-alpha440-abi.json').read_text())
         image=(ROOT/fixture['sample']).read_bytes()
         self.assertEqual(hashlib.sha256(image).hexdigest(),fixture['sample_sha256'])
         start, end = (int(value,16) for value in fixture['selref_range'])
@@ -72,7 +72,7 @@ class WindowMemoryPolicy(unittest.TestCase):
                 self.assertEqual(cstr(name),method['selector'])
 
     def test_original_open_first_closes_old_window_then_sets_canvas(self):
-        fixture=json.loads((ROOT/'tests/fixtures/window-memory-alpha437-abi.json').read_text())
+        fixture=json.loads((ROOT/'tests/fixtures/window-memory-alpha440-abi.json').read_text())
         image=(ROOT/fixture['sample']).read_bytes()
         self.assertEqual(hashlib.sha256(image).hexdigest(),fixture['sample_sha256'])
         def word(pos): return struct.unpack_from('<I',image,pos)[0]
@@ -177,7 +177,7 @@ class WindowMemorySourceGuards(unittest.TestCase):
         open_method=source.split('static void PXWMOpen(',1)[1].split('static void PXWMLayout(',1)[0]
         completion=open_method.split('forwardCompletion = ^(BOOL ok) {',1)[1].split('nativeCompletion(ok);',1)[0]
         self.assertNotIn('PXWMOriginalLayout(self, NSSelectorFromString(@"layoutHost"))',completion)
-        self.assertIn('0x63788', (ROOT/'evidence/native-layout/README.md').read_text())
+        self.assertIn('0x639b4', (ROOT/'evidence/native-layout/README.md').read_text())
 
     def test_initial_open_frame_write_is_redirected_and_content_remeasured_once(self):
         source=(ROOT/'Common/PXWindowMemory.m').read_text()
@@ -229,27 +229,32 @@ class WindowMemorySourceGuards(unittest.TestCase):
         self.assertIn('check.savePending',check)
         self.assertIn('unsignedLongLongValue] != epoch',check)
 
-    def test_alpha437_native_layout_reads_actual_source_size(self):
-        fixture=json.loads((ROOT/'tests/fixtures/window-memory-alpha437-abi.json').read_text())
+    def test_alpha440_native_layout_reads_actual_source_size(self):
+        fixture=json.loads((ROOT/'tests/fixtures/window-memory-alpha440-abi.json').read_text())
         image=(ROOT/fixture['sample']).read_bytes()
         self.assertEqual(hashlib.sha256(image).hexdigest(),fixture['sample_sha256'])
         def word(pos): return struct.unpack_from('<I',image,pos)[0]
         def sign(n,bits): return (n^(1<<(bits-1)))-(1<<(bits-1))
-        def target(pos): return pos+4*sign(word(pos)&0x3ffffff,26)
-        # Exact alpha437 method body/stub bytes, not a guessed Swift IMP call.
-        self.assertEqual(word(0x637d8)>>26,0b100101)
-        self.assertEqual(target(0x637d8),0x766c0)
-        self.assertEqual(word(0x645b8)>>26,0b000101)
-        self.assertEqual(target(0x645b8),0x766c0)
-        stub=0x766c0
+        def branch(pos):
+            w=word(pos)
+            self.assertIn(w>>26,(0b100101,0b000101))
+            return pos+4*sign(w&0x3ffffff,26)
+        imp=next(m['imp'] for m in fixture['methods'] if m['selector']=='layoutHost')
+        self.assertEqual(word(int(imp,16)),0xd503237f)  # pacibsp prologue
+        # layoutHost reads the real hosted source size through its own stub.
+        self.assertEqual(branch(0x63a04),0x76900)
+        stub=0x76900
         a,l=word(stub),word(stub+4)
         self.assertEqual(a&0x9f00001f,0x90000001)
         self.assertEqual(l&0xffc003ff,0xf9400021)
         pages=sign(((a>>5)&0x7ffff)*4+((a>>29)&3),21)
         ref=(stub&~4095)+(pages<<12)+((l>>10)&0xfff)*8
-        self.assertEqual(ref,0x92fa0)
+        self.assertEqual(ref,0x96fa0)
         name=struct.unpack_from('<Q',image,ref)[0]&0xffffffff
         self.assertEqual(image[name:image.index(b'\x00',name)],b'sourceSize')
+        # hostedSourceSize is a tail branch to that same getter, not a separate guess.
+        tail=next(m['imp'] for m in fixture['methods'] if m['selector']=='hostedSourceSize')
+        self.assertEqual(branch(int(tail,16)),stub)
 
     def test_only_user_completed_geometry_can_save(self):
         source=(ROOT/'Common/PXWindowMemory.m').read_text()
@@ -380,6 +385,6 @@ class WindowMemoryAppleStorage(unittest.TestCase):
         self.assertLessEqual(len(logs),256)
         self.assertGreater(len(logs),200)
         self.assertTrue(any(event['event']=='fixture' for event in logs))
-        self.assertTrue(all(event['build']=='clone0.101' for event in logs))
+        self.assertTrue(all(event['build']=='clone0.102' for event in logs))
 
 if __name__ == '__main__': unittest.main(verbosity=2)

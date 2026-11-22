@@ -41,7 +41,7 @@ jobs:
           mkdir -p "$HOME/theos/sdks"
           cp -R "$HOME/iossdks/iPhoneOS15.5.sdk" "$HOME/theos/sdks/"
           test -d "$HOME/theos/sdks/iPhoneOS15.5.sdk"
-      - name: Verify pinned alpha437 payload from the uploaded original
+      - name: Verify pinned alpha440 payload from the uploaded original
         working-directory: debs/ParallelX
         run: PYTHONDONTWRITEBYTECODE=1 python3 tools/validate.py --pinned-vendor
       - name: Compile with Apple arm64e ABI and run machine-code gate
@@ -57,7 +57,7 @@ jobs:
           set -euo pipefail
           mkdir -p ci-out
           python3 tools/verify_repair_package.py --scheme '${{ matrix.scheme }}' --out ci-out
-          cp tools/baseline-alpha437.json ci-out/BASELINE-ALPHA437.json
+          cp tools/baseline-alpha440.json ci-out/BASELINE-ALPHA440.json
           find .theos -type d -name '*.dSYM' -prune -exec cp -R '{}' ci-out/ \;
           git rev-parse HEAD > ci-out/SOURCE-COMMIT
           git -C "$HOME/theos" rev-parse HEAD > ci-out/THEOS-COMMIT

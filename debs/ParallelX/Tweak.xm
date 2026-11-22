@@ -21,7 +21,7 @@
 #endif
 
 // Both action signatures are intercepted by actual declaring class and ABI.
-// alpha437 metadata places both configured-action entries on PXSceneBridge.
+// alpha440 metadata places both configured-action entries on PXSceneBridge.
 // may decide whether the clone item is consumed.
 static BOOL (*PXOrigPerformAction2)(id, SEL, id, BOOL);
 static BOOL (*PXOrigPerformAction1)(id, SEL, id);

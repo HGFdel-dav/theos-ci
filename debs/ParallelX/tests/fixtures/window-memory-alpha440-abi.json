@@ -1,0 +1,127 @@
+{
+  "sample_sha256": "8fae4085b131ff577173584d4bb4bc53530764d4df441d519e2ae64bdbfae9dd",
+  "sample": "vendor/alpha440/Library/MobileSubstrate/DynamicLibraries/ParallelX.dylib",
+  "source": "alpha440 original Objective-C relative method table and native open call order",
+  "selref_range": [
+    "0x968a8",
+    "0x97bc8"
+  ],
+  "methods": [
+    {
+      "selector": "resizeHost:",
+      "entry": "0x77348",
+      "imp": "0x57828",
+      "encoding": "v24@0:8@16"
+    },
+    {
+      "selector": "moveHost:",
+      "entry": "0x77360",
+      "imp": "0x594c4",
+      "encoding": "v24@0:8@16"
+    },
+    {
+      "selector": "openApplication:inView:keyboardOverlay:completion:",
+      "entry": "0x77684",
+      "imp": "0x6b05c",
+      "encoding": "v48@0:8@16@24@32@?40"
+    },
+    {
+      "selector": "layoutHost",
+      "entry": "0x774d4",
+      "imp": "0x639b4",
+      "encoding": "v16@0:8"
+    },
+    {
+      "selector": "close",
+      "entry": "0x7769c",
+      "imp": "0x6bcf0",
+      "encoding": "v16@0:8"
+    },
+    {
+      "selector": "viewDidLayoutSubviews",
+      "entry": "0x76f5c",
+      "imp": "0xfff8",
+      "encoding": "v16@0:8"
+    },
+    {
+      "selector": "hostedSourceSize",
+      "entry": "0x77504",
+      "imp": "0x647e4",
+      "encoding": "{CGSize=dd}16@0:8"
+    },
+    {
+      "selector": "hasHostedSurface",
+      "entry": "0x77510",
+      "imp": "0x647e8",
+      "encoding": "B16@0:8"
+    },
+    {
+      "selector": "performConfiguredAction:",
+      "entry": "0x77624",
+      "imp": "0x68e80",
+      "encoding": "B24@0:8@16"
+    },
+    {
+      "selector": "performConfiguredAction:fromSearchFavorites:",
+      "entry": "0x77618",
+      "imp": "0x68dec",
+      "encoding": "B28@0:8@16B24"
+    },
+    {
+      "selector": "openFullscreenApplication:",
+      "entry": "0x77450",
+      "imp": "0x61c9c",
+      "encoding": "B24@0:8@16"
+    },
+    {
+      "selector": "externalOpenApplication:",
+      "entry": "0x77208",
+      "imp": "0x29ebc",
+      "encoding": "v24@0:8@16"
+    },
+    {
+      "selector": "switcherRemovedApplication:",
+      "entry": "0x771c0",
+      "imp": "0x29c74",
+      "encoding": "v24@0:8@16"
+    },
+    {
+      "selector": "start",
+      "entry": "0x7716c",
+      "imp": "0x27eec",
+      "encoding": "v16@0:8"
+    },
+    {
+      "selector": "updatePluginEnabled",
+      "entry": "0x77178",
+      "imp": "0x28c48",
+      "encoding": "v16@0:8"
+    }
+  ],
+  "open_calls": [
+    {
+      "at": "0x6b0d8",
+      "stub": "0x75080",
+      "selref": "0x96980",
+      "selector": "close"
+    },
+    {
+      "at": "0x6b138",
+      "stub": "0x762c0",
+      "selref": "0x96e10",
+      "selector": "setCanvas:"
+    },
+    {
+      "at": "0x6b144",
+      "stub": "0x76540",
+      "selref": "0x96eb0",
+      "selector": "setKeyboardOverlay:"
+    },
+    {
+      "at": "0x6b150",
+      "stub": "0x762a0",
+      "selref": "0x96e08",
+      "selector": "setBundleID:"
+    }
+  ]
+}

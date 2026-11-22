@@ -1,4 +1,17 @@
-# ParallelX alpha437 + clone0.101｜跨 App 首显记忆恢复与分屏超时恢复（本地候选）
+# ParallelX alpha440 + clone0.102｜接入作者最新版（本地候选）
+
+## 当前状态（2026-11-22，本地完成，未推送）
+- 用户批准：以作者 alpha440 原版为底，把我们的全部功能接过去。本轮只做本地接入与检查；未推送、未 CI、未构建、未安装、未操作设备、未注销/重启。
+- 原版载荷已整体替换为作者 alpha440（DEB SHA256 `bc8a18cf048cc19e2951c0f0b485e54ac0b43823aaa289ef2e8e1d64cce2b017`，主库 SHA256 `8fae4085b131ff577173584d4bb4bc53530764d4df441d519e2ae64bdbfae9dd`）。`vendor/alpha440` 16 个文件，`tools/baseline-alpha440.json` 记录逐文件哈希。
+- 保留下来的自有功能（未改行为）：分身账号菜单与切换、付款选号路由、窗口大小/位置记忆（含 clone0.101 的首帧恢复与超时重试）、诊断日志、设置叠加行（分身账号 / 窗口大小与位置记忆）。两份设置入口仍叠在作者 Root.plist 上；作者新版未改该文件。
+- 作者新版带来的变化（二进制自带，我们未改）：主库与设置界面更新、相机组件更新、`System.plist` 的「右边缘滑动返回」增加即时生效通知。
+- 静态复核结论：`PXSceneBridge openApplication:...` 仍按 `close → setCanvas: → setKeyboardOverlay: → setBundleID: → publishHostedCamera:` 顺序执行；`layoutHost`（`0x639b4`）仍通过 `sourceSize` 桩读真实源尺寸；`hostedSourceSize`（`0x647e4`）尾跳转到同一桩。我们依赖的全部选择器与签名在新版中都存在，新增 `tests/fixtures/window-memory-alpha440-abi.json` 记录方法与顺序证据，`evidence/native-layout/README.md` 已改为新版地址。
+- 本地检查通过：182 项 unittest（15 项 Apple 专用跳过）；`tools/validate.py` 与 `--pinned-vendor` 同时通过（原版 DEB 哈希、16 项载荷、结构、版本、主机测试）；两个改动模块以 iPhoneOS15.5 SDK / arm64e `clang -fsyntax-only` 通过。
+- 未验证：未编译机器码、未 CI、未验 DEB、未安装、未注销重启。首帧是否直接为记忆尺寸、内容是否跟随、上滑关闭与底部双击/长按缩小、分屏超时重试是否解决起点读书，全部仍需真机确认。静态顺序一致不等于运行行为一致。
+
+---
+
+# ParallelX alpha437 + clone0.101｜跨 App 首显记忆恢复与分屏超时恢复（历史）
 
 ## 当前状态（2026-11-22）
 - 生产基线：clone0.100 提交 `527a48b982cd759daa9d85f8f5648345cf60b347`。用户授权：本地修改和测试，适用于所有 App 的记忆窗口恢复以及分屏流程；未授权推送、CI、构建验包、安装或设备读写，注销/重启也未授权。

@@ -319,7 +319,7 @@ class LaunchDiagnosticProductionTests(unittest.TestCase):
     def test_existing_visibility_loop_is_byte_identical_to_published_baseline(self):
         loop = LAUNCH.split('- (void)pollOpened:(uint64_t)token {', 1)[1]
         loop = loop.split('    NSArray *candidates', 1)[1].split('    if (_pending)', 1)[0]
-        # b6e3f2d alpha437+clone0.95: all original gates and early exits retained.
+        # alpha440+clone0.102: all original gates and early exits retained.
         self.assertEqual(hashlib.sha256(loop.encode()).hexdigest(),
                          '9789e316362d2a14822fd1b6cb9d349c2fd367d7de9492d11422f7e47d0d6188')
         self.assertNotIn('PXLaunchDiagnostic', loop)

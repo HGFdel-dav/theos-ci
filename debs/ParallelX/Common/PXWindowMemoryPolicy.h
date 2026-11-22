@@ -105,7 +105,7 @@ static inline uint64_t PXWMIdentifierHash(const char *identifier) {
     return hash;
 }
 
-/* alpha437 openApplication first closes its PREVIOUS scene, then assigns the
+/* The original openApplication first closes its PREVIOUS scene, then assigns the
  * incoming canvas. This is not the same event as closing the new window.
  * No UIKit/ObjC is needed to execute these exact production transitions. */
 typedef struct {

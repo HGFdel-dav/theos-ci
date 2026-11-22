@@ -145,17 +145,17 @@ def main():
             if any(word in subprocess.check_output(["xcrun", "nm", str(image)], text=True)
                    for word in ("__ZL15PXPerformAction", "_PXCloneHookMessage")):
                 raise ValueError("unstripped private C hook symbols")
-        for original in sorted((ROOT / "vendor/alpha437").rglob("*")):
+        for original in sorted((ROOT / "vendor/alpha440").rglob("*")):
             if not original.is_file():
                 continue
-            relative = original.relative_to(ROOT / "vendor/alpha437")
+            relative = original.relative_to(ROOT / "vendor/alpha440")
             if str(relative).endswith("ParallelXPrefs.bundle/Root.plist"):
                 original_spec = plistlib.loads(original.read_bytes())
                 installed_spec = plistlib.loads((prefix / relative).read_bytes())
                 original_rows = [row for row in installed_spec['items'] if row.get('detail') not in
                                  ('PXCloneAccountsController', 'PXWindowMemoryController')]
                 if {**installed_spec, 'items': original_rows} != original_spec:
-                    raise ValueError('existing alpha437 settings rows changed')
+                    raise ValueError('existing alpha440 settings rows changed')
                 continue
             installed = prefix / relative
             if installed.read_bytes() != original.read_bytes():

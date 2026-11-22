@@ -1,25 +1,25 @@
 {
-  "schema": 1,
+  "schema": 2,
   "baseline": {
     "package": "com.moxuan.parallelx",
-    "version": "0.1.0~alpha437",
+    "version": "0.1.0~alpha440",
     "architecture": "iphoneos-arm64e",
     "depends": "mobilesubstrate, preferenceloader, firmware (>= 15.0), firmware (<< 16.0)",
-    "deb_sha256": "d60fc0395666c22d594b3d105a1d8129d40ee31224e2865df7bc10f73d8e1750"
+    "deb_sha256": "bc8a18cf048cc19e2951c0f0b485e54ac0b43823aaa289ef2e8e1d64cce2b017"
   },
-  "vendor_root": "vendor/alpha437",
+  "vendor_root": "vendor/alpha440",
   "payload_sha256": {
-    "Library/MobileSubstrate/DynamicLibraries/ParallelX.dylib": "85b0c603906bfea86e4ca007cd43fcbb5d386722dd57ff156a924a8a595856b2",
+    "Library/MobileSubstrate/DynamicLibraries/ParallelX.dylib": "8fae4085b131ff577173584d4bb4bc53530764d4df441d519e2ae64bdbfae9dd",
     "Library/MobileSubstrate/DynamicLibraries/ParallelX.plist": "86345479d62d39c2b9fc6f879bbed191913b153deefa1aa486ca1e19c8664304",
-    "Library/MobileSubstrate/DynamicLibraries/ParallelXCameraSupport.dylib": "852a57b7b8bd5160ba2248cea705d789f67af5aef1fd8b627ec7af4f334f4753",
+    "Library/MobileSubstrate/DynamicLibraries/ParallelXCameraSupport.dylib": "c7bcdfbac691178ac628c5ec18aabaa669784d43098a327fdbe283153554469f",
     "Library/MobileSubstrate/DynamicLibraries/ParallelXCameraSupport.plist": "a4e9e95e43b1b1f1306214f5c8c1e1c0ee8f76a9f52bb748715573b243902d34",
     "Library/PreferenceBundles/ParallelXPrefs.bundle/External.plist": "be17f2ac78710da42ecb80ba4c245a3c3a105bc94ad8bd77ede4c939122b1b60",
     "Library/PreferenceBundles/ParallelXPrefs.bundle/Info.plist": "2b9b76c0fdc2e3f662dde9a9e7cb6c5d480c403d09c3e9a578feb1f82e8ddebc",
     "Library/PreferenceBundles/ParallelXPrefs.bundle/Keyboard.plist": "40286d38f5dadeb827836d28a9893a1b7c6ecaa0230335bf7cdd1446b8787266",
-    "Library/PreferenceBundles/ParallelXPrefs.bundle/ParallelXPrefs": "d5b10293b858e51daf918024779e35e416bcebf392d83d362463ce2a55d479ec",
+    "Library/PreferenceBundles/ParallelXPrefs.bundle/ParallelXPrefs": "eb8bd875c91d50beef877e5c9b7f686be30e0eb5a149a93e549085517c69a44d",
     "Library/PreferenceBundles/ParallelXPrefs.bundle/Root.plist": "fdc372db421b7f49dcb4d283afda6ef1cf2ea6a9cc7aa20283294898b6df7ec3",
     "Library/PreferenceBundles/ParallelXPrefs.bundle/SettingsHelp.plist": "faa658d8712994cb460cb34f2341e099fec70d2728b68df603fb357f572ad8d5",
-    "Library/PreferenceBundles/ParallelXPrefs.bundle/System.plist": "d7e300181877c11a0a2fad549b37092a24460484ead4d51c7075b45d961229c9",
+    "Library/PreferenceBundles/ParallelXPrefs.bundle/System.plist": "621e850cc247efd11dd5526e54de23272c1a84ce477c95aba3d9fc1fd965aeac",
     "Library/PreferenceBundles/ParallelXPrefs.bundle/Window.plist": "c4029750035ffa12e25fd3d06db2df5103647d7bcf2c69a6100b457a8a1bbc6c",
     "Library/PreferenceBundles/ParallelXPrefs.bundle/icon.png": "cb8e584862f850a86f46bb49bf8c6609d270a8b8ca389e2832a7aff5dfbeb441",
     "Library/PreferenceBundles/ParallelXPrefs.bundle/icon@2x.png": "7b3d8e744f1f8ed454f23a521e7a060c594941a0cc0dd900a7ddbbbe98127a96",
