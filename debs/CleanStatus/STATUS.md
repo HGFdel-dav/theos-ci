@@ -24,8 +24,8 @@ The controller forwards `viewDidLayoutSubviews`, then schedules a main-queue reb
 
 ## Verification state
 
-- Layout-rebind source contract passed: 140 assertions; published 0.3.6 freeze checks pass with 127 unchanged files. Cellular policy: 6,291; cellular source/preservation: 159; general invariants: 452; UI scope: 40; card-layout C assertions: 1,248; path reuse: 281; panel routes: 10.
+- Layout-rebind source contract passed: 140 assertions; published 0.3.6 freeze checks pass with 127 unchanged files. Cellular policy: 6,291; cellular source/preservation: 159; general invariants: 452; UI scope: 40; card-layout C assertions: 1,248; path reuse: 170; panel routes: 10.
 - Fixed iOS 15.5 arm64e SDK `-fsyntax-only` passed for `Cellular/LCSCellularHooks.m`; no machine code was generated.
 - Apple Foundation cellular service fixtures cannot execute on this Alpine host. CI, DEB build/verification, injection/load and real device long-press interaction remain unverified.
 
-The user authorized only local modification and verification for 0.3.7. Push/CI, installation, device writes, SIM operations, logout and restart are not included in that authorization. The device remains on 0.3.6; long-press rebind behavior is not yet proven.
+The user authorized pushing and running CI for this 0.3.7 candidate. Installation, device writes, SIM operations, logout and restart remain unauthorized. The device remains on 0.3.6; long-press rebind is not yet proven on-device.
