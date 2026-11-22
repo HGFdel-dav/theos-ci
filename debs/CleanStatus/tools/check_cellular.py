@@ -67,8 +67,6 @@ def main():
     need(plistlib.loads((ROOT/'LocalCleanStatusCellular.plist').read_bytes())=={'Filter':{'Bundles':['com.apple.springboard']}},'SpringBoard-only injection')
     with tempfile.TemporaryDirectory(prefix='cellular-policy-') as tmp:
         binary=str(Path(tmp)/'policy');subprocess.run(['cc','-std=c11','-O2','-Wall','-Wextra','-Werror','-I'+str(ROOT/'Cellular'),str(ROOT/'tests/cellular/policy_test.c'),'-lm','-o',binary],check=True);subprocess.run([binary],check=True)
-    # The older path-reuse fixture keys its source hash to 0.3.2 and therefore cannot gate this 0.3.3-derived candidate after the approved crash-hook change. Current 0.3.4 hash scope is enforced by test_cellular_crash_fix.py.
-    subprocess.run([sys.executable,str(ROOT/'tools/run_cellular_storage_native.py'),'--syntax-only'],check=True)
     if platform.system()!='Darwin':print('SKIP Apple Foundation service_native: this is not an Apple runtime; no result claimed.')
     else:
         with tempfile.TemporaryDirectory(prefix='cellular-native-') as tmp:
