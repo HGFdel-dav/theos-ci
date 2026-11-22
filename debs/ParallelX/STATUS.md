@@ -1,4 +1,21 @@
-# ParallelX alpha437 + clone0.98｜已获推送及 CI 监控授权
+# ParallelX alpha437 + clone0.99｜本地修复完成，未推送
+
+## 本轮状态（2026-11-22，优先于下方归档）
+- 用户明确以「第一次加窗口记忆的 0.94（alpha437+clone0.94，提交 `be29740`）」为对照基线，指出它有效但有首次不恢复/第二次才恢复的问题；本轮授权仅「继续修复」本地，未授权推送、CI、安装、注销或重启。
+- 只读真机核实（0.98 实装）：QQ 两次缩放均 `save_user_geometry` + `save_verified`，`window-memory.plist` revision 44 保存约 220×476；随后 `restore_initial_geometry_prepared` 命中，约 0.25 秒后 `restore_postlayout_geometry_changed`（normal=true, matches=false）。**结论更正：不是没保存、不是读不到，是原版开窗后续布局把已恢复外框改回默认。**
+- 原版 alpha437 静态反汇编（`research/open-*`、`native-close-method.txt`）：`open` 在 `0x6ae30` 先 close 旧场景，`0x6b3fc` 调用 `layoutHost`，并在 `0x41a68/0x41bd4`、`0x4230c` 的显示动画里再次写 `hostCard.frame`。所以任何「开窗动画前一次性恢复」都会被动画目标覆盖；只在动画后再改外框又会与内容缩放脱节（0.97 的问题）。
+- 0.99 修复（只改 `Common/PXWindowMemory.m`）：
+  1. 命中手动记忆时记录本次目标外框并武装 2 秒保护窗口；
+  2. 只对 `PXHostCard setFrame:` 的开窗期写入替换成记忆外框 —— 动画本身直接以正确尺寸为目标，不产生「先默认再跳回」的可见跳变；
+  3. 显示动画结束后（900ms，单次、不循环）复核：若仍被改成别的尺寸则无动画设回，并调用一次原版 `layoutHost`，让内容按真实宿主尺寸重新计算；
+  4. 用户一碰窗口、关闭、方向代次变化或超时即撤销接管；无记忆 App、取消路径完全走原版。
+- 未改：手动保存门禁与 `resizeHost:` 入口、分身/账号切换、付款、诊断通道、原版 vendor 二进制、原版动画与内容 transform。
+- 本地检查：182 项 unittest（167 执行通过 + 15 项 Apple 专用在 iSH 跳过，新增 1 项首次接管回归）；`tools/validate.py`（原版 alpha437 DEB 全量基线）与 `--pinned-vendor` 全部通过；改动文件 arm64e/iOS15.5 `-fsyntax-only` 通过。相对 0.98 仅 7 个文件变化（记忆实现、两个构建标记、control/control.in、两个测试），无其他生产改动。
+- 未验证：未构建 DEB、未推送、未 CI、未安装、未写设备。真机上「首次打开即恢复」「内容不裁切」「无闪动」必须装机验收；`setFrame:` 接管在真机的动画观感也需实测。
+
+---
+
+## 0.98 批次归档（历史，勿当作当前状态）
 
 ## 本轮状态（2026-11-21，优先于下方归档）
 - 用户已明确授权 0.98 正常推送、GitHub CI 监控、日志检查和产物验包；未授权安装、设备写入、注销或重启。

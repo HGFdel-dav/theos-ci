@@ -23,6 +23,13 @@ typedef NS_ENUM(unsigned, PXWMGeometryGate) {
 @property(nonatomic) NSUInteger generation;
 @property(nonatomic) BOOL interacting;
 @property(nonatomic) BOOL savePending;
+@property(nonatomic) PXWMRect initialTarget;
+@property(nonatomic) BOOL initialTargetActive;
+@property(nonatomic) unsigned initialTargetKey;
+@property(nonatomic) uint64_t initialTargetEpoch;
+@property(nonatomic) CFTimeInterval initialTargetDeadline;
+@property(nonatomic) BOOL initialContentRefreshed;
+@property(nonatomic) BOOL initialFrameSubstituted;
 @property(nonatomic) BOOL restoring;
 @property(nonatomic) BOOL resolved;
 @property(nonatomic) BOOL keyKnown;
@@ -61,7 +68,9 @@ static void (*PXWMOriginalLayout)(id, SEL);
 static void (*PXWMOriginalMove)(id, SEL, id);
 static void (*PXWMOriginalResize)(id, SEL, id);
 static void (*PXWMOriginalControllerLayout)(id, SEL);
+static void (*PXWMOriginalCardSetFrame)(id, SEL, CGRect);
 static void PXWMScheduleRestore(PXWMContext *context);
+static void PXWMScheduleInitialSettle(PXWMContext *context);
 
 static id PXWMObject(id target, NSString *name) {
     SEL selector = NSSelectorFromString(name);
@@ -192,6 +201,79 @@ static void PXWMVerifyRestore(PXWMContext *context, PXWMRect restored, unsigned 
     });
 }
 
+/* The vendor's open sequence assigns hostCard's default frame again inside its
+ * reveal animation, after our first prepare. Redirect only that opening write
+ * to the remembered frame, so the first visible frame is already the saved one.
+ * Bounded by a 2s deadline and cleared on user touch, close, or a key change. */
+static void PXWMCardSetFrame(id self, SEL command, CGRect frame) {
+    if (PXWMOriginalCardSetFrame) {
+        if (NSThread.isMainThread && PXWMContexts) {
+            PXWMContext *context = nil;
+            for (PXWMContext *candidate in PXWMContexts.allObjects) {
+                if (candidate.card == (UIView *)self) { context = candidate; break; }
+            }
+            if (context && context.initialTargetActive && !context.restoring && !context.interacting &&
+                !context.savePending && CACurrentMediaTime() < context.initialTargetDeadline) {
+                CGRect target = PXWMToRect(context.initialTarget);
+                BOOL same = fabs(frame.origin.x-target.origin.x)<0.5 && fabs(frame.origin.y-target.origin.y)<0.5 &&
+                    fabs(frame.size.width-target.size.width)<0.5 && fabs(frame.size.height-target.size.height)<0.5;
+                if (!same) {
+                    if (!context.initialFrameSubstituted) {
+                        context.initialFrameSubstituted = YES;
+                        PXWMLog(context, @"restore_initial_frame_substituted",
+                                @{ @"fromW":@(frame.size.width), @"fromH":@(frame.size.height),
+                                   @"toW":@(target.size.width), @"toH":@(target.size.height) });
+                    }
+                    frame = target;
+                }
+            }
+        }
+        PXWMOriginalCardSetFrame(self, command, frame);
+    }
+}
+
+/* One settle pass after the reveal animation ends: if the vendor animation still
+ * forced a different frame, set the saved frame without animation; then run the
+ * original layoutHost once so hosted content is measured against the real size.
+ * No repeating timers, no frame polling, no content transform editing. */
+static void PXWMScheduleInitialSettle(PXWMContext *context) {
+    __weak PXWMContext *weakContext = context;
+    unsigned key = context.initialTargetKey;
+    uint64_t epoch = context.initialTargetEpoch;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,900*NSEC_PER_MSEC),dispatch_get_main_queue(), ^{
+        PXWMContext *current = weakContext;
+        if (!current || !current.initialTargetActive) return;
+        current.initialTargetActive = NO;
+        if (!PXWMBindingIsActive(current) || current.interacting || current.savePending ||
+            !current.keyKnown || current.key != key || !current.card) return;
+        if ([PXWindowMemoryStore.shared.snapshot[@"epoch"] unsignedLongLongValue] != epoch) return;
+        UIView *card = current.card;
+        CGRect target = PXWMToRect(current.initialTarget);
+        CGRect actual = card.frame;
+        BOOL matches = fabs(actual.origin.x-target.origin.x)<1 && fabs(actual.origin.y-target.origin.y)<1 &&
+            fabs(actual.size.width-target.size.width)<1 && fabs(actual.size.height-target.size.height)<1;
+        if (!matches) {
+            current.restoring = YES;
+            [UIView performWithoutAnimation:^{
+                card.frame = target;
+                [card setNeedsLayout]; [card layoutIfNeeded];
+            }];
+            current.restoring = NO;
+            CGRect settled = card.frame;
+            PXWMLog(current, @"restore_initial_geometry_settled",
+                    @{ @"fromW":@(actual.size.width), @"fromH":@(actual.size.height),
+                       @"toW":@(settled.size.width), @"toH":@(settled.size.height),
+                       @"substituted":@(current.initialFrameSubstituted) });
+        }
+        if (!current.initialContentRefreshed && current.bridge && PXWMOriginalLayout) {
+            current.initialContentRefreshed = YES;
+            PXWMOriginalLayout(current.bridge, NSSelectorFromString(@"layoutHost"));
+            PXWMLog(current, @"restore_initial_content_refreshed",
+                    @{ @"substituted":@(current.initialFrameSubstituted) });
+        }
+    });
+}
+
 /* Native layoutHost already has the true sourceSize, before it fits hosted
  * content. Prepare its outer hostCard here, not after scene visibility. Keep
  * the original layout call and its animations; never hide a window or edit a
@@ -225,7 +307,17 @@ static BOOL PXWMPrepareInitialLayout(PXWMContext *context) {
     BOOL matched = fabs(actual.origin.x-restored.x)<1 && fabs(actual.origin.y-restored.y)<1 &&
         fabs(actual.size.width-restored.width)<1 && fabs(actual.size.height-restored.height)<1;
     if (matched) {
-        context.key = key; context.keyKnown = YES; context.resolved = YES;
+        context.key = key;
+        context.keyKnown = YES;
+        context.resolved = YES;
+        context.initialTarget = restored;
+        context.initialTargetKey = key;
+        context.initialTargetEpoch = [snapshot[@"epoch"] unsignedLongLongValue];
+        context.initialTargetDeadline = CACurrentMediaTime() + 2.0;
+        context.initialTargetActive = YES;
+        context.initialContentRefreshed = NO;
+        context.initialFrameSubstituted = NO;
+        PXWMScheduleInitialSettle(context);
     }
     PXWMLog(context, matched ? @"restore_initial_geometry_prepared" : @"restore_initial_geometry_rejected",
             @{@"x":@(actual.origin.x),@"y":@(actual.origin.y),@"w":@(actual.size.width),@"h":@(actual.size.height),
@@ -402,6 +494,7 @@ static void PXWMGestureAction(id panel, SEL command, UIGestureRecognizer *gestur
         PXWMContext *context = PXWMContextForGesture(gesture);
         if (context) {
             context.generation++; context.interacting = YES; context.resolved = YES; context.savePending = NO;
+            context.initialTargetActive = NO;
             PXWMGesture *stamp = [PXWMGesture new];
             stamp.context = context; stamp.generation = context.generation;
             stamp.epoch = [PXWindowMemoryStore.shared.snapshot[@"epoch"] unsignedLongLongValue];
@@ -446,6 +539,7 @@ static PXWMContext *PXWMDetachBinding(id bridge) {
     if (context) {
         PXWMNativeClose(&context->native);
         context.generation++;
+        context.initialTargetActive = NO;
         objc_setAssociatedObject(bridge, PXWMContextKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     return context;
@@ -608,6 +702,7 @@ BOOL PXWindowMemoryInstall(Class panel,Class bridge,Class hostController) {
     SEL layout = NSSelectorFromString(@"layoutHost");
     SEL close = NSSelectorFromString(@"close");
     SEL controllerLayout = @selector(viewDidLayoutSubviews);
+    SEL cardFrame = @selector(setFrame:);
     if (!PXWMCardClass || !PXCloneClassInstanceMethodMatches(panel,move,@encode(void),objects) ||
         !PXCloneClassInstanceMethodMatches(panel,resize,@encode(void),objects) ||
         !PXCloneClassInstanceMethodMatches(bridge,open,@encode(void),@[@"@",@"@",@"@",@"@?"]) ||
@@ -624,6 +719,7 @@ BOOL PXWindowMemoryInstall(Class panel,Class bridge,Class hostController) {
     PXWM_HOOK(bridge,layout,PXWMLayout,PXWMOriginalLayout,void (*)(id,SEL));
     PXWM_HOOK(bridge,close,PXWMClose,PXWMOriginalClose,void (*)(id,SEL));
     PXWM_HOOK(hostController,controllerLayout,PXWMControllerLayout,PXWMOriginalControllerLayout,void (*)(id,SEL));
+    PXWM_HOOK(PXWMCardClass,cardFrame,PXWMCardSetFrame,PXWMOriginalCardSetFrame,void (*)(id,SEL,CGRect));
 #undef PXWM_HOOK
     if (!PXWMLoadNotifying) {
         PXWMLoadNotifying = YES;

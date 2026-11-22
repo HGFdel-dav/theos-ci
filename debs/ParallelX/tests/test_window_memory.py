@@ -179,6 +179,31 @@ class WindowMemorySourceGuards(unittest.TestCase):
         self.assertNotIn('PXWMOriginalLayout(self, NSSelectorFromString(@"layoutHost"))',completion)
         self.assertIn('0x63788', (ROOT/'evidence/native-layout/README.md').read_text())
 
+    def test_initial_open_frame_write_is_redirected_and_content_remeasured_once(self):
+        source=(ROOT/'Common/PXWindowMemory.m').read_text()
+        hook=source.split('static void PXWMCardSetFrame(',1)[1].split('static void PXWMScheduleInitialSettle(',1)[0]
+        self.assertIn('context.initialTargetActive',hook)
+        self.assertIn('CACurrentMediaTime() < context.initialTargetDeadline',hook)
+        self.assertIn('frame = target;',hook)
+        self.assertLess(hook.index('restore_initial_frame_substituted'),
+                        hook.index('PXWMOriginalCardSetFrame(self, command, frame)'))
+        settle=source.split('static void PXWMScheduleInitialSettle(',1)[1].split('static BOOL PXWMPrepareInitialLayout(',1)[0]
+        self.assertIn('current.initialTargetActive = NO;',settle)
+        self.assertLess(settle.index('card.frame = target;'),
+                        settle.index('PXWMOriginalLayout(current.bridge, NSSelectorFromString(@"layoutHost"))'))
+        self.assertIn('current.initialContentRefreshed = YES;',settle)
+        self.assertNotIn('PXWMScheduleInitialSettle(current)',settle)
+        prepare=source.split('static BOOL PXWMPrepareInitialLayout(',1)[1].split('static void PXWMTryRestore(',1)[0]
+        self.assertIn('context.initialTargetDeadline = CACurrentMediaTime() + 2.0;',prepare)
+        self.assertIn('PXWMScheduleInitialSettle(context);',prepare)
+        gesture=source.split('static void PXWMGestureAction(',1)[1].split('static void PXWMMove(',1)[0]
+        self.assertIn('context.initialTargetActive = NO;',gesture)
+        detach=source.split('static PXWMContext *PXWMDetachBinding(',1)[1].split('\n}',1)[0]
+        self.assertIn('context.initialTargetActive = NO;',detach)
+        install=source.split('PXWM_HOOK(panel,move',1)[1]
+        self.assertIn('PXWM_HOOK(PXWMCardClass,cardFrame,PXWMCardSetFrame,'
+                      'PXWMOriginalCardSetFrame,void (*)(id,SEL,CGRect));',install)
+
     def test_initial_geometry_requires_native_source_size_not_default_canvas_axes(self):
         source=(ROOT/'Common/PXWindowMemory.m').read_text()
         read=source.split('static BOOL PXWMReadGeometry(',1)[1].split('static BOOL PXWMNormalGeometry(',1)[0]
@@ -346,6 +371,6 @@ class WindowMemoryAppleStorage(unittest.TestCase):
         self.assertLessEqual(len(logs),256)
         self.assertGreater(len(logs),200)
         self.assertTrue(any(event['event']=='fixture' for event in logs))
-        self.assertTrue(all(event['build']=='clone0.98' for event in logs))
+        self.assertTrue(all(event['build']=='clone0.99' for event in logs))
 
 if __name__ == '__main__': unittest.main(verbosity=2)

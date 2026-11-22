@@ -1,0 +1,59 @@
+{
+  "candidate": "0.1.0~alpha437+clone0.99",
+  "base_commit": "ab44cbdc3590eb190919135428b5c1bccb60a3bd",
+  "base_version": "0.1.0~alpha437+clone0.98",
+  "user_baseline": "0.1.0~alpha437+clone0.94 (be2974003da0017cd8d90d5cd5db6c0429f1dbf3)",
+  "user_authorization": "local_repair_only",
+  "device_touched": false,
+  "pushed": false,
+  "built": false,
+  "installed": false,
+  "root_cause": {
+    "proved_on_device": [
+      "saving works: two save_user_geometry + save_verified events for com.tencent.mqq",
+      "stored geometry ~220x476 at revision 44",
+      "restore_initial_geometry_prepared matched, then restore_postlayout_geometry_changed at ~0.25s (normal=true, matches=false)"
+    ],
+    "static_native_evidence": [
+      "alpha437 open 0x6ae30 closes previous scene, 0x6b3fc calls layoutHost",
+      "hostCard frame written again at 0x41a68, 0x41bd4 and inside reveal animation 0x4230c",
+      "native close animation path 0x54860-0x54dc4"
+    ],
+    "conclusion": "native open/reveal animation re-assigns the default hostCard frame after any pre-animation restore; frame-only later reapply desyncs content scaling (0.97 defect)"
+  },
+  "changes": {
+    "production": ["Common/PXWindowMemory.m"],
+    "version_and_build_tags": ["Common/PXWindowMemoryStore.m", "Common/PXCloneLaunch.m", "control", "control.in"],
+    "tests": ["tests/test_window_memory.py", "tests/test_launch_diagnostics_reader.py"],
+    "count": 7,
+    "other_production_files_touched": 0
+  },
+  "mechanism": [
+    "on manual-memory hit: store restored rect + key + epoch, arm 2s initial-target window",
+    "PXHostCard setFrame: hook substitutes only during that window, not while interacting/saving/restoring",
+    "reveal animation therefore targets the saved frame (no default-then-jump)",
+    "single 900ms settle pass: if frame still differs, set saved frame without animation, then call original layoutHost once",
+    "target cleared on user gesture, close, key change, or deadline"
+  ],
+  "preserved": [
+    "manual save gating and resizeHost: entry",
+    "clone/account routing, payment selection",
+    "diagnostics channel and 256 ring",
+    "vendor alpha437 payload bytes",
+    "native animations and content transform untouched"
+  ],
+  "local_checks": {
+    "unittest": {"ran": 182, "passed": 167, "skipped_apple_only": 15, "new_tests": 1},
+    "c_harness": "WINDOW_MEMORY_POLICY_PASS checks=6692",
+    "validate_full": "ALL LOCAL CHECKS PASSED",
+    "validate_pinned_vendor": "ALL LOCAL CHECKS PASSED",
+    "syntax_arm64e_ios15_5": "passed for PXWindowMemory.m, PXWindowMemoryStore.m, PXCloneLaunch.m"
+  },
+  "not_verified": [
+    "not compiled into a DEB",
+    "not pushed, no CI run",
+    "not installed on device",
+    "first-open restore / content fit / absence of flicker requires real-device check",
+    "setFrame: interception animation feel requires real-device check"
+  ]
+}
