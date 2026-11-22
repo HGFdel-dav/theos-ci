@@ -1,4 +1,4 @@
-# CleanStatus 0.3.6 — local cellular behavior repair candidate
+# CleanStatus 0.3.7 — local cellular long-press rebind candidate
 
 ## Confirmed baseline
 
@@ -12,12 +12,20 @@ The data service now prefers the same `SBTelephonyManager.sharedTelephonyManager
 
 The stock-button long-press binding no longer refuses to attach merely because a system gesture exists under the button. The stock short-tap action is not replaced; buttons with touch-down side effects still fail closed. Binding, press and presentation failures are recorded with bounded, deduplicated reason slugs. Presentation uses the window's current top controller, while preserving feature, lock, visibility, identity and foreground-close gates.
 
-The independent 0.3.5 snapshot is `docs/BASELINE-035-RUNTIME.json` (140 files, commit `f8d808b9694e314b360ee2be9659a7ae9840ccd6`). Only the cellular service, gesture hook, related tests/checks, version fields and this status file may differ. UI/card design, module registration, helper, entitlements, RootHide paths, animation code, old status-bar controls and stock short toggle behavior remain protected.
+The cellular long-press retry change starts from published 0.3.6 commit `869ddd0737f0c878322ef4ab9b2015632f952b7f`, frozen in `docs/BASELINE-036-RUNTIME.json`. Only `Cellular/LCSCellularHooks.m`, its two source-test/check files, version fields and this status record are intended to differ. The data-service repair, data module, short-toggle action, SIM helper and entitlements remain byte-identical to 0.3.6.
+
+## Target symptom and evidence
+
+Device 0.3.6 diagnostics logged `binding/button-not-visible` at 18:02:01, then no later bind or present event. The visibility predicate rejects a button or ancestor that is hidden or has alpha below 0.01. In 0.3.6 binding ran after view load/appearance and a few fixed startup delays; no controller layout callback rechecked visibility after later layout changes.
+
+## Local change
+
+The controller forwards `viewDidLayoutSubviews`, then schedules a main-queue rebind if the long-press target is absent or the button is still not visible. Calls are coalesced and throttled to at most one scan every 250 ms; an attached recognizer on a visible button returns immediately. The new layout hook is a required gate for enabling long press, and its signature failure is logged. Stock short-tap handling, touch-down safety, lock/OFF/resign cleanup and the published 0.3.6 data-service implementation remain unchanged.
 
 ## Verification state
 
-- Regression checks passed: 0.3.5 freeze/scope and gesture assertions 296; cellular policy 6,291; cellular source/preservation 161; general source invariants 449; card layout 1,248; UI scope 284; path reuse 281; panel routing 10.
-- Fixed iOS 15.5 SDK `-fsyntax-only` passed separately for `Cellular/LCSCellularService.m`, `Cellular/LCSCellularHooks.m`, the service fixture and the data-module service namespace. Source parsing generated no machine code.
-- Apple Foundation service fixture did not execute on Alpine. The full batched SDK parser exceeded its time limit; its storage-fixture parser requires `THEOS`, so that batch is not counted as passed. No DEB, CI, injection/loading or device interaction test was run.
+- Layout-rebind source contract passed: 140 assertions; published 0.3.6 freeze checks pass with 127 unchanged files. Cellular policy: 6,291; cellular source/preservation: 159; general invariants: 452; UI scope: 40; card-layout C assertions: 1,248; path reuse: 281; panel routes: 10.
+- Fixed iOS 15.5 arm64e SDK `-fsyntax-only` passed for `Cellular/LCSCellularHooks.m`; no machine code was generated.
+- Apple Foundation cellular service fixtures cannot execute on this Alpine host. CI, DEB build/verification, injection/load and real device long-press interaction remain unverified.
 
-User authorized pushing this 0.3.6 candidate and running its dedicated GitHub CI build only. The release branch is `cleanstatus-0.3.6-cellular-fix-20261122`, based on 0.3.5 commit `f8d808b9694e314b360ee2be9659a7ae9840ccd6`. Installation, SIM operation, device writes, logout and restart remain unauthorized. Device remains on 0.3.5; neither reported function is yet proven fixed on-device.
+The user authorized only local modification and verification for 0.3.7. Push/CI, installation, device writes, SIM operations, logout and restart are not included in that authorization. The device remains on 0.3.6; long-press rebind behavior is not yet proven.

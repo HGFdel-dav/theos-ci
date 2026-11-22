@@ -8,7 +8,7 @@
 static char LCSCellularStateKey,LCSCellularButtonKey;
 static Class LCSNativeCellularClass;
 static unsigned LCSHookMask;
-static unsigned const LCSRequiredHookMask=7U;
+static unsigned const LCSRequiredHookMask=39U;
 static unsigned LCSHookFailureMask;
 static NSHashTable *LCSCellularStates;
 static __weak LCSCellularSIMController *LCSPresentedSIM;
@@ -32,6 +32,7 @@ static void LCSLogHookFailure(unsigned bit,NSString *reason) {
 @property(nonatomic,copy) NSString *lastBindingFailure;
 @property(nonatomic) BOOL appeared;
 @property(nonatomic) BOOL layoutPending;
+@property(nonatomic) CFTimeInterval lastLayoutRetry;
 - (void)bind;
 - (void)unbind;
 - (void)pressed:(UILongPressGestureRecognizer *)gesture;
@@ -97,8 +98,11 @@ static BOOL LCSTapContract(UIControl *button) {
     if(reason){[self logBindingFailure:reason];return NO;}
     self.lastBindingFailure=nil;return YES;
 }
-- (void)scheduleBind {
-    if(self.layoutPending)return;self.layoutPending=YES;__weak typeof(self) weakSelf=self;
+- (void)scheduleLayoutRebind {
+    if(self.directPress&&self.button.window==self.boundWindow&&LCSVisible(self.button))return;
+    CFTimeInterval now=CACurrentMediaTime();
+    if(self.layoutPending||now-self.lastLayoutRetry<.25)return;
+    self.lastLayoutRetry=now;self.layoutPending=YES;__weak typeof(self) weakSelf=self;
     dispatch_async(dispatch_get_main_queue(),^{LCSCellularButtonState *state=weakSelf;if(!state)return;state.layoutPending=NO;[state bindAfterLayout];});
 }
 - (void)bindAfterLayout {
@@ -117,7 +121,7 @@ static BOOL LCSTapContract(UIControl *button) {
     [button addGestureRecognizer:self.directPress];objc_setAssociatedObject(button,&LCSCellularButtonKey,self,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     LCSCellularLog(LCSCellularSIMManager,@"binding",@"bound-direct-only",0);
 }
-- (void)bind {[self scheduleBind];}
+- (void)bind {[self scheduleLayoutRebind];}
 - (void)pressed:(UILongPressGestureRecognizer *)gesture {
     if(gesture!=self.directPress)return;
     if(gesture.state!=UIGestureRecognizerStateBegan){
@@ -154,6 +158,7 @@ static BOOL LCSTapContract(UIControl *button) {
 static void (*LCSOriginalLoad)(id,SEL);
 static void (*LCSOriginalAppear)(id,SEL,BOOL);
 static void (*LCSOriginalDisappear)(id,SEL,BOOL);
+static void (*LCSOriginalLayout)(id,SEL);
 static LCSCellularButtonState *LCSState(id object) {
     LCSCellularButtonState *state=objc_getAssociatedObject(object,&LCSCellularStateKey);
     if(!state){state=[LCSCellularButtonState new];state.controller=object;
@@ -165,6 +170,11 @@ static void LCSAppeared(id self,SEL sel,BOOL animated) {LCSOriginalAppear(self,s
 static void LCSDisappeared(id self,SEL sel,BOOL animated) {
     LCSOriginalDisappear(self,sel,animated);LCSCellularButtonState *s=objc_getAssociatedObject(self,&LCSCellularStateKey);
     if(s&&(!s.button.window||!LCSVisible(s.button))){s.appeared=NO;[s unbind];if(s.panel)[s.panel close];}
+}
+static void LCSLayoutSubviews(id self,SEL sel) {
+    LCSOriginalLayout(self,sel);
+    LCSCellularButtonState *state=objc_getAssociatedObject(self,&LCSCellularStateKey);
+    if(state&&state.appeared&&LCSCellularFeatureEnabled(LCSCellularSIMManager))[state scheduleLayoutRebind];
 }
 static BOOL LCSInstall(Class cls,const char *name,const char *result,unsigned count,const char *const *args,IMP replacement,IMP *original) {
     SEL sel=sel_registerName(name);if(!LCSCellularMethod(cls,sel,result,count,args))return NO;
@@ -186,6 +196,7 @@ static void LCSInstallHooks(void) {
     if(!(LCSHookMask&1)) {if(LCSInstall(native,"viewDidLoad","v",0,NULL,(IMP)LCSLoaded,(IMP *)&LCSOriginalLoad))LCSHookMask|=1;else LCSLogHookFailure(4U,@"load-hook-unavailable");}
     if(!(LCSHookMask&2)) {if(LCSInstall(native,"viewDidAppear:","v",1,boolean,(IMP)LCSAppeared,(IMP *)&LCSOriginalAppear))LCSHookMask|=2;else LCSLogHookFailure(8U,@"appear-hook-unavailable");}
     if(!(LCSHookMask&4)) {if(LCSInstall(native,"viewDidDisappear:","v",1,boolean,(IMP)LCSDisappeared,(IMP *)&LCSOriginalDisappear))LCSHookMask|=4;else LCSLogHookFailure(16U,@"disappear-hook-unavailable");}
+    if(!(LCSHookMask&32U)) {if(LCSInstall(native,"viewDidLayoutSubviews","v",0,NULL,(IMP)LCSLayoutSubviews,(IMP *)&LCSOriginalLayout)){LCSHookMask|=32U;LCSCellularLog(LCSCellularSIMManager,@"hook",@"layout-hook-installed",0);}else LCSLogHookFailure(32U,@"layout-hook-unavailable");}
 }
 static void LCSReconcile(void) {
     LCSInstallHooks();
