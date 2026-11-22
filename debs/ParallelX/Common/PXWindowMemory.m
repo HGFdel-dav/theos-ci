@@ -24,6 +24,7 @@ typedef NS_ENUM(unsigned, PXWMGeometryGate) {
 @property(nonatomic) BOOL interacting;
 @property(nonatomic) BOOL savePending;
 @property(nonatomic) PXWMRect initialTarget;
+@property(nonatomic) PXWMRect initialNativeFrame;
 @property(nonatomic) BOOL initialTargetActive;
 @property(nonatomic) unsigned initialTargetKey;
 @property(nonatomic) uint64_t initialTargetEpoch;
@@ -215,9 +216,13 @@ static void PXWMCardSetFrame(id self, SEL command, CGRect frame) {
             if (context && context.initialTargetActive && !context.restoring && !context.interacting &&
                 !context.savePending && CACurrentMediaTime() < context.initialTargetDeadline) {
                 CGRect target = PXWMToRect(context.initialTarget);
+                CGRect native = PXWMToRect(context.initialNativeFrame);
+                BOOL sameNative = fabs(frame.origin.x-native.origin.x)<0.5 &&
+                    fabs(frame.origin.y-native.origin.y)<0.5 && fabs(frame.size.width-native.size.width)<0.5 &&
+                    fabs(frame.size.height-native.size.height)<0.5;
                 BOOL same = fabs(frame.origin.x-target.origin.x)<0.5 && fabs(frame.origin.y-target.origin.y)<0.5 &&
                     fabs(frame.size.width-target.size.width)<0.5 && fabs(frame.size.height-target.size.height)<0.5;
-                if (!same) {
+                if (sameNative && !same) {
                     if (!context.initialFrameSubstituted) {
                         context.initialFrameSubstituted = YES;
                         PXWMLog(context, @"restore_initial_frame_substituted",
@@ -249,9 +254,17 @@ static void PXWMScheduleInitialSettle(PXWMContext *context) {
         if ([PXWindowMemoryStore.shared.snapshot[@"epoch"] unsignedLongLongValue] != epoch) return;
         UIView *card = current.card;
         CGRect target = PXWMToRect(current.initialTarget);
+        CGRect native = PXWMToRect(current.initialNativeFrame);
         CGRect actual = card.frame;
         BOOL matches = fabs(actual.origin.x-target.origin.x)<1 && fabs(actual.origin.y-target.origin.y)<1 &&
             fabs(actual.size.width-target.size.width)<1 && fabs(actual.size.height-target.size.height)<1;
+        BOOL nativeDefault = fabs(actual.origin.x-native.origin.x)<1 && fabs(actual.origin.y-native.origin.y)<1 &&
+            fabs(actual.size.width-native.size.width)<1 && fabs(actual.size.height-native.size.height)<1;
+        if (!matches && !nativeDefault) {
+            PXWMLog(current, @"restore_initial_settle_skipped_native_change",
+                    @{@"actualW":@(actual.size.width), @"actualH":@(actual.size.height)});
+            return;
+        }
         if (!matches) {
             current.restoring = YES;
             [UIView performWithoutAnimation:^{
@@ -311,6 +324,7 @@ static BOOL PXWMPrepareInitialLayout(PXWMContext *context) {
         context.keyKnown = YES;
         context.resolved = YES;
         context.initialTarget = restored;
+        context.initialNativeFrame = native.frame;
         context.initialTargetKey = key;
         context.initialTargetEpoch = [snapshot[@"epoch"] unsignedLongLongValue];
         context.initialTargetDeadline = CACurrentMediaTime() + 2.0;

@@ -185,10 +185,15 @@ class WindowMemorySourceGuards(unittest.TestCase):
         self.assertIn('context.initialTargetActive',hook)
         self.assertIn('CACurrentMediaTime() < context.initialTargetDeadline',hook)
         self.assertIn('frame = target;',hook)
+        self.assertIn('context.initialNativeFrame',hook)
+        self.assertIn('if (sameNative && !same)',hook)
+        self.assertLess(hook.index('if (sameNative && !same)'),hook.index('frame = target;'))
         self.assertLess(hook.index('restore_initial_frame_substituted'),
                         hook.index('PXWMOriginalCardSetFrame(self, command, frame)'))
         settle=source.split('static void PXWMScheduleInitialSettle(',1)[1].split('static BOOL PXWMPrepareInitialLayout(',1)[0]
         self.assertIn('current.initialTargetActive = NO;',settle)
+        self.assertIn('restore_initial_settle_skipped_native_change',settle)
+        self.assertLess(settle.index('if (!matches && !nativeDefault)'),settle.index('card.frame = target;'))
         self.assertLess(settle.index('card.frame = target;'),
                         settle.index('PXWMOriginalLayout(current.bridge, NSSelectorFromString(@"layoutHost"))'))
         self.assertIn('current.initialContentRefreshed = YES;',settle)
@@ -371,6 +376,6 @@ class WindowMemoryAppleStorage(unittest.TestCase):
         self.assertLessEqual(len(logs),256)
         self.assertGreater(len(logs),200)
         self.assertTrue(any(event['event']=='fixture' for event in logs))
-        self.assertTrue(all(event['build']=='clone0.99' for event in logs))
+        self.assertTrue(all(event['build']=='clone0.100' for event in logs))
 
 if __name__ == '__main__': unittest.main(verbosity=2)

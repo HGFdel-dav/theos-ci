@@ -1,4 +1,14 @@
-# ParallelX alpha437 + clone0.99｜本地修复完成，未推送
+# ParallelX alpha437 + clone0.100｜尺寸记忆窄修，已推送待CI
+
+## 当前候选（2026-11-22）
+- 用户澄清范围：只记忆用户调整后的窗口大小和位置，并在之后打开时恢复；不改其他功能或设置。必须保留原版上滑关闭、底部双击/长按缩小等操作。
+- 基线为已发布并由用户安装的 clone0.99；未触设备。候选从该提交的隔离仓建立。
+- 唯一生产改动 `Common/PXWindowMemory.m`：恢复目标准备时记录本次原版默认外框；开窗短保护期间只把与该默认外框相符、且目标不同的 `PXHostCard setFrame:` 写入替换为已记忆外框；任何不同于默认外框的后续原版写入原样转发。900ms单次收尾仅在外框仍等于默认值时恢复，若原版已改成第三种外框则记 `restore_initial_settle_skipped_native_change` 并原样保留。手势开始和关闭仍沿原逻辑取消记忆恢复保护。
+- 唯一测试改动 `tests/test_window_memory.py`：确保只接管相同默认外框，其他写入和收尾路径不越权。没有新增设置、手势钩子、交互逻辑或存储格式变化；未改厂商二进制、保存门禁、共享主号/分身规则。
+- 本地检查通过：182项 unittest（167通过、15项Apple专用跳过）；生产C策略6692断言；`tools/validate.py` 使用保存的原版 DEB（SHA256 `d60fc0395666c22d594b3d105a1d8129d40ee31224e2865df7bc10f73d8e1750`）全量通过；`--pinned-vendor`通过；`Common/PXWindowMemory.m` iOS15.5 SDK/arm64e `clang -fsyntax-only`通过；diff whitespace检查通过。仅上述两文件与0.99发布源码不同。
+- 风险/未验证：缩小动画若原版使用与默认frame完全相同的setFrame写入，仍可能被窄门误认为开窗默认尺寸；静态和宿主测试无法证明真机原版动画路径。必须用真机分别验普通冷启动首帧、恢复尺寸、上滑关闭、底部双击/长按缩小、取消手势、无记录默认与手动保存。未做 CI/构建/验包/安装/注销/重启；不声称修好。
+- 用户已明确授权推送及CI/验包；提交后等待结果。安装、设备读写、注销、重启未获授权。
+
 
 ## 本轮状态（2026-11-22，优先于下方归档）
 - 用户明确以「第一次加窗口记忆的 0.94（alpha437+clone0.94，提交 `be29740`）」为对照基线，指出它有效但有首次不恢复/第二次才恢复的问题；本轮授权仅「继续修复」本地，未授权推送、CI、安装、注销或重启。
@@ -11,7 +21,10 @@
   4. 用户一碰窗口、关闭、方向代次变化或超时即撤销接管；无记忆 App、取消路径完全走原版。
 - 未改：手动保存门禁与 `resizeHost:` 入口、分身/账号切换、付款、诊断通道、原版 vendor 二进制、原版动画与内容 transform。
 - 本地检查：182 项 unittest（167 执行通过 + 15 项 Apple 专用在 iSH 跳过，新增 1 项首次接管回归）；`tools/validate.py`（原版 alpha437 DEB 全量基线）与 `--pinned-vendor` 全部通过；改动文件 arm64e/iOS15.5 `-fsyntax-only` 通过。相对 0.98 仅 7 个文件变化（记忆实现、两个构建标记、control/control.in、两个测试），无其他生产改动。
-- 未验证：未构建 DEB、未推送、未 CI、未安装、未写设备。真机上「首次打开即恢复」「内容不裁切」「无闪动」必须装机验收；`setFrame:` 接管在真机的动画观感也需实测。
+- 已推送提交 `5ace404f64af62d8106e58ae4e9d937f5eb8fbaf`（父 `ab44cbdc`，分支 `parallelx-safe-mode-20261104`）。CI run `44969540297` attempt1 success，job `build (roothide)`；提交内 STATUS 仍是推送前版本（仅差 CI 结果，源码一致）。
+- 已独立下载 artifact `14733335789`（736333B，SHA256 `359462294ff4fefbc16d6e374524e0338d274aed0e9aa07b91664052d47a57b9`）并验包：DEB 452994B / SHA256 `2e9041cd2e198cda132552bfab1d2d162aa0bcb1296c192ad07ef72ba037ccac`；28 项载荷，原版 15 文件逐字节一致；仅 postinst（chmod + exit 0，不注销/不重启，无 setuid）；两库 minOS 15.0，PAC 0 issues，签名页 68+35 全过；dSYM UUID 与二进制一致。
+- 交付：`attachments/ParallelX-alpha437-clone0.99-20261122/` 与 `shared/ParallelX-clone099-save-20261122/release/`（DEB、Source.zip 127 文件、artifact、构建日志、dSYM、SHA256SUMS、VERIFICATION-REPORT.md）。
+- 未验证：未安装、未写设备、未注销/重启。真机「首次打开即恢复」「内容不裁切」「无闪动」以及 `setFrame:` 接管的动画观感仍需装机验收。
 
 ---
 
