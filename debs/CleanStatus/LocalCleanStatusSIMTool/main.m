@@ -41,9 +41,21 @@ static NSArray *LCSHelperPlans(id manager) {
     id values=((id(*)(id,SEL,bool))objc_msgSend)(manager,sel,true);
     return [values isKindOfClass:NSArray.class]?values:nil;
 }
-static id LCSHelperUnique(NSArray *plans,NSString *identity) {
+static NSString *LCSHelperUUIDString(id value) {
+    if([value isKindOfClass:NSUUID.class])return [value UUIDString].lowercaseString;
+    NSString *s=LCSCellularString(value);
+    return s&&[[NSUUID alloc] initWithUUIDString:s]?s.lowercaseString:nil;
+}
+static NSString *LCSHelperPlanUUID(id manager,id plan) {
+    SEL sel=sel_registerName("getSubscriptionContextUUIDforPlan:");const char *args[]={"@"};
+    if(LCSCellularMethod(object_getClass(manager),sel,"@",1,args)) {
+        NSString *uuid=LCSHelperUUIDString(((id(*)(id,SEL,id))objc_msgSend)(manager,sel,plan));if(uuid)return uuid;
+    }
+    return LCSHelperUUIDString(LCSCellularObject(plan,"uuid"));
+}
+static id LCSHelperUnique(id manager,NSArray *plans,NSString *identity) {
     id result=nil;NSUInteger matches=0;
-    for(id plan in plans)if([LCSCellularString(LCSCellularObject(plan,"iccid")) isEqualToString:identity]){result=plan;matches++;}
+    for(id plan in plans)if([LCSHelperPlanUUID(manager,plan) isEqualToString:identity]){result=plan;matches++;}
     return matches==1?result:nil;
 }
 static BOOL LCSHelperPlanUsable(id plan) {
@@ -66,11 +78,13 @@ int main(int argc,char **argv) {
             SEL write=sel_registerName("didSelectPlanItem:isEnable:");const char *args[]={"@","B"};
             if(!manager||!LCSCellularMethod(object_getClass(manager),write,"@",2,args))return 66;
             NSArray *plans=LCSHelperPlans(manager);if(!plans)return 66;
-            id first=LCSHelperUnique(plans,identity);if(!first||!LCSHelperPlanUsable(first))return 65;
+            id first=LCSHelperUnique(manager,plans,identity);if(!first)return 65;
+            if(!LCSHelperPlanUsable(first))return 69;
             // Refresh immediately before committing. No slot/array-index conversion anywhere.
             NSArray *latest=LCSHelperPlans(manager);if(!latest)return 66;
-            id target=LCSHelperUnique(latest,identity);
-            if(!target||!LCSHelperPlanUsable(target)||![LCSCellularString(LCSCellularObject(target,"iccid")) isEqualToString:identity])return 65;
+            id target=LCSHelperUnique(manager,latest,identity);if(!target)return 65;
+            if(!LCSHelperPlanUsable(target))return 69;
+            if(![LCSHelperPlanUUID(manager,target) isEqualToString:identity])return 70;
             if(!LCSHelperGate())return 67;
             BOOL known=NO,already=LCSCellularBool(target,"isSelected",&known);if(!known)return 66;
             if(already==desired)return 0;

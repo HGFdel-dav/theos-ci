@@ -69,23 +69,6 @@ static id LCSCallError(id target,const char *name,id argument,BOOL withArgument,
     return withArgument?((id(*)(id,SEL,id,NSError *__autoreleasing *))objc_msgSend)(target,sel,argument,error):
         ((id(*)(id,SEL,NSError *__autoreleasing *))objc_msgSend)(target,sel,error);
 }
-static id LCSPlanManager(void) {
-    static dispatch_once_t once;dispatch_once(&once,^{dlopen("/System/Library/PrivateFrameworks/CellularPlanManager.framework/CellularPlanManager",RTLD_NOW|RTLD_LOCAL);});
-    return LCSCellularObject(NSClassFromString(@"CTCellularPlanManager"),"sharedManager");
-}
-static NSArray *LCSPlans(id manager) {
-    SEL sel=sel_registerName("planItemsShouldUpdate:");const char *arg[]={"B"};
-    if(!LCSCellularMethod(object_getClass(manager),sel,"@",1,arg))return nil;
-    id plans=((id(*)(id,SEL,bool))objc_msgSend)(manager,sel,true);
-    return [plans isKindOfClass:NSArray.class]?plans:nil;
-}
-static NSString *LCSPlanUUID(id manager,id plan) {
-    SEL sel=sel_registerName("getSubscriptionContextUUIDforPlan:");const char *args[]={"@"};
-    if(LCSCellularMethod(object_getClass(manager),sel,"@",1,args)) {
-        NSString *uuid=LCSUUIDString(((id(*)(id,SEL,id))objc_msgSend)(manager,sel,plan));if(uuid)return uuid;
-    }
-    return LCSUUIDString(LCSCellularObject(plan,"uuid"));
-}
 @interface LCSCellularService ()
 @property(nonatomic) LCSCellularKind kind;
 @property(nonatomic,strong) dispatch_queue_t queue;
@@ -145,9 +128,8 @@ static id LCSDirectTelephonyClient(void) {
     NSError *selectionError=nil;id selected=LCSCallError(client,"getCurrentDataSubscriptionContextSync:",nil,NO,&selectionError);
     NSString *selectedIdentity=LCSContextIdentity(selected);BOOL selectionKnown=!selectionError&&selectedIdentity.length;
     if(selectionError)LCSCellularLog(self.kind,@"read",@"selection-error",0);
-    id manager=self.kind==LCSCellularSIMManager?LCSPlanManager():nil;
-    NSArray *plans=manager?LCSPlans(manager):nil;NSMutableArray *lines=[NSMutableArray new];
-    if(self.kind==LCSCellularSIMManager&&!plans&&message)*message=@"系统未提供可核对的 SIM 计划，不能安全启停线路。";
+    NSMutableArray *lines=[NSMutableArray new];
+    if(self.kind==LCSCellularSIMManager&&!subscriptionList.count&&message)*message=@"未读取到可用的 SIM 线路，请重新读取。";
     for(NSInteger slot=1;slot<=2;slot++) {
         LCSCellularLine *line=[LCSCellularLine new];line.slot=slot;line.name=[NSString stringWithFormat:@"SIM %ld",(long)slot];
         id context=bySlot[@(slot)];NSString *uuid=LCSContextIdentity(context);BOOL unique=![ambiguous containsObject:@(slot)]&&uuid.length>0;
@@ -163,19 +145,14 @@ static id LCSDirectTelephonyClient(void) {
             line.selected=line.selectionKnown&&[uuid isEqualToString:selectedIdentity];
             if(context&&unique)contexts[uuid]=context;
         } else {
-            id match=nil;NSUInteger matches=0;
-            if(unique)for(id plan in plans)if([LCSPlanUUID(manager,plan) isEqualToString:uuid]){match=plan;matches++;}
-            NSString *identity=matches==1?LCSCellularString(LCSCellularObject(match,"iccid")):nil;
-            NSUInteger identityCount=0;
-            if(identity.length)for(id plan in plans)if([LCSCellularString(LCSCellularObject(plan,"iccid")) isEqualToString:identity])identityCount++;
-            BOOL known=NO;BOOL enabled=matches==1?LCSCellularBool(match,"isSelected",&known):NO;
-            BOOL displayKnown=NO,display=matches==1?LCSCellularBool(match,"shouldDisplay",&displayKnown):NO;
-            BOOL installingKnown=NO,installing=matches==1?LCSCellularBool(match,"isInstalling",&installingKnown):NO;
-            line.identity=identity;line.stateKnown=unique&&matches==1&&identityCount==1&&known;
-            line.enabled=enabled;line.available=line.stateKnown&&displayKnown&&display&&installingKnown&&!installing;
-            NSString *label=LCSCellularString(LCSCellularObject(match,"label"));if(label.length)line.name=label;
-            // isSelected is the plan-manager enabled state, not SIMStatusNotReady or an array index.
-            // Its iOS15.5 radio/runtime semantics remain an explicit device acceptance item.
+            // List subscription state here; only the separately entitled helper
+            // queries SIM plans. Plan-entitlement acceptance still needs a device test.
+            NSError *statusError=nil;
+            NSString *status=context?LCSCellularString(LCSCallError(client,"getSIMStatus:error:",context,YES,&statusError)):nil;
+            BOOL statusKnown=context&&!statusError&&status.length>0;
+            BOOL ready=statusKnown&&[status isEqualToString:@"kCTSIMSupportSIMStatusReady"];
+            line.identity=uuid;line.stateKnown=unique&&statusKnown;
+            line.enabled=ready;line.available=line.stateKnown;
         }
         [lines addObject:line];
     }
@@ -228,10 +205,24 @@ static id LCSDirectTelephonyClient(void) {
         [self pollTask:task descriptor:fd identity:identity desired:desired slot:slot];
     });
 }
+static NSString *LCSHelperFailureReason(int code) {
+    switch(code) {
+        case 64:return @"helper-usage";
+        case 65:return @"helper-identity";
+        case 66:return @"helper-plan-api";
+        case 67:return @"helper-gate";
+        case 68:return @"helper-request";
+        case 69:return @"helper-unusable";
+        case 70:return @"helper-plan-changed";
+        default:return @"helper-failed";
+    }
+}
 - (void)waitForHelper:(pid_t)pid task:(LCSCellularTask *)task descriptor:(int)fd identity:(NSString *)identity desired:(BOOL)desired slot:(NSInteger)slot {
     int status=0;pid_t waited;do {waited=waitpid(pid,&status,WNOHANG);}while(waited<0&&errno==EINTR);
     if(waited==pid) {
-        if(!WIFEXITED(status)||WEXITSTATUS(status)!=0) {
+        int code=WIFEXITED(status)?WEXITSTATUS(status):-1;
+        if(!WIFEXITED(status)||code!=0) {
+            LCSCellularLog(self.kind,@"result",LCSHelperFailureReason(code),slot);
             [self endTask:task descriptor:fd verified:NO lines:@[] message:@"线路工具未接受请求。权限、锁屏或线路信息可能不满足条件，未确认状态改变。" reason:@"helper-refused" slot:slot];return;
         }
         LCSCellularLog(self.kind,@"request",@"helper-accepted-not-verified",slot);

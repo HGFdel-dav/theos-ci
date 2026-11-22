@@ -1,31 +1,34 @@
-# CleanStatus 0.3.7 — local cellular long-press rebind candidate
+# CleanStatus 0.3.8 — SIM-plan read through the entitled helper (local candidate)
 
 ## Confirmed baseline
 
-Device readback: `com.local.cleanstatus` 0.3.5 arm64e installed; `simManager`, `dataSwitch`, and diagnostics were enabled. User reports pressing the stock cellular button produces no SIM manager and the independent data module has no usable SIM rows. The uploaded screenshot explicitly reports subscription-read failure. SpringBoard status logs at 13:53 showed two registered, ready SIMs and a live data connection; they prove cellular service exists, not that CleanStatus can access it. Diagnostics were last written at 11:46 and predate the latest interaction, so they cannot identify the new failing branch.
+The user recorded a 12.1 s video after installing 0.3.7 and reported that long press still failed. Device readback confirms `com.local.cleanstatus` 0.3.7 arm64e. The video shows that the “蜂窝管理” card does present, but it contains the message `系统未提供可核对的 SIM 计划，不能安全启停线路。` and two grey rows.
 
-The 0.3.5 release only changed the version from 0.3.4; the cellular implementation was identical. Earlier safety-mode IPS records are not current evidence for these two failures.
+Diagnostics at 21:45:40–21:47:41 (device local time) record `layout-hook-installed`, `bound-direct-only`, three `sim-manager present` events and repeated `subscriptions-ready`. The 0.3.7 layout rebind therefore fixed the earlier `button-not-visible` failure: the card is now reachable. The remaining confirmed failure is an unavailable plan array in the SpringBoard service. The existing diagnostic does not distinguish a missing manager, ABI refusal or a nil query result. The reference's separate entitled helper and our helper's missing plan-info entitlement make permission/context separation the leading hypothesis, not a proven entitlement-denial trace.
 
-## Local-only changes
+The supplied SIMControl reference does not query plans from its SpringBoard module. It lists lines through `CoreTelephonyClient` (`getSubscriptionInfoWithError:`, `getSIMStatus:error:`, `copyLabel:error:`) and delegates plan changes to a separately signed helper carrying `com.apple.coretelephony.CTDataPlanDeviceInfo.allow`. Our previous helper had only `platform-application` and `com.apple.CommCenter.fine-grained`.
 
-The data service now prefers the same `SBTelephonyManager.sharedTelephonyManagerCreatingIfNecessary:` → `coreTelephonyClient` path found in the supplied DataSwitch source, after checking selector signatures, with direct `CoreTelephonyClient` as fallback. It logs only client source and coarse failure categories: no client, ABI mismatch, system read error, missing/empty subscription list, selection error, or successful list. No phone number, ICCID, UUID, carrier or raw error is logged.
+## Scope
 
-The stock-button long-press binding no longer refuses to attach merely because a system gesture exists under the button. The stock short-tap action is not replaced; buttons with touch-down side effects still fail closed. Binding, press and presentation failures are recorded with bounded, deduplicated reason slugs. Presentation uses the window's current top controller, while preserving feature, lock, visibility, identity and foreground-close gates.
+This candidate starts from published 0.3.7 commit `7555934d4ac79280ff763c36769d85173d503041`, frozen in `docs/BASELINE-037-RUNTIME.json`. Only the service listing path, the helper plan identity, the helper entitlement, version fields, tests/tooling and this report are intended to differ. The data module, card layout, hooks, short tap and settings rows remain byte-identical to 0.3.7.
 
-The cellular long-press retry change starts from published 0.3.6 commit `869ddd0737f0c878322ef4ab9b2015632f952b7f`, frozen in `docs/BASELINE-036-RUNTIME.json`. Only `Cellular/LCSCellularHooks.m`, its two source-test/check files, version fields and this status record are intended to differ. The data-service repair, data module, short-toggle action, SIM helper and entitlements remain byte-identical to 0.3.6.
+## Changes
 
-## Target symptom and evidence
-
-Device 0.3.6 diagnostics logged `binding/button-not-visible` at 18:02:01, then no later bind or present event. The visibility predicate rejects a button or ancestor that is hidden or has alpha below 0.01. In 0.3.6 binding ran after view load/appearance and a few fixed startup delays; no controller layout callback rechecked visibility after later layout changes.
-
-## Local change
-
-The controller forwards `viewDidLayoutSubviews`, then schedules a main-queue rebind if the long-press target is absent or the button is still not visible. Calls are coalesced and throttled to at most one scan every 250 ms; an attached recognizer on a visible button returns immediately. The new layout hook is a required gate for enabling long press, and its signature failure is logged. Stock short-tap handling, touch-down safety, lock/OFF/resign cleanup and the published 0.3.6 data-service implementation remain unchanged.
+- `Cellular/LCSCellularService.m`: SIM-manager listing now uses the same subscription context, SIM status and label path as the working data selector. No `CTCellularPlanManager` call remains in SpringBoard. A line with a unique subscription context and known SIM status is available; `kCTSIMSupportSIMStatusReady` is the enabled state. The data-switch branch keeps its existing behaviour.
+- `LocalCleanStatusSIMTool/main.m`: the helper now accepts the subscription UUID, resolves each plan through `getSubscriptionContextUUIDforPlan:` (falling back to the plan’s `uuid`), keeps the `shouldDisplay`/`isInstalling`/`isSelected` safety checks, refreshes immediately before committing and still calls `didSelectPlanItem:isEnable:`. No slot index or ICCID is used.
+- `LocalCleanStatusSIMTool/entitlements.plist`: adds only `com.apple.coretelephony.CTDataPlanDeviceInfo.allow = true`; the existing three fine-grained values are unchanged.
+- `Cellular/LCSCellularService.m` helper wait: logs a bounded stage slug (`helper-usage`, `helper-identity`, `helper-plan-api`, `helper-gate`, `helper-request`, `helper-unusable`, `helper-plan-changed`, `helper-failed`) on a non-zero helper exit. Identity, ICCID and carrier text are never logged.
+- Version 0.3.8 in `control`, both bundle plists and the version checks; tests and verifier expectations updated to the 0.3.7 baseline.
 
 ## Verification state
 
-- Layout-rebind source contract passed: 140 assertions; published 0.3.6 freeze checks pass with 127 unchanged files. Cellular policy: 6,291; cellular source/preservation: 159; general invariants: 452; UI scope: 40; card-layout C assertions: 1,248; path reuse: 170; panel routes: 10.
-- Fixed iOS 15.5 arm64e SDK `-fsyntax-only` passed for `Cellular/LCSCellularHooks.m`; no machine code was generated.
-- Apple Foundation cellular service fixtures cannot execute on this Alpine host. CI, DEB build/verification, injection/load and real device long-press interaction remain unverified.
+- SIM-plan source contract: 150 checks, including exact 0.3.7 data read/write branch hashes; published 0.3.7 frozen files 129 unchanged.
+- Cellular policy: 6,291 assertions; cellular source/preservation: 160; general invariants: 455; UI scope: 40; card-layout C: 1,248; path reuse: 171; panel routes: 10.
+- Verifier synthetic tests: 46 + 11 precise-entitlement + 198 DER checks; path model 37.
+- Initial fixed iOS 15.5 arm64e SDK syntax-only checks passed for service and helper. After restoring the exact 0.3.7 data branches, the source contract and full host regression passed, but a final syntax-only service check exhausted local memory (`std::bad_alloc`) while reading SDK headers. That final parse is not counted as passed; the definitive final compilation is pending macOS CI. No iOS machine code was generated locally.
+- Apple Foundation service fixtures cannot execute on this Alpine host. CI, DEB build/verification, injection/load, helper execution with the new entitlement, real long-press presentation and actual SIM enabling/disabling remain unverified.
+- Known risk: a private entitlement may still be rejected even in the helper; the new helper stage log will identify the failing step. If a disabled line disappears from `getSubscriptionInfoWithError:`, this candidate cannot safely re-enable it without a slot-based fallback; that edge case has not been tested.
 
-The user authorized pushing and running CI for this 0.3.7 candidate. Installation, device writes, SIM operations, logout and restart remain unauthorized. The device remains on 0.3.6; long-press rebind is not yet proven on-device.
+## Authorization
+
+The user approved local implementation and subsequently authorized pushing this 0.3.8 candidate and running its dedicated GitHub CI. Installation, device writes, SIM operations, logout and restart remain unauthorized. The last verified phone version is 0.3.7. CI and package verification below are pending at the time of this source snapshot; final results belong in the separate release report.
