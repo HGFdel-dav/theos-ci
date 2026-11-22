@@ -93,32 +93,58 @@ static NSString *LCSPlanUUID(id manager,id plan) {
 @property(nonatomic) BOOL busy;
 - (NSArray *)readNow:(NSString **)error contexts:(NSMutableDictionary *)contexts;
 @end
+static id LCSSystemTelephonyClient(void) {
+    Class cls=NSClassFromString(@"SBTelephonyManager");
+    SEL factory=sel_registerName("sharedTelephonyManagerCreatingIfNecessary:");
+    const char *boolArgument[]={"B"},*charArgument[]={"c"};
+    if(!LCSCellularClassMethod(cls,factory,"@",1,boolArgument)&&!LCSCellularClassMethod(cls,factory,"@",1,charArgument))return nil;
+    id manager=((id(*)(id,SEL,BOOL))objc_msgSend)((id)cls,factory,YES);
+    return LCSCellularObject(manager,"coreTelephonyClient");
+}
+static id LCSDirectTelephonyClient(void) {
+    Class cls=NSClassFromString(@"CoreTelephonyClient");SEL selector=sel_registerName("initWithQueue:");const char *arguments[]={"@"};
+    if(!LCSCellularMethod(cls,selector,"@",1,arguments))return nil;
+    return ((id(*)(id,SEL,id))objc_msgSend)([cls alloc],selector,dispatch_get_main_queue());
+}
 @implementation LCSCellularService
 - (instancetype)initWithKind:(LCSCellularKind)kind {
     if(!(self=[super init]))return nil;
     _kind=kind;_queue=dispatch_queue_create("com.local.cleanstatus.cellular.worker",DISPATCH_QUEUE_SERIAL);
-    LCSCellularStartConfiguration();return self;
+    LCSCellularStartConfiguration();
+    __block id client=nil;__block NSString *source=@"client-unavailable";
+    void (^createClient)(void)=^{
+        dlopen("/System/Library/Frameworks/CoreTelephony.framework/CoreTelephony",RTLD_NOW|RTLD_LOCAL);
+        @try {
+            id shared=LCSSystemTelephonyClient();SEL read=sel_registerName("getSubscriptionInfoWithError:");const char *args[]={"^@"};
+            if(LCSCellularMethod(object_getClass(shared),read,"@",1,args)){client=shared;source=@"system-manager";}
+        } @catch(__unused NSException *exception) {client=nil;}
+        if(!client)@try {client=LCSDirectTelephonyClient();if(client)source=@"direct-fallback";} @catch(__unused NSException *exception) {client=nil;}
+    };
+    if(NSThread.isMainThread)createClient();else dispatch_sync(dispatch_get_main_queue(),createClient);
+    self.client=client;LCSCellularLog(self.kind,@"client",source,0);
+    return self;
 }
-- (id)telephony {
-    if(self.client)return self.client;
-    // A dedicated client avoids borrowing SpringBoard's main-thread client for synchronous XPC.
-    dlopen("/System/Library/Frameworks/CoreTelephony.framework/CoreTelephony",RTLD_NOW|RTLD_LOCAL);
-    Class cls=NSClassFromString(@"CoreTelephonyClient");SEL sel=sel_registerName("initWithQueue:");const char *args[]={"@"};
-    if(!LCSCellularMethod(cls,sel,"@",1,args))return nil;
-    id object=[cls alloc];self.client=((id(*)(id,SEL,id))objc_msgSend)(object,sel,dispatch_get_main_queue());return self.client;
-}
+- (id)telephony {return self.client;}
 - (NSArray *)readNow:(NSString **)message contexts:(NSMutableDictionary *)contexts {
     id client=[self telephony];NSError *error=nil;
+    if(!client){LCSCellularLog(self.kind,@"read",@"client-unavailable",0);if(message)*message=@"系统电话服务客户端不可用。";return @[];}
     id info=LCSCallError(client,"getSubscriptionInfoWithError:",nil,NO,&error);
     id subscriptions=LCSCellularObject(info,"subscriptions");
-    if(error||![subscriptions isKindOfClass:NSArray.class]){if(message)*message=@"无法读取蜂窝订阅，系统接口或权限尚未确认。";return @[];}
+    NSArray *subscriptionList=[subscriptions isKindOfClass:NSArray.class]?subscriptions:nil;
+    if(error||!subscriptionList) {
+        NSString *reason=[error.domain isEqualToString:@"com.local.cleanstatus.cellular.abi"]?@"subscription-abi":(error?@"subscription-error":@"subscription-list-missing");
+        LCSCellularLog(self.kind,@"read",reason,0);
+        if(message)*message=@"无法读取蜂窝订阅，系统接口或权限尚未确认。";return @[];
+    }
+    LCSCellularLog(self.kind,@"read",subscriptionList.count?@"subscriptions-ready":@"subscriptions-empty",0);
     NSMutableDictionary *bySlot=[NSMutableDictionary new];NSMutableSet *ambiguous=[NSMutableSet new];
-    for(id context in subscriptions) {
+    for(id context in subscriptionList) {
         long long slot=LCSCellularSlot(context);if(slot<1||slot>2)continue;
         NSNumber *key=@(slot);if(bySlot[key])[ambiguous addObject:key];else bySlot[key]=context;
     }
     NSError *selectionError=nil;id selected=LCSCallError(client,"getCurrentDataSubscriptionContextSync:",nil,NO,&selectionError);
     NSString *selectedIdentity=LCSContextIdentity(selected);BOOL selectionKnown=!selectionError&&selectedIdentity.length;
+    if(selectionError)LCSCellularLog(self.kind,@"read",@"selection-error",0);
     id manager=self.kind==LCSCellularSIMManager?LCSPlanManager():nil;
     NSArray *plans=manager?LCSPlans(manager):nil;NSMutableArray *lines=[NSMutableArray new];
     if(self.kind==LCSCellularSIMManager&&!plans&&message)*message=@"系统未提供可核对的 SIM 计划，不能安全启停线路。";
@@ -169,7 +195,7 @@ static NSString *LCSPlanUUID(id manager,id plan) {
         if(!LCSAlive(task))return;
         NSArray *lines=@[];NSString *message=nil;
         @try {lines=[self readNow:&message contexts:nil];}
-        @catch(__unused NSException *exception){message=@"系统拒绝读取蜂窝状态，未更改任何线路。";}
+        @catch(__unused NSException *exception){LCSCellularLog(self.kind,@"read",@"system-exception",0);message=@"系统拒绝读取蜂窝状态，未更改任何线路。";}
         if(LCSAlive(task))LCSFinish(task,NO,lines,message);
     });
 }

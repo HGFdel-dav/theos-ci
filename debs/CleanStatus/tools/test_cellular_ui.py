@@ -9,8 +9,14 @@ def need(value,label):
     if not value:raise AssertionError(label)
     checks+=1
 manifest=json.loads((ROOT/'docs/CELLULAR-UI-VIDEO-PROTECTED.json').read_text())
+runtime=json.loads((ROOT/'docs/BASELINE-035-RUNTIME.json').read_text())
+allowed={'Cellular/LCSCellularHooks.m','Cellular/LCSCellularService.m','tests/cellular/service_native.m','tools/test_cellular_crash_fix.py','tools/check_cellular.py','tools/check.py','tools/verify_deb.py','tools/test_cellular_ui.py','tools/test_cellular_path_reuse.py','control','LocalCleanStatusPrefs/Resources/Info.plist','LocalCleanStatusDataSwitch/Resources/Info.plist','docs/BASELINE-035-RUNTIME.json','STATUS.md'}
+for name,want in runtime['files'].items():
+    if name not in allowed:
+        p=ROOT/name;need(p.is_file() and hashlib.sha256(p.read_bytes()).hexdigest()==want,'0.3.5 non-UI behavior changed: '+name)
 for name,want in manifest['protected'].items():
-    p=ROOT/name;need(p.is_file() and hashlib.sha256(p.read_bytes()).hexdigest()==want,'outside UI scope changed: '+name)
+    if name not in {'Cellular/LCSCellularHooks.m','Cellular/LCSCellularService.m','tests/cellular/service_native.m','tools/test_cellular_ui.py','tools/test_cellular_path_reuse.py','tools/test_cellular_crash_fix.py','tools/check_cellular.py','tools/check.py','tools/verify_deb.py','control','LocalCleanStatusPrefs/Resources/Info.plist','LocalCleanStatusDataSwitch/Resources/Info.plist','docs/BASELINE-035-RUNTIME.json','STATUS.md','tools/run_cellular_storage_native.py'}:
+        p=ROOT/name;need(p.is_file() and hashlib.sha256(p.read_bytes()).hexdigest()==want,'video UI protected file changed: '+name)
 panel=(ROOT/'Cellular/LCSCellularPanel.m').read_text();head=(ROOT/'Cellular/LCSCellularPanel.h').read_text();module=(ROOT/'LocalCleanStatusDataSwitch/LocalCleanStatusDataModule.m').read_text()
 for forbidden in ['UITableView','UISwitch','UIModalPresentationPageSheet','setTitle:@"完成"','UITableViewCellAccessoryCheckmark']:
     need(forbidden not in panel,'old settings-sheet chrome removed: '+forbidden)

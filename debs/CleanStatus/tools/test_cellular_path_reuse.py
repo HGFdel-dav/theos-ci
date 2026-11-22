@@ -11,8 +11,12 @@ def need(value,label):
 def sha(b):return hashlib.sha256(b).hexdigest()
 def text(n):return (ROOT/n).read_text()
 base=json.loads(text('docs/BASELINE-032-PATH-REUSE.json'));allowed=set(base['allowed_changes'])
+runtime=json.loads(text('docs/BASELINE-035-RUNTIME.json'))
+runtime_allowed={'Cellular/LCSCellularHooks.m','Cellular/LCSCellularService.m','tests/cellular/service_native.m','tools/test_cellular_crash_fix.py','tools/check_cellular.py','tools/check.py','tools/verify_deb.py','tools/test_cellular_ui.py','tools/test_cellular_path_reuse.py','control','LocalCleanStatusPrefs/Resources/Info.plist','LocalCleanStatusDataSwitch/Resources/Info.plist','docs/BASELINE-035-RUNTIME.json','STATUS.md'}
+for name,want in runtime['files'].items():
+    if name not in runtime_allowed:need((ROOT/name).is_file() and sha((ROOT/name).read_bytes())==want,'0.3.5 non-scope file changed: '+name)
 for name,want in base['files'].items():
-    if name not in allowed:need((ROOT/name).is_file() and sha((ROOT/name).read_bytes())==want,'outside path-fix scope changed: '+name)
+    if name not in allowed and name not in runtime_allowed:need((ROOT/name).is_file() and sha((ROOT/name).read_bytes())==want,'outside path-fix scope changed: '+name)
 settings=text('Cellular/LCSCellularSettings.m');animation=text('Animation/LocalCleanStatusAnimationPreferences.m')
 need(sha(animation.encode())==base['files']['Animation/LocalCleanStatusAnimationPreferences.m'],'reused animation implementation byte-identical')
 need('for (NSString *prefix in @[@"", @".jbroot"])' in animation,'existing implementation already follows split-root backlink')

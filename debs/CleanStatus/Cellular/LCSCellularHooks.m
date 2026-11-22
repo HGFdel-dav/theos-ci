@@ -9,24 +9,27 @@ static char LCSCellularStateKey,LCSCellularButtonKey;
 static Class LCSNativeCellularClass;
 static unsigned LCSHookMask;
 static unsigned const LCSRequiredHookMask=7U;
+static unsigned LCSHookFailureMask;
 static NSHashTable *LCSCellularStates;
 static __weak LCSCellularSIMController *LCSPresentedSIM;
+static void LCSLogHookFailure(unsigned bit,NSString *reason) {
+    if(LCSHookFailureMask&bit)return;LCSHookFailureMask|=bit;
+    LCSCellularLog(LCSCellularSIMManager,@"hook",reason,0);
+}
 @class LCSCellularButtonState;
 // Action-only target. No UIKit subclass, gesture delegate or private ownership selector.
 @interface LCSCellularPressTarget : NSObject
 @property(nonatomic,weak) LCSCellularButtonState *binding;
 - (void)lcs_handlePress:(UILongPressGestureRecognizer *)press;
 @end
-@interface LCSCellularButtonState : NSObject {
-    BOOL _handledBeginning;
-}
+@interface LCSCellularButtonState : NSObject
 @property(nonatomic,weak) UIViewController *controller;
 @property(nonatomic,weak) UIControl *button;
 @property(nonatomic,weak) UIWindow *boundWindow;
 @property(nonatomic,weak) LCSCellularSIMController *panel;
 @property(nonatomic,strong) UILongPressGestureRecognizer *directPress;
 @property(nonatomic,strong) LCSCellularPressTarget *target;
-@property(nonatomic) BOOL conflictLogged;
+@property(nonatomic,copy) NSString *lastBindingFailure;
 @property(nonatomic) BOOL appeared;
 @property(nonatomic) BOOL layoutPending;
 - (void)bind;
@@ -45,12 +48,6 @@ static BOOL LCSDirectTouch(UIView *view) {
     for(UIView *v=view;v;v=v.superview)if(!v.userInteractionEnabled)return NO;
     return YES;
 }
-static BOOL LCSHasAnyGesture(UIView *view,NSUInteger depth) {
-    if(!view||depth>16)return YES;
-    if(view.gestureRecognizers.count)return YES;
-    for(UIView *child in view.subviews)if(LCSHasAnyGesture(child,depth+1))return YES;
-    return NO;
-}
 static UIViewController *LCSTop(UIView *anchor) {
     UIViewController *top=anchor.window.rootViewController;
     while(top.presentedViewController&&!top.presentedViewController.isBeingDismissed)top=top.presentedViewController;
@@ -62,44 +59,55 @@ static void LCSFindButton(UIView *view,Class cls,NSMutableArray *matches,NSUInte
     for(UIView *child in view.subviews)LCSFindButton(child,cls,matches,depth+1);
 }
 static BOOL LCSTapContract(UIControl *button) {
-    BOOL primary=NO,early=NO;
+    BOOL early=NO;
     for(id target in button.allTargets) {
         id object=target==NSNull.null?nil:target;
-        for(NSNumber *event in @[@(UIControlEventTouchUpInside),@(UIControlEventPrimaryActionTriggered)])
-            for(NSString *action in [button actionsForTarget:object forControlEvent:event.unsignedIntegerValue])if([action isEqualToString:@"buttonTapped:"])primary=YES;
         early|=[button actionsForTarget:object forControlEvent:UIControlEventTouchDown].count>0;
         early|=[button actionsForTarget:object forControlEvent:UIControlEventTouchDownRepeat].count>0;
     }
-    // Unknown target/action arrangements are not proof the stock short tap is safe.
-    return primary&&!early;
+    // A long hold must not intercept a control that already acts on touch-down.
+    return !early;
 }
 @implementation LCSCellularButtonState
 - (void)unbind {
     if(self.directPress){[self.button removeGestureRecognizer:self.directPress];[self.directPress removeTarget:self.target action:@selector(lcs_handlePress:)];}
     if(objc_getAssociatedObject(self.button,&LCSCellularButtonKey)==self)objc_setAssociatedObject(self.button,&LCSCellularButtonKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    self.directPress=nil;self.target=nil;self.button=nil;self.boundWindow=nil;self->_handledBeginning=NO;
+    self.directPress=nil;self.target=nil;self.button=nil;self.boundWindow=nil;
+}
+- (NSString *)bindingFailureForButton:(UIControl *)button {
+    if(!self.appeared)return @"controller-not-appeared";
+    if((LCSHookMask&LCSRequiredHookMask)!=LCSRequiredHookMask)return @"lifecycle-hooks-incomplete";
+    if(!LCSCellularFeatureEnabled(LCSCellularSIMManager))return @"feature-disabled";
+    if(!self.controller.isViewLoaded||![self.controller isKindOfClass:LCSNativeCellularClass])return @"controller-mismatch";
+    if(!button)return nil;
+    if(!button.window||button.window!=self.controller.view.window)return @"button-window-mismatch";
+    if(!LCSVisible(button))return @"button-not-visible";
+    if(!LCSDirectTouch(button))return @"button-not-direct-touch";
+    if(!LCSTapContract(button))return @"tap-contract-unverified";
+    id owner=objc_getAssociatedObject(button,&LCSCellularButtonKey);if(owner&&owner!=self)return @"button-owned-elsewhere";
+    UIView *view=button;while(view&&view!=self.controller.view)view=view.superview;
+    return view==self.controller.view?nil:@"button-outside-controller";
+}
+- (void)logBindingFailure:(NSString *)reason {
+    if(![self.lastBindingFailure isEqualToString:reason])LCSCellularLog(LCSCellularSIMManager,@"binding",reason,0);
+    self.lastBindingFailure=reason;
 }
 - (BOOL)safeDirectButton:(UIControl *)button {
-    if(!button.window||button.window!=self.controller.view.window||!LCSVisible(button)||!LCSDirectTouch(button)||!LCSTapContract(button))return NO;
-    if(objc_getAssociatedObject(button,&LCSCellularButtonKey)!=nil&&objc_getAssociatedObject(button,&LCSCellularButtonKey)!=self)return NO;
-    UIView *v=button;while(v&&v!=self.controller.view)v=v.superview;if(v!=self.controller.view)return NO;
-    // Existing native gesture arbitration is opaque; do not add another recognizer.
-    if(LCSHasAnyGesture(button,0)){
-        if(!self.conflictLogged){self.conflictLogged=YES;LCSCellularLog(LCSCellularSIMManager,@"binding",@"recognizer-conflict",0);}
-        return NO;
-    }
-    self.conflictLogged=NO;
-    return YES;
+    NSString *reason=[self bindingFailureForButton:button];
+    if(reason){[self logBindingFailure:reason];return NO;}
+    self.lastBindingFailure=nil;return YES;
 }
 - (void)scheduleBind {
     if(self.layoutPending)return;self.layoutPending=YES;__weak typeof(self) weakSelf=self;
     dispatch_async(dispatch_get_main_queue(),^{LCSCellularButtonState *state=weakSelf;if(!state)return;state.layoutPending=NO;[state bindAfterLayout];});
 }
 - (void)bindAfterLayout {
-    if(!self.appeared||(LCSHookMask&LCSRequiredHookMask)!=LCSRequiredHookMask||!LCSCellularFeatureEnabled(LCSCellularSIMManager)||
-       !self.controller.isViewLoaded||![self.controller isKindOfClass:LCSNativeCellularClass]){[self unbind];return;}
+    NSString *gate=[self bindingFailureForButton:nil];if(gate){[self logBindingFailure:gate];[self unbind];return;}
     Class cls=NSClassFromString(@"CCUIRoundButton");NSMutableArray *matches=[NSMutableArray new];if(cls)LCSFindButton(self.controller.view,cls,matches,0);
-    if(matches.count!=1||![matches.firstObject isKindOfClass:UIControl.class]||![self safeDirectButton:matches.firstObject]){[self unbind];return;}
+    if(!cls||matches.count!=1||![matches.firstObject isKindOfClass:UIControl.class]) {
+        [self logBindingFailure:!cls?@"button-class-unavailable":(matches.count?@"button-ambiguous":@"button-not-found")];[self unbind];return;
+    }
+    if(![self safeDirectButton:matches.firstObject]){[self unbind];return;}
     UIControl *button=matches.firstObject;if(button==self.button&&self.directPress)return;
     [self unbind];self.button=button;self.boundWindow=button.window;
     self.target=[LCSCellularPressTarget new];self.target.binding=self;
@@ -111,20 +119,34 @@ static BOOL LCSTapContract(UIControl *button) {
 }
 - (void)bind {[self scheduleBind];}
 - (void)pressed:(UILongPressGestureRecognizer *)gesture {
-    if(gesture!=self.directPress||gesture.state!=UIGestureRecognizerStateBegan||self->_handledBeginning)return;
-    if(!LCSCellularFeatureEnabled(LCSCellularSIMManager)||!LCSCellularIsSpringBoard()||
-       !LCSCellularIsUnlocked()||!self.appeared||self.controller.isBeingDismissed||self.controller.isBeingPresented||
-       !self.button.window||self.button.window!=self.boundWindow||self.button.window!=self.controller.view.window||
-       !LCSVisible(self.button)||!LCSDirectTouch(self.button)||LCSTop(self.button)!=self.controller)return;
-    UIViewController *top=LCSTop(self.button);if(!top)return;
+    if(gesture!=self.directPress)return;
+    if(gesture.state!=UIGestureRecognizerStateBegan){
+        if(gesture.state==UIGestureRecognizerStateEnded||gesture.state==UIGestureRecognizerStateCancelled||gesture.state==UIGestureRecognizerStateFailed)
+            dispatch_async(dispatch_get_main_queue(),^{if(self.appeared&&self.button.window&&LCSVisible(self.button))[self bind];});
+        return;
+    }
+    NSString *reason=nil;
+    if(!LCSCellularFeatureEnabled(LCSCellularSIMManager))reason=@"feature-disabled";
+    else if(!LCSCellularIsSpringBoard())reason=@"wrong-process";
+    else if(!LCSCellularIsUnlocked())reason=@"device-locked";
+    else if(!self.appeared||!self.controller||self.controller.isBeingDismissed||self.controller.isBeingPresented)reason=@"controller-unavailable";
+    else if(!self.button.window||self.button.window!=self.boundWindow||self.button.window!=self.controller.view.window)reason=@"button-window-mismatch";
+    else if(!LCSVisible(self.button))reason=@"button-not-visible";
+    else if(!LCSDirectTouch(self.button))reason=@"button-not-direct-touch";
+    else if(LCSPresentedSIM)reason=@"panel-already-presented";
+    if(reason){LCSCellularLog(LCSCellularSIMManager,@"press",reason,0);return;}
+    UIViewController *top=LCSTop(self.button);
+    if(!top||top.isBeingDismissed||top.isBeingPresented){LCSCellularLog(LCSCellularSIMManager,@"press",@"presenter-unavailable",0);return;}
     LCSCellularSIMController *panel=[LCSCellularSIMController new];self.panel=panel;LCSPresentedSIM=panel;
     __weak typeof(self) weakSelf=self;__weak LCSCellularSIMController *weakPanel=panel;
     panel.mayContinue=^BOOL{LCSCellularButtonState *state=weakSelf;return state&&state.appeared&&
       !state.controller.isBeingDismissed&&state.button.window==state.boundWindow&&LCSVisible(state.button)&&
       LCSCellularFeatureEnabled(LCSCellularSIMManager)&&LCSCellularIsUnlocked();};
     panel.didClose=^{LCSCellularButtonState *state=weakSelf;if(state.panel==weakPanel)state.panel=nil;if(LCSPresentedSIM==weakPanel)LCSPresentedSIM=nil;};
-    [top presentViewController:panel animated:YES completion:^{if(!panel.mayContinue||!panel.mayContinue())[panel close];}];
-    LCSCellularLog(LCSCellularSIMManager,@"present",@"sim-manager",0);
+    [top presentViewController:panel animated:YES completion:^{
+        LCSCellularLog(LCSCellularSIMManager,@"present",panel.presentingViewController?@"sim-manager":@"presentation-missing",0);
+        if(!panel.mayContinue||!panel.mayContinue())[panel close];
+    }];
 }
 - (void)dealloc {[self unbind];}
 @end
@@ -153,16 +175,17 @@ static void LCSInstallHooks(void) {
     if(!NSThread.isMainThread||!LCSCellularIsSpringBoard()||NSProcessInfo.processInfo.operatingSystemVersion.majorVersion!=15)return;
     if((LCSHookMask&LCSRequiredHookMask)==LCSRequiredHookMask)return;
     Class native=NSClassFromString(@"CCUIConnectivityCellularDataViewController");
-    const char *file=native?class_getImageName(native):NULL;
+    if(!native){LCSLogHookFailure(1U,@"native-class-missing");return;}
+    const char *file=class_getImageName(native);
     NSString *image=file?[NSString stringWithUTF8String:file]:nil;
     if(![image hasSuffix:@"/System/Library/ControlCenter/Bundles/ConnectivityModule.bundle/ConnectivityModule"]) {
-        LCSCellularLog(LCSCellularSIMManager,@"hook",@"native-image-unverified",0);return;
+        LCSLogHookFailure(2U,@"native-image-unverified");return;
     }
     LCSNativeCellularClass=native;
     const char *boolean[]={"B"};
-    if(!(LCSHookMask&1)&&LCSInstall(native,"viewDidLoad","v",0,NULL,(IMP)LCSLoaded,(IMP *)&LCSOriginalLoad))LCSHookMask|=1;
-    if(!(LCSHookMask&2)&&LCSInstall(native,"viewDidAppear:","v",1,boolean,(IMP)LCSAppeared,(IMP *)&LCSOriginalAppear))LCSHookMask|=2;
-    if(!(LCSHookMask&4)&&LCSInstall(native,"viewDidDisappear:","v",1,boolean,(IMP)LCSDisappeared,(IMP *)&LCSOriginalDisappear))LCSHookMask|=4;
+    if(!(LCSHookMask&1)) {if(LCSInstall(native,"viewDidLoad","v",0,NULL,(IMP)LCSLoaded,(IMP *)&LCSOriginalLoad))LCSHookMask|=1;else LCSLogHookFailure(4U,@"load-hook-unavailable");}
+    if(!(LCSHookMask&2)) {if(LCSInstall(native,"viewDidAppear:","v",1,boolean,(IMP)LCSAppeared,(IMP *)&LCSOriginalAppear))LCSHookMask|=2;else LCSLogHookFailure(8U,@"appear-hook-unavailable");}
+    if(!(LCSHookMask&4)) {if(LCSInstall(native,"viewDidDisappear:","v",1,boolean,(IMP)LCSDisappeared,(IMP *)&LCSOriginalDisappear))LCSHookMask|=4;else LCSLogHookFailure(16U,@"disappear-hook-unavailable");}
 }
 static void LCSReconcile(void) {
     LCSInstallHooks();
