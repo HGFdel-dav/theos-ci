@@ -84,7 +84,7 @@ class WindowMemoryCycles(unittest.TestCase):
         self.assertIn('return PXWMOriginalConfiguredActionSearch(self, command, action, fromSearch)',action)
 
     def test_dock_hooks_match_original_relative_method_table(self):
-        fixture=json.loads((ROOT/'tests/fixtures/window-memory-alpha440-abi.json').read_text())
+        fixture=json.loads((ROOT/'tests/fixtures/window-memory-alpha451-abi.json').read_text())
         image=(ROOT/fixture['sample']).read_bytes()
         start,end=(int(v,16) for v in fixture['selref_range'])
         def relative(a):return a+struct.unpack_from('<i',image,a)[0]
@@ -97,8 +97,8 @@ class WindowMemoryCycles(unittest.TestCase):
             if start<=name<end:name=struct.unpack_from('<Q',image,name)[0]&0xffffffff
             self.assertEqual(cstr(name),m['selector'])
 
-    def test_native_alpha440_dock_frame_is_set_before_native_content_layout(self):
-        fixture=json.loads((ROOT/'tests/fixtures/window-memory-alpha440-abi.json').read_text())
+    def test_native_alpha451_dock_frame_is_set_before_native_content_layout(self):
+        fixture=json.loads((ROOT/'tests/fixtures/window-memory-alpha451-abi.json').read_text())
         image=(ROOT/fixture['sample']).read_bytes()
         self.assertEqual(hashlib.sha256(image).hexdigest(),fixture['sample_sha256'])
         def word(a):return struct.unpack_from('<I',image,a)[0]
@@ -107,15 +107,27 @@ class WindowMemoryCycles(unittest.TestCase):
             o=w&0x3ffffff;o=o-(1<<26) if o&(1<<25) else o
             return a+o*4
         # ObjC method entry -> verified Swift thunk, not a guessed Swift ABI call.
-        self.assertEqual(branch(0x4c68c),0x4c4fc)
-        self.assertEqual(branch(0x4c614),0x49204)
-        self.assertEqual(branch(0x39448),0x49204) # native external-open reuse
-        self.assertEqual(word(0x54570),0xf9400a80) # captured existing docked host
-        self.assertEqual(branch(0x5457c),0x4f620)
-        self.assertEqual(word(0x4f650),0xf9400c14) # card at native dockedHost+24
+        self.assertEqual(branch(0x4c9fc),0x4c86c)
+        self.assertEqual(branch(0x4c984),0x49574)
+        self.assertEqual(branch(0x3975c),0x49574) # reuse the parked host by app
+        self.assertEqual(word(0x54778),0xf9400a80) # captured existing docked host
+        self.assertEqual(branch(0x54784),0x4f990)
+        self.assertEqual(word(0x4f9c0),0xf9400c14) # card at native dockedHost+24
+        self.assertEqual(word(0x4fa18),0xf9401660) # bridge at native dockedHost+40
         # setTransform -> setFrame -> layoutIfNeeded -> bridge.layoutHost
-        for a,ref,selector in [(0x4f658,0x96f48,b'setTransform:'),(0x4f67c,0x96e28,b'setFrame:'),(0x4f69c,0x96bd0,b'layoutIfNeeded'),(0x4f6b0,0x96bc8,b'layoutHost')]:
-            self.assertEqual((word(a)>>10)&0xfff,(ref&4095)//8)
+        selectors=[(0x4f9c8,0x4f9e4,0x9f028,b'setTransform:'),
+                   (0x4f9ec,0x4fa04,0x9ef08,b'setFrame:'),
+                   (0x4fa0c,0x4fa14,0x9eca8,b'layoutIfNeeded'),
+                   (0x4fa20,0x4fa24,0x9eca0,b'layoutHost')]
+        for a,call,ref,selector in selectors:
+            adrp,ldr=word(a-4),word(a)
+            self.assertEqual(adrp&0x9f00001f,0x90000008) # ADRP x8
+            self.assertEqual(ldr&0xffc003ff,0xf9400101) # LDR x1, [x8,#imm]
+            imm=((adrp>>5)&0x7ffff)*4+((adrp>>29)&3)
+            if imm&(1<<20): imm-=1<<21
+            self.assertEqual(((a-4)&~4095)+(imm<<12)+((ldr>>10)&0xfff)*8,ref)
+            self.assertEqual(word(call)>>26,0b100101)
+            self.assertEqual(branch(call),0x7c824) # objc_msgSend
             name=struct.unpack_from('<Q',image,ref)[0]&0xffffffff
             self.assertEqual(image[name:image.index(b'\0',name)],selector)
 

@@ -1,34 +1,20 @@
-# alpha440 原版布局证据（只读静态分析）
+# alpha451 原版开窗与贴边放大（静态证据）
 
-样本：`vendor/alpha440/Library/MobileSubstrate/DynamicLibraries/ParallelX.dylib`
-SHA256：`8fae4085b131ff577173584d4bb4bc53530764d4df441d519e2ae64bdbfae9dd`
+样本：`vendor/alpha451/Library/MobileSubstrate/DynamicLibraries/ParallelX.dylib`，754112 B。
+SHA256：`1e6af715a04e9f8b7bcf53c58235419f94bd25b4adcb05abc26a028d0849abdb`。
 
-重新复核日期：2026-11-22（作者 alpha440 包）。以下地址来自本机静态解析（Mach-O 段表、相对方法表、选择器桩），不是运行时追踪。
+相对方法表中的宿主类/实例归属、参数编码与 alpha440 核对。旧版 248 个类及实例方法条目在新版仍有相同编码；新版多 9 个条目，包括手动返回点位记录相关入口。它们不替代现有分身、付款、窗口记忆或开窗诊断。只检查本轮接入相关路径，不把编码一致等同完整行为相同。
 
-`PXSceneBridge.layoutHost` 入口 `0x639b4`（pacibsp 开头）：
+## 布局与开窗
 
-1. `0x639dc` 调用 `hostView`，`0x639f0` 调用 `canvas`；
-2. `0x63a04` 通过桩 `0x76900` 读取 `sourceSize`（选择器引用 `0x96fa0`，字符串 `sourceSize`），随后读 `bounds`；
-3. `0x63ac4` 起进入 `performWithoutAnimation:` 更新键盘层与布局。
+- `PXSceneBridge.layoutHost` 从 `0x6aef8` 开始。`0x6af48` 通过 `0x7eb60` 读取 `sourceSize`（选择器引用 `0x9f080`）；`hostedSourceSize` 在 `0x6cd20` 尾跳转到同一桩。
+- 开窗桥 `openApplication:inView:keyboardOverlay:completion:` 仍为实例方法，从 `0x73598` 开始。按顺序在 `0x73614` 调 `close`、`0x73674` 调 `setCanvas:`、`0x73680` 调 `setKeyboardOverlay:`、`0x7368c` 调 `setBundleID:`，随后 `0x73698` 发布相机宿主状态。保持先清理旧场景再接新画布的顺序。
+- `externalOpenApplication:` 仍是 `PXPanelEntry` 的类方法；两个 `performConfiguredAction` 仍是 `PXSceneBridge` 的实例方法。这里不改原入口的挂接类别或业务流转。
 
-`hostedSourceSize` 实现 `0x647e4` 是尾跳转到同一 `sourceSize` 桩（`b 0x76900`），说明窗口记忆读取的源尺寸与原生布局使用的是同一份数据。
+## 贴边放大
 
-## 开窗顺序（`PXSceneBridge openApplication:inView:keyboardOverlay:completion:`，入口 `0x6b05c`）
+- `PXDockCoordinator restoreDockTapped:`（实例方法，`v24@0:8@16`）`0x4c9c8` → `0x4c86c` → `0x49574`；按应用匹配已有停靠 host 的分支也从 `0x3975c` 进入 `0x49574`。
+- 动画使用捕获的停靠 host，`0x54778` → `0x4f990`。由同一个 host 取卡片和画布桥，依次执行 `setTransform:`（还原为单位变换）、`setFrame:`、`layoutIfNeeded`、`layoutHost`。四个实际消息调用点是 `0x4f9e4`、`0x4fa04`、`0x4fa14`、`0x4fa24`。
+- `dockTapped:`、`bottomDoubleTapped`、`bottomHeld:` 保留相同入口及编码。沿用 0.103 的单次原生放大目标替换和独立尺寸/位置保存，不加计时压框，也不改作者的窗口或内容布局。
 
-| 地址 | 目标桩 | 选择器 |
-|---|---|---|
-| `0x6b0d8` | `0x75080` | `close` |
-| `0x6b138` | `0x762c0` | `setCanvas:` |
-| `0x6b144` | `0x76540` | `setKeyboardOverlay:` |
-| `0x6b150` | `0x762a0` | `setBundleID:` |
-| `0x6b15c` | `0x75f40` | `publishHostedCamera:` |
-
-与 alpha437 的顺序一致：先同步关闭旧场景，再设置新画布、键盘覆盖层与应用标识。开窗票据、初次清理识别和恢复时机所依赖的这条顺序没有变化。
-
-## 与 alpha437 的差异
-
-- 所有地址整体后移（主库 702,704 → 719,600 字节），但上述顺序、`layoutHost` 读取源尺寸、`hostedSourceSize` 尾跳转都保持。
-- 原版设置项新增「右边缘滑动返回」的即时生效通知；该设置由作者二进制自行处理，我们的叠加层不涉及。
-- 旧版 alpha437 的对应地址与证据保留在 `evidence/local-099/FINAL-LOCAL-AUDIT.json` 与历史交付中，只作对照，不能当作当前版本结论。
-
-静态证据不等于真机行为；首帧尺寸、内容跟随、关闭与缩小手势仍需装机验收。
+旧版实现说明里的 alpha440 地址属于历史证据，不参与新版运行或判定。上述 0x 地址仅用于静态测试与取证；没有在设备执行样本，首帧、内容、手势和相邻功能仍需真机核对。
