@@ -519,7 +519,7 @@ static BOOL MSLyricsAllowedURL(NSURL * _Nullable url, NSString *path) {
             if (self.generation != generation || self.activeGeneration != generation || !self.searchPending || self.task) return;
             self.searchPending = NO;
             if (NSProcessInfo.processInfo.systemUptime >= self.deadline) {
-                MiniSightLyricsResult completion = self.completion; MiniSightLyricsTrack *track = self.track;
+                MiniSightLyricsResult completion = self.completion;
                 self.track = nil; self.completion = nil;
                 [self deliver:nil reason:@"lyrics_timeout" generation:generation completion:completion];
                 return;
