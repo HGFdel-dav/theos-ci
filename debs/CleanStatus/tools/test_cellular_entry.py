@@ -17,7 +17,9 @@ for bad in ['objc_allocateClassPair','forwardInvocation:','forwardingTargetForSe
             'windowPress','UIWindow alloc','method_setImplementation','sendActionsForControlEvents:',
             'cancelInteraction','setUserInteractionEnabled:']:
     need(bad not in hook, 'retired or broad interception forbidden: ' + bad)
-need('"gestureRecognizerShouldBegin:"' not in hook, 'no native round-button method hook')
+need('LCSRoundGestureShouldBegin' in hook and 'LCSCellularOwnsRoundGesture(self,gesture)' in hook, 'native round-button hook is scoped to the own cellular recognizer')
+need('BOOL local=cellular&&state&&[state.target gestureRecognizerShouldBegin:gesture];' in hook and 'LCSRoundButtonAllowsGesture(cellular,original,local)' in hook and 'BOOL original=cellular?NO:LCSOriginalRoundGestureShouldBegin(self,sel,gesture);' in hook, 'round-button checks owned target and forwards original result for other gestures')
+need('round-local-hook-installed' in hook and 'round-button-image-unverified' in hook, 'round-button hook validates image and reports failures')
 need('gestureRecognizer:(UIGestureRecognizer *)gesture shouldBeRequiredToFailByGestureRecognizer:' in hook, 'own recognizer supplies the failure rule')
 need('return ![other isKindOfClass:UIPanGestureRecognizer.class];' in hook, 'exact WiFi pan/tap rule')
 need('shouldRecognizeSimultaneouslyWithGestureRecognizer:' in hook and '(void)gesture;(void)other;return NO;' in hook, 'no simultaneous recognition')
@@ -32,7 +34,8 @@ need('self.directPress.numberOfTouches==0' in hook and 'locationInCoordinateSpac
 need('self.controller.view isDescendantOfView:container.view' in hook, 'preview container must host the cellular controller')
 need('CGRectContainsPoint(CGRectInset(self.button.bounds,-8,-10),point)' in hook, 'preview point remains within the button region')
 need('containerWillTransitionToExpandedContentMode:' in hook and 'state.expanded=expanded' in hook, 'native expansion state is tracked')
-need('bound-wifi-entry' in hook and 'began-wifi' in hook, 'entry path is visible in diagnostics')
+need('bound-wifi-entry' in hook and 'began-wifi' in hook and 'round-local-hook-installed' in hook and 'round-button-allowed' in hook, 'round-button allow hook and direct-entry state are observable')
+need('gestureRecognizerShouldBegin:' in hook and 'setOwner:' not in hook and 'forwardInvocation:' not in hook, 'no private recognizer ownership or delegate forwarding')
 need('UIApplicationWillResignActiveNotification' in hook and 'UIApplicationDidBecomeActiveNotification' in hook, 'foreground cleanup/rebind')
 base = json.loads((ROOT / 'docs/BASELINE-039-WIFI-ENTRY.json').read_text())
 for name in ['Cellular/LCSCellularService.m','Cellular/LCSCellularPanel.m',

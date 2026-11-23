@@ -1,34 +1,29 @@
-# CleanStatus 0.3.10 — WiFi-style cellular entry (local candidate)
+# CleanStatus 0.3.11 — round-button allow hook for cellular long press (local candidate)
 
-## Confirmed device baseline
+## Confirmed device evidence
 
-The phone was running 0.3.9 arm64e. The 0.3.9 diagnostics recorded `preview-signature-unavailable` at 10:16:33, `bound-legacy-fallback` at 10:16:42 and `began-legacy` at 10:16:44; the existing SIM card then appeared after the stock six-button Connectivity panel. There was no new SpringBoard crash report.
+The phone was on 0.3.10 arm64e. Diagnostics from the failing attempt show `bound-wifi-entry` → `began-wifi` → `sim-manager present`; the card opened, but the user video still showed the stock six-button panel. There was no new SpringBoard crash. Thus 0.3.10's own long press ran, yet the stock panel still won.
 
-That is direct evidence that 0.3.9 did not enter its new local host at all: the grouped private-preview signature check failed and the code deliberately used the 0.3.8 button fallback. The exact missing preview method was not distinguished by the old log.
+## 0.3.10 source gap and 0.3.11 local review corrections
 
-## Scope
+The published 0.3.10 source had a button long press and the Wi-Fi-style pan/tap failure rule, but **did not install a `CCUIRoundButton -gestureRecognizerShouldBegin:` hook**. It therefore never had the Wi-Fi source's selective button-allow mechanism; only the generic recognizer attached to the button could run.
 
-Starts from published 0.3.8 commit `4f819236e3468c27acda3e1ff7bf49a0a976124a`, frozen in `docs/BASELINE-039-WIFI-ENTRY.json` (143 files). Only the cellular button entry, its tests/version/records differ. The 0.3.9 preview/local-host/entry-policy experiment is not carried forward. Wi-Fi/Bluetooth, SIM service, SIM panel, helper, entitlements and DataSwitch are byte-identical to 0.3.8.
+During the first 0.3.11 local draft, an attempted round-button bypass contained duplicate function text and invoked a target callback that was missing. A source/compile review caught these before any build or push. The final local candidate now has one hook and implements `gestureRecognizerShouldBegin:` on the independent target; the hook allows only the exact recognizer stored by the cellular button state and calls the saved native IMP for all other recognizers. A pure policy test and source contracts cover this wiring. This still does not prove the runtime system calls the hook in the expected order.
 
-## Entry changes
+## 0.3.11 local changes
 
-- Standard one-finger `UILongPressGestureRecognizer` on the unique native cellular `CCUIRoundButton`; independent `NSObject` target/delegate; no recognizer/UIKit subclass, no private `owner`, no forwarding and no native `CCUIRoundButton` method hook.
-- `shouldBeRequiredToFailByGestureRecognizer:` uses the Wi-Fi direction: NO for pan, YES for other gestures. Short tap is not replaced.
-- `previewInteractionShouldBegin:` is optional. Only that single method is ABI-checked and hooked; it returns NO only for a live cellular touch on this button in the verified container, with the point inside the button and the module collapsed. All other calls forward exactly. No `contentViewController`, `previewInteraction` or `isExpanded` getter is required. Missing method/ABI is logged as `preview-shouldbegin-unavailable` and does not disable the button entry.
-- Native expansion is tracked through `containerWillTransitionToExpandedContentMode:`; the existing SIM card, single-panel guard and foreground/lock cleanup are reused.
-- Diagnostics now distinguish `preview-container-unavailable`, `preview-shouldbegin-unavailable`, `preview-shouldbegin-installed`, `bound-wifi-entry` and `began-wifi`.
+- One deduplicated `LCSRoundGestureShouldBegin` implementation is installed only after the exact `CCUIRoundButton` image and selector ABI validate.
+- The hook identifies the exact `UILongPressGestureRecognizer` retained by this cellular button state. For that recognizer, it calls the same safe eligibility check on the independent `NSObject` target/delegate. Every other gesture calls the saved original implementation. No window-wide hook or `didMoveToWindow` hook is installed.
+- Added a portable `LCSRoundButtonAllowsGesture` policy and 12 real C checks for own/native recognizers. Source contracts also assert the native original forwarding path.
+- Button-level layout retry, standard recognizer, Wi-Fi failure-direction rule, preview accelerator, and existing SIM-card presentation remain otherwise unchanged. SIM service/helper and DataSwitch source remain byte-identical to the published baseline.
 
 ## Verification state
 
-- WiFi-style entry adapter source contracts: 33.
-- Cellular WiFi-entry source contract: 153; frozen 0.3.8 files 132 unchanged.
-- Cellular policy: 6,291; cellular source/preservation: 162; general invariants: 458; UI structure: 40; card layout C: 1,248; path reuse: 174; panel routes: 10.
-- Verifier synthetics: 46 + 11 precise-entitlement + 198 DER; path model 37.
-- Fixed iOS 15.5 arm64e SDK `-fsyntax-only` passed for `Cellular/LCSCellularHooks.m`.
-- Apple Foundation service fixtures cannot execute on this Alpine host. CI, DEB packaging/verification, injection/load and real touch arbitration remain unverified.
-
-Not yet verified on device: one continuous long press opening the SIM card with zero six-button frames; short tap remaining a single native toggle; movement/cancel/lock/feature-off paths; whether the preview method exists on 15.5 and whether the Wi-Fi failure rule wins over the stock expander. The button entry does not depend on the preview method, but direct presentation still needs device confirmation. Wi-Fi/Bluetooth/DataSwitch/helper behavior after installation also needs regression.
+- Fixed iOS 15.5 arm64e SDK `-fsyntax-only` passed for `Cellular/LCSCellularHooks.m`; no machine code was generated locally.
+- Portable round-button allowlist policy: 12 checks; button-priority source contract: 141; Wi-Fi-style entry adapter contract: 36; cellular frozen-source contract: 159, with 133 unchanged 0.3.8 files.
+- Cellular policy 6,291; source/preservation 165; general invariants 464; UI structure 40; card-layout C 1,248; path reuse 175; panel routes 10. Verifier synthetics: 46 + 11 precise-entitlement + 198 DER; path model 37.
+- Apple Foundation fixtures are skipped on Alpine. CI/DEB, injection/load, actual round-button delegate invocation, one-long-press direct presentation, short-tap behavior and six-button suppression remain unverified.
 
 ## Authorization
 
-The user approved local implementation and subsequently authorized pushing this 0.3.10 WiFi-style entry candidate and running its dedicated GitHub CI. Installation, device writes, SIM operations, logout and restart remain unauthorized. The last verified phone version is 0.3.9. CI, DEB packaging/verification and the direct-entry behavior below are pending at the time of this source snapshot; final results belong in the separate release report.
+The user approved pushing this 0.3.11 candidate and running its dedicated GitHub CI. Installation, device writes, SIM operations, logout and restart remain unauthorized. The phone remains on 0.3.10; the direct-entry behavior is not yet device-verified.

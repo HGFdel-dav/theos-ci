@@ -3,6 +3,7 @@
 #import "LCSCellularSettings.h"
 #import "LCSCellularRuntime.h"
 #import "LCSCellularPanel.h"
+#import "LCSCellularEntryPolicy.h"
 
 // SpringBoard-only. The stock buttonTapped:/_toggleState paths are never replaced.
 static char LCSCellularStateKey,LCSCellularButtonKey;
@@ -15,6 +16,8 @@ static __weak LCSCellularSIMController *LCSPresentedSIM;
 static BOOL LCSPreviewHookReady,LCSCellularForeground=YES;
 static BOOL (*LCSOriginalPreviewShouldBegin)(id,SEL,id);
 static void (*LCSOriginalExpanded)(id,SEL,BOOL);
+static BOOL (*LCSOriginalRoundGestureShouldBegin)(id,SEL,id);
+static BOOL LCSRoundHookReady;
 static void LCSLogHookFailure(unsigned bit,NSString *reason) {
     if(LCSHookFailureMask&bit)return;LCSHookFailureMask|=bit;
     LCSCellularLog(LCSCellularSIMManager,@"hook",reason,0);
@@ -42,10 +45,14 @@ static void LCSLogHookFailure(unsigned bit,NSString *reason) {
 - (void)unbind;
 - (void)pressed:(UILongPressGestureRecognizer *)gesture;
 - (BOOL)shouldYieldForGesture:(UIGestureRecognizer *)gesture other:(UIGestureRecognizer *)other;
+- (BOOL)shouldBeginPressedGesture:(UIGestureRecognizer *)gesture;
 - (BOOL)ownsPreview:(UIPreviewInteraction *)interaction container:(UIViewController *)container;
 @end
 @implementation LCSCellularPressTarget
 - (void)lcs_handlePress:(UILongPressGestureRecognizer *)press {[self.binding pressed:press];}
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gesture {
+    return [self.binding shouldBeginPressedGesture:gesture];
+}
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldBeRequiredToFailByGestureRecognizer:(UIGestureRecognizer *)other {
     return [self.binding shouldYieldForGesture:gesture other:other];
 }
@@ -111,10 +118,17 @@ static BOOL LCSTapContract(UIControl *button) {
     if(reason){[self logBindingFailure:reason];return NO;}
     self.lastBindingFailure=nil;return YES;
 }
+- (BOOL)shouldBeginPressedGesture:(UIGestureRecognizer *)gesture {
+    return gesture==self.directPress&&self.appeared&&self.button&&
+        self.button.window==self.boundWindow&&LCSVisible(self.button)&&
+        LCSTapContract(self.button)&&!LCSPresentedSIM&&
+        LCSCellularFeatureEnabled(LCSCellularSIMManager)&&LCSCellularForeground&&
+        LCSCellularIsUnlocked()&&!self.controller.isBeingDismissed&&
+        !self.controller.isBeingPresented;
+}
 - (BOOL)shouldYieldForGesture:(UIGestureRecognizer *)gesture other:(UIGestureRecognizer *)other {
     if(!other||gesture!=self.directPress||other==gesture)return NO;
-    // Same direction as the working Wi-Fi entry: do not make this long press
-    // wait for a pan; ordinary taps still win, preserving the native short tap.
+    // Exact Wi-Fi rule: yield to non-pan short-tap recognizers only.
     return ![other isKindOfClass:UIPanGestureRecognizer.class];
 }
 - (BOOL)ownsPreview:(UIPreviewInteraction *)interaction container:(UIViewController *)container {
@@ -215,6 +229,20 @@ static void LCSWillExpand(id self,SEL sel,BOOL expanded) {
     if(expanded&&state.panel)[state.panel close];
     else [state bind];
 }
+static BOOL LCSCellularOwnsRoundGesture(id button,id gesture) {
+    LCSCellularButtonState *state=objc_getAssociatedObject(button,&LCSCellularButtonKey);
+    return gesture&&state&&state.button==button&&state.directPress==gesture&&
+        [gesture isKindOfClass:UILongPressGestureRecognizer.class];
+}
+static BOOL LCSRoundGestureShouldBegin(id self,SEL sel,id gesture) {
+    BOOL cellular=LCSCellularOwnsRoundGesture(self,gesture);
+    BOOL original=cellular?NO:LCSOriginalRoundGestureShouldBegin(self,sel,gesture);
+    LCSCellularButtonState *state=cellular?objc_getAssociatedObject(self,&LCSCellularButtonKey):nil;
+    BOOL local=cellular&&state&&[state.target gestureRecognizerShouldBegin:gesture];
+    BOOL allowed=LCSRoundButtonAllowsGesture(cellular,original,local);
+    if(cellular)LCSCellularLog(LCSCellularSIMManager,@"entry",allowed?@"round-button-allowed":@"round-button-refused",0);
+    return allowed;
+}
 static BOOL LCSPreviewShouldBegin(id self,SEL sel,id interaction) {
     // Shared by all Control Center modules. Only the verified cellular module,
     // with a live touch on its own button, is allowed to change the result.
@@ -247,9 +275,24 @@ static void LCSInstallPreviewHook(void) {
     LCSPreviewHookReady=YES;
     LCSCellularLog(LCSCellularSIMManager,@"hook",@"preview-shouldbegin-installed",0);
 }
+static void LCSInstallRoundHook(void) {
+    if(LCSRoundHookReady)return;
+    Class cls=NSClassFromString(@"CCUIRoundButton");
+    if(!cls){LCSLogHookFailure(512U,@"round-button-class-unavailable");return;}
+    const char *file=class_getImageName(cls);NSString *image=file?[NSString stringWithUTF8String:file]:nil;
+    if(![image hasSuffix:@"/System/Library/PrivateFrameworks/ControlCenterUIKit.framework/ControlCenterUIKit"]) {
+        LCSLogHookFailure(1024U,@"round-button-image-unverified");return;
+    }
+    const char *object[]={@encode(id)};
+    if(!LCSInstall(cls,"gestureRecognizerShouldBegin:",@encode(BOOL),1,object,
+        (IMP)LCSRoundGestureShouldBegin,(IMP *)&LCSOriginalRoundGestureShouldBegin)) {
+        LCSLogHookFailure(2048U,@"round-shouldbegin-unavailable");return;
+    }
+    LCSRoundHookReady=YES;LCSCellularLog(LCSCellularSIMManager,@"hook",@"round-local-hook-installed",0);
+}
 static void LCSInstallHooks(void) {
     if(!NSThread.isMainThread||!LCSCellularIsSpringBoard()||NSProcessInfo.processInfo.operatingSystemVersion.majorVersion!=15)return;
-    LCSInstallPreviewHook();
+    LCSInstallRoundHook();LCSInstallPreviewHook();
     if((LCSHookMask&LCSRequiredHookMask)==LCSRequiredHookMask&&(LCSHookMask&8U))return;
     Class native=NSClassFromString(@"CCUIConnectivityCellularDataViewController");
     if(!native){LCSLogHookFailure(1U,@"native-class-missing");return;}

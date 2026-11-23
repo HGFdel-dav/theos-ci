@@ -9,9 +9,9 @@ def need(value,label):
     if not value:raise AssertionError(label)
     checks+=1
 manifest=json.loads((ROOT/'docs/CELLULAR-UI-VIDEO-PROTECTED.json').read_text())
-runtime=json.loads((ROOT/'docs/BASELINE-039-WIFI-ENTRY.json').read_text())
+runtime=json.loads((ROOT/'docs/BASELINE-0311-PRIORITY.json').read_text())
 for name in ['Cellular/LCSCellularPanel.h','Cellular/LCSCellularPanel.m','Cellular/LCSCellularCardLayout.h','LocalCleanStatusDataSwitch/LocalCleanStatusDataModule.m']:
-    need(hashlib.sha256((ROOT/name).read_bytes()).hexdigest()==runtime['files'][name],'published 0.3.8 UI source changed: '+name)
+    need(hashlib.sha256((ROOT/name).read_bytes()).hexdigest()==runtime['files'][name],'published 0.3.10 UI source changed: '+name)
 panel=(ROOT/'Cellular/LCSCellularPanel.m').read_text();head=(ROOT/'Cellular/LCSCellularPanel.h').read_text();module=(ROOT/'LocalCleanStatusDataSwitch/LocalCleanStatusDataModule.m').read_text()
 for forbidden in ['UITableView','UISwitch','UIModalPresentationPageSheet','setTitle:@"完成"','UITableViewCellAccessoryCheckmark']:
     need(forbidden not in panel,'old settings-sheet chrome removed: '+forbidden)

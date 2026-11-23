@@ -18,16 +18,17 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-base = json.loads((ROOT / 'docs/BASELINE-039-WIFI-ENTRY.json').read_text())
+base = json.loads((ROOT / 'docs/BASELINE-0311-PRIORITY.json').read_text())
 allowed = set(base['allowed_changes'])
-need(base.get('base_commit') == '4f819236e3468c27acda3e1ff7bf49a0a976124a' and len(base['files']) == 143, 'published 0.3.8 freeze manifest')
+need(base.get('base_commit') == 'f76479fe103b0b40faf3c2c82af0fb726cf64ac6' and len(base['files']) == 146, 'published 0.3.10 freeze manifest')
 for name, digest in base['files'].items():
-    if name not in allowed:
+    if name not in allowed and name not in {'docs/CELLULAR-WIFI-ENTRY-DESIGN.md','STATUS.md','docs/BASELINE-0311-PRIORITY.json','tests/cellular/round_button_policy_test.c','tools/test_cellular_button_priority.py'}:
         path = ROOT / name
-        need(path.is_file() and sha(path) == digest, 'published 0.3.8 file changed: ' + name)
-need(sha(ROOT / 'LocalCleanStatusDataSwitch/LocalCleanStatusDataModule.m') == base['files']['LocalCleanStatusDataSwitch/LocalCleanStatusDataModule.m'], 'working data-module entry unchanged')
+        need(path.is_file() and sha(path) == digest, 'published 0.3.10 file changed: ' + name)
 need(sha(ROOT / 'Cellular/LCSCellularService.m') == base['files']['Cellular/LCSCellularService.m'], 'SIM service unchanged')
 need(sha(ROOT / 'LocalCleanStatusSIMTool/main.m') == base['files']['LocalCleanStatusSIMTool/main.m'], 'SIM helper unchanged')
+need(sha(ROOT / 'Sources/LocalCleanStatusControlCenter.m') == base['files']['Sources/LocalCleanStatusControlCenter.m'], 'Wi-Fi/Bluetooth entry unchanged')
+need(sha(ROOT / 'LocalCleanStatusDataSwitch/LocalCleanStatusDataModule.m') == base['files']['LocalCleanStatusDataSwitch/LocalCleanStatusDataModule.m'], 'DataSwitch module unchanged')
 
 service = (ROOT / 'Cellular/LCSCellularService.m').read_text()
 helper = (ROOT / 'LocalCleanStatusSIMTool/main.m').read_text()
@@ -45,7 +46,11 @@ ent = plistlib.loads((ROOT / 'LocalCleanStatusSIMTool/entitlements.plist').read_
 need(ent.get('com.apple.coretelephony.CTDataPlanDeviceInfo.allow') is True, 'helper plan entitlement unchanged')
 
 hook = (ROOT / 'Cellular/LCSCellularHooks.m').read_text()
-need('NSObject <UIGestureRecognizerDelegate>' in hook and 'forwardInvocation:' not in hook and 'setOwner:' not in hook, 'independent public protocol; no forwarding or private owner')
+need('- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gesture' in hook and 'return [self.binding shouldBeginPressedGesture:gesture];' in hook, 'independent recognizer target implements the hook callback')
+need('LCSRoundButtonAllowsGesture(cellular,original,local)' in hook and 'BOOL local=cellular&&state&&[state.target gestureRecognizerShouldBegin:gesture];' in hook, 'round hook calls the target callback it expects')
+need('- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gesture' in hook and 'return [self.binding shouldBeginPressedGesture:gesture];' in hook, 'independent target implements the callback called by round hook')
+need('LCSRoundGestureShouldBegin' in hook and 'BOOL cellular=LCSCellularOwnsRoundGesture(self,gesture);' in hook and 'BOOL original=cellular?NO:LCSOriginalRoundGestureShouldBegin(self,sel,gesture);' in hook and 'LCSRoundButtonAllowsGesture(cellular,original,local)' in hook, 'CCUIRoundButton only alters own cellular gesture and forwards other result')
+need('round-local-hook-installed' in hook and 'round-button-image-unverified' in hook, 'round gate checks source image and logs result')
 need('shouldBeRequiredToFailByGestureRecognizer:' in hook and 'UIPanGestureRecognizer.class' in hook, 'WiFi-style failure dependency is present')
 need('bound-wifi-entry' in hook and 'initWithTarget:self.target action:@selector(lcs_handlePress:)' in hook, 'standard long press attached to the native button')
 need('self.directPress.delegate=self.target' in hook and 'cancelsTouchesInView=YES' in hook, 'own delegate and short-tap cancellation')
