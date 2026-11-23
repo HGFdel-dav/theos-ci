@@ -2,10 +2,10 @@
 //  MiniSightPet.h
 //  MiniSight
 //
-//  Petdex-style animated pet. A 9-row sprite sheet: row 0 idle, 1 run-right,
-//  2 run-left, 3 waving, 4 jumping, 5 sit/sleep/wake, 6 waiting, 7 running,
-//  8 review. Rows refer to the host's already upright, vertically flipped atlas.
-//  Frame counts/timings follow crafter-station/petdex (MIT).
+//  Petdex-style animated pet. The upstream 8x9 format names rows idle,
+//  running-right, running-left, waving, jumping, failed, waiting, running,
+//  review. Legacy sleep/wake role names here are policy, not proof of artwork.
+//  Frame counts/timings follow crafter-station/petdex (MIT code; art separately licensed).
 //
 
 #import <UIKit/UIKit.h>

@@ -10,6 +10,7 @@
 #include "MiniSightRegionSelection.h"
 #include "MiniSightMotionPolicy.h"
 #include "MiniSightPetBehavior.h"
+#include "MiniSightPetMusicMotion.h"
 #include "MiniSightLiveliness.h"
 #include "MiniSightNameWakeGate.h"
 #include "MiniSightNameWakeProtocol.h"

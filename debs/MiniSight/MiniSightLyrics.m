@@ -1,7 +1,11 @@
 #import "MiniSightLyrics.h"
+#import "MiniSightLog.h"
 #import <math.h>
 #import <float.h>
 #import <stdlib.h>
+#import <stdbool.h>
+#import <stddef.h>
+#import <stdint.h>
 #import <dispatch/dispatch.h>
 
 NS_ASSUME_NONNULL_BEGIN
@@ -9,19 +13,71 @@ NS_ASSUME_NONNULL_BEGIN
 static const NSUInteger MSLyricsMaxBytes = 1024 * 1024;
 static const NSTimeInterval MSLyricsMaxDisplay = 12.0;
 
-static BOOL MSLyricsDurationOK(NSTimeInterval value) {
-    return isfinite(value) && value >= 1.0 && value <= 3600.0;
+// Fixed-vocabulary local evidence only: never metadata, URLs, errors or LRC.
+// Five routes x two stages bound the dedupe table; repeated facts emit at most
+// once per minute. The shared writer also caps pending events and rotates files.
+static void MSLyricsEvidence(NSString *stage, NSString *result, NSString *route,
+    NSString *reason, NSUInteger generation, NSInteger status, NSUInteger bytes, NSUInteger candidates) {
+    static NSMutableDictionary *last, *times; static NSObject *lock; static dispatch_once_t once;
+    dispatch_once(&once, ^{ last = [NSMutableDictionary dictionary]; times = [NSMutableDictionary dictionary]; lock = [NSObject new]; });
+    NSInteger http = MAX(0, MIN(599, status));
+    NSUInteger count = MIN((NSUInteger)21, candidates); // 21 is the over-limit sentinel.
+    NSArray *fact = @[result, reason, @(http), @(count)];
+    NSString *slot = [route stringByAppendingFormat:@"/%@", stage];
+    @synchronized (lock) {
+        double now = NSProcessInfo.processInfo.systemUptime;
+        if ([last[slot] isEqual:fact] && now - [times[slot] doubleValue] < 60.0) return;
+        last[slot] = fact; times[slot] = @(now);
+    }
+    MSDiagEvent(@"lyrics", stage, result, @{@"lyrics_route": route, @"lyrics_detail": reason,
+        @"generation": @(MIN(generation, (NSUInteger)1000000000)), @"http": @(http),
+        @"bytes": @(MIN(bytes, MSLyricsMaxBytes)), @"count": @(count)});
 }
 
-static NSString * _Nullable MSLyricsNormalize(id _Nullable value) {
-    if (![value isKindOfClass:NSString.class] || [value length] > 512 || ![value canBeConvertedToEncoding:NSUTF8StringEncoding]) return nil;
-    NSArray *parts = [value componentsSeparatedByCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    NSMutableArray *words = [NSMutableArray array];
-    for (NSString *part in parts) if (part.length) [words addObject:part];
-    NSString *text = [[words componentsJoinedByString:@" "] precomposedStringWithCanonicalMapping];
-    if (!text.length || [text rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location != NSNotFound) return nil;
-    return [text lowercaseStringWithLocale:[NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"]];
+// BEGIN LYRICS PORTABLE POLICY
+// Compiled verbatim on the host; Foundation parsing/transport are tested separately.
+static bool MSLyricsDurationOK(double value) {
+    return isfinite(value) && value >= 1.0 && value <= 3600.0;
 }
+typedef double (*MSLyricsMarkerTimeFn)(const void *, size_t);
+static size_t MSLyricsMarkerIndex(double time, double duration, size_t count,
+                                  const void *context, MSLyricsMarkerTimeFn timeAt) {
+    if (!isfinite(time) || time < 0.0 || !MSLyricsDurationOK(duration) ||
+        time >= duration || !count || count > 4096 || !context || !timeAt) return SIZE_MAX;
+    size_t lo = 0, hi = count;
+    while (lo < hi) {
+        size_t mid = lo + (hi - lo) / 2;
+        if (timeAt(context, mid) <= time) lo = mid + 1; else hi = mid;
+    }
+    return lo ? lo - 1 : SIZE_MAX;
+}
+static size_t MSLyricsClosestCandidate(const double *durations, const size_t *equivalent,
+                                      size_t count, double duration) {
+    if (!durations || !equivalent || !count || count > 20 || !MSLyricsDurationOK(duration)) return SIZE_MAX;
+    size_t best = SIZE_MAX; double bestDelta = DBL_MAX;
+    for (size_t i = 0; i < count; ++i) {
+        double delta = fabs(durations[i] - duration);
+        if (!MSLyricsDurationOK(durations[i]) || delta > 2.0) return SIZE_MAX;
+        if (delta < bestDelta) { best = i; bestDelta = delta; }
+    }
+    // Only ambiguity at the GLOBAL nearest distance matters. Do not reject a
+    // farther tie before seeing a later, unique closer candidate.
+    for (size_t i = 0; i < count; ++i) {
+        if (i != best && fabs(fabs(durations[i] - duration) - bestDelta) < 0.000001 &&
+            equivalent[i] != equivalent[best]) return SIZE_MAX;
+    }
+    return best;
+}
+static bool MSLyricsShouldSearch(bool failed, long status, bool search, bool attempted, bool validatedUnsynced) {
+    return !failed && !search && !attempted && (status == 404 || (status == 200 && validatedUnsynced));
+}
+static bool MSLyricsShouldCache(bool failed, bool timeline, bool search, long status, bool rejected) {
+    return !failed && (timeline || (search && (status == 404 || (status == 200 && !rejected))));
+}
+static bool MSLyricsDispatchReady(double now, double deadline) {
+    return isfinite(now) && isfinite(deadline) && now < deadline;
+}
+// END LYRICS PORTABLE POLICY
 
 static NSRegularExpression * _Nullable MSLyricsRegex(NSString *pattern) {
     return [NSRegularExpression regularExpressionWithPattern:pattern options:0 error:NULL];
@@ -36,6 +92,11 @@ static NSRegularExpression * _Nullable MSLyricsRegex(NSString *pattern) {
     return self;
 }
 @end
+
+static double MSLyricsMarkerTime(const void *context, size_t index) {
+    NSArray<MiniSightLyricLine *> *lines = (__bridge NSArray<MiniSightLyricLine *> *)context;
+    return lines[index].time;
+}
 
 @interface MiniSightLyricsTimeline ()
 @property(nonatomic) NSTimeInterval duration;
@@ -113,15 +174,14 @@ static NSRegularExpression * _Nullable MSLyricsRegex(NSString *pattern) {
     return [[self alloc] initWithLines:lines duration:duration];
 }
 - (nullable NSString *)lineAtTime:(NSTimeInterval)time {
-    if (!isfinite(time) || time < 0.0 || time >= _duration || !_lines.count) return nil;
-    NSUInteger lo = 0, hi = _lines.count;
-    while (lo < hi) {
-        NSUInteger mid = lo + (hi - lo) / 2;
-        if (_lines[mid].time <= time) lo = mid + 1; else hi = mid;
-    }
-    if (!lo) return nil;
-    MiniSightLyricLine *line = _lines[lo - 1];
-    if (!line.text.length || time - line.time >= MSLyricsMaxDisplay) return nil;
+    size_t index = MSLyricsMarkerIndex(time, _duration, _lines.count,
+        (__bridge const void *)_lines, MSLyricsMarkerTime);
+    if (index == SIZE_MAX) return nil;
+    MiniSightLyricLine *line = _lines[index];
+    if (!line.text.length) return nil;
+    // A line only stays on screen for a bounded window; a long instrumental gap
+    // must clear the bubble instead of holding the previous line forever.
+    if (time - line.time >= MSLyricsMaxDisplay) return nil;
     return line.text;
 }
 @end
@@ -140,16 +200,19 @@ static NSRegularExpression * _Nullable MSLyricsRegex(NSString *pattern) {
 }
 @end
 
-static BOOL MSLyricsAllowedURL(NSURL * _Nullable url) {
+static BOOL MSLyricsAllowedURL(NSURL * _Nullable url, NSString *path) {
     return [url.scheme.lowercaseString isEqualToString:@"https"] &&
            [url.host.lowercaseString isEqualToString:@"lrclib.net"] &&
-           [url.path isEqualToString:@"/api/get"] && (!url.port || url.port.integerValue == 443) &&
+           [url.path isEqualToString:path] && (!url.port || url.port.integerValue == 443) &&
            !url.user.length && !url.password.length && !url.fragment.length;
 }
 
 @interface MSLyricsCacheEntry : NSObject
 @property(nonatomic, strong, nullable) MiniSightLyricsTimeline *timeline;
+@property(nonatomic, copy) NSString *reason;
 @property(nonatomic) NSTimeInterval expires;
+@property(nonatomic) NSInteger status;
+@property(nonatomic) NSUInteger candidates;
 @end
 @implementation MSLyricsCacheEntry
 @end
@@ -160,6 +223,8 @@ static BOOL MSLyricsAllowedURL(NSURL * _Nullable url) {
 
 @interface MiniSightLyricsClient ()
 + (nullable MiniSightLyricsTimeline *)timelineForResponseData:(NSData *)data response:(NSHTTPURLResponse *)response track:(MiniSightLyricsTrack *)track reason:(NSString **)reason;
++ (nullable MiniSightLyricsTimeline *)timelineForSearchResponseData:(NSData *)data response:(NSHTTPURLResponse *)response track:(MiniSightLyricsTrack *)track reason:(NSString **)reason candidates:(NSUInteger * _Nullable)candidates;
++ (nullable MiniSightLyricsTimeline *)timelineForSearchResponseData:(NSData *)data response:(NSHTTPURLResponse *)response track:(MiniSightLyricsTrack *)track reason:(NSString **)reason;
 @property(nonatomic, strong) NSURLSession *session;
 @property(nonatomic, strong) NSCache<NSString *, MSLyricsCacheEntry *> *cache;
 @property(nonatomic, strong, nullable) NSURLSessionDataTask *task;
@@ -167,11 +232,20 @@ static BOOL MSLyricsAllowedURL(NSURL * _Nullable url) {
 @property(nonatomic, strong, nullable) NSHTTPURLResponse *response;
 @property(nonatomic, strong, nullable) MiniSightLyricsTrack *track;
 @property(nonatomic, copy, nullable) MiniSightLyricsResult completion;
+@property(nonatomic) BOOL searchTask;
+@property(nonatomic) BOOL searchAttempted;
+@property(nonatomic) BOOL searchPending;
+@property(nonatomic) BOOL requestPending;
 @property(atomic) NSUInteger generation; // Ticket invalidation is immediate, even off-main.
 @property(nonatomic) NSUInteger activeGeneration;
 @property(nonatomic) NSUInteger rateAttempt;
 @property(nonatomic) NSTimeInterval notBefore;
+@property(nonatomic) NSTimeInterval lastRequestAt;
+@property(nonatomic) NSTimeInterval deadline;
 - (void)startTrack:(MiniSightLyricsTrack *)track generation:(NSUInteger)generation completion:(MiniSightLyricsResult)completion;
+- (void)startSearchForGeneration:(NSUInteger)generation;
+- (void)sendGetForTrack:(MiniSightLyricsTrack *)track;
+- (void)sendSearchForTrack:(MiniSightLyricsTrack *)track;
 - (void)receivedResponse:(NSURLResponse *)response task:(NSURLSessionDataTask *)task completion:(void (^)(NSURLSessionResponseDisposition))completion;
 - (void)receivedData:(NSData *)data task:(NSURLSessionDataTask *)task;
 - (void)finishedTask:(NSURLSessionTask *)task error:(nullable NSError *)error;
@@ -210,7 +284,7 @@ static BOOL MSLyricsAllowedURL(NSURL * _Nullable url) {
 + (nullable MiniSightLyricsTimeline *)timelineForResponseData:(NSData *)data response:(NSHTTPURLResponse *)response track:(MiniSightLyricsTrack *)track reason:(NSString **)reason {
     *reason = @"lyrics_response_rejected";
     if (![track isKindOfClass:MiniSightLyricsTrack.class] || ![response isKindOfClass:NSHTTPURLResponse.class] ||
-        response.statusCode != 200 || !MSLyricsAllowedURL(response.URL) ||
+        response.statusCode != 200 || !MSLyricsAllowedURL(response.URL, @"/api/get") ||
         ![response.MIMEType.lowercaseString isEqualToString:@"application/json"] ||
         ![data isKindOfClass:NSData.class] || !data.length || data.length > MSLyricsMaxBytes) return nil;
     id record = [NSJSONSerialization JSONObjectWithData:data options:0 error:NULL];
@@ -223,12 +297,71 @@ static BOOL MSLyricsAllowedURL(NSURL * _Nullable url) {
     if (![title isEqualToString:track.title] || ![artist isEqualToString:track.artist] || fabs([duration doubleValue] - track.duration) > 2.0) {
         *reason = @"lyrics_track_mismatch"; return nil;
     }
+    if (!lrc) return nil; // Absent schema field is not an explicit null/empty lyric.
     if ([instrumental boolValue]) { *reason = @"lyrics_instrumental"; return nil; }
-    if (!lrc || lrc == NSNull.null || ([lrc isKindOfClass:NSString.class] && ![lrc length])) { *reason = @"no_synced_lyrics"; return nil; }
+    if (lrc == NSNull.null || ([lrc isKindOfClass:NSString.class] && ![lrc length])) { *reason = @"no_synced_lyrics"; return nil; }
     if (![lrc isKindOfClass:NSString.class]) return nil;
     MiniSightLyricsTimeline *timeline = [MiniSightLyricsTimeline timelineWithLRC:lrc duration:track.duration];
     *reason = timeline ? @"lyrics_timeline" : @"lyrics_invalid_lrc";
     return timeline;
+}
++ (nullable MiniSightLyricsTimeline *)timelineForSearchResponseData:(NSData *)data response:(NSHTTPURLResponse *)response track:(MiniSightLyricsTrack *)track reason:(NSString **)reason {
+    return [self timelineForSearchResponseData:data response:response track:track reason:reason candidates:NULL];
+}
++ (nullable MiniSightLyricsTimeline *)timelineForSearchResponseData:(NSData *)data response:(NSHTTPURLResponse *)response track:(MiniSightLyricsTrack *)track reason:(NSString **)reason candidates:(NSUInteger * _Nullable)candidates {
+    if (candidates) *candidates = 0;
+    *reason = @"lyrics_not_found";
+    if (![track isKindOfClass:MiniSightLyricsTrack.class] || ![response isKindOfClass:NSHTTPURLResponse.class] ||
+        response.statusCode != 200 || !MSLyricsAllowedURL(response.URL, @"/api/search") ||
+        ![response.MIMEType.lowercaseString isEqualToString:@"application/json"] ||
+        ![data isKindOfClass:NSData.class] || !data.length || data.length > MSLyricsMaxBytes) {
+        *reason = @"lyrics_response_rejected"; return nil;
+    }
+    id payload = [NSJSONSerialization JSONObjectWithData:data options:0 error:NULL];
+    if (candidates && [payload isKindOfClass:NSArray.class]) *candidates = MIN((NSUInteger)21, [payload count]);
+    if (![payload isKindOfClass:NSArray.class] || [payload count] > 20) {
+        *reason = @"lyrics_response_rejected"; return nil;
+    }
+    NSMutableArray<NSDictionary *> *matches = [NSMutableArray array];
+    BOOL sawInstrumental = NO, sawUnsynced = NO, sawInvalidLRC = NO;
+    for (id value in (NSArray *)payload) {
+        if (![value isKindOfClass:NSDictionary.class]) { *reason = @"lyrics_response_rejected"; return nil; }
+        NSDictionary *record = value;
+        NSString *title = MSLyricsNormalize(record[@"trackName"]), *artist = MSLyricsNormalize(record[@"artistName"]);
+        id duration = record[@"duration"], instrumental = record[@"instrumental"], lrc = record[@"syncedLyrics"];
+        if (!title.length || !artist.length || ![duration isKindOfClass:NSNumber.class] ||
+            CFGetTypeID((__bridge CFTypeRef)duration) == CFBooleanGetTypeID() || !MSLyricsDurationOK([duration doubleValue]) ||
+            ![instrumental isKindOfClass:NSNumber.class] || CFGetTypeID((__bridge CFTypeRef)instrumental) != CFBooleanGetTypeID() ||
+            (! [lrc isKindOfClass:NSString.class] && lrc != NSNull.null)) {
+            *reason = @"lyrics_response_rejected"; return nil;
+        }
+        if (![title isEqualToString:track.title] || ![artist isEqualToString:track.artist] ||
+            fabs([duration doubleValue] - track.duration) > 2.0) continue;
+        if ([instrumental boolValue]) { sawInstrumental = YES; continue; }
+        if (lrc == NSNull.null || ![lrc length]) { sawUnsynced = YES; continue; }
+        MiniSightLyricsTimeline *candidateTimeline = [MiniSightLyricsTimeline timelineWithLRC:lrc duration:track.duration];
+        if (!candidateTimeline) { sawInvalidLRC = YES; continue; }
+        [matches addObject:@{@"duration": duration, @"syncedLyrics": lrc, @"timeline": candidateTimeline}];
+    }
+    if (!matches.count) {
+        *reason = sawInvalidLRC ? @"lyrics_invalid_lrc" : sawUnsynced ? @"no_synced_lyrics"
+            : sawInstrumental ? @"lyrics_instrumental" : @"lyrics_not_found";
+        return nil;
+    }
+    double durations[20]; size_t equivalent[20];
+    for (NSUInteger i = 0; i < matches.count; ++i) {
+        durations[i] = [matches[i][@"duration"] doubleValue]; equivalent[i] = i;
+        for (NSUInteger j = 0; j < i; ++j) {
+            if ([matches[i][@"duration"] isEqual:matches[j][@"duration"]] &&
+                [matches[i][@"syncedLyrics"] isEqual:matches[j][@"syncedLyrics"]]) {
+                equivalent[i] = equivalent[j]; break;
+            }
+        }
+    }
+    size_t best = MSLyricsClosestCandidate(durations, equivalent, matches.count, track.duration);
+    if (best == SIZE_MAX) { *reason = @"lyrics_response_rejected"; return nil; }
+    *reason = @"lyrics_timeline";
+    return matches[best][@"timeline"];
 }
 + (NSTimeInterval)retryDelayForResponse:(NSHTTPURLResponse *)response now:(NSDate *)now attempt:(NSUInteger)attempt {
     if (response.statusCode != 429 && response.statusCode != 503) return 0;
@@ -255,9 +388,13 @@ static BOOL MSLyricsAllowedURL(NSURL * _Nullable url) {
 }
 - (void)deliver:(MiniSightLyricsTimeline * _Nullable)timeline reason:(NSString *)reason generation:(NSUInteger)generation completion:(MiniSightLyricsResult _Nullable)completion {
     __weak typeof(self) weakSelf = self;
+    NSTimeInterval deadline = _deadline;
     dispatch_async(dispatch_get_main_queue(), ^{
         MiniSightLyricsClient *owner = weakSelf;
-        if (owner && owner.generation == generation && completion) completion(timeline, reason);
+        if (owner && owner.generation == generation && completion) {
+            BOOL ready = MSLyricsDispatchReady(NSProcessInfo.processInfo.systemUptime, deadline);
+            completion(ready ? timeline : nil, ready ? reason : @"lyrics_timeout");
+        }
     });
 }
 - (NSUInteger)nextGeneration {
@@ -270,6 +407,7 @@ static BOOL MSLyricsAllowedURL(NSURL * _Nullable url) {
 - (void)clearActive {
     [_task cancel];
     _task = nil; _body = nil; _response = nil; _track = nil; _completion = nil;
+    _searchTask = NO; _searchAttempted = NO; _searchPending = NO; _requestPending = NO;
 }
 - (void)cancel {
     NSUInteger generation = [self nextGeneration];
@@ -291,6 +429,7 @@ static BOOL MSLyricsAllowedURL(NSURL * _Nullable url) {
 - (void)startTrack:(MiniSightLyricsTrack *)track generation:(NSUInteger)generation completion:(MiniSightLyricsResult)completion {
     [self clearActive];
     _activeGeneration = generation;
+    _deadline = NSProcessInfo.processInfo.systemUptime + 15.0;
     if (![track isKindOfClass:MiniSightLyricsTrack.class]) {
         [self deliver:nil reason:@"metadata_missing" generation:generation completion:completion];
         return;
@@ -298,32 +437,104 @@ static BOOL MSLyricsAllowedURL(NSURL * _Nullable url) {
     NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
     MSLyricsCacheEntry *entry = [_cache objectForKey:track.cacheKey];
     if (entry && entry.expires > now) {
-        [self deliver:entry.timeline reason:(entry.timeline ? @"lyrics_timeline" : @"lyrics_not_found") generation:generation completion:completion];
+        MSLyricsEvidence(@"finish", entry.timeline ? @"ok" : @"skipped", entry.timeline ? @"positive_cache" : @"negative_cache",
+            entry.reason, generation, entry.status, 0, entry.candidates);
+        [self deliver:entry.timeline reason:entry.reason generation:generation completion:completion];
         return;
     }
     if (entry) [_cache removeObjectForKey:track.cacheKey];
     if (now < _notBefore) {
+        MSLyricsEvidence(@"finish", @"skipped", @"cooldown", @"lyrics_cooldown", generation, 0, 0, 0);
         [self deliver:nil reason:@"lyrics_cooldown" generation:generation completion:completion];
         return;
     }
+    NSTimeInterval requestDelay = MAX(0.0, _lastRequestAt + 0.35 - now);
+    if (now + requestDelay >= _deadline) {
+        [self deliver:nil reason:@"lyrics_timeout" generation:generation completion:completion]; return;
+    }
+    _searchAttempted = NO; _searchTask = NO; _searchPending = NO;
+    _track = track; _completion = [completion copy];
+    if (requestDelay > 0.0) {
+        _requestPending = YES;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(requestDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            if (self.generation != generation || self.activeGeneration != generation || !self.requestPending || self.task) return;
+            self.requestPending = NO;
+            [self sendGetForTrack:track];
+        });
+        return;
+    }
+    _requestPending = NO;
+    [self sendGetForTrack:track];
+}
+- (void)sendGetForTrack:(MiniSightLyricsTrack *)track {
     NSURLComponents *url = [NSURLComponents componentsWithString:@"https://lrclib.net/api/get"];
     url.queryItems = @[[NSURLQueryItem queryItemWithName:@"track_name" value:track.title],
                        [NSURLQueryItem queryItemWithName:@"artist_name" value:track.artist],
                        [NSURLQueryItem queryItemWithName:@"duration" value:[NSString stringWithFormat:@"%.17g", track.duration]]];
-    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url.URL cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:12.0];
+    [self sendRequestURL:url.URL track:track search:NO];
+}
+- (void)sendSearchForTrack:(MiniSightLyricsTrack *)track {
+    NSURLComponents *url = [NSURLComponents componentsWithString:@"https://lrclib.net/api/search"];
+    url.queryItems = @[[NSURLQueryItem queryItemWithName:@"q" value:[NSString stringWithFormat:@"%@ %@", track.title, track.artist]]];
+    [self sendRequestURL:url.URL track:track search:YES];
+}
+- (void)sendRequestURL:(NSURL *)url track:(MiniSightLyricsTrack *)track search:(BOOL)search {
+    NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
+    // A dispatch_after block may run late. Never start a GET/search after the
+    // shared deadline merely by clamping its request timeout to 0.1 seconds.
+    if (!MSLyricsDispatchReady(now, _deadline)) {
+        MiniSightLyricsResult completion = _completion; NSUInteger generation = _activeGeneration;
+        _track = nil; _completion = nil;
+        MSLyricsEvidence(@"finish", @"skipped", search ? @"search" : @"exact", @"lyrics_timeout", generation, 0, 0, 0);
+        [self deliver:nil reason:@"lyrics_timeout" generation:generation completion:completion];
+        return;
+    }
+    NSTimeInterval remaining = _deadline - now;
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:MIN(12.0, remaining)];
     request.HTTPMethod = @"GET";
     request.HTTPShouldHandleCookies = NO;
     [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
     [request setValue:@"MiniSight-Lyrics/1.0 (+https://openminis.app)" forHTTPHeaderField:@"User-Agent"];
-    _notBefore = now + 0.35; // No automatic polling/retry or broad search fallback.
-    _track = track; _completion = [completion copy]; _body = [NSMutableData data];
+    _lastRequestAt = NSProcessInfo.processInfo.systemUptime;
+    _searchTask = search;
+    MSLyricsEvidence(@"request", @"pending", search ? @"search" : @"exact", @"not_applicable", _activeGeneration, 0, 0, 0);
+    _body = [NSMutableData data]; _response = nil;
     _task = [_session dataTaskWithRequest:request];
     [_task resume];
+}
+- (void)startSearchForGeneration:(NSUInteger)generation {
+    if (_activeGeneration != generation || self.generation != generation || !_track || _task || _searchAttempted) return;
+    _searchAttempted = YES;
+    NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
+    NSTimeInterval delay = MAX(0.0, _lastRequestAt + 0.35 - now);
+    if (now + delay >= _deadline) {
+        MiniSightLyricsResult completion = _completion; NSUInteger active = _activeGeneration;
+        _track = nil; _completion = nil;
+        [self deliver:nil reason:@"lyrics_timeout" generation:active completion:completion];
+        return;
+    }
+    if (delay > 0.0) {
+        _searchPending = YES;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            if (self.generation != generation || self.activeGeneration != generation || !self.searchPending || self.task) return;
+            self.searchPending = NO;
+            if (NSProcessInfo.processInfo.systemUptime >= self.deadline) {
+                MiniSightLyricsResult completion = self.completion; MiniSightLyricsTrack *track = self.track;
+                self.track = nil; self.completion = nil;
+                [self deliver:nil reason:@"lyrics_timeout" generation:generation completion:completion];
+                return;
+            }
+            [self sendSearchForTrack:self.track];
+        });
+        return;
+    }
+    [self sendSearchForTrack:_track];
 }
 - (void)receivedResponse:(NSURLResponse *)response task:(NSURLSessionDataTask *)task completion:(void (^)(NSURLSessionResponseDisposition))completion {
     if (task != _task) { completion(NSURLSessionResponseCancel); return; }
     if (_activeGeneration != self.generation) { completion(NSURLSessionResponseCancel); return; }
-    if (![response isKindOfClass:NSHTTPURLResponse.class] || !MSLyricsAllowedURL(response.URL)) {
+    NSString *expectedPath = _searchTask ? @"/api/search" : @"/api/get";
+    if (![response isKindOfClass:NSHTTPURLResponse.class] || !MSLyricsAllowedURL(response.URL, expectedPath)) {
         completion(NSURLSessionResponseCancel);
         [self finishedTask:task error:[NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorBadServerResponse userInfo:nil]];
         return;
@@ -365,8 +576,14 @@ static BOOL MSLyricsAllowedURL(NSURL * _Nullable url) {
 - (void)finishedTask:(NSURLSessionTask *)task error:(NSError * _Nullable)error {
     if (task != _task) return;
     if (_activeGeneration != self.generation) return;
+    // Delegate callbacks can sit on a busy main queue beyond NSURLSession's
+    // timers. The two legs share one deadline, including parsing/delivery.
+    if (!MSLyricsDispatchReady(NSProcessInfo.processInfo.systemUptime, _deadline))
+        error = [NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorTimedOut userInfo:nil];
+    BOOL wasSearch = _searchTask;
     MiniSightLyricsTimeline *timeline = nil;
     NSInteger status = _response.statusCode;
+    NSUInteger candidates = 0;
     NSString *reason = @"lyrics_http";
     if (error) {
         BOOL urlError = [error.domain isEqualToString:NSURLErrorDomain];
@@ -376,14 +593,33 @@ static BOOL MSLyricsAllowedURL(NSURL * _Nullable url) {
     } else if (status == 404) reason = @"lyrics_not_found";
     else if (status == 429) reason = @"lyrics_rate_limited";
     else if (status == 503) reason = @"lyrics_service_unavailable";
-    else if (status == 200) timeline = [MiniSightLyricsClient timelineForResponseData:_body response:_response track:_track reason:&reason];
-    if (!error && (timeline || _response.statusCode == 404)) {
+    else if (status == 200) timeline = wasSearch
+        ? [MiniSightLyricsClient timelineForSearchResponseData:_body response:_response track:_track reason:&reason candidates:&candidates]
+        : [MiniSightLyricsClient timelineForResponseData:_body response:_response track:_track reason:&reason];
+    if (!MSLyricsDispatchReady(NSProcessInfo.processInfo.systemUptime, _deadline)) {
+        timeline = nil; reason = @"lyrics_timeout";
+        error = [NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorTimedOut userInfo:nil];
+    }
+    MSLyricsEvidence(@"finish", timeline ? @"ok" : @"skipped", wasSearch ? @"search" : @"exact",
+        reason, _activeGeneration, status, _body.length, candidates);
+    // Only a strict same-track, non-instrumental 200 with null/empty synced LRC
+    // may join 404 here. Rejected/malformed/mismatched LRC and all HTTP failures
+    // never broaden the fallback, and a search response cannot recurse.
+    if (MSLyricsShouldSearch(error != nil, status, wasSearch, _searchAttempted,
+        [reason isEqualToString:@"no_synced_lyrics"])) {
+        NSUInteger generation = _activeGeneration;
+        _task = nil; _body = nil; _response = nil;
+        [self startSearchForGeneration:generation];
+        return;
+    }
+    if (MSLyricsShouldCache(error != nil, timeline != nil, wasSearch, status,
+        [reason isEqualToString:@"lyrics_response_rejected"])) {
         MSLyricsCacheEntry *entry = [[MSLyricsCacheEntry alloc] init];
-        entry.timeline = timeline;
+        entry.timeline = timeline; entry.reason = reason; entry.status = status; entry.candidates = candidates;
         entry.expires = NSProcessInfo.processInfo.systemUptime + (timeline ? 3600.0 : 300.0);
         [_cache setObject:entry forKey:_track.cacheKey cost:MAX((NSUInteger)1, _body.length)];
     }
-    if (!error && (_response.statusCode == 200 || _response.statusCode == 404)) _rateAttempt = 0;
+    if (!error && status == 200) _rateAttempt = 0;
     if (error || (_response.statusCode >= 500 && _response.statusCode != 503))
         _notBefore = MAX(_notBefore, NSProcessInfo.processInfo.systemUptime + 5.0);
     MiniSightLyricsResult completion = _completion;
