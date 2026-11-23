@@ -1,6 +1,6 @@
 Package: com.moxuan.parallelx
 Name: ParallelX
-Version: 0.1.0~alpha440+clone0.102
+Version: 0.1.0~alpha440+clone0.103
 Architecture: __ARCH__
 Description: ParallelX alpha440 with Crane clone-account integration and native split-screen routing.
 Author: moxuan

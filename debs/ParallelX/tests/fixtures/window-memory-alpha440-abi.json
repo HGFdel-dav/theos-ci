@@ -98,6 +98,13 @@
       "encoding": "v16@0:8"
     }
   ],
+  "dock_methods": [
+    {"owner":"PXDockCoordinator", "kind":"instance", "selector":"restoreDockTapped:", "entry":"0x76f00", "imp":"0x4c658", "encoding":"v24@0:8@16"},
+    {"owner":"PXPanelEntry", "kind":"instance", "selector":"dockTapped:", "entry":"0x77318", "imp":"0x55870", "encoding":"v24@0:8@16"},
+    {"owner":"PXPanelEntry", "kind":"instance", "selector":"bottomDoubleTapped", "entry":"0x7736c", "imp":"0x5a008", "encoding":"v16@0:8"},
+    {"owner":"PXPanelEntry", "kind":"instance", "selector":"bottomHeld:", "entry":"0x77378", "imp":"0x5a064", "encoding":"v24@0:8@16"},
+    {"owner":"PXPanelEntry", "kind":"class", "selector":"externalOpenApplication:", "entry":"0x77208", "imp":"0x29ebc", "encoding":"v24@0:8@16"}
+  ],
   "open_calls": [
     {
       "at": "0x6b0d8",

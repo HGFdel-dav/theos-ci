@@ -53,6 +53,19 @@ int main(int argc,const char **argv) {
             uint64_t epoch=[action isEqual:@"late"] ? 0 : [store.snapshot[@"epoch"] unsignedLongLongValue];
             [store saveGeometry:geometry bundle:bundle orientation:0 observedEpoch:epoch];
             ok=drain(store);
+        } else if ([action isEqual:@"move"] || [action isEqual:@"moveLate"] ||
+                   [action isEqual:@"moveNoSlot"] || [action isEqual:@"moveThenResize"] ||
+                   [action isEqual:@"resizeThenMove"]) {
+            PXWMGeometry moved={{48.66667175292969,54.73334350585935,312,675.2},{0,0,390,844}};
+            PXWMGeometry resized={{100,90,220,476.10256410256414},{0,0,390,844}};
+            uint64_t epoch=[action isEqual:@"moveLate"] ? 0 : [store.snapshot[@"epoch"] unsignedLongLongValue];
+            unsigned orientation=[action isEqual:@"moveNoSlot"] ? 2 : 0;
+            if ([action isEqual:@"resizeThenMove"])
+                [store saveGeometry:resized bundle:@"com.example.a" orientation:0 observedEpoch:epoch];
+            [store savePosition:moved bundle:@"com.example.a" orientation:orientation observedEpoch:epoch];
+            if ([action isEqual:@"moveThenResize"])
+                [store saveGeometry:resized bundle:@"com.example.a" orientation:0 observedEpoch:epoch];
+            ok=drain(store);
         } else if ([action isEqual:@"clear"] || [action isEqual:@"disable"] || [action isEqual:@"enable"]) {
             __block BOOL completed=NO, result=NO;
             void (^done)(BOOL)=^(BOOL success) { result=success; completed=YES; };

@@ -12,6 +12,7 @@ typedef NS_ENUM(unsigned, PXWMGeometryGate) {
     PXWMGateTransient, PXWMGateReference, PXWMGateReady,
 };
 
+@class PXWMGesture;
 @interface PXWMContext : NSObject {
 @public
     PXWMNativeLifecycle native;
@@ -23,6 +24,7 @@ typedef NS_ENUM(unsigned, PXWMGeometryGate) {
 @property(nonatomic) NSUInteger generation;
 @property(nonatomic) BOOL interacting;
 @property(nonatomic) BOOL savePending;
+@property(nonatomic, strong) PXWMGesture *pendingGesture;
 @property(nonatomic) PXWMRect initialTarget;
 @property(nonatomic) PXWMRect initialNativeFrame;
 @property(nonatomic) BOOL initialTargetActive;
@@ -51,9 +53,30 @@ typedef NS_ENUM(unsigned, PXWMGeometryGate) {
 @property(nonatomic) uint64_t epoch;
 @property(nonatomic) unsigned orientation;
 @property(nonatomic) BOOL orientationKnown;
+@property(nonatomic) BOOL resizing;
+@property(nonatomic) BOOL startingSizeKnown;
+@property(nonatomic) PXWMRect startingFrame;
 @end
 @implementation PXWMGesture
 @end
+
+@interface PXWMExpansion : NSObject
+@property(nonatomic, weak) PXWMContext *context;
+@property(nonatomic) NSUInteger generation;
+@property(nonatomic) uint64_t epoch;
+@property(nonatomic) BOOL applied;
+@end
+@implementation PXWMExpansion
+@end
+
+static NSArray<PXWMExpansion *> *PXWMExpansionScope;
+static void (*PXWMOriginalRestoreDockTapped)(id, SEL, id);
+static void (*PXWMOriginalExternalOpen)(id, SEL, id);
+static void (*PXWMOriginalDockTapped)(id, SEL, id);
+static void (*PXWMOriginalBottomDoubleTapped)(id, SEL);
+static void (*PXWMOriginalBottomHeld)(id, SEL, id);
+static BOOL (*PXWMOriginalConfiguredAction)(id, SEL, id);
+static BOOL (*PXWMOriginalConfiguredActionSearch)(id, SEL, id, BOOL);
 
 static const void *PXWMContextKey = &PXWMContextKey;
 static const void *PXWMOpenTicketKey = &PXWMOpenTicketKey;
@@ -206,6 +229,143 @@ static void PXWMVerifyRestore(PXWMContext *context, PXWMRect restored, unsigned 
     });
 }
 
+/* Do not read Swift dockedHosts/activeBridge fields. The bound bridge/canvas
+ * identity is enough: native parking leaves this existing card transformed in
+ * a separate dock window; the original expansion reuses that same card. */
+static BOOL PXWMIsParked(PXWMContext *context) {
+    if (!PXWMBindingIsActive(context) || context.interacting || context.savePending ||
+        PXWMObject(context.bridge, @"canvas") != context.canvas ||
+        ![PXWMObject(context.bridge, @"bundleID") isEqual:context.bundle] ||
+        PXWMBool(context.bridge, @"fullscreenHandoff") ||
+        PXWMBool(context.bridge, @"isHostedKeyboardVisible")) return NO;
+    UIView *card = PXWMFindCard(context.canvas);
+    UIWindow *window = card.window;
+    if (!card || !window || window.screen != UIScreen.mainScreen) return NO;
+    context.card = card;
+    CGSize host = window.bounds.size, screen = UIScreen.mainScreen.bounds.size;
+    BOOL smallWindow = fabs(fmin(host.width,host.height)-fmin(screen.width,screen.height)) > 3 ||
+                       fabs(fmax(host.width,host.height)-fmax(screen.width,screen.height)) > 3;
+    return smallWindow || !CGAffineTransformIsIdentity(card.transform);
+}
+
+static NSArray<PXWMExpansion *> *PXWMBeginExpansion(NSString *bundle, UIWindow *triggerWindow) {
+    if (!NSThread.isMainThread || !PXWindowMemoryStore.shared.isLoaded) return @[];
+    NSDictionary *snapshot = PXWindowMemoryStore.shared.snapshot;
+    if (![snapshot[@"enabled"] boolValue]) return @[];
+    NSMutableArray *scope = [NSMutableArray array];
+    @try {
+    for (PXWMContext *context in PXWMContexts.allObjects) {
+        if ((bundle && ![context.bundle isEqual:bundle]) ||
+            (triggerWindow && context.canvas.window != triggerWindow) || !PXWMIsParked(context)) continue;
+        PXWMExpansion *event = [PXWMExpansion new];
+        event.context = context; event.generation = context.generation;
+        event.epoch = [snapshot[@"epoch"] unsignedLongLongValue];
+        context.initialTargetActive = NO;
+        [scope addObject:event];
+        PXWMLog(context, @"expansion_native_entry", @{@"epoch":@(event.epoch)});
+    }
+    } @catch (__unused NSException *exception) {
+        [PXWindowMemoryStore.shared diagnostic:@"expansion_observation_exception" details:@{}];
+        return @[];
+    }
+    return scope;
+}
+
+static void PXWMEndExpansion(NSArray<PXWMExpansion *> *scope) {
+    for (PXWMExpansion *event in scope) {
+        PXWMContext *context = event.context;
+        PXWMLog(context, @"expansion_native_returned", @{@"targetApplied":@(event.applied)});
+    }
+}
+
+static BOOL PXWMExpansionTarget(PXWMContext *context, CGRect incoming, CGRect *result) {
+    if (!context || !result || context.restoring || !PXWMExpansionScope.count) return NO;
+    PXWMExpansion *event = nil;
+    for (PXWMExpansion *candidate in PXWMExpansionScope)
+        if (candidate.context == context) { event = candidate; break; }
+    NSDictionary *snapshot = PXWindowMemoryStore.shared.snapshot;
+    if (!event || !PXWindowMemoryStore.shared.isLoaded || ![snapshot[@"enabled"] boolValue] ||
+        !PXWMMayApplyExpansion(PXWMExpansionScope != nil, YES,
+         PXWMBindingIsActive(context), event.generation == context.generation,
+         context.interacting, context.savePending,
+         event.epoch == [snapshot[@"epoch"] unsignedLongLongValue], event.applied)) return NO;
+    PXWMRect nativeFrame = PXWMFromRect(incoming), restored;
+    PXWMGeometry geometry, saved;
+    unsigned key = 0;
+    if (!PXWMReadGeometry(context, YES, &nativeFrame, &geometry, &key)) {
+        PXWMLog(context, @"expansion_target_not_ready", @{@"gate":@(context.geometryGate)});
+        return NO;
+    }
+    if (!PXWindowMemoryGeometry(snapshot, context.bundle, key, &saved)) {
+        PXWMLog(context, @"expansion_native_default", @{@"key":@(key)});
+        return NO;
+    }
+    if (!PXWMRestore(saved, geometry.reference, nativeFrame, &restored)) return NO;
+    event.applied = YES;
+    context.key = key; context.keyKnown = YES; context.resolved = YES;
+    *result = PXWMToRect(restored);
+    PXWMLog(context, @"expansion_remembered_target", @{@"fromW":@(incoming.size.width),
+              @"fromH":@(incoming.size.height), @"toW":@(restored.width), @"toH":@(restored.height),
+              @"revision":snapshot[@"revision"] ?: @0});
+    PXWMVerifyRestore(context, restored, key, event.epoch);
+    return YES;
+}
+
+/* The verified alpha440 restore path runs the animation block synchronously:
+ * card transform identity -> setFrame -> layoutIfNeeded -> bridge.layoutHost.
+ * Scope ends when the exact original selector returns, even after exceptions.
+ * No return-address tricks, timer extension, private Swift offsets or repeated
+ * frame writes. If a later version defers that block, this safely does nothing. */
+static void PXWMRestoreDockTapped(id self, SEL command, id gesture) {
+    if (!PXWMOriginalRestoreDockTapped) return;
+    if (!NSThread.isMainThread || PXWMExpansionScope) {
+        PXWMOriginalRestoreDockTapped(self, command, gesture); return;
+    }
+    UIWindow *triggerWindow = [gesture isKindOfClass:UIGestureRecognizer.class] ?
+                              [(UIGestureRecognizer *)gesture view].window : nil;
+    if (!triggerWindow) { PXWMOriginalRestoreDockTapped(self, command, gesture); return; }
+    NSArray *previous = PXWMExpansionScope;
+    NSArray *scope = PXWMBeginExpansion(nil, triggerWindow);
+    PXWMExpansionScope = scope;
+    @try { PXWMOriginalRestoreDockTapped(self, command, gesture); }
+    @finally { PXWMExpansionScope = previous; PXWMEndExpansion(scope); }
+}
+static void PXWMExternalOpen(id self, SEL command, id bundle) {
+    if (!PXWMOriginalExternalOpen) return;
+    if (!NSThread.isMainThread || PXWMExpansionScope || ![bundle isKindOfClass:NSString.class]) {
+        PXWMOriginalExternalOpen(self, command, bundle); return;
+    }
+    NSArray *previous = PXWMExpansionScope;
+    NSArray *scope = PXWMBeginExpansion(bundle, nil);
+    PXWMExpansionScope = scope;
+    @try { PXWMOriginalExternalOpen(self, command, bundle); }
+    @finally { PXWMExpansionScope = previous; PXWMEndExpansion(scope); }
+}
+
+/* A parked app selected from the original rail/search also goes through the
+ * native dock restore function. Preserve action consumption/BOOL exactly; no
+ * route/account/payment handling belongs to the memory adapter. */
+static BOOL PXWMConfiguredAction(id self, SEL command, id action) {
+    if (!PXWMOriginalConfiguredAction) return NO;
+    if (!NSThread.isMainThread || PXWMExpansionScope)
+        return PXWMOriginalConfiguredAction(self, command, action);
+    NSArray *previous = PXWMExpansionScope;
+    NSArray *scope = PXWMBeginExpansion(nil, nil);
+    PXWMExpansionScope = scope;
+    @try { return PXWMOriginalConfiguredAction(self, command, action); }
+    @finally { PXWMExpansionScope = previous; PXWMEndExpansion(scope); }
+}
+static BOOL PXWMConfiguredActionSearch(id self, SEL command, id action, BOOL fromSearch) {
+    if (!PXWMOriginalConfiguredActionSearch) return NO;
+    if (!NSThread.isMainThread || PXWMExpansionScope)
+        return PXWMOriginalConfiguredActionSearch(self, command, action, fromSearch);
+    NSArray *previous = PXWMExpansionScope;
+    NSArray *scope = PXWMBeginExpansion(nil, nil);
+    PXWMExpansionScope = scope;
+    @try { return PXWMOriginalConfiguredActionSearch(self, command, action, fromSearch); }
+    @finally { PXWMExpansionScope = previous; PXWMEndExpansion(scope); }
+}
+
 /* The vendor's open sequence assigns hostCard's default frame again inside its
  * reveal animation, after our first prepare. Redirect only that opening write
  * to the remembered frame, so the first visible frame is already the saved one.
@@ -215,8 +375,16 @@ static void PXWMCardSetFrame(id self, SEL command, CGRect frame) {
         if (NSThread.isMainThread && PXWMContexts) {
             PXWMContext *context = nil;
             for (PXWMContext *candidate in PXWMContexts.allObjects) {
-                if (candidate.card == (UIView *)self) { context = candidate; break; }
+                BOOL ownsTicket = candidate.bridge && !candidate->native.cancelled &&
+                    objc_getAssociatedObject(candidate.bridge, PXWMOpenTicketKey) == candidate;
+                if (candidate.card == (UIView *)self &&
+                    (PXWMBindingIsActive(candidate) || ownsTicket)) {
+                    if (context) { context = nil; break; } // Ambiguity keeps the native frame.
+                    context = candidate;
+                }
             }
+            CGRect expandedTarget;
+            if (PXWMExpansionTarget(context, frame, &expandedTarget)) frame = expandedTarget;
             if (context && context->native.entering && context->native.initialCleanupSeen &&
                 !context.initialTargetActive && !context.restoring && !context.interacting &&
                 !context.savePending && context.card == (UIView *)self) {
@@ -434,6 +602,30 @@ static BOOL PXWMCaptureGestureOrientation(PXWMContext *context, unsigned *key) {
     return YES;
 }
 
+/* Starting frame is observable before a newly hosted scene reports its source
+ * axes. This is only a before/after user-resize sample, not permission to save
+ * or restore: the normal scene/direction gate is still required at the end. */
+static BOOL PXWMCaptureGestureFrame(PXWMContext *context, PXWMRect *frame) {
+    if (!frame || !PXWMBindingIsActive(context) || !context.canvas.userInteractionEnabled ||
+        PXWMBool(context.bridge, @"fullscreenHandoff") ||
+        PXWMBool(context.bridge, @"isHostedKeyboardVisible")) return NO;
+    UIView *card = PXWMFindCard(context.canvas);
+    UIWindow *window = card.window;
+    if (!card || !window || !card.superview || window.screen != UIScreen.mainScreen ||
+        window.hidden || window.alpha <= 0.1 || !CGAffineTransformIsIdentity(card.transform)) return NO;
+    for (UIView *view = card; view; view = view.superview)
+        if (view.hidden || view.alpha <= 0.1) return NO;
+    CGSize host = window.bounds.size, screen = UIScreen.mainScreen.bounds.size;
+    if (fabs(fmin(host.width,host.height)-fmin(screen.width,screen.height)) > 3 ||
+        fabs(fmax(host.width,host.height)-fmax(screen.width,screen.height)) > 3) return NO;
+    CGRect reference = CGRectIntersection(card.superview.bounds,
+                      [window convertRect:window.bounds toView:card.superview]);
+    PXWMGeometry geometry = {PXWMFromRect(card.frame), PXWMFromRect(reference)};
+    if (!PXWMValidGeometry(geometry)) return NO;
+    *frame = geometry.frame;
+    return YES;
+}
+
 static PXWMContext *PXWMContextForGesture(UIGestureRecognizer *gesture) {
     UIWindow *window = gesture.view.window;
     if (!window) return nil;
@@ -448,10 +640,21 @@ static PXWMContext *PXWMContextForGesture(UIGestureRecognizer *gesture) {
 
 static void PXWMSettleSave(PXWMGesture *stamp, NSUInteger attempt) {
     PXWMContext *context = stamp.context;
-    if (!PXWMBindingIsActive(context) || stamp.generation != context.generation || context.interacting) return;
+    if (!PXWMBindingIsActive(context) || stamp.generation != context.generation || context.interacting ||
+        !context.savePending || context.pendingGesture != stamp) return;
     PXWMGeometry geometry;
     unsigned key = 0;
     UIView *card = PXWMFindCard(context.canvas);
+    CGSize host = card.window.bounds.size, screen = UIScreen.mainScreen.bounds.size;
+    BOOL parked = card && card.window &&
+        (fabs(fmin(host.width,host.height)-fmin(screen.width,screen.height)) > 3 ||
+         fabs(fmax(host.width,host.height)-fmax(screen.width,screen.height)) > 3);
+    if (parked) {
+        context.savePending = NO; context.pendingGesture = nil;
+        context.generation++;
+        PXWMLog(context, @"save_cancelled_parked_window", @{});
+        return;
+    }
     // A geometry animation may still be showing a preview. Unrelated opacity
     // and shadow animations do not prevent reading the settled frame.
     CALayer *presentation = card.layer.presentationLayer;
@@ -508,9 +711,20 @@ static void PXWMSettleSave(PXWMGesture *stamp, NSUInteger attempt) {
                    @"currentEpoch":snapshot[@"epoch"] ?: @0}); return;
     }
     context.key = key; context.keyKnown = YES; context.resolved = YES;
-    PXWMLog(context, @"save_user_geometry", @{@"x":@(geometry.frame.x),@"y":@(geometry.frame.y),
-              @"w":@(geometry.frame.width),@"h":@(geometry.frame.height)});
-    [PXWindowMemoryStore.shared saveGeometry:geometry bundle:context.bundle orientation:key observedEpoch:stamp.epoch];
+    if (stamp.resizing) {
+        if (!PXWMUserSizeChanged(stamp.startingSizeKnown, stamp.startingFrame, geometry.frame)) {
+            PXWMLog(context, @"resize_unchanged_or_unknown_no_save", @{@"startingSizeKnown":@(stamp.startingSizeKnown)});
+            return;
+        }
+        PXWMLog(context, @"save_user_geometry", @{@"x":@(geometry.frame.x),@"y":@(geometry.frame.y),
+                  @"w":@(geometry.frame.width),@"h":@(geometry.frame.height), @"resize":@YES,
+                  @"beforeW":@(stamp.startingFrame.width), @"beforeH":@(stamp.startingFrame.height)});
+        [PXWindowMemoryStore.shared saveGeometry:geometry bundle:context.bundle orientation:key observedEpoch:stamp.epoch];
+    } else {
+        PXWMLog(context, @"save_user_position_only", @{@"x":@(geometry.frame.x),@"y":@(geometry.frame.y),
+                  @"observedW":@(geometry.frame.width),@"observedH":@(geometry.frame.height), @"resize":@NO});
+        [PXWindowMemoryStore.shared savePosition:geometry bundle:context.bundle orientation:key observedEpoch:stamp.epoch];
+    }
 }
 
 static void PXWMGestureAction(id panel, SEL command, UIGestureRecognizer *gesture,
@@ -523,10 +737,15 @@ static void PXWMGestureAction(id panel, SEL command, UIGestureRecognizer *gestur
         PXWMContext *context = PXWMContextForGesture(gesture);
         if (context) {
             context.generation++; context.interacting = YES; context.resolved = YES; context.savePending = NO;
+            context.pendingGesture = nil;
             context.initialTargetActive = NO;
             PXWMGesture *stamp = [PXWMGesture new];
             stamp.context = context; stamp.generation = context.generation;
             stamp.epoch = [PXWindowMemoryStore.shared.snapshot[@"epoch"] unsignedLongLongValue];
+            stamp.resizing = command == NSSelectorFromString(@"resizeHost:");
+            PXWMRect startingFrame = {0};
+            stamp.startingSizeKnown = PXWMCaptureGestureFrame(context, &startingFrame);
+            stamp.startingFrame = startingFrame;
             unsigned startingKey = 0;
             stamp.orientationKnown = PXWMCaptureGestureOrientation(context, &startingKey);
             stamp.orientation = startingKey;
@@ -547,9 +766,11 @@ static void PXWMGestureAction(id panel, SEL command, UIGestureRecognizer *gestur
             context.interacting = NO;
             if (phase == UIGestureRecognizerStateEnded) {
                 context.savePending = YES;
-                dispatch_async(dispatch_get_main_queue(), ^{ PXWMSettleSave(stamp,0); });
+                context.pendingGesture = stamp;
+                PXWMSettleSave(stamp,0);
             } else {
                 context.savePending = NO;
+                context.pendingGesture = nil;
                 context.generation++;
                 PXWMLog(context,@"gesture_cancel_no_save",@{});
             }
@@ -563,11 +784,54 @@ static void PXWMMove(id self,SEL command,id gesture) {
 static void PXWMResize(id self,SEL command,id gesture) {
     PXWMGestureAction(self,command,gesture,PXWMOriginalResize);
 }
+/* Observe only the existing normal card(s) touched by this native action.
+ * A resize which already ended may finish its normal, settled save BEFORE
+ * parking; any still-unsettled callback is cancelled, never sampled in dock. */
+static void PXWMPrepareForNativePark(UIWindow *window) {
+    if (!NSThread.isMainThread) return;
+    NSMutableArray<PXWMContext *> *matches = [NSMutableArray array];
+    for (PXWMContext *context in PXWMContexts.allObjects) {
+        if (!PXWMBindingIsActive(context) || (window && context.canvas.window != window)) continue;
+        UIView *card = PXWMFindCard(context.canvas);
+        UIWindow *hostWindow = card.window;
+        if (!card || !hostWindow || hostWindow.hidden || hostWindow.alpha <= 0.1 ||
+            hostWindow.screen != UIScreen.mainScreen || !CGAffineTransformIsIdentity(card.transform)) continue;
+        CGSize host = hostWindow.bounds.size, screen = UIScreen.mainScreen.bounds.size;
+        if (fabs(fmin(host.width,host.height)-fmin(screen.width,screen.height)) > 3 ||
+            fabs(fmax(host.width,host.height)-fmax(screen.width,screen.height)) > 3) continue;
+        [matches addObject:context];
+    }
+    if (matches.count != 1) return;
+    PXWMContext *context = matches.firstObject;
+    if (context.pendingGesture && context.savePending && !context.interacting)
+        PXWMSettleSave(context.pendingGesture,0);
+    context.generation++;
+    context.savePending = NO; context.pendingGesture = nil;
+    context.interacting = NO; context.initialTargetActive = NO;
+    PXWMLog(context, @"native_park_no_size_save", @{});
+}
+static void PXWMDockTapped(id self, SEL command, id sender) {
+    if ([sender isKindOfClass:UIView.class])
+        PXWMPrepareForNativePark([(UIView *)sender window]);
+    if (PXWMOriginalDockTapped) PXWMOriginalDockTapped(self, command, sender);
+}
+static void PXWMBottomDoubleTapped(id self, SEL command) {
+    PXWMPrepareForNativePark(nil);
+    if (PXWMOriginalBottomDoubleTapped) PXWMOriginalBottomDoubleTapped(self, command);
+}
+static void PXWMBottomHeld(id self, SEL command, id gesture) {
+    if ([gesture isKindOfClass:UIGestureRecognizer.class] &&
+        [(UIGestureRecognizer *)gesture state] == UIGestureRecognizerStateBegan)
+        PXWMPrepareForNativePark([(UIGestureRecognizer *)gesture view].window);
+    if (PXWMOriginalBottomHeld) PXWMOriginalBottomHeld(self, command, gesture);
+}
+
 static PXWMContext *PXWMDetachBinding(id bridge) {
     PXWMContext *context = objc_getAssociatedObject(bridge, PXWMContextKey);
     if (context) {
         PXWMNativeClose(&context->native);
         context.generation++;
+        context.pendingGesture = nil; context.savePending = NO;
         context.initialTargetActive = NO;
         objc_setAssociatedObject(bridge, PXWMContextKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
@@ -721,7 +985,8 @@ BOOL PXWindowMemoryInstall(Class panel,Class bridge,Class hostController) {
         }];
     }
     if (PXWMOriginalOpen && PXWMOriginalMove && PXWMOriginalResize && PXWMOriginalLayout &&
-        PXWMOriginalClose && PXWMOriginalControllerLayout) return YES;
+        PXWMOriginalClose && PXWMOriginalControllerLayout && PXWMOriginalCardSetFrame &&
+        PXWMOriginalRestoreDockTapped && PXWMOriginalExternalOpen) return YES;
     [store reload];
     PXWMCardClass = PXWMVendorClass(@"PXHostCard");
     if (!hostController) hostController = PXWMVendorClass(@"PXHostViewController");
@@ -750,6 +1015,29 @@ BOOL PXWindowMemoryInstall(Class panel,Class bridge,Class hostController) {
     PXWM_HOOK(bridge,close,PXWMClose,PXWMOriginalClose,void (*)(id,SEL));
     PXWM_HOOK(hostController,controllerLayout,PXWMControllerLayout,PXWMOriginalControllerLayout,void (*)(id,SEL));
     PXWM_HOOK(PXWMCardClass,cardFrame,PXWMCardSetFrame,PXWMOriginalCardSetFrame,void (*)(id,SEL,CGRect));
+    Class dockCoordinator = PXWMVendorClass(@"PXDockCoordinator");
+    SEL restoreDock = NSSelectorFromString(@"restoreDockTapped:");
+    if (PXCloneClassInstanceMethodMatches(dockCoordinator, restoreDock, @encode(void), objects))
+        PXWM_HOOK(dockCoordinator,restoreDock,PXWMRestoreDockTapped,PXWMOriginalRestoreDockTapped,void (*)(id,SEL,id));
+    SEL parkDock = NSSelectorFromString(@"dockTapped:");
+    SEL parkDouble = NSSelectorFromString(@"bottomDoubleTapped");
+    SEL parkHeld = NSSelectorFromString(@"bottomHeld:");
+    if (PXCloneClassInstanceMethodMatches(panel, parkDock, @encode(void), objects))
+        PXWM_HOOK(panel,parkDock,PXWMDockTapped,PXWMOriginalDockTapped,void (*)(id,SEL,id));
+    if (PXCloneClassInstanceMethodMatches(panel, parkDouble, @encode(void), @[]))
+        PXWM_HOOK(panel,parkDouble,PXWMBottomDoubleTapped,PXWMOriginalBottomDoubleTapped,void (*)(id,SEL));
+    if (PXCloneClassInstanceMethodMatches(panel, parkHeld, @encode(void), objects))
+        PXWM_HOOK(panel,parkHeld,PXWMBottomHeld,PXWMOriginalBottomHeld,void (*)(id,SEL,id));
+    SEL configured = NSSelectorFromString(@"performConfiguredAction:");
+    SEL configuredSearch = NSSelectorFromString(@"performConfiguredAction:fromSearchFavorites:");
+    if (PXCloneClassInstanceMethodMatches(bridge, configured, @encode(BOOL), objects))
+        PXWM_HOOK(bridge,configured,PXWMConfiguredAction,PXWMOriginalConfiguredAction,BOOL (*)(id,SEL,id));
+    if (PXCloneClassInstanceMethodMatches(bridge, configuredSearch, @encode(BOOL),
+            @[@"@", [NSString stringWithUTF8String:@encode(BOOL)]]))
+        PXWM_HOOK(bridge,configuredSearch,PXWMConfiguredActionSearch,PXWMOriginalConfiguredActionSearch,BOOL (*)(id,SEL,id,BOOL));
+    SEL externalOpen = NSSelectorFromString(@"externalOpenApplication:");
+    if (PXCloneClassMethodMatches(panel, externalOpen, @encode(void), objects, NULL))
+        PXWM_HOOK(object_getClass((id)panel),externalOpen,PXWMExternalOpen,PXWMOriginalExternalOpen,void (*)(id,SEL,id));
 #undef PXWM_HOOK
     if (!PXWMLoadNotifying) {
         PXWMLoadNotifying = YES;
@@ -767,7 +1055,13 @@ BOOL PXWindowMemoryInstall(Class panel,Class bridge,Class hostController) {
     }
     BOOL ready = PXWMOriginalOpen && PXWMOriginalMove && PXWMOriginalResize && PXWMOriginalLayout &&
                  PXWMOriginalClose && PXWMOriginalControllerLayout;
-    [store diagnostic:@"hook_status" details:@{@"ready":@(ready)}];
+    [store diagnostic:@"hook_status" details:@{@"ready":@(ready),
+        @"cardFrameReady":@(PXWMOriginalCardSetFrame != NULL),
+        @"dockExpansionReady":@(PXWMOriginalRestoreDockTapped != NULL),
+        @"externalExpansionReady":@(PXWMOriginalExternalOpen != NULL),
+        @"actionExpansionReady":@(PXWMOriginalConfiguredAction != NULL && PXWMOriginalConfiguredActionSearch != NULL),
+        @"parkBoundaryReady":@(PXWMOriginalDockTapped != NULL && PXWMOriginalBottomDoubleTapped != NULL &&
+                              PXWMOriginalBottomHeld != NULL)}];
     return ready;
 }
 

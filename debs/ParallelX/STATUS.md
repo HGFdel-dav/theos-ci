@@ -1,4 +1,21 @@
-# ParallelX alpha440 + clone0.102｜接入作者最新版（本地候选）
+# ParallelX alpha440 + clone0.103｜只记真实调整尺寸，接通贴边放大（本地候选）
+
+## 当前批次（2026-11-23，优先于下方历史）
+- 授权：用户确认「真实resize完成才更新尺寸、移动只改位置、缩小贴边/自动布局/取消/关闭不覆盖尺寸；小窗放大和再开窗用同一记录；主号分身共用、方向隔离、原版手势和其他功能设置不动」，并明确同意本地动手。本批未获push/CI/install/设备写入/注销重启同意。
+- 基线：已发布且前轮只读确认为实装的 clone0.102，commit `5b58c3b068c120ac2b3f6756fb7062b5fa160536`。104文件源码哈希与已发Source.zip全同，冻结 `../evidence/BASELINE-0102.json`；新候选独立复制，旧树与手机未改。
+- 已证故障：Settings在rev85记220×476；同serial8贴边放大到312×675没有新open/close；之后move把default连尺寸一起存rev86。完整证据在旧目录 `research/dock-readonly-20261123/`。不误归CHiQ或起点、不说没存盘。
+- 保存修正：手势带真实resize/move类型和原处理前的正常起始尺寸，Ended且变化≥0.5才保存尺寸。移动调用独立savePosition，在原文件锁内读取最新同方向记录，只变位置，保留宽高/参考尺寸；无记录不因移动创建尺寸记录。沿用现有隐根、原子落盘/读回/通知；schema仍1，无猜测迁移/清空旧记忆。
+- 放大接入：核实alpha440原生 `restoreDockTapped:` →已有host展开→原card identity transform→setFrame→layoutIfNeeded→同bridge.layoutHost。仅在原selector同步事件作用范围，选中此前已停靠且仍绑定的card，读该方向记忆，替换一次原生放大目标；随后内容重算原样执行。补点击小窗、external打开已停靠应用、面板搜索动作三类入口；退出/异常必清scope，不新增延时强压、不读取Swift ivar/写vendor/改内容transform。原初次开窗保护保持0.102，不延长。
+- 收起/取消：dockTapped/底部双击/长按前只提交已完成且稳定的真实手势；其余迟到保存取消，所有原版动作参数/BOOL返回保留。关闭取消待保存，缩小window尺寸不采成用户resize。
+- 运行诊断：分别记录尺寸/位置保存及读回宽高、展开入口、记忆目标/默认分支/未就绪原因、原selector返回是否应用，以及每个Hook是否装上；有界脱敏日志，不加用户弹窗。
+- 本地检查：192项unittest，175执行通过、17个Apple runtime专属跳过（含新增2存储过程）；新增8循环/原版字节/接线测试通过；生产循环C夹具4067断言、原策略6692断言真执行；原包和pinned-vendor validate均通过；WindowMemory/Store及Apple存储夹具iOS15.5 arm64e语法检查通过（仅解析，不产iOS机器码）。独立审查未发现已证阻断问题，非真机验收。
+- 保护：16个作者原版文件逐字节不变，Tweak/设置UI/付款/分身/路径/Makefile保持；Launch唯一变化为build标记。版本 `0.1.0~alpha440+clone0.103`，布局记录仍主号分身共用和四方向key。
+- **未验证**：未CI/链接/签名/DEB/安装加载/真机。实际小窗点击是否进入所核分支、第一次frame和内容观感、快速来回/横竖屏/键盘/付款/取消手势必须后续真机验。如果原版在某路径延后动画块到scope之外，本补丁保原行为并记未应用，不冒充成功。旧版曾覆盖成默认的历史记录不自动猜回，装机后需一次真实调整更新。
+- 阶段：`local_checks_complete_waiting_push_approval`。证据报告 `../research/NATIVE-DOCK-ENTRY.md`、`../evidence/LOCAL-RESULT.md`；本地完成不等于手机已修好。推送CI/验包须另问，安装/注销/重启各自另问。
+
+---
+
+# ParallelX alpha440 + clone0.102｜接入作者最新版（历史）
 
 ## 当前状态（2026-11-22，本地完成，未推送）
 - 用户批准：以作者 alpha440 原版为底，把我们的全部功能接过去。本轮只做本地接入与检查；未推送、未 CI、未构建、未安装、未操作设备、未注销/重启。

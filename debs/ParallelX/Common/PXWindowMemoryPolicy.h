@@ -60,6 +60,50 @@ static inline bool PXWMRestore(PXWMGeometry saved, PXWMRect available,
     return true;
 }
 
+/* Moving a normal window may update its centre, never its remembered size.
+ * Keep the latest committed size and its reference axes exactly, even if the
+ * vendor temporarily expanded the observed window to another/default size. */
+static inline bool PXWMUpdateRememberedPosition(PXWMGeometry saved,
+                                                 PXWMGeometry observed,
+                                                 PXWMGeometry *result) {
+    if (!result || !PXWMValidGeometry(saved) || !PXWMValidGeometry(observed) ||
+        (saved.reference.width > saved.reference.height) !=
+        (observed.reference.width > observed.reference.height)) return false;
+    double cx = (observed.frame.x + observed.frame.width / 2 - observed.reference.x) /
+                observed.reference.width;
+    double cy = (observed.frame.y + observed.frame.height / 2 - observed.reference.y) /
+                observed.reference.height;
+    PXWMGeometry next = saved;
+    next.frame.x = PXWMClamp(saved.reference.x + cx * saved.reference.width - saved.frame.width / 2,
+                            saved.reference.x, saved.reference.x + saved.reference.width - saved.frame.width);
+    next.frame.y = PXWMClamp(saved.reference.y + cy * saved.reference.height - saved.frame.height / 2,
+                            saved.reference.y, saved.reference.y + saved.reference.height - saved.frame.height);
+    if (!PXWMValidGeometry(next)) return false;
+    *result = next;
+    return true;
+}
+
+/* The adapter observes the original recognizer, not a made-up resize action.
+ * A completed resize needs a real change in the normal card's size; an Ended
+ * callback with no usable starting size must not save an automatic layout. */
+static inline bool PXWMUserSizeChanged(bool startingSizeKnown, PXWMRect before,
+                                       PXWMRect after) {
+    return startingSizeKnown && PXWMValidRect(before) && PXWMValidRect(after) &&
+           (fabs(before.width - after.width) >= 0.5 || fabs(before.height - after.height) >= 0.5);
+}
+
+/* Expansion is a synchronous native event, not a duration-based frame lock.
+ * Only contexts that were already parked at its entry may substitute one
+ * normal target frame; ordinary layouts, newly parked windows and gestures
+ * cannot acquire this permission. */
+static inline bool PXWMMayApplyExpansion(bool eventActive, bool wasParked,
+                                         bool bindingActive, bool generationMatches,
+                                         bool interacting, bool savePending,
+                                         bool epochMatches, bool alreadyApplied) {
+    return eventActive && wasParked && bindingActive && generationMatches &&
+           !interacting && !savePending && epochMatches && !alreadyApplied;
+}
+
 /* A queued save cannot resurrect records cleared/disabled in Settings. */
 static inline bool PXWMMaySave(bool enabled, uint64_t observedEpoch, uint64_t currentEpoch,
                               bool settled, bool normalLayout, bool userCompleted) {

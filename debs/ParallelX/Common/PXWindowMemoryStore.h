@@ -15,7 +15,12 @@ FOUNDATION_EXPORT NSString *const PXWindowMemoryDidLoadNotification;
 - (BOOL)isLoaded;
 - (NSString *)errorText;
 - (void)reload;
+/* Only the real completed resize calls saveGeometry. Position updates merge
+ * with the latest same-direction record under the existing file lock; without
+ * a remembered size they create no size record. */
 - (void)saveGeometry:(PXWMGeometry)geometry bundle:(NSString *)bundle
+        orientation:(unsigned)orientation observedEpoch:(uint64_t)epoch;
+- (void)savePosition:(PXWMGeometry)geometry bundle:(NSString *)bundle
         orientation:(unsigned)orientation observedEpoch:(uint64_t)epoch;
 - (void)setMemoryEnabled:(BOOL)enabled completion:(void (^)(BOOL ok))completion;
 - (void)setDiagnosticsEnabled:(BOOL)enabled completion:(void (^)(BOOL ok))completion;

@@ -264,7 +264,7 @@ static BOOL PXWMValidState(id value) {
         NSMutableDictionary *safe = [NSMutableDictionary dictionary];
         for (NSString *key in values)
             if ([key isKindOfClass:NSString.class] && [values[key] isKindOfClass:NSNumber.class]) safe[key] = values[key];
-        [events addObject:@{ @"time": @(NSDate.date.timeIntervalSince1970), @"build": @"clone0.102",
+        [events addObject:@{ @"time": @(NSDate.date.timeIntervalSince1970), @"build": @"clone0.103",
                              @"pid": @(getpid()), @"event": name ?: @"unknown", @"state": safe }];
         while (events.count > 256) [events removeObjectAtIndex:0];
         [self writeDocument:events name:PXWMLogFile error:NULL];
@@ -282,17 +282,25 @@ static BOOL PXWMValidState(id value) {
         int lock = [self lockDocument:&error];
         NSDictionary *current = lock >= 0 ? [self readState:&error] : nil;
         NSMutableDictionary *next = [current mutableCopy];
-        BOOL stale = NO, changed = NO;
+        BOOL stale = NO, changed = NO, noRememberedSize = NO;
+        BOOL positionOnly = [action isEqual:@"position"];
         if (next) {
-            if ([action isEqual:@"save"]) {
+            if ([action isEqual:@"save"] || positionOnly) {
                 stale = !PXWMMaySave([current[@"enabled"] boolValue], epoch,
                                     [current[@"epoch"] unsignedLongLongValue], YES, YES, YES);
                 if (!stale) {
                     NSMutableDictionary *apps = [current[@"apps"] mutableCopy];
                     NSMutableDictionary *frames = [apps[identifier] mutableCopy] ?: [NSMutableDictionary dictionary];
                     NSString *key = [@(orientation) stringValue];
-                    NSArray *packed = PXWMPackGeometry(geometry);
-                    if (![frames[key] isEqual:packed]) {
+                    PXWMGeometry merged = geometry;
+                    if (positionOnly) {
+                        PXWMGeometry latest;
+                        noRememberedSize = !PXWMUnpackGeometry(frames[key], &latest);
+                        if (!noRememberedSize && !PXWMUpdateRememberedPosition(latest, geometry, &merged))
+                            error = PXWMError(7, @"窗口方向或参考尺寸已变化，未更新记忆位置");
+                    }
+                    NSArray *packed = PXWMPackGeometry(merged);
+                    if (!noRememberedSize && !error && ![frames[key] isEqual:packed]) {
                         if (!apps[identifier] && apps.count >= 512) {
                             error = PXWMError(5, @"窗口记忆条目已达到上限");
                         } else {
@@ -321,11 +329,16 @@ static BOOL PXWMValidState(id value) {
         if (lock >= 0) { flock(lock, LOCK_UN); close(lock); }
         if (!ok && !error) error = PXWMError(6, @"窗口记忆操作未完成");
         [self publish:ok ? confirmed : nil error:error];
+        PXWMGeometry readback = {0};
+        BOOL hasReadback = PXWindowMemoryGeometry(confirmed, identifier, orientation, &readback);
         [self diagnostic:stale ? @"save_discarded_after_reset" :
-              [NSString stringWithFormat:@"%@_%@", action, ok ? @"verified" : @"failed"]
+              (noRememberedSize ? @"position_no_size_no_save" :
+               [NSString stringWithFormat:@"%@_%@", action, ok ? @"verified" : @"failed"])
                   details:@{ @"orientation": @(orientation), @"revision": confirmed[@"revision"] ?: @0,
-                             @"appHash": @([action isEqual:@"save"] ? PXWMIdentifierHash(identifier.UTF8String) : 0),
-                             @"errno": @(error.code), @"changed": @(changed) }];
+                             @"appHash": @(([action isEqual:@"save"] || positionOnly) ? PXWMIdentifierHash(identifier.UTF8String) : 0),
+                             @"errno": @(error.code), @"changed": @(changed), @"positionOnly": @(positionOnly),
+                             @"hasReadback": @(hasReadback), @"savedW": @(readback.frame.width),
+                             @"savedH": @(readback.frame.height) }];
         if (ok && changed) {
             int notified = notify_post(PXWindowMemoryNotification.UTF8String);
             [self diagnostic:@"settings_notification" details:@{@"result":@(notified)}];
@@ -339,6 +352,13 @@ static BOOL PXWMValidState(id value) {
         [self diagnostic:@"save_rejected_geometry" details:@{}]; return;
     }
     [self change:@"save" bundle:bundle orientation:orientation geometry:geometry epoch:epoch enabled:YES completion:nil];
+}
+- (void)savePosition:(PXWMGeometry)geometry bundle:(NSString *)bundle
+        orientation:(unsigned)orientation observedEpoch:(uint64_t)epoch {
+    if (!PXWMBundle(bundle) || orientation > 3 || !PXWMValidGeometry(geometry)) {
+        [self diagnostic:@"position_rejected_geometry" details:@{}]; return;
+    }
+    [self change:@"position" bundle:bundle orientation:orientation geometry:geometry epoch:epoch enabled:YES completion:nil];
 }
 - (void)setMemoryEnabled:(BOOL)enabled completion:(void (^)(BOOL))completion {
     [self change:@"enable" bundle:@"" orientation:0 geometry:(PXWMGeometry){0} epoch:0 enabled:enabled completion:completion];

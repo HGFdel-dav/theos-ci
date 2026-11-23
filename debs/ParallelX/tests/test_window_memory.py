@@ -102,9 +102,14 @@ class WindowMemorySourceGuards(unittest.TestCase):
             self.assertIn(selector,source)
         self.assertIn('PXCloneClassInstanceMethodMatches',source)
         self.assertIn('PXWMOriginalOpen(self,command,bundle,canvas,overlay,completion)',source)
-        for forbidden in ('SIGKILL','terminateApplication:','externalOpenApplication:',
+        for forbidden in ('SIGKILL','terminateApplication:',
                           'object_getIvar','PXCloneFunctionAt','method_setImplementation'):
             self.assertNotIn(forbidden,source)
+        # The new exact class-method hook only observes and forwards the native
+        # external-open event; it must never send an extra open/retry request.
+        self.assertIn('PXCloneClassMethodMatches(panel, externalOpen, @encode(void), objects, NULL)',source)
+        self.assertNotIn('PXCloneSendVoid',source.split('static void PXWMExternalOpen(',1)[1].split('/* The vendor',1)[0])
+        self.assertNotIn('objc_msgSend',source.split('static void PXWMExternalOpen(',1)[1].split('/* The vendor',1)[0])
         self.assertIn('PXWindowMemoryInstall(', (ROOT/'Tweak.xm').read_text())
         self.assertIn('PXWMScheduleRestore(ticket)',source)
         self.assertIn('restore_retry_scheduled',source)
@@ -343,6 +348,30 @@ class WindowMemoryAppleStorage(unittest.TestCase):
         self.run_action('enable'); self.run_action('saveB')
         self.assertIn('com.example.b',self.run_action('read')['snapshot']['apps'])
 
+    def test_move_preserves_last_resize_size_and_cannot_create_size(self):
+        self.run_action('move')
+        self.assertEqual(self.run_action('read')['snapshot']['apps'],{})
+        self.run_action('saveA')
+        old=self.run_action('read')['snapshot']['apps']['com.example.a']['0']
+        self.run_action('move')
+        updated=self.run_action('read')['snapshot']['apps']['com.example.a']['0']
+        self.assertEqual(updated[2:],old[2:])
+        self.assertNotEqual(updated[:2],old[:2])
+        self.run_action('moveNoSlot')
+        self.assertNotIn('2',self.run_action('read')['snapshot']['apps']['com.example.a'])
+
+    def test_position_transaction_uses_latest_size_and_respects_clear_disable(self):
+        self.run_action('resizeThenMove')
+        self.assertEqual(self.run_action('read')['snapshot']['apps']['com.example.a']['0'][2:4],
+                         [220,476.10256410256414])
+        self.run_action('moveThenResize')
+        expected=self.run_action('read')['snapshot']['apps']['com.example.a']['0']
+        self.assertEqual(expected[:4],[100,90,220,476.10256410256414])
+        self.run_action('disable'); self.run_action('move')
+        self.assertEqual(self.run_action('read')['snapshot']['apps']['com.example.a']['0'],expected)
+        self.run_action('enable'); self.run_action('clear'); self.run_action('moveLate')
+        self.assertEqual(self.run_action('read')['snapshot']['apps'],{})
+
     def test_concurrent_writers_merge_different_apps(self):
         jobs=[subprocess.Popen([str(self.binary),action],env=self.env,stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE,text=True) for action in ('saveA','saveB')]
@@ -385,6 +414,6 @@ class WindowMemoryAppleStorage(unittest.TestCase):
         self.assertLessEqual(len(logs),256)
         self.assertGreater(len(logs),200)
         self.assertTrue(any(event['event']=='fixture' for event in logs))
-        self.assertTrue(all(event['build']=='clone0.102' for event in logs))
+        self.assertTrue(all(event['build']=='clone0.103' for event in logs))
 
 if __name__ == '__main__': unittest.main(verbosity=2)
