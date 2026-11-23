@@ -1,31 +1,53 @@
-# CleanStatus 0.3.12 — LOCAL candidate, known-collapsed entry + bounded trace
+# CleanStatus 0.3.13 — LOCAL candidate, cellular narrow window fallback
 
 ## Authorization / stage
 
-User approved local implementation/verification and now separately approved pushing/building this exact 0.3.12 diagnostic candidate and auditing its package. Installation, device access/changes, SIM operations, respring and restart remain unauthorized. The preceding local stage generated no iOS machine code or package. The last read-only device confirmation was 0.3.11 arm64e on iPhone12/iOS15.5/RootHide, not a 0.3.12 runtime result. This remains a diagnostic candidate, not a proven direct-open fix; CI and package verification are pending at this commit.
+User approved local implementation and verification of a fix after reporting that
+the 0.3.12 SIM card opens only intermittently ("又可以了，只是经常按出不来",
+"有时候不出来"). Push, CI, packaging, installation, device writes, SIM
+operations, respring and restart remain unauthorized. This stage produced no iOS
+machine code and no package.
 
-Base: published 0.3.11 `1a36ffc4f9657841369348203c9c2bcdf9114f64`, exact 151-file source ZIP SHA256 `9dde4c7b7603629ac5d4d8ec7b6d3543b71a7182c403f52f3e44fa1e41630317`. Frozen hashes / allowed scope in `docs/BASELINE-0312-COLLAPSE-TRACE.json`.
+Base: published 0.3.12 source ZIP, 155 files,
+SHA256 `b5c9e0a9304545c4bda6f2d8f6c0e10e4d6d107b3d60389fef56fefd93fde88b`.
+Frozen hashes / allowed scope: `docs/BASELINE-0313-WINDOW-FALLBACK.json`.
 
-## Current unresolved problem and evidence limits
+## Evidence used
 
-Goal remains one long press from compact Control Center directly opening the existing SIM card without a six-control intermediate page. The user's 0.3.11 result did not meet this. Its trace proves its own round callback/gesture/card executed; the video includes several interactions and has the six-control page already visible before the logged cellular gesture. It cannot attribute the first expansion to that same contact, nor identify the winning system recognizer. No new SpringBoard crash was found in the prior read-only phase.
+- `video_D4411D23.mp4` (20.248 s, creation 2026-11-23T15:23:46Z): the card is
+  shown; the recording also contains later Wi‑Fi panel interaction, so it is not
+  one continuous cellular long press.
+- Device read-only: `com.local.cleanstatus 0.3.12 iphoneos-arm64e`, no SpringBoard
+  crash reports. The 128-event ring kept three successes
+  (`present sim-manager`), no failed press, and predates/overlaps the recording
+  only partially — the failing branch is **not** identified by logs.
+- Source comparison (same package): Wi‑Fi binds a direct press **and** a
+  region-limited window press used only when the button is not direct-touchable;
+  cellular refused binding outright in that case.
 
-**Correction:** Apple `Preferring one gesture over another` explicitly shows `shouldBeRequiredToFailBy` YES makes OTHER wait for OWN failure (swipe delegate returning YES for pan: “Do not begin the pan until the swipe fails”). Earlier conversation/notes reversing that direction are incorrect. Candidate retains 0.3.11's non-pan rule. No claimed root cause from that line.
+## Scope of change (local only)
 
-## Final local scope
+1. `Cellular/LCSCellularHooks.m`: binding tolerates a non-direct-touchable button;
+   attaches exactly one extra long press to the hosting window, accepted only
+   inside the button bounds, only while the button is visible, the feature is on,
+   no card is presented and direct touch is unavailable. `cancelsTouchesInView=NO`.
+   Direct recognizer additionally requires direct touch; both use the same
+   delegate/target/expansion gate; unbind detaches both.
+2. `Cellular/LCSCellularEntryPolicy.h`: pure predicate
+   `LCSCellularWindowFallbackAllows` (using/!direct/visible/hitRegion).
+3. Version 0.3.13; tests and docs updated; new design doc
+   `docs/CELLULAR-WINDOW-FALLBACK-DESIGN.md`.
+4. Everything else (Wi‑Fi/Bluetooth/DataSwitch modules, SIM service, helper,
+   entitlements, panel/card, persistence, icons) byte-identical to 0.3.12.
 
-- Only the exact cellular recognizer may begin when the native expansion callback has confirmed `Collapsed`; `Unknown`/`Expanded` fail closed for the plugin, native gestures keep their original decisions.
-- No invented initial collapsed state at load/appearance. Last observed state survives unbind. Expansion callback is required (mask 47); action/panel/optional-preview paths recheck state.
-- Bounded, sanitized touch/gesture/class/scope/native-round decision and transition traces; one read-only .7s weak/generation-guarded snapshot. New touches (including throttled touches), unbind/OFF/lock/foreground loss cannot run a stale snapshot. Existing diagnostic toggle/path/ring implementation unchanged.
-- No guessed system-recognizer blocking or new dependency rule. Earlier `block-native` / `BlocksNativeBegin` / `ShouldYieldToOther` draft experiments removed before verification.
-- Short-tap implementation, Wi-Fi/Bluetooth, main/animations, SIM service/helper/permissions/card, DataSwitch business code, persistence/resolver/notifications/settings/icons remain exact frozen bytes.
+## Known limits / risks
 
-## Local checks
-
-Entry arm64e iPhoneOS15.5 `clang -fsyntax-only` passed (no iOS machine code). Production C expansion predicate 29 checks and three compiled bad predicates rejected; original round policy 12 checks. Source contracts, full host regressions, UI/card/path/panel and verifier negatives passed locally; final counts/logs are recorded in outer `../evidence/` and `../LOCAL-RESULT.md`. Independent review delegation yielded no retrievable final report (job lookup returned job_not_found); no independent approval is claimed. Apple Foundation service is SKIP on Alpine, not claimed as runtime success.
-
-## Important expected effect / risks
-
-This is **not a proven direct-open fix**. Until UIKit actually reports a collapsed transition, an initial unknown-state long press can fall through to the native six-control page. The previously available SIM card long press inside the expanded six-control page is intentionally disabled by the approved collapsed-only gate. If that callback never reports collapsed, no plugin card will open: diagnostics are intended to distinguish this case, not to hide it. Limited snapshots may omit the real system expander; class name alone is not expander identity. Short-tap/cancel/native competition, loading/AMFI/device acceptance and zero-six-control-frame behavior still require future separately authorized build/install/device validation.
-
-Full design and official sources: `docs/CELLULAR-EXPANSION-TRACE-DESIGN.md`. Historical 0.3.11 design/status claims in other archived documents do not override this record.
+- Not a proven fix for the intermittent failure or for the six-control page.
+  The 0.3.12 rule that refuses while the module reports `expanded` is unchanged;
+  a stale/expanded state still yields no plugin card.
+- The 0.3.4 crash previously removed a subclass + forwarding + whole-window
+  fallback together; this adds back only a narrow region-checked window
+  recognizer shaped like the existing Wi‑Fi one. No subclass/forwarding/setOwner.
+  Real hit-testing and UIKit arbitration remain unverified.
+- Short tap (system ON/OFF), cancel, lock, foreground loss and device acceptance
+  still need separately authorized build/install/device validation.

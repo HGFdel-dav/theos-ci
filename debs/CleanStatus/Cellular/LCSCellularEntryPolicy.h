@@ -14,3 +14,9 @@ static inline bool LCSCellularMayBeginPress(LCSCellularExpansion expansion,
                                             bool localGate) {
     return gestureIsOwned && expansion==LCSCellularExpansionCollapsed && localGate;
 }
+static inline bool LCSCellularWindowFallbackAllows(bool usingWindowFallback,
+                                                    bool directTouch,
+                                                    bool visible,
+                                                    bool hitTargetRegion) {
+    return usingWindowFallback && !directTouch && visible && hitTargetRegion;
+}

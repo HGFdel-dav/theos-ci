@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""0.3.12 local expansion/trace gates. Source/C only, not UIKit arbitration."""
+"""0.3.13 local expansion/trace gates. Source/C only, not UIKit arbitration."""
 from pathlib import Path
 import json, hashlib, re, subprocess, tempfile
 ROOT=Path(__file__).resolve().parents[1]
@@ -29,7 +29,12 @@ trace=body('- (void)traceGesture:(UIGestureRecognizer *)gesture phase:(NSString 
 inventory=body('- (void)logGestureInventory {')
 yield_rule=body('- (BOOL)shouldYieldForGesture:(UIGestureRecognizer *)gesture other:(UIGestureRecognizer *)other {')
 need('LCSCellularMayBeginPress(expansion,owned,local)' in begin,'production begin calls actual C gate')
-need('gesture&&self.directPress&&gesture==self.directPress' in begin,'nil is not owned')
+need('BOOL direct=gesture&&self.directPress&&gesture==self.directPress;' in begin,'direct recognizer identity checked')
+need('BOOL fallback=gesture&&self.windowPress&&gesture==self.windowPress;' in begin,'fallback recognizer identity checked')
+need('BOOL owned=direct||fallback;' in begin,'nil or foreign recognizer is not owned')
+need('if(direct)local=local&&LCSDirectTouch(self.button);' in begin,'direct entry requires native direct touch')
+need('LCSCellularWindowFallbackAllows(YES,!LCSDirectTouch(self.button),LCSVisible(self.button),local)' in begin,'fallback requires visibility and no direct touch')
+need('self.windowPress.enabled=NO' in unbind and '[self.boundWindow removeGestureRecognizer:self.windowPress]' in unbind,'unbind detaches the fallback recognizer')
 need('LCSRequiredHookMask=47U' in hook,'expanded lifecycle callback required')
 need('state.expansionKnown=YES;state.expanded=expanded;' in transition,'only observed transition records known state')
 need(hook.count('expansionKnown=YES')==1,'no invented collapsed initial state')

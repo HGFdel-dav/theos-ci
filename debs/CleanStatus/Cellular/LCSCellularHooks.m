@@ -22,6 +22,8 @@ static BOOL LCSRoundHookReady;
 static NSString *LCSGestureKind(UIGestureRecognizer *gesture);
 static NSString *LCSGestureStateSlug(UIGestureRecognizerState state);
 static NSString *LCSExpansionSlug(LCSCellularButtonState *state);
+static BOOL LCSVisible(UIView *view);
+static BOOL LCSDirectTouch(UIView *view);
 static void LCSLogHookFailure(unsigned bit,NSString *reason) {
     if(LCSHookFailureMask&bit)return;LCSHookFailureMask|=bit;
     LCSCellularLog(LCSCellularSIMManager,@"hook",reason,0);
@@ -38,6 +40,7 @@ static void LCSLogHookFailure(unsigned bit,NSString *reason) {
 @property(nonatomic,weak) UIWindow *boundWindow;
 @property(nonatomic,weak) LCSCellularSIMController *panel;
 @property(nonatomic,strong) UILongPressGestureRecognizer *directPress;
+@property(nonatomic,strong) UILongPressGestureRecognizer *windowPress;
 @property(nonatomic,strong) LCSCellularPressTarget *target;
 @property(nonatomic,copy) NSString *lastBindingFailure;
 @property(nonatomic) BOOL appeared;
@@ -64,8 +67,15 @@ static void LCSLogHookFailure(unsigned bit,NSString *reason) {
     return [self.binding shouldBeginPressedGesture:gesture];
 }
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldReceiveTouch:(UITouch *)touch {
-    (void)touch;
-    if(gesture!=self.binding.directPress)return NO;
+    if(gesture!=self.binding.directPress&&gesture!=self.binding.windowPress)return NO;
+    if(gesture==self.binding.windowPress) {
+        LCSCellularButtonState *state=self.binding;
+        if(!state||!state.button||state.button.window!=state.boundWindow||!LCSVisible(state.button))return NO;
+        if(!LCSCellularFeatureEnabled(LCSCellularSIMManager)||LCSPresentedSIM)return NO;
+        CGPoint point=[touch locationInView:state.button];
+        if(!LCSCellularWindowFallbackAllows(YES,!LCSDirectTouch(state.button),YES,
+                                            CGRectContainsPoint(CGRectInset(state.button.bounds,-8,-10),point)))return NO;
+    }
     [self.binding receivedTouch:gesture];
     // Logging must not cancel a short tap or synthesize any control action.
     return YES;
@@ -74,7 +84,7 @@ static void LCSLogHookFailure(unsigned bit,NSString *reason) {
     return [self.binding shouldYieldForGesture:gesture other:other];
 }
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)other {
-    if(gesture==self.binding.directPress)[self.binding traceGesture:other phase:@"simul-no"];
+    if(gesture==self.binding.directPress||gesture==self.binding.windowPress)[self.binding traceGesture:other phase:@"simul-no"];
     return NO;
 }
 @end
@@ -140,9 +150,10 @@ static BOOL LCSTapContract(UIControl *button) {
 @implementation LCSCellularButtonState
 - (void)unbind {
     if(self.directPress){self.directPress.enabled=NO;self.directPress.delegate=nil;[self.button removeGestureRecognizer:self.directPress];[self.directPress removeTarget:self.target action:@selector(lcs_handlePress:)];}
+    if(self.windowPress){self.windowPress.enabled=NO;self.windowPress.delegate=nil;[self.boundWindow removeGestureRecognizer:self.windowPress];[self.windowPress removeTarget:self.target action:@selector(lcs_handlePress:)];}
     if(objc_getAssociatedObject(self.button,&LCSCellularButtonKey)==self)objc_setAssociatedObject(self.button,&LCSCellularButtonKey,nil,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     self.traceBudget=0;self.traceGeneration++;
-    self.directPress=nil;self.target=nil;self.button=nil;self.boundWindow=nil;
+    self.directPress=nil;self.windowPress=nil;self.target=nil;self.button=nil;self.boundWindow=nil;
 }
 - (NSString *)bindingFailureForButton:(UIControl *)button {
     if(!self.appeared)return @"controller-not-appeared";
@@ -152,7 +163,6 @@ static BOOL LCSTapContract(UIControl *button) {
     if(!button)return nil;
     if(!button.window||button.window!=self.controller.view.window)return @"button-window-mismatch";
     if(!LCSVisible(button))return @"button-not-visible";
-    if(!LCSDirectTouch(button))return @"button-not-direct-touch";
     if(!LCSTapContract(button))return @"tap-contract-unverified";
     id owner=objc_getAssociatedObject(button,&LCSCellularButtonKey);if(owner&&owner!=self)return @"button-owned-elsewhere";
     UIView *view=button;while(view&&view!=self.controller.view)view=view.superview;
@@ -168,14 +178,18 @@ static BOOL LCSTapContract(UIControl *button) {
     self.lastBindingFailure=nil;return YES;
 }
 - (BOOL)shouldBeginPressedGesture:(UIGestureRecognizer *)gesture {
-    BOOL owned=gesture&&self.directPress&&gesture==self.directPress;
+    BOOL direct=gesture&&self.directPress&&gesture==self.directPress;
+    BOOL fallback=gesture&&self.windowPress&&gesture==self.windowPress;
+    BOOL owned=direct||fallback;
     LCSCellularExpansion expansion=LCSExpansionForState(self);
     BOOL local=self.appeared&&self.button&&self.button.window==self.boundWindow&&LCSVisible(self.button)&&
         LCSTapContract(self.button)&&!LCSPresentedSIM&&LCSCellularFeatureEnabled(LCSCellularSIMManager)&&
         LCSCellularForeground&&LCSCellularIsUnlocked()&&!self.controller.isBeingDismissed&&
         !self.controller.isBeingPresented;
+    if(direct)local=local&&LCSDirectTouch(self.button);
+    if(fallback)local=LCSCellularWindowFallbackAllows(YES,!LCSDirectTouch(self.button),LCSVisible(self.button),local);
     bool allowed=LCSCellularMayBeginPress(expansion,owned,local);
-    NSString *reason=!owned?@"not-owned":(!self.expansionKnown?@"state-unknown":(self.expanded?@"already-expanded":(allowed?@"collapsed-eligible":@"local-gate-failed")));
+    NSString *reason=!owned?@"not-owned":(!self.expansionKnown?@"state-unknown":(self.expanded?@"already-expanded":(allowed?(fallback?@"fallback-eligible":@"collapsed-eligible"):@"local-gate-failed")));
     NSString *slug=[NSString stringWithFormat:@"begin-%@-g-%@-s-%@",reason,LCSGestureKind(gesture),LCSGestureStateSlug(gesture.state)];
     NSString *limited=slug.length<=48?slug:[slug substringToIndex:48];
     LCSCellularLog(LCSCellularSIMManager,@"entry",limited,0);
@@ -202,14 +216,14 @@ static BOOL LCSTapContract(UIControl *button) {
     NSUInteger count=0,depth=0;
     for(UIView *view=self.button;view&&depth<12&&count<4;view=view.superview,depth++) {
         for(UIGestureRecognizer *other in view.gestureRecognizers) {
-            if(other==self.directPress)continue;
+            if(other==self.directPress||other==self.windowPress)continue;
             [self traceGesture:other phase:@"snapshot"];
             if(++count==4)break;
         }
     }
 }
 - (void)receivedTouch:(UIGestureRecognizer *)gesture {
-    if(gesture!=self.directPress)return;
+    if(gesture!=self.directPress&&gesture!=self.windowPress)return;
     NSUInteger generation=++self.traceGeneration;self.traceBudget=0;
     CFTimeInterval now=CACurrentMediaTime();if(now-self.lastTouchTrace<.75)return;
     self.lastTouchTrace=now;self.traceBudget=36;
@@ -220,33 +234,36 @@ static BOOL LCSTapContract(UIControl *button) {
     // Read-only snapshot. UIKit does not send target/action for every Failed state.
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(.7*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
         LCSCellularButtonState *state=weakSelf;
-        if(!state||state.traceGeneration!=generation||!weakGesture||state.directPress!=weakGesture||
+        if(!state||state.traceGeneration!=generation||!weakGesture||
+           (state.directPress!=weakGesture&&state.windowPress!=weakGesture)||
            !weakButton||state.button!=weakButton||!LCSCellularForeground||
            !LCSCellularFeatureEnabled(LCSCellularSIMManager)||!LCSCellularIsUnlocked())return;
         [state traceGesture:weakGesture phase:@"own-later"];[state logGestureInventory];
     });
 }
 - (BOOL)shouldYieldForGesture:(UIGestureRecognizer *)gesture other:(UIGestureRecognizer *)other {
-    if(!other||gesture!=self.directPress||other==gesture)return NO;
+    if(!other||(gesture!=self.directPress&&gesture!=self.windowPress)||other==gesture)return NO;
     [self traceGesture:other phase:[other isKindOfClass:UIPanGestureRecognizer.class]?@"no-require":@"other-waits"];
     // Apple: YES makes the OTHER recognizer wait for OUR recognizer to fail.
     // Preserve 0.3.11 decisions; no competitor identity is proven yet.
     return ![other isKindOfClass:UIPanGestureRecognizer.class];
 }
 - (BOOL)ownsPreview:(UIPreviewInteraction *)interaction container:(UIViewController *)container {
-    if(!self.expansionKnown||self.expanded||LCSPresentedSIM||!self.directPress.enabled||self.directPress.numberOfTouches==0)return NO;
+    UILongPressGestureRecognizer *press=LCSDirectTouch(self.button)?self.directPress:self.windowPress;
+    if(!self.expansionKnown||self.expanded||LCSPresentedSIM||!press.enabled||press.numberOfTouches==0)return NO;
     if(!self.controller.isViewLoaded||![self.controller.view isDescendantOfView:container.view])return NO;
     if(![interaction isKindOfClass:UIPreviewInteraction.class])return NO;
     UIView *view=interaction.view;
     if(view&&!(view==container.view||[view isDescendantOfView:container.view]||[container.view isDescendantOfView:view]))return NO;
-    if(self.directPress.state==UIGestureRecognizerStateFailed||
-       self.directPress.state==UIGestureRecognizerStateCancelled||
-       self.directPress.state==UIGestureRecognizerStateEnded)return NO;
+    if(press.state==UIGestureRecognizerStateFailed||
+       press.state==UIGestureRecognizerStateCancelled||
+       press.state==UIGestureRecognizerStateEnded)return NO;
     CGPoint point=[interaction locationInCoordinateSpace:self.button];
     return CGRectContainsPoint(CGRectInset(self.button.bounds,-8,-10),point);
 }
 - (void)scheduleLayoutRebind {
-    if(self.directPress&&self.button.window==self.boundWindow&&LCSVisible(self.button))return;
+    if(self.directPress&&self.button.window==self.boundWindow&&LCSVisible(self.button)&&
+       (LCSDirectTouch(self.button)||self.windowPress))return;
     CFTimeInterval now=CACurrentMediaTime();
     if(self.layoutPending||now-self.lastLayoutRetry<.25)return;
     self.lastLayoutRetry=now;self.layoutPending=YES;__weak typeof(self) weakSelf=self;
@@ -259,7 +276,9 @@ static BOOL LCSTapContract(UIControl *button) {
         [self logBindingFailure:!cls?@"button-class-unavailable":(matches.count?@"button-ambiguous":@"button-not-found")];[self unbind];return;
     }
     if(![self safeDirectButton:matches.firstObject]){[self unbind];return;}
-    UIControl *button=matches.firstObject;if(button==self.button&&self.directPress)return;
+    UIControl *button=matches.firstObject;
+    BOOL direct=LCSDirectTouch(button);
+    if(button==self.button&&self.directPress&&(direct||self.windowPress))return;
     [self unbind];self.button=button;self.boundWindow=button.window;
     self.target=[LCSCellularPressTarget new];self.target.binding=self;
     self.directPress=[[UILongPressGestureRecognizer alloc] initWithTarget:self.target action:@selector(lcs_handlePress:)];
@@ -267,12 +286,22 @@ static BOOL LCSTapContract(UIControl *button) {
     self.directPress.minimumPressDuration=.45;self.directPress.allowableMovement=10;
     self.directPress.cancelsTouchesInView=YES;self.directPress.delaysTouchesBegan=NO;self.directPress.delaysTouchesEnded=NO;
     [button addGestureRecognizer:self.directPress];objc_setAssociatedObject(button,&LCSCellularButtonKey,self,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    if(!direct) {
+        self.windowPress=[[UILongPressGestureRecognizer alloc] initWithTarget:self.target action:@selector(lcs_handlePress:)];
+        self.windowPress.delegate=self.target;
+        self.windowPress.minimumPressDuration=.45;self.windowPress.allowableMovement=10;
+        self.windowPress.cancelsTouchesInView=NO;self.windowPress.delaysTouchesBegan=NO;self.windowPress.delaysTouchesEnded=NO;
+        [self.boundWindow addGestureRecognizer:self.windowPress];
+        LCSCellularLog(LCSCellularSIMManager,@"binding",@"bound-window-fallback",0);
+    }
     LCSCellularLog(LCSCellularSIMManager,@"binding",@"bound-wifi-entry",0);
     LCSCellularLog(LCSCellularSIMManager,@"binding",LCSExpansionSlug(self),0);
 }
 - (void)bind {[self scheduleLayoutRebind];}
 - (void)pressed:(UILongPressGestureRecognizer *)gesture {
-    if(gesture!=self.directPress)return;
+    BOOL direct=gesture==self.directPress;
+    BOOL fallback=gesture==self.windowPress;
+    if(!direct&&!fallback)return;
     [self traceGesture:gesture phase:@"own-action"];
     if(gesture.state!=UIGestureRecognizerStateBegan){
         if(gesture.state==UIGestureRecognizerStateEnded||gesture.state==UIGestureRecognizerStateCancelled||gesture.state==UIGestureRecognizerStateFailed)
@@ -288,7 +317,8 @@ static BOOL LCSTapContract(UIControl *button) {
     else if(!self.appeared||!self.controller||self.controller.isBeingDismissed||self.controller.isBeingPresented)reason=@"controller-unavailable";
     else if(!self.button.window||self.button.window!=self.boundWindow||self.button.window!=self.controller.view.window)reason=@"button-window-mismatch";
     else if(!LCSVisible(self.button))reason=@"button-not-visible";
-    else if(!LCSDirectTouch(self.button))reason=@"button-not-direct-touch";
+    else if(direct&&!LCSDirectTouch(self.button))reason=@"button-not-direct-touch";
+    else if(fallback&&LCSDirectTouch(self.button))reason=@"fallback-not-needed";
     else if(LCSPresentedSIM)reason=@"panel-already-presented";
     if(reason){LCSCellularLog(LCSCellularSIMManager,@"press",reason,0);return;}
     LCSCellularLog(LCSCellularSIMManager,@"entry",@"began-wifi",0);

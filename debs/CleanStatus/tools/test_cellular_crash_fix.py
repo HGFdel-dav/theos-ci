@@ -57,7 +57,9 @@ need('self.directPress.delegate=self.target' in hook and 'cancelsTouchesInView=Y
 need('previewInteractionShouldBegin:' in hook and 'preview-shouldbegin-unavailable' in hook, 'preview gate is optional and failure is recorded')
 need('contentViewController' not in hook and 'isExpanded' not in hook, 'does not depend on optional container getters')
 need('containerWillTransitionToExpandedContentMode:' in hook, 'native expanded state is tracked via lifecycle')
-need('windowPress' not in hook and 'LCSRoundBegin' not in hook and 'didMoveToWindow' not in hook, 'no window fallback or native round-button hook')
+need('LCSRoundBegin' not in hook and 'didMoveToWindow' not in hook, 'no global round-button window hook')
+need(hook.count('self.windowPress=[[UILongPressGestureRecognizer alloc]')==1 and 'bound-window-fallback' in hook, 'one region-limited fallback recognizer at most')
+need('if(!direct) {' in hook and 'self.windowPress.cancelsTouchesInView=NO' in hook, 'fallback is narrow and never swallows a short tap')
 need('LCSCellularSIMController' in hook and 'presentViewController:panel' in hook, 'existing SIM card presentation retained')
 need('UIApplicationWillResignActiveNotification' in hook and 'UIApplicationDidBecomeActiveNotification' in hook, 'foreground cleanup and rebind retained')
 

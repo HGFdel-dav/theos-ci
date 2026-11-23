@@ -14,7 +14,7 @@ def need(value, label):
 interfaces = re.findall(r'@interface\s+(\w+)\s*:\s*(\w+)', hook)
 need(len(interfaces) == 2 and all(base == 'NSObject' for _, base in interfaces), 'no UIKit/recognizer subclass')
 for bad in ['objc_allocateClassPair','forwardInvocation:','forwardingTargetForSelector:','setOwner:',
-            'windowPress','UIWindow alloc','method_setImplementation','sendActionsForControlEvents:',
+            'UIWindow alloc','method_setImplementation','sendActionsForControlEvents:',
             'cancelInteraction','setUserInteractionEnabled:']:
     need(bad not in hook, 'retired or broad interception forbidden: ' + bad)
 need('LCSRoundGestureShouldBegin' in hook and 'LCSCellularOwnsRoundGesture(self,gesture)' in hook, 'native round-button hook is scoped to the own cellular recognizer')
@@ -23,14 +23,19 @@ need('round-local-hook-installed' in hook and 'round-button-image-unverified' in
 need('gestureRecognizer:(UIGestureRecognizer *)gesture shouldBeRequiredToFailByGestureRecognizer:' in hook, 'own recognizer supplies the failure rule')
 need('return ![other isKindOfClass:UIPanGestureRecognizer.class];' in hook, 'exact WiFi pan/tap rule')
 need('shouldRecognizeSimultaneouslyWithGestureRecognizer:' in hook and re.search(r'- \(BOOL\)gestureRecognizer:[^\n]*shouldRecognizeSimultaneouslyWithGestureRecognizer:[^\n]*\{.*?return NO;\s*\}',hook,re.S), 'no simultaneous recognition; diagnostics do not alter result')
-need('[button addGestureRecognizer:self.directPress]' in hook, 'recognizer on the native button, not the whole window')
-need('self.directPress.delegate=self.target' in hook, 'retained independent delegate')
+need('[button addGestureRecognizer:self.directPress]' in hook, 'primary recognizer on the native button, not the whole window')
+need('[self.boundWindow addGestureRecognizer:self.windowPress]' in hook, 'fallback recognizer attached to the hosting window')
+need('CGRectContainsPoint(CGRectInset(state.button.bounds,-8,-10),point)' in hook, 'fallback touch must land inside the cellular button region')
+need('!LCSDirectTouch(state.button)' in hook, 'fallback touch rejected while the button accepts direct touch')
+need('LCSCellularWindowFallbackAllows' in hook and 'usingWindowFallback' in (ROOT/'Cellular/LCSCellularEntryPolicy.h').read_text(), 'fallback activation is a pure production predicate')
+need('self.directPress.delegate=self.target' in hook and 'self.windowPress.delegate=self.target' in hook, 'retained independent delegate for both recognizers')
 assignments = re.findall(r'([A-Za-z_][\w.]*)\.delegate\s*=(?!=)', hook)
-need(all(v in ('self.directPress',) for v in assignments), 'native gesture delegates are not changed')
+need(all(v in ('self.directPress','self.windowPress') for v in assignments), 'native gesture delegates are not changed')
 need('previewInteractionShouldBegin:' in hook and 'preview-shouldbegin-unavailable' in hook, 'preview path optional and self-diagnosing')
 need('contentViewController' not in hook and 'isExpanded' not in hook, 'no dependency on optional getters')
 need('LCSPreviewShouldBegin' in hook and 'return LCSOriginalPreviewShouldBegin(self,sel,interaction);' in hook, 'unowned preview calls forward exactly')
-need('self.directPress.numberOfTouches==0' in hook and 'locationInCoordinateSpace:self.button' in hook, 'preview scope uses live cellular touch/point')
+need('press.numberOfTouches==0' in hook and 'locationInCoordinateSpace:self.button' in hook, 'preview scope uses live cellular touch/point from the active recognizer')
+need('UILongPressGestureRecognizer *press=LCSDirectTouch(self.button)?self.directPress:self.windowPress;' in hook, 'preview checks the recognizer that is actually active')
 need('self.controller.view isDescendantOfView:container.view' in hook, 'preview container must host the cellular controller')
 need('CGRectContainsPoint(CGRectInset(self.button.bounds,-8,-10),point)' in hook, 'preview point remains within the button region')
 need('containerWillTransitionToExpandedContentMode:' in hook and 'state.expanded=expanded' in hook, 'native expansion state is tracked')
