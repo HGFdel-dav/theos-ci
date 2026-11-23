@@ -18,13 +18,13 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-base = json.loads((ROOT / 'docs/BASELINE-0311-PRIORITY.json').read_text())
+base = json.loads((ROOT / 'docs/BASELINE-0312-COLLAPSE-TRACE.json').read_text())
 allowed = set(base['allowed_changes'])
-need(base.get('base_commit') == 'f76479fe103b0b40faf3c2c82af0fb726cf64ac6' and len(base['files']) == 146, 'published 0.3.10 freeze manifest')
+need(base.get('base_commit') == '1a36ffc4f9657841369348203c9c2bcdf9114f64' and len(base['files']) == 151, 'published 0.3.11 freeze manifest')
 for name, digest in base['files'].items():
-    if name not in allowed and name not in {'docs/CELLULAR-WIFI-ENTRY-DESIGN.md','STATUS.md','docs/BASELINE-0311-PRIORITY.json','tests/cellular/round_button_policy_test.c','tools/test_cellular_button_priority.py'}:
+    if name not in allowed:
         path = ROOT / name
-        need(path.is_file() and sha(path) == digest, 'published 0.3.10 file changed: ' + name)
+        need(path.is_file() and sha(path) == digest, 'published 0.3.11 file changed: ' + name)
 need(sha(ROOT / 'Cellular/LCSCellularService.m') == base['files']['Cellular/LCSCellularService.m'], 'SIM service unchanged')
 need(sha(ROOT / 'LocalCleanStatusSIMTool/main.m') == base['files']['LocalCleanStatusSIMTool/main.m'], 'SIM helper unchanged')
 need(sha(ROOT / 'Sources/LocalCleanStatusControlCenter.m') == base['files']['Sources/LocalCleanStatusControlCenter.m'], 'Wi-Fi/Bluetooth entry unchanged')
@@ -61,4 +61,4 @@ need('windowPress' not in hook and 'LCSRoundBegin' not in hook and 'didMoveToWin
 need('LCSCellularSIMController' in hook and 'presentViewController:panel' in hook, 'existing SIM card presentation retained')
 need('UIApplicationWillResignActiveNotification' in hook and 'UIApplicationDidBecomeActiveNotification' in hook, 'foreground cleanup and rebind retained')
 
-print(f'PASS cellular WiFi-entry source contract: {checks}; frozen 0.3.8 files {len(base["files"])-len(allowed & set(base["files"]))}; no UIKit/runtime/device claim.')
+print(f'PASS cellular WiFi-entry source contract: {checks}; frozen 0.3.11 files {len(base["files"])-len(allowed & set(base["files"]))}; no UIKit/runtime/device claim.')

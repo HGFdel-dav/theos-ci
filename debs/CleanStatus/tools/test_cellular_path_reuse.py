@@ -11,10 +11,10 @@ def need(value,label):
 def sha(b):return hashlib.sha256(b).hexdigest()
 def text(n):return (ROOT/n).read_text()
 base=json.loads(text('docs/BASELINE-032-PATH-REUSE.json'));allowed=set(base['allowed_changes'])
-runtime=json.loads(text('docs/BASELINE-0311-PRIORITY.json'))
+runtime=json.loads(text('docs/BASELINE-0312-COLLAPSE-TRACE.json'))
 runtime_allowed=set(runtime['allowed_changes'])
 for name,want in runtime['files'].items():
-    if name not in runtime_allowed:need((ROOT/name).is_file() and sha((ROOT/name).read_bytes())==want,'published 0.3.10 non-scope file changed: '+name)
+    if name not in runtime_allowed:need((ROOT/name).is_file() and sha((ROOT/name).read_bytes())==want,'published 0.3.11 non-scope file changed: '+name)
 settings=text('Cellular/LCSCellularSettings.m');animation=text('Animation/LocalCleanStatusAnimationPreferences.m')
 need(sha(animation.encode())==base['files']['Animation/LocalCleanStatusAnimationPreferences.m'],'reused animation implementation byte-identical')
 need('for (NSString *prefix in @[@"", @".jbroot"])' in animation,'existing implementation already follows split-root backlink')

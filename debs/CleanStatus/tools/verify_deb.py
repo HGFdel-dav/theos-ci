@@ -95,7 +95,7 @@ def inspect(deb,out):
     for line in raw.splitlines():
         if line and not line.startswith(' ') and ':' in line:
             key,val=line.split(':',1);fields[key]=val.strip()
-    for key,want in {'Package':'com.local.cleanstatus','Version':'0.3.11','Architecture':'iphoneos-arm64e'}.items():
+    for key,want in {'Package':'com.local.cleanstatus','Version':'0.3.12','Architecture':'iphoneos-arm64e'}.items():
         require(fields.get(key)==want,key+' mismatch')
     report={'deb':deb.name,'sha256':hashlib.sha256(deb.read_bytes()).hexdigest(),'fields':fields}
     with tempfile.TemporaryDirectory(prefix='cleanstatus-deb-') as temp:
@@ -114,7 +114,7 @@ def inspect(deb,out):
         pref=payload/'Library/PreferenceBundles/LocalCleanStatusPrefs.bundle'
         info=plistlib.loads((pref/'Info.plist').read_bytes())
         require(info['CFBundleExecutable']=='LocalCleanStatusPrefs' and info['NSPrincipalClass']=='LocalCleanStatusRootListController','panel linkage')
-        require(info['CFBundleVersion']==info['CFBundleShortVersionString']=='0.3.11','panel version')
+        require(info['CFBundleVersion']==info['CFBundleShortVersionString']=='0.3.12','panel version')
         require((pref/'LocalCleanStatusRoot.plist').is_file(),'missing specifiers')
         for name in ('LocalCleanStatusAnimations.plist','LocalCleanStatusAnimationsAdvanced.plist'):
             require(isinstance(plistlib.loads((pref/name).read_bytes()).get('items'),list),'missing animation panel '+name)
@@ -137,7 +137,7 @@ def inspect(deb,out):
         data=payload/'Library/ControlCenter/Bundles/LocalCleanStatusDataSwitch.bundle'
         data_info=plistlib.loads((data/'Info.plist').read_bytes())
         require(data_info.get('NSPrincipalClass')=='LCSDataSwitchModule' and data_info.get('CFBundleExecutable')=='LocalCleanStatusDataSwitch','data module linkage')
-        require(data_info.get('CFBundleVersion')==data_info.get('CFBundleShortVersionString')=='0.3.11','data module version')
+        require(data_info.get('CFBundleVersion')==data_info.get('CFBundleShortVersionString')=='0.3.12','data module version')
         require(data_info.get('CCSModuleSize')=={'Portrait':{'Width':1,'Height':1},'Landscape':{'Width':1,'Height':1}},'data module 1x1')
         require(plistlib.loads((dyn/'LocalCleanStatusCellular.plist').read_bytes())=={'Filter':{'Bundles':['com.apple.springboard']}},'cellular injection must be SpringBoard only')
         require((pref/'LocalCleanStatusCellular.plist').is_file(),'cellular panel shipped')

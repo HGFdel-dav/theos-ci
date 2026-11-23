@@ -8,11 +8,10 @@ def need(v,label):
  global checks
  if not v:raise AssertionError(label)
  checks+=1
-base=json.loads((ROOT/'docs/BASELINE-0311-PRIORITY.json').read_text());allow=set(base['allowed_changes'])
-need(base['base_commit']=='f76479fe103b0b40faf3c2c82af0fb726cf64ac6' and len(base['files'])==146,'published 0.3.10 source freeze')
-allow.update({'docs/CELLULAR-WIFI-ENTRY-DESIGN.md','docs/BASELINE-0311-PRIORITY.json','STATUS.md','tools/test_cellular_button_priority.py'})
+base=json.loads((ROOT/'docs/BASELINE-0312-COLLAPSE-TRACE.json').read_text());allow=set(base['allowed_changes'])
+need(base['base_commit']=='1a36ffc4f9657841369348203c9c2bcdf9114f64' and len(base['files'])==151,'published 0.3.11 source freeze')
 for n,h in base['files'].items():
- if n not in allow:need((ROOT/n).is_file() and hashlib.sha256((ROOT/n).read_bytes()).hexdigest()==h,'0.3.10 protected file changed: '+n)
+ if n not in allow:need((ROOT/n).is_file() and hashlib.sha256((ROOT/n).read_bytes()).hexdigest()==h,'0.3.11 protected file changed: '+n)
 need('- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gesture' in hook and 'return [self.binding shouldBeginPressedGesture:gesture];' in hook,'independent target implements the callback required by the round hook')
 need('- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gesture' in hook and 'return [self.binding shouldBeginPressedGesture:gesture];' in hook,'target implements the gesture-begin callback used by round hook')
 need('BOOL original=cellular?NO:LCSOriginalRoundGestureShouldBegin(self,sel,gesture);' in hook and 'BOOL local=cellular&&state&&[state.target gestureRecognizerShouldBegin:gesture];' in hook and 'BOOL allowed=LCSRoundButtonAllowsGesture(cellular,original,local);' in hook and 'return allowed;' in hook,'native original forwards unrelated gestures; cellular exception uses its target delegate')

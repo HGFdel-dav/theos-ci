@@ -7,3 +7,10 @@ static inline bool LCSRoundButtonAllowsGesture(bool isCellularGesture,
                                                bool cellularLocalGate) {
     return isCellularGesture ? cellularLocalGate : nativeOriginalDecision;
 }
+
+typedef enum { LCSCellularExpansionUnknown=-1, LCSCellularExpansionCollapsed=0, LCSCellularExpansionExpanded=1 } LCSCellularExpansion;
+static inline bool LCSCellularMayBeginPress(LCSCellularExpansion expansion,
+                                            bool gestureIsOwned,
+                                            bool localGate) {
+    return gestureIsOwned && expansion==LCSCellularExpansionCollapsed && localGate;
+}

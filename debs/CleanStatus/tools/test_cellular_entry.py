@@ -22,7 +22,7 @@ need('BOOL local=cellular&&state&&[state.target gestureRecognizerShouldBegin:ges
 need('round-local-hook-installed' in hook and 'round-button-image-unverified' in hook, 'round-button hook validates image and reports failures')
 need('gestureRecognizer:(UIGestureRecognizer *)gesture shouldBeRequiredToFailByGestureRecognizer:' in hook, 'own recognizer supplies the failure rule')
 need('return ![other isKindOfClass:UIPanGestureRecognizer.class];' in hook, 'exact WiFi pan/tap rule')
-need('shouldRecognizeSimultaneouslyWithGestureRecognizer:' in hook and '(void)gesture;(void)other;return NO;' in hook, 'no simultaneous recognition')
+need('shouldRecognizeSimultaneouslyWithGestureRecognizer:' in hook and re.search(r'- \(BOOL\)gestureRecognizer:[^\n]*shouldRecognizeSimultaneouslyWithGestureRecognizer:[^\n]*\{.*?return NO;\s*\}',hook,re.S), 'no simultaneous recognition; diagnostics do not alter result')
 need('[button addGestureRecognizer:self.directPress]' in hook, 'recognizer on the native button, not the whole window')
 need('self.directPress.delegate=self.target' in hook, 'retained independent delegate')
 assignments = re.findall(r'([A-Za-z_][\w.]*)\.delegate\s*=(?!=)', hook)
