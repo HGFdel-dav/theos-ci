@@ -1,0 +1,120 @@
+name: MiniSight Rhythm OFF Experimental Build
+
+on:
+  push:
+    branches: [minisight-rhythm-off-20261124]
+    paths:
+      - 'debs/MiniSight/**'
+      - 'debs/MiniSightRhythmService/**'
+      - '.github/workflows/build-minisight-rhythm-off.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15-intel
+    strategy:
+      fail-fast: false
+      matrix:
+        scheme: [roothide]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            debs/MiniSight
+            debs/MiniSightRhythmService
+      - name: Portable regression checks
+        working-directory: debs/MiniSight
+        run: |
+          set -euo pipefail
+          test "$(sed -n 's/^Version: //p' control)" = "0.8.52~rhythm-off1"
+          export RHYTHM_OFF_OUT="$RUNNER_TEMP/rhythm-off-evidence"
+          mkdir -p "$RHYTHM_OFF_OUT"
+          plutil -convert xml1 -o "$RHYTHM_OFF_OUT/plugin-filter.plist" MiniSight.plist
+          plutil -convert xml1 -o "$RHYTHM_OFF_OUT/service-filter.plist" ../MiniSightRhythmService/MiniSightRhythmService.plist
+          python3 -c 'import sys,plistlib; assert plistlib.load(open(sys.argv[1], "rb")) == {"Filter":{"Bundles":["com.apple.springboard"]}}; assert plistlib.load(open(sys.argv[2], "rb")) == {"Filter":{"Executables":["mediaserverd"]}}' "$RHYTHM_OFF_OUT/plugin-filter.plist" "$RHYTHM_OFF_OUT/service-filter.plist"
+          python3 -B scripts/test_minisight_rhythm_off_20261124.py | tee "$RHYTHM_OFF_OUT/host-off.log"
+          python3 -B scripts/test_minisight_rhythm_paths_20261124.py --mutations | tee "$RHYTHM_OFF_OUT/host-paths.log"
+          for group in Protocol ActivityGate Pacing SourceToken; do
+            clang++ -std=c++17 -O2 -Wall -Wextra -Werror "../MiniSightRhythmService/upstream/Tests/${group}Tests.cpp" -o "$RUNNER_TEMP/rhythm-policy-$group"
+            "$RUNNER_TEMP/rhythm-policy-$group" | tee "$RHYTHM_OFF_OUT/upstream-$group.log"
+          done
+          python3 tools/check_host.py
+          python3 tools/check_repairs_20261107.py
+          python3 scripts/test_minisight_lyrics_20261116.py --plugin-root . --require-native
+          python3 scripts/test_minisight_media_repair_20261119.py --require-native
+          python3 scripts/test_minisight_music_monitor_20261116.py --plugin-root . --require-native
+          python3 tests/test_name_wake_retirement_20261119.py --require-native
+          python3 scripts/test_minisight_presentation_readback_20261116.py --require-native
+          python3 tools/test_approval_summary.py --cc clang
+          clang -std=c11 -Wall -Wextra -Werror -pedantic tests/pet_behavior_test.c -lm -o "$RUNNER_TEMP/ms-pet-behavior"
+          "$RUNNER_TEMP/ms-pet-behavior"
+          clang -std=c11 -O2 -Wall -Wextra -Werror tests/chat/chat_layout_test.c -lm -o "$RUNNER_TEMP/ms-chat-layout"
+          "$RUNNER_TEMP/ms-chat-layout"
+          clang -std=c11 -O2 -Wall -Wextra -Werror tests/recorder/recorder_test.c -o "$RUNNER_TEMP/ms-recorder"
+          "$RUNNER_TEMP/ms-recorder"
+          clang -std=c11 -O2 -Wall -Wextra -Werror tests/layout_test.c -lm -o "$RUNNER_TEMP/ms-layout"
+          "$RUNNER_TEMP/ms-layout"
+          clang -std=c11 -O2 -Wall -Wextra -Werror tests/gravity_test.c -lm -o "$RUNNER_TEMP/ms-gravity"
+          "$RUNNER_TEMP/ms-gravity"
+          clang -std=c11 -O2 -Wall -Wextra -Werror tests/chat/chat_test.c tools/chat/ChatCore.c -o "$RUNNER_TEMP/ms-chat"
+          "$RUNNER_TEMP/ms-chat"
+          clang -std=c11 -O2 -Wall -Wextra -Werror tests/physics_fling_20261107.c -lm -o "$RUNNER_TEMP/ms-fling"
+          "$RUNNER_TEMP/ms-fling"
+          clang -std=c11 -O2 -Wall -Wextra -Werror tests/chat/layout_follow_20261107.c -lm -o "$RUNNER_TEMP/ms-follow"
+          "$RUNNER_TEMP/ms-follow"
+          python3 tools/chat/run_local_checks.py
+          python3 tools/chat/check_chat_layout.py --cc clang
+          python3 -B -m unittest discover -s tests/diagnostics -p 'test_*.py' -v
+      - name: Toolchain
+        env:
+          DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+        run: |
+          set -euo pipefail
+          brew install ldid xz dpkg
+          git clone --depth 1 --recursive https://github.com/roothide/theos.git "$HOME/theos"
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/xybp888/iOS-SDKs.git "$HOME/sdks"
+          (cd "$HOME/sdks" && git sparse-checkout set iPhoneOS15.5.sdk)
+      - name: Build
+        working-directory: debs/MiniSight
+        env:
+          DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+        run: |
+          set -euo pipefail
+          export THEOS="$HOME/theos"
+          SDK_PATH="$(find "$HOME/sdks" -maxdepth 3 -type d -name 'iPhoneOS15.5.sdk' -print -quit)"
+          if [ -z "$SDK_PATH" ]; then echo 'SDK not found:'; ls -la "$HOME/sdks"; exit 1; fi
+          mkdir -p "$HOME/theos/sdks"
+          cp -R "$SDK_PATH" "$HOME/theos/sdks/"
+          export RHYTHM_OFF_OUT="$RUNNER_TEMP/rhythm-off-evidence"
+          python3 scripts/rhythm_off/test_native.py --ios-sdk "$SDK_PATH"
+          checks_status=0
+          python3 tools/check_music_actions_20261116.py --ci --ios-sdk "$SDK_PATH" || checks_status=$?
+          make clean
+          build_status=0
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=${{ matrix.scheme }} || build_status=$?
+          if [ "$checks_status" -ne 0 ] || [ "$build_status" -ne 0 ]; then
+            echo "FAIL closed: native_checks=$checks_status theos_build=$build_status; no release artifact"
+            exit 1
+          fi
+          (cd ../MiniSightRhythmService && make clean && make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide)
+          mkdir -p out
+          cp ../MiniSightRhythmService/packages/*.deb out/
+          cp packages/*.deb out/
+          (cd out && shasum -a 256 *.deb > SHA256SUMS)
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: minisight-rhythm-off-${{ matrix.scheme }}
+          path: debs/MiniSight/out/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rhythm-off-test-evidence
+          path: ${{ runner.temp }}/rhythm-off-evidence/
+          if-no-files-found: warn

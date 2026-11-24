@@ -1,0 +1,9 @@
+Package: com.minisight.rhythmservice.local-candidate
+Name: MiniSightRhythmService
+Version: 0.1.0~rhythm-off1
+Architecture: iphoneos-arm64e
+Depends: mobilesubstrate, firmware (>= 15.5)
+Description: Experimental default-OFF rhythm service; UNINSTALLED and NO AUDIO validation
+Maintainer: MiniSight local adaptation
+Author: Ryan Nair; MiniSight local adaptation
+Section: Development
