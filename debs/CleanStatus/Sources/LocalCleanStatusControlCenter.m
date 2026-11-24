@@ -59,8 +59,9 @@ static BOOL lcscc_otherPickerEnabled(LCSCCTargetKind kind) {
     // Recorded video shows the press landing on the big Wi-Fi tile inside the
     // expanded connectivity module, so both collapsed and expanded anchors are
     // accepted. Lock/visibility/enabled still gate every presentation.
+    BOOL attached=lcscc_viewVisible(self.button)&&self.button.window!=nil;
     return local_cleanstatus_ccCanPresent(local_cleanstatus_currentFlags(),(LocalCleanStatusCCKind)self.kind,
-        local_cleanstatus_ccUnlocked(),NO,lcscc_viewVisible(self.button),
+        local_cleanstatus_ccUnlocked(),self.expanded,attached,
         lcscc_presentedList!=nil,lcscc_otherPickerEnabled(self.kind));
 }
 - (void)bind {
@@ -96,9 +97,8 @@ static BOOL lcscc_otherPickerEnabled(LCSCCTargetKind kind) {
     if([top isKindOfClass:UIAlertController.class])return;
     LCSCCListViewController *list=[[LCSCCListViewController alloc] initWithKind:self.kind];
     __weak typeof(self) weakSelf=self;
-    list.mayContinue=^{
-        BOOL ok=weakSelf.controller!=nil&&!weakSelf.expanded&&lcscc_viewVisible(weakSelf.button);
-        return ok;
+    list.mayContinue=^BOOL{
+        return weakSelf.controller!=nil;
     };
     list.didClose=^{lcscc_presentedList=nil;};
     lcscc_presentedList=list;
@@ -152,8 +152,7 @@ static void lcscc_didAppearWiFi(id self,SEL sel,BOOL animated){lcscc_wifiAppeare
 static void lcscc_didAppearBluetooth(id self,SEL sel,BOOL animated){lcscc_bluetoothAppeared(self,sel,animated);[lcscc_state(self,LCSCCTargetKindBluetooth) bind];}
 static void lcscc_expanded(id self,BOOL expanded,LCSCCTargetKind kind) {
     LCSCCControllerState *state=lcscc_state(self,kind);state.expanded=expanded;
-    if(expanded)[lcscc_presentedList close];
-    else[state bind];
+    if(!expanded)[state bind];
 }
 static void lcscc_willExpandWiFi(id self,SEL sel,BOOL expanded){lcscc_wifiExpanded(self,sel,expanded);lcscc_expanded(self,expanded,LCSCCTargetKindWiFi);}
 static void lcscc_willExpandBluetooth(id self,SEL sel,BOOL expanded){lcscc_bluetoothExpanded(self,sel,expanded);lcscc_expanded(self,expanded,LCSCCTargetKindBluetooth);}

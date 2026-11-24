@@ -24,8 +24,8 @@ info=plistlib.loads((ROOT/'LocalCleanStatusPrefs/Resources/Info.plist').read_byt
 need(entry['detail']==info['NSPrincipalClass']=='LocalCleanStatusRootListController','panel controller identity')
 need(entry['bundle']==info['CFBundleExecutable']=='LocalCleanStatusPrefs','bundle executable identity')
 need(entry['isController'] is True,'real controller enabled')
-need(info['CFBundleVersion']==info['CFBundleShortVersionString']=='0.3.13','panel version')
-need('Version: 0.3.13' in text('control'),'package version')
+need(info['CFBundleVersion']==info['CFBundleShortVersionString']=='0.3.14','panel version')
+need('Version: 0.3.14' in text('control'),'package version')
 need('Maintainer: Niubiprass' in text('control') and 'Author: Niubiprass' in text('control'),'package author')
 need(entry['icon']=='icon.png' and all(('Resources/'+n) in text('LocalCleanStatusPrefs/Makefile') for n in ('icon.png','icon@2x.png','icon@3x.png')),'three original PreferenceLoader icons')
 for name,size in (('icon.png',29),('icon@2x.png',58),('icon@3x.png',87)):
@@ -113,6 +113,9 @@ need('SBLockStateAggregator' in text('Shared/LocalCleanStatusCCEnvironment.m') a
 need('CCUIRoundButton' in cc and 'addGestureRecognizer' in cc,'long press bound to round button')
 need('UIGestureRecognizerStateBegan' in cc and 'LCSCCPress' in cc,'fires on began only through the custom recognizer')
 need('local_cleanstatus_ccCanPresent' in cc and 'local_cleanstatus_ccNextGeneration' in text('Sources/LocalCleanStatusCCListViewController.m'),'policy gates presentation and generations')
+need('(void)expanded;' in policy and '&& !expanded &&' not in policy,'CC presentation allows overlay in compact and expanded layouts')
+need('if(!expanded)[state bind];' in cc and 'if(expanded)[lcscc_presentedList close]' not in cc,'native CC expansion never auto-closes an active Wi-Fi/BT overlay')
+need('return weakSelf.controller!=nil;' in cc and '!weakSelf.expanded' not in cc,'Wi-Fi/BT panel continuation remains valid while expanded')
 need('MobileWiFi.framework' in backend and 'WiFiDeviceClientScanAsync' in backend,'MobileWiFi scan backend')
 need('WiFiDeviceClientAssociateAsync' in backend and 'WiFiNetworkGetSSID' in backend,'associate backend')
 need('BluetoothManager.framework' in backend and 'pairedDevices' in backend,'bluetooth backend')
@@ -213,6 +216,7 @@ need('powerRow.hidden=YES' in listvc,'the power row starts hidden so the on-stat
 need('self.powerRow.hidden=!off;' in listvc and 'powerHeight.constant=off?52:0' in listvc,'the power row appears only while the interface is off')
 need('UIControlEventValueChanged' in listvc and 'applyPoweredOff' in listvc,'the switch drives the interface both ways')
 
+subprocess.run([sys.executable, str(ROOT/'tools/test_unified_expansion.py')], check=True)
 subprocess.run([sys.executable, str(ROOT/'tools/check_preserved_features.py')], check=True)
 subprocess.run([sys.executable, str(ROOT/'tools/check_animations.py')], check=True)
 subprocess.run([sys.executable, str(ROOT/'tools/test_panel_routes.py')], check=True)

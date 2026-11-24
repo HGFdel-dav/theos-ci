@@ -10,7 +10,7 @@ int main(void) {
             bool enabled=mask&1,unlocked=mask&2,expanded=mask&4,attached=mask&8;
             bool presenting=mask&16,conflict=mask&32,master=mask&64;
             uint32_t flags=local_cleanstatus_effectiveFlags(master,enabled?bit:0);
-            bool expected=enabled&&master&&unlocked&&!expanded&&attached&&!presenting&&!conflict;
+            bool expected=enabled&&master&&unlocked&&attached&&!presenting&&!conflict;
             assert(local_cleanstatus_ccCanPresent(flags,(LocalCleanStatusCCKind)kind,
                 unlocked,expanded,attached,presenting,conflict)==expected); checks++;
         }

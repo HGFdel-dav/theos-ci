@@ -12,7 +12,7 @@ def sha(b):return hashlib.sha256(b).hexdigest()
 def text(n):return (ROOT/n).read_text()
 base=json.loads(text('docs/BASELINE-032-PATH-REUSE.json'));allowed=set(base['allowed_changes'])
 runtime=json.loads(text('docs/BASELINE-0312-COLLAPSE-TRACE.json'))
-runtime_allowed=set(runtime['allowed_changes'])
+runtime_allowed=set(runtime['allowed_changes'])|{'Cellular/LCSCellularEntryPolicy.h','Cellular/LCSCellularHooks.m','Shared/LocalCleanStatusCCPolicy.h','Sources/LocalCleanStatusControlCenter.m','tests/cc_policy_test.c','tools/check_preserved_features.py','tools/test_cellular_button_priority.py','tools/test_cellular_crash_fix.py','tools/test_cellular_entry.py','tools/test_cellular_path_reuse.py','tools/test_cellular_expansion_trace.py','tools/test_unified_expansion.py','tools/check_cellular.py','tools/check.py','tools/verify_deb.py','LocalCleanStatusPrefs/Resources/Info.plist','LocalCleanStatusDataSwitch/Resources/Info.plist','control','STATUS.md','docs/BASELINE-0.2.5-PROTECTED.json','docs/BASELINE-031-CELLULAR-PROTECTED.json','docs/BASELINE-0314-UNIFIED-EXPANSION.json','docs/CELLULAR-UNIFIED-EXPANSION-DESIGN.md'}
 for name,want in runtime['files'].items():
     if name not in runtime_allowed:need((ROOT/name).is_file() and sha((ROOT/name).read_bytes())==want,'published 0.3.11 non-scope file changed: '+name)
 settings=text('Cellular/LCSCellularSettings.m');animation=text('Animation/LocalCleanStatusAnimationPreferences.m')

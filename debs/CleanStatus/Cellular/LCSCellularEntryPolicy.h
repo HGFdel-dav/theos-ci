@@ -12,7 +12,9 @@ typedef enum { LCSCellularExpansionUnknown=-1, LCSCellularExpansionCollapsed=0, 
 static inline bool LCSCellularMayBeginPress(LCSCellularExpansion expansion,
                                             bool gestureIsOwned,
                                             bool localGate) {
-    return gestureIsOwned && expansion==LCSCellularExpansionCollapsed && localGate;
+    bool validExpansion=expansion==LCSCellularExpansionUnknown||
+        expansion==LCSCellularExpansionCollapsed||expansion==LCSCellularExpansionExpanded;
+    return validExpansion && gestureIsOwned && localGate;
 }
 static inline bool LCSCellularWindowFallbackAllows(bool usingWindowFallback,
                                                     bool directTouch,

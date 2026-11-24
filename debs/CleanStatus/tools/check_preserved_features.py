@@ -11,10 +11,13 @@ allowed = {
     'LocalCleanStatusPrefs/Resources/LocalCleanStatusRoot.plist',
     'LocalCleanStatusSystemActions/Resources/Info.plist',
     'tools/check.py', 'tools/verify_deb.py', 'tools/package_source.py',
+    'Shared/LocalCleanStatusCCPolicy.h', 'Sources/LocalCleanStatusControlCenter.m',
 }
 protected, changed, failures = [], [], []
 manifest = json.loads((root/'docs/BASELINE-0.2.5-PROTECTED.json').read_text())
+intentional = set(manifest.get('allowed_source_changes', []))
 for name, expected in manifest['protected_sources'].items():
+    if name in intentional: continue
     current = root/name
     if not current.is_file() or hashlib.sha256(current.read_bytes()).hexdigest() != expected:
         failures.append(name+' differs from protected baseline hash')

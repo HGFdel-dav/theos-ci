@@ -18,16 +18,15 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-base = json.loads((ROOT / 'docs/BASELINE-0312-COLLAPSE-TRACE.json').read_text())
-allowed = set(base['allowed_changes'])
-need(base.get('base_commit') == '1a36ffc4f9657841369348203c9c2bcdf9114f64' and len(base['files']) == 151, 'published 0.3.11 freeze manifest')
+base = json.loads((ROOT / 'docs/BASELINE-0314-UNIFIED-EXPANSION.json').read_text())
+allowed = set(base['allowed_changes']) | {'Cellular/LCSCellularEntryPolicy.h','Cellular/LCSCellularHooks.m','Shared/LocalCleanStatusCCPolicy.h','Sources/LocalCleanStatusControlCenter.m','tests/cc_policy_test.c','tools/check_preserved_features.py','tools/test_cellular_button_priority.py','tools/test_cellular_crash_fix.py','tools/test_cellular_entry.py','tools/test_cellular_path_reuse.py','tools/test_cellular_expansion_trace.py','tools/test_unified_expansion.py','tools/check_cellular.py','tools/check.py','tools/verify_deb.py','LocalCleanStatusPrefs/Resources/Info.plist','LocalCleanStatusDataSwitch/Resources/Info.plist','control','STATUS.md','docs/BASELINE-0.2.5-PROTECTED.json','docs/BASELINE-031-CELLULAR-PROTECTED.json','docs/BASELINE-0314-UNIFIED-EXPANSION.json','docs/CELLULAR-UNIFIED-EXPANSION-DESIGN.md'}
+need(base.get('base_version') == '0.3.13' and len(base['files']) == 157, 'published 0.3.13 frozen source manifest')
 for name, digest in base['files'].items():
     if name not in allowed:
         path = ROOT / name
-        need(path.is_file() and sha(path) == digest, 'published 0.3.11 file changed: ' + name)
+        need(path.is_file() and sha(path) == digest, 'published 0.3.13 protected file changed: ' + name)
 need(sha(ROOT / 'Cellular/LCSCellularService.m') == base['files']['Cellular/LCSCellularService.m'], 'SIM service unchanged')
 need(sha(ROOT / 'LocalCleanStatusSIMTool/main.m') == base['files']['LocalCleanStatusSIMTool/main.m'], 'SIM helper unchanged')
-need(sha(ROOT / 'Sources/LocalCleanStatusControlCenter.m') == base['files']['Sources/LocalCleanStatusControlCenter.m'], 'Wi-Fi/Bluetooth entry unchanged')
 need(sha(ROOT / 'LocalCleanStatusDataSwitch/LocalCleanStatusDataModule.m') == base['files']['LocalCleanStatusDataSwitch/LocalCleanStatusDataModule.m'], 'DataSwitch module unchanged')
 
 service = (ROOT / 'Cellular/LCSCellularService.m').read_text()

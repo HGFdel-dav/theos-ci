@@ -28,7 +28,8 @@ received=body('- (void)receivedTouch:(UIGestureRecognizer *)gesture {')
 trace=body('- (void)traceGesture:(UIGestureRecognizer *)gesture phase:(NSString *)phase {')
 inventory=body('- (void)logGestureInventory {')
 yield_rule=body('- (BOOL)shouldYieldForGesture:(UIGestureRecognizer *)gesture other:(UIGestureRecognizer *)other {')
-need('LCSCellularMayBeginPress(expansion,owned,local)' in begin,'production begin calls actual C gate')
+need('bool allowed=LCSCellularMayBeginPress(expansion,owned,local);' in begin,'production begin calls actual C gate')
+need('bool validExpansion=expansion==LCSCellularExpansionUnknown||' in policy and 'expansion==LCSCellularExpansionExpanded;' in policy,'unknown/collapsed/expanded accepted; invalid state rejected')
 need('BOOL direct=gesture&&self.directPress&&gesture==self.directPress;' in begin,'direct recognizer identity checked')
 need('BOOL fallback=gesture&&self.windowPress&&gesture==self.windowPress;' in begin,'fallback recognizer identity checked')
 need('BOOL owned=direct||fallback;' in begin,'nil or foreign recognizer is not owned')
@@ -42,12 +43,11 @@ need('LCSAssumeCollapsed' not in hook and 'initial-collapsed' not in hook,'no lo
 need('load-await-transition' in hook and 'appear-await-transition' in hook,'unknown initial state observable')
 need('self.expanded=' not in unbind and 'self.expansionKnown=' not in unbind,'unbind cannot reset expanded state to collapsed')
 need('traceBudget=0;self.traceGeneration++' in unbind,'unbind cancels pending diagnostics')
-need('expansion-unknown' in press and 'already-expanded' in press,'action rechecks expansion before present')
-need(press.index('already-expanded')<press.index('presentViewController:panel'),'race cannot present after expanded callback')
-need('state.expansionKnown&&!state.expanded' in press,'ongoing panel invalidated on expansion')
-need('!self.expansionKnown||self.expanded||LCSPresentedSIM' in hook,'optional preview also requires known collapsed')
-need('LCSOriginalExpanded(self,sel,expanded)' in transition,'system expansion callback still forwards')
-need('if(expanded&&state.panel)[state.panel close]' in transition,'old panel closes on expansion')
+need('state.panel==weakPanel&&state.controller' in press and 'LCSCellularForeground&&LCSCellularIsUnlocked()' in press,'panel continuation retains owner, lock and feature safety')
+need('state.expansionKnown&&!state.expanded' not in press,'ongoing panel is not invalidated when module expands')
+need('if(expanded&&state.panel)[state.panel close]' not in transition,'native expansion callback never closes an open SIM card')
+need('return validExpansion && gestureIsOwned && localGate;' in policy,'unknown/collapsed/expanded all pass only for own gesture and local guards')
+need('expansion-unknown' not in press and 'already-expanded' not in press,'expanded/unknown do not reject actual presentation path')
 need('BOOL original=cellular?NO:LCSOriginalRoundGestureShouldBegin(self,sel,gesture);' in round_hook,'foreign gesture invokes original exactly once')
 need(round_hook.count('LCSOriginalRoundGestureShouldBegin(')==1,'no double native callback')
 need('BOOL allowed=LCSRoundButtonAllowsGesture(cellular,original,local);' in round_hook and 'return allowed;' in round_hook,'all foreign decisions forwarded unchanged')
@@ -75,12 +75,16 @@ with tempfile.TemporaryDirectory(prefix='lcs312-gate-') as temp:
  d=Path(temp);exe=d/'gate';src=ROOT/'tests/cellular/expansion_gate_test.c'
  def run(header):
   (d/'LCSCellularEntryPolicy.h').write_text(header)
-  subprocess.run(['cc','-std=c11','-O2','-Wall','-Wextra','-Werror','-I'+str(d),str(src),'-o',str(exe)],check=True)
+  compiled=subprocess.run(['cc','-std=c11','-O2','-Wall','-Wextra','-Werror','-I'+str(d),str(src),'-o',str(exe)],text=True,capture_output=True)
+  if compiled.returncode:return compiled
   return subprocess.run([str(exe)],text=True,capture_output=True)
  good=run(policy);need(good.returncode==0,'actual production C predicate execution');print(good.stdout.strip())
- original='return gestureIsOwned && expansion==LCSCellularExpansionCollapsed && localGate;'
- for replacement in ['return gestureIsOwned && expansion!=LCSCellularExpansionExpanded && localGate;', '(void)gestureIsOwned; return expansion==LCSCellularExpansionCollapsed && localGate;', '(void)localGate; return gestureIsOwned && expansion==LCSCellularExpansionCollapsed;']:
-  need(original in policy,'mutation anchor present')
-  mutant=run(policy.replace(original,replacement))
-  need(mutant.returncode!=0,'reject mutation '+replacement)
+ original='bool validExpansion=expansion==LCSCellularExpansionUnknown||'
+ need(original in policy,'valid expansion allowlist anchor present')
+ mutations=[policy.replace('expansion==LCSCellularExpansionExpanded;','expansion==LCSCellularExpansionCollapsed;'),
+  policy.replace('return validExpansion && gestureIsOwned && localGate;','return gestureIsOwned && localGate;'),
+  policy.replace('return validExpansion && gestureIsOwned && localGate;','return validExpansion && localGate;')]
+ for mutant_header in mutations:
+  mutant=run(mutant_header)
+  need(mutant.returncode!=0,'reject invalid expansion or missing ownership/local gate mutation')
 print(f'PASS expansion trace source contract: {checks}; 3 real C mutations rejected; no UIKit/device execution')

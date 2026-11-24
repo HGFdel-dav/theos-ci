@@ -47,6 +47,7 @@ static void LCSLogHookFailure(unsigned bit,NSString *reason) {
 @property(nonatomic) BOOL layoutPending;
 @property(nonatomic) BOOL expanded;
 @property(nonatomic) BOOL expansionKnown;
+@property(nonatomic) BOOL expansionOverlayActive;
 @property(nonatomic) NSUInteger traceBudget;
 @property(nonatomic) NSUInteger traceGeneration;
 @property(nonatomic) CFTimeInterval lastTouchTrace;
@@ -189,7 +190,7 @@ static BOOL LCSTapContract(UIControl *button) {
     if(direct)local=local&&LCSDirectTouch(self.button);
     if(fallback)local=LCSCellularWindowFallbackAllows(YES,!LCSDirectTouch(self.button),LCSVisible(self.button),local);
     bool allowed=LCSCellularMayBeginPress(expansion,owned,local);
-    NSString *reason=!owned?@"not-owned":(!self.expansionKnown?@"state-unknown":(self.expanded?@"already-expanded":(allowed?(fallback?@"fallback-eligible":@"collapsed-eligible"):@"local-gate-failed")));
+    NSString *reason=!owned?@"not-owned":(!self.expansionKnown?@"state-unknown":(self.expanded?@"state-expanded":(allowed?(fallback?@"fallback-eligible":@"entry-eligible"): @"local-gate-failed")));
     NSString *slug=[NSString stringWithFormat:@"begin-%@-g-%@-s-%@",reason,LCSGestureKind(gesture),LCSGestureStateSlug(gesture.state)];
     NSString *limited=slug.length<=48?slug:[slug substringToIndex:48];
     LCSCellularLog(LCSCellularSIMManager,@"entry",limited,0);
@@ -250,7 +251,7 @@ static BOOL LCSTapContract(UIControl *button) {
 }
 - (BOOL)ownsPreview:(UIPreviewInteraction *)interaction container:(UIViewController *)container {
     UILongPressGestureRecognizer *press=LCSDirectTouch(self.button)?self.directPress:self.windowPress;
-    if(!self.expansionKnown||self.expanded||LCSPresentedSIM||!press.enabled||press.numberOfTouches==0)return NO;
+    if(!press||LCSPresentedSIM||!press.enabled||press.numberOfTouches==0)return NO;
     if(!self.controller.isViewLoaded||![self.controller.view isDescendantOfView:container.view])return NO;
     if(![interaction isKindOfClass:UIPreviewInteraction.class])return NO;
     UIView *view=interaction.view;
@@ -312,8 +313,6 @@ static BOOL LCSTapContract(UIControl *button) {
     if(!LCSCellularFeatureEnabled(LCSCellularSIMManager))reason=@"feature-disabled";
     else if(!LCSCellularIsSpringBoard())reason=@"wrong-process";
     else if(!LCSCellularIsUnlocked())reason=@"device-locked";
-    else if(!self.expansionKnown)reason=@"expansion-unknown";
-    else if(self.expanded)reason=@"already-expanded";
     else if(!self.appeared||!self.controller||self.controller.isBeingDismissed||self.controller.isBeingPresented)reason=@"controller-unavailable";
     else if(!self.button.window||self.button.window!=self.boundWindow||self.button.window!=self.controller.view.window)reason=@"button-window-mismatch";
     else if(!LCSVisible(self.button))reason=@"button-not-visible";
@@ -326,10 +325,11 @@ static BOOL LCSTapContract(UIControl *button) {
     if(!top||top.isBeingDismissed||top.isBeingPresented){LCSCellularLog(LCSCellularSIMManager,@"press",@"presenter-unavailable",0);return;}
     LCSCellularSIMController *panel=[LCSCellularSIMController new];self.panel=panel;LCSPresentedSIM=panel;
     __weak typeof(self) weakSelf=self;__weak LCSCellularSIMController *weakPanel=panel;
-    panel.mayContinue=^BOOL{LCSCellularButtonState *state=weakSelf;return state&&state.appeared&&state.expansionKnown&&!state.expanded&&
-      !state.controller.isBeingDismissed&&state.button.window==state.boundWindow&&LCSVisible(state.button)&&
-      LCSCellularFeatureEnabled(LCSCellularSIMManager)&&LCSCellularIsUnlocked();};
-    panel.didClose=^{LCSCellularButtonState *state=weakSelf;if(state.panel==weakPanel)state.panel=nil;if(LCSPresentedSIM==weakPanel)LCSPresentedSIM=nil;};
+    panel.mayContinue=^BOOL{LCSCellularButtonState *state=weakSelf;return state&&state.panel==weakPanel&&state.controller&&
+      !state.controller.isBeingDismissed&&(state.expansionOverlayActive||
+      (state.appeared&&state.button.window==state.boundWindow&&LCSVisible(state.button)))&&
+      LCSCellularFeatureEnabled(LCSCellularSIMManager)&&LCSCellularForeground&&LCSCellularIsUnlocked();};
+    panel.didClose=^{LCSCellularButtonState *state=weakSelf;if(state.panel==weakPanel){state.panel=nil;state.expansionOverlayActive=NO;}if(LCSPresentedSIM==weakPanel)LCSPresentedSIM=nil;};
     [top presentViewController:panel animated:YES completion:^{
         LCSCellularLog(LCSCellularSIMManager,@"present",panel.presentingViewController?@"sim-manager":@"presentation-missing",0);
         if(!panel.mayContinue||!panel.mayContinue())[panel close];
@@ -360,7 +360,16 @@ static void LCSAppeared(id self,SEL sel,BOOL animated) {
 }
 static void LCSDisappeared(id self,SEL sel,BOOL animated) {
     LCSOriginalDisappear(self,sel,animated);LCSCellularButtonState *s=objc_getAssociatedObject(self,&LCSCellularStateKey);
-    if(s&&(!s.button.window||!LCSVisible(s.button))){s.appeared=NO;[s unbind];if(s.panel)[s.panel close];}
+    if(s&&(!s.button.window||!LCSVisible(s.button))) {
+        BOOL transitioningToExpanded=s.expansionOverlayActive&&s.panel!=nil;
+        s.appeared=NO;
+        if(transitioningToExpanded) {
+            s.expansionOverlayActive=YES;
+            [s unbind];LCSCellularLog(LCSCellularSIMManager,@"panel",@"keep-during-expansion",0);
+        } else {
+            [s unbind];if(s.panel)[s.panel close];
+        }
+    }
 }
 static void LCSLayoutSubviews(id self,SEL sel) {
     LCSOriginalLayout(self,sel);
@@ -371,9 +380,9 @@ static void LCSWillExpand(id self,SEL sel,BOOL expanded) {
     LCSCellularButtonState *state=LCSState(self);state.expansionKnown=YES;state.expanded=expanded;
     LCSCellularLog(LCSCellularSIMManager,@"expansion",expanded?@"transition-expanded":@"transition-collapsed",0);
     [state traceGesture:state.directPress phase:@"on-transition"];[state logGestureInventory];
+    if(expanded&&state.panel)state.expansionOverlayActive=YES;
     LCSOriginalExpanded(self,sel,expanded);
-    if(expanded&&state.panel)[state.panel close];
-    else [state bind];
+    [state bind];
 }
 static BOOL LCSCellularOwnsRoundGesture(id button,id gesture) {
     LCSCellularButtonState *state=objc_getAssociatedObject(button,&LCSCellularButtonKey);

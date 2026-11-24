@@ -5,16 +5,18 @@ static unsigned checks;
 #define T(v) do{checks++;if(!(v)){fprintf(stderr,"expansion gate failed at %d\n",__LINE__);exit(1);}}while(0)
 int main(void){
  const LCSCellularExpansion states[]={LCSCellularExpansionUnknown,LCSCellularExpansionCollapsed,LCSCellularExpansionExpanded,(LCSCellularExpansion)2,(LCSCellularExpansion)-2};
- for(unsigned i=0;i<5;i++)for(unsigned own=0;own<2;own++)for(unsigned local=0;local<2;local++)
-  T(LCSCellularMayBeginPress(states[i],own,local)==(states[i]==LCSCellularExpansionCollapsed&&own&&local));
- T(!LCSCellularMayBeginPress(LCSCellularExpansionUnknown,true,true));
- T(!LCSCellularMayBeginPress(LCSCellularExpansionExpanded,true,true));
+ for(unsigned i=0;i<5;i++)for(unsigned own=0;own<2;own++)for(unsigned local=0;local<2;local++) {
+  bool valid=states[i]==LCSCellularExpansionUnknown||states[i]==LCSCellularExpansionCollapsed||states[i]==LCSCellularExpansionExpanded;
+  T(LCSCellularMayBeginPress(states[i],own,local)==(valid&&own&&local));
+ }
+ T(LCSCellularMayBeginPress(LCSCellularExpansionUnknown,true,true));
+ T(LCSCellularMayBeginPress(LCSCellularExpansionExpanded,true,true));
  T(LCSCellularMayBeginPress(LCSCellularExpansionCollapsed,true,true));
- /* Model a callback ordering race using the ACTUAL production predicate. */
+ /* Native transition may precede, follow, or be absent: all valid states work. */
  LCSCellularExpansion current=LCSCellularExpansionUnknown;
- T(!LCSCellularMayBeginPress(current,true,true));
+ T(LCSCellularMayBeginPress(current,true,true));
  current=LCSCellularExpansionCollapsed;T(LCSCellularMayBeginPress(current,true,true));
- current=LCSCellularExpansionExpanded;T(!LCSCellularMayBeginPress(current,true,true));
+ current=LCSCellularExpansionExpanded;T(LCSCellularMayBeginPress(current,true,true));
  current=LCSCellularExpansionCollapsed;T(LCSCellularMayBeginPress(current,true,true));
  T(!LCSCellularMayBeginPress(current,true,false)); /* OFF/lock/cancel gate */
  T(!LCSCellularMayBeginPress(current,false,true)); /* unrelated recognizer */

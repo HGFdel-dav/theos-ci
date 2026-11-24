@@ -10,7 +10,11 @@
     "LocalCleanStatusPrefs/Resources/LocalCleanStatusRoot.plist",
     "tools/check.py",
     "tools/check_source_delimiters.py",
-    "tools/verify_deb.py"
+    "tools/verify_deb.py",
+    "Cellular/LCSCellularEntryPolicy.h",
+    "Cellular/LCSCellularHooks.m",
+    "docs/BASELINE-0.2.5-PROTECTED.json",
+    "docs/BASELINE-031-CELLULAR-PROTECTED.json"
   ],
   "files": {
     "Animation/COMPATIBILITY.md": "e45babb192fd96724b9a66533249990d361a2587ba2386729284b8f0e8dd9a2d",
@@ -96,11 +100,11 @@
     {
       "cell": "PSGroupCell",
       "label": "CleanStatus 0.2.0",
-      "footerText": "除“隐藏未知部件提示”默认开启外，其余默认关闭。修改后点右上角“应用”。关闭总开关并应用可恢复系统显示。"
+      "footerText": "\u9664\u201c\u9690\u85cf\u672a\u77e5\u90e8\u4ef6\u63d0\u793a\u201d\u9ed8\u8ba4\u5f00\u542f\u5916\uff0c\u5176\u4f59\u9ed8\u8ba4\u5173\u95ed\u3002\u4fee\u6539\u540e\u70b9\u53f3\u4e0a\u89d2\u201c\u5e94\u7528\u201d\u3002\u5173\u95ed\u603b\u5f00\u5173\u5e76\u5e94\u7528\u53ef\u6062\u590d\u7cfb\u7edf\u663e\u793a\u3002"
     },
     {
       "cell": "PSSwitchCell",
-      "label": "启用插件",
+      "label": "\u542f\u7528\u63d2\u4ef6",
       "key": "enabled",
       "defaults": "com.local.cleanstatus",
       "default": false,
@@ -109,12 +113,12 @@
     },
     {
       "cell": "PSGroupCell",
-      "label": "状态栏",
-      "footerText": "只隐藏状态图标，不停用系统功能；Siri/CarPlay 仅针对状态栏指示，不隐藏 Siri 界面或车辆仪表。"
+      "label": "\u72b6\u6001\u680f",
+      "footerText": "\u53ea\u9690\u85cf\u72b6\u6001\u56fe\u6807\uff0c\u4e0d\u505c\u7528\u7cfb\u7edf\u529f\u80fd\uff1bSiri/CarPlay \u4ec5\u9488\u5bf9\u72b6\u6001\u680f\u6307\u793a\uff0c\u4e0d\u9690\u85cf Siri \u754c\u9762\u6216\u8f66\u8f86\u4eea\u8868\u3002"
     },
     {
       "cell": "PSSwitchCell",
-      "label": "隐藏飞行模式",
+      "label": "\u9690\u85cf\u98de\u884c\u6a21\u5f0f",
       "key": "hideAirplane",
       "defaults": "com.local.cleanstatus",
       "default": false,
@@ -123,7 +127,7 @@
     },
     {
       "cell": "PSSwitchCell",
-      "label": "隐藏闹钟",
+      "label": "\u9690\u85cf\u95f9\u949f",
       "key": "hideAlarm",
       "defaults": "com.local.cleanstatus",
       "default": false,
@@ -132,7 +136,7 @@
     },
     {
       "cell": "PSSwitchCell",
-      "label": "隐藏蓝牙",
+      "label": "\u9690\u85cf\u84dd\u7259",
       "key": "hideBluetooth",
       "defaults": "com.local.cleanstatus",
       "default": false,
@@ -141,7 +145,7 @@
     },
     {
       "cell": "PSSwitchCell",
-      "label": "隐藏 Siri",
+      "label": "\u9690\u85cf Siri",
       "key": "hideSiri",
       "defaults": "com.local.cleanstatus",
       "default": false,
@@ -150,7 +154,7 @@
     },
     {
       "cell": "PSSwitchCell",
-      "label": "隐藏 CarPlay",
+      "label": "\u9690\u85cf CarPlay",
       "key": "hideCarPlay",
       "defaults": "com.local.cleanstatus",
       "default": false,
@@ -159,7 +163,7 @@
     },
     {
       "cell": "PSSwitchCell",
-      "label": "隐藏勿扰 / 专注模式",
+      "label": "\u9690\u85cf\u52ff\u6270 / \u4e13\u6ce8\u6a21\u5f0f",
       "key": "hideFocus",
       "defaults": "com.local.cleanstatus",
       "default": false,
@@ -168,7 +172,7 @@
     },
     {
       "cell": "PSSwitchCell",
-      "label": "隐藏定位",
+      "label": "\u9690\u85cf\u5b9a\u4f4d",
       "key": "hideLocation",
       "defaults": "com.local.cleanstatus",
       "default": false,
@@ -177,7 +181,7 @@
     },
     {
       "cell": "PSSwitchCell",
-      "label": "隐藏旋转锁",
+      "label": "\u9690\u85cf\u65cb\u8f6c\u9501",
       "key": "hideRotationLock",
       "defaults": "com.local.cleanstatus",
       "default": false,
@@ -186,7 +190,7 @@
     },
     {
       "cell": "PSSwitchCell",
-      "label": "隐藏信号",
+      "label": "\u9690\u85cf\u4fe1\u53f7",
       "key": "hideCellular",
       "defaults": "com.local.cleanstatus",
       "default": false,
@@ -195,7 +199,7 @@
     },
     {
       "cell": "PSSwitchCell",
-      "label": "隐藏 VPN",
+      "label": "\u9690\u85cf VPN",
       "key": "hideVPN",
       "defaults": "com.local.cleanstatus",
       "default": false,
@@ -204,7 +208,7 @@
     },
     {
       "cell": "PSSwitchCell",
-      "label": "隐藏 Wi-Fi",
+      "label": "\u9690\u85cf Wi-Fi",
       "key": "hideWiFi",
       "defaults": "com.local.cleanstatus",
       "default": false,
@@ -213,12 +217,12 @@
     },
     {
       "cell": "PSGroupCell",
-      "label": "未知部件提示",
-      "footerText": "隐藏电池健康警告、关于本机的未知部件行和设置角标；只改显示，不改健康数据。"
+      "label": "\u672a\u77e5\u90e8\u4ef6\u63d0\u793a",
+      "footerText": "\u9690\u85cf\u7535\u6c60\u5065\u5eb7\u8b66\u544a\u3001\u5173\u4e8e\u672c\u673a\u7684\u672a\u77e5\u90e8\u4ef6\u884c\u548c\u8bbe\u7f6e\u89d2\u6807\uff1b\u53ea\u6539\u663e\u793a\uff0c\u4e0d\u6539\u5065\u5eb7\u6570\u636e\u3002"
     },
     {
       "cell": "PSSwitchCell",
-      "label": "隐藏未知部件提示",
+      "label": "\u9690\u85cf\u672a\u77e5\u90e8\u4ef6\u63d0\u793a",
       "key": "hideUnknownParts",
       "defaults": "com.local.cleanstatus",
       "default": true,
@@ -227,12 +231,12 @@
     },
     {
       "cell": "PSGroupCell",
-      "label": "控制中心",
-      "footerText": "长按控制中心的 Wi-Fi / 蓝牙按钮直接选网络或设备；普通点击和展开菜单保持原生。系统操作需另装 CCSupport 后加入控制中心。仅 iOS 15 生效。"
+      "label": "\u63a7\u5236\u4e2d\u5fc3",
+      "footerText": "\u957f\u6309\u63a7\u5236\u4e2d\u5fc3\u7684 Wi-Fi / \u84dd\u7259\u6309\u94ae\u76f4\u63a5\u9009\u7f51\u7edc\u6216\u8bbe\u5907\uff1b\u666e\u901a\u70b9\u51fb\u548c\u5c55\u5f00\u83dc\u5355\u4fdd\u6301\u539f\u751f\u3002\u7cfb\u7edf\u64cd\u4f5c\u9700\u53e6\u88c5 CCSupport \u540e\u52a0\u5165\u63a7\u5236\u4e2d\u5fc3\u3002\u4ec5 iOS 15 \u751f\u6548\u3002"
     },
     {
       "cell": "PSSwitchCell",
-      "label": "Wi-Fi 长按快捷选择",
+      "label": "Wi-Fi \u957f\u6309\u5feb\u6377\u9009\u62e9",
       "key": "ccWiFiLongPress",
       "defaults": "com.local.cleanstatus",
       "default": false,
@@ -241,7 +245,7 @@
     },
     {
       "cell": "PSSwitchCell",
-      "label": "蓝牙长按快捷选择",
+      "label": "\u84dd\u7259\u957f\u6309\u5feb\u6377\u9009\u62e9",
       "key": "ccBluetoothLongPress",
       "defaults": "com.local.cleanstatus",
       "default": false,
@@ -250,7 +254,7 @@
     },
     {
       "cell": "PSSwitchCell",
-      "label": "系统操作模块",
+      "label": "\u7cfb\u7edf\u64cd\u4f5c\u6a21\u5757",
       "key": "ccSystemActions",
       "defaults": "com.local.cleanstatus",
       "default": false,
@@ -259,12 +263,12 @@
     },
     {
       "cell": "PSGroupCell",
-      "label": "电池",
-      "footerText": "数字内嵌样式；轻点功能仅在解锁后有效。与其他状态栏、电池插件同时开启可能冲突。"
+      "label": "\u7535\u6c60",
+      "footerText": "\u6570\u5b57\u5185\u5d4c\u6837\u5f0f\uff1b\u8f7b\u70b9\u529f\u80fd\u4ec5\u5728\u89e3\u9501\u540e\u6709\u6548\u3002\u4e0e\u5176\u4ed6\u72b6\u6001\u680f\u3001\u7535\u6c60\u63d2\u4ef6\u540c\u65f6\u5f00\u542f\u53ef\u80fd\u51b2\u7a81\u3002"
     },
     {
       "cell": "PSSwitchCell",
-      "label": "现代电池",
+      "label": "\u73b0\u4ee3\u7535\u6c60",
       "key": "modernBattery",
       "defaults": "com.local.cleanstatus",
       "default": false,
@@ -273,7 +277,7 @@
     },
     {
       "cell": "PSSwitchCell",
-      "label": "隐藏充电闪电",
+      "label": "\u9690\u85cf\u5145\u7535\u95ea\u7535",
       "key": "hideChargingBolt",
       "defaults": "com.local.cleanstatus",
       "default": false,
@@ -282,7 +286,7 @@
     },
     {
       "cell": "PSSwitchCell",
-      "label": "轻点电池切换低电量模式",
+      "label": "\u8f7b\u70b9\u7535\u6c60\u5207\u6362\u4f4e\u7535\u91cf\u6a21\u5f0f",
       "key": "tapLowPower",
       "defaults": "com.local.cleanstatus",
       "default": false,
@@ -291,12 +295,12 @@
     },
     {
       "cell": "PSGroupCell",
-      "label": "动画效果",
-      "footerText": "独立设置应用开合、神灯收缩与通知中心图标飞入。动画选项自动保存。"
+      "label": "\u52a8\u753b\u6548\u679c",
+      "footerText": "\u72ec\u7acb\u8bbe\u7f6e\u5e94\u7528\u5f00\u5408\u3001\u795e\u706f\u6536\u7f29\u4e0e\u901a\u77e5\u4e2d\u5fc3\u56fe\u6807\u98de\u5165\u3002\u52a8\u753b\u9009\u9879\u81ea\u52a8\u4fdd\u5b58\u3002"
     },
     {
       "cell": "PSLinkCell",
-      "label": "动画效果",
+      "label": "\u52a8\u753b\u6548\u679c",
       "detail": "LocalCleanStatusAnimationsController",
       "isController": true,
       "id": "localCleanStatusAnimations"

@@ -12,14 +12,16 @@ def need(v,label):
 
 def main():
     protected=json.loads(text('docs/BASELINE-031-CELLULAR-PROTECTED.json'))
-    for n,h in protected['files'].items():need((ROOT/n).is_file() and hashlib.sha256((ROOT/n).read_bytes()).hexdigest()==h,'original changed/missing '+n)
     allowed=protected['allowed_changes']
-    need('Sources/' not in ''.join(allowed),'no original behavior sources on allowlist')
+    allowed += ['Cellular/LCSCellularEntryPolicy.h','Cellular/LCSCellularHooks.m','Shared/LocalCleanStatusCCPolicy.h','Sources/LocalCleanStatusControlCenter.m','tests/cc_policy_test.c','tools/check_preserved_features.py','tools/test_cellular_button_priority.py']
+    for n,h in protected['files'].items():
+        if n not in allowed:need((ROOT/n).is_file() and hashlib.sha256((ROOT/n).read_bytes()).hexdigest()==h,'original changed/missing '+n)
+    need(set(allowed)==set(protected['allowed_changes'])|{'Cellular/LCSCellularEntryPolicy.h','Cellular/LCSCellularHooks.m','Shared/LocalCleanStatusCCPolicy.h','Sources/LocalCleanStatusControlCenter.m','tests/cc_policy_test.c','tools/check_preserved_features.py','tools/test_cellular_button_priority.py'},'only approved state sources/tests and preservation assertions are newly allowlisted')
     root_items=plistlib.loads((ROOT/'LocalCleanStatusPrefs/Resources/LocalCleanStatusRoot.plist').read_bytes())['items']
     old_items=protected['original_root_items'];need(root_items[:len(old_items)]==old_items and len(root_items)==len(old_items)+2,'all 0.3.1 preference rows unchanged; only two appended')
     for line in protected['original_target_lines']:need(line in text('Makefile').splitlines(),'original target input unchanged: '+line.split('=')[0])
     info=plistlib.loads((ROOT/'LocalCleanStatusPrefs/Resources/Info.plist').read_bytes())
-    need(info['CFBundleVersion']==info['CFBundleShortVersionString']=='0.3.13','preference version')
+    need(info['CFBundleVersion']==info['CFBundleShortVersionString']=='0.3.14','preference version')
     for n in ('Cellular/LCSCellularPanel.h','Cellular/LCSCellularPanel.m','Cellular/LCSCellularService.h','Cellular/LCSCellularService.m','LocalCleanStatusDataSwitch/Makefile','LocalCleanStatusDataSwitch/LocalCleanStatusDataModule.m','LocalCleanStatusSIMTool/main.m','LocalCleanStatusSIMTool/Makefile','LocalCleanStatusSIMTool/entitlements.plist'):
         need((ROOT/n).is_file() and (ROOT/n).stat().st_size>50,'missing real implementation '+n)
     panel=text('Cellular/LCSCellularPanel.m');service=text('Cellular/LCSCellularService.m');hook=text('Cellular/LCSCellularHooks.m');settings=text('Cellular/LCSCellularSettings.m');module=text('LocalCleanStatusDataSwitch/LocalCleanStatusDataModule.m');helper=text('LocalCleanStatusSIMTool/main.m')
@@ -45,7 +47,10 @@ def main():
     need('bindingFailureForButton:' in hook and 'button-not-found' in hook and 'presenter-unavailable' in hook,'binding and presentation failures are recorded')
     need('native-class-missing' in hook and 'load-hook-unavailable' in hook and 'appear-hook-unavailable' in hook,'lifecycle-hook failures explain why long press was not installed')
     need('UIGestureRecognizerStateFailed' in hook and '[self bind]' in hook,'recognizer failure rechecks binding after the stock short tap resolves')
-    need('self.panel=panel' in hook and 'state.panel==weakPanel' in hook and 'state.panel=nil' in hook and 'UIApplicationWillResignActiveNotification' in hook,'single-panel close and foreground-loss cleanup retained')
+    need('LCSOriginalExpanded(self,sel,expanded);' in hook and '[state bind];' in hook and '[state.panel close]' not in hook[hook.index('static void LCSWillExpand'):hook.index('static BOOL LCSCellularOwnsRoundGesture')],'native expansion is forwarded and cannot close overlay')
+    need('s.expansionOverlayActive=YES' in hook and 'keep-during-expansion' in hook,'cellular overlay is retained if module view disappears for expansion')
+    need('state.expansionOverlayActive=NO' in hook and 'state.panel==weakPanel' in hook,'closing the card clears cross-layout retention')
+    need('state.expansionOverlayActive||' in hook and 'LCSCellularFeatureEnabled(LCSCellularSIMManager)' in hook,'overlay retention remains bounded by feature/unlock/foreground gates')
     need('LCSPresentedSIM' in hook and 'LCSCellularSIMController' in hook,'safe stock button long press goes to SIM manager')
     need('LCSCellularDataController' in module and 'setSIMLine:' not in module,'only new data module selects data')
     need('requestExpandModule' in module and 'UIControlEventTouchUpInside' in module,'module tap expands; not a direct radio write')

@@ -37,7 +37,8 @@ static inline LocalCleanStatusFeature local_cleanstatus_ccFeature(LocalCleanStat
 }
 static inline bool local_cleanstatus_ccCanPresent(uint32_t flags, LocalCleanStatusCCKind kind,
     bool unlocked, bool expanded, bool attached, bool presenting, bool conflictingPicker) {
-    return local_cleanstatus_ccValidKind(kind) && unlocked && !expanded && attached &&
+    (void)expanded; /* An overlay long press remains valid in both module layouts. */
+    return local_cleanstatus_ccValidKind(kind) && unlocked && attached &&
         !presenting && !conflictingPicker && local_cleanstatus_hasFeature(flags,local_cleanstatus_ccFeature(kind));
 }
 static inline uint64_t local_cleanstatus_ccNextGeneration(uint64_t generation) {

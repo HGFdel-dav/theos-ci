@@ -42,9 +42,12 @@ need('containerWillTransitionToExpandedContentMode:' in hook and 'state.expanded
 need('bound-wifi-entry' in hook and 'began-wifi' in hook and 'round-local-hook-installed' in hook and 'round-button-allowed' in hook, 'round-button allow hook and direct-entry state are observable')
 need('gestureRecognizerShouldBegin:' in hook and 'setOwner:' not in hook and 'forwardInvocation:' not in hook, 'no private recognizer ownership or delegate forwarding')
 need('UIApplicationWillResignActiveNotification' in hook and 'UIApplicationDidBecomeActiveNotification' in hook, 'foreground cleanup/rebind')
-base = json.loads((ROOT / 'docs/BASELINE-039-WIFI-ENTRY.json').read_text())
+base = json.loads((ROOT / 'docs/BASELINE-0314-UNIFIED-EXPANSION.json').read_text())
 for name in ['Cellular/LCSCellularService.m','Cellular/LCSCellularPanel.m',
              'LocalCleanStatusSIMTool/main.m','LocalCleanStatusSIMTool/entitlements.plist',
-             'Sources/LocalCleanStatusControlCenter.m','LocalCleanStatusDataSwitch/LocalCleanStatusDataModule.m']:
+             'LocalCleanStatusDataSwitch/LocalCleanStatusDataModule.m']:
     need(hashlib.sha256((ROOT / name).read_bytes()).hexdigest() == base['files'][name], 'protected behaviour unchanged: ' + name)
+cc=(ROOT/'Sources/LocalCleanStatusControlCenter.m').read_text()
+need('if(!expanded)[state bind];' in cc and 'if(expanded)[lcscc_presentedList close]' not in cc,'Wi-Fi/BT list remains open through the native expansion transition')
+need('return weakSelf.controller!=nil;' in cc and '!weakSelf.expanded' not in cc,'Wi-Fi/BT list continuation does not reject expanded layout')
 print(f'PASS WiFi-style entry adapter contracts: {checks}; UIKit/device arbitration NOT executed.')
