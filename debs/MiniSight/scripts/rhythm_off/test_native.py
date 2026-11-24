@@ -16,7 +16,7 @@ def check(name,cmd):
  print(name,r.returncode,flush=True)
  if r.returncode:print(r.stdout+r.stderr);raise SystemExit(1)
  return r.stdout
-base=['xcrun','clang++','-std=c++17','-fblocks','-fexceptions','-fcxx-exceptions','-target','arm64e-apple-ios15.5','-isysroot',str(sdk),'-I'+str(P),'-I'+str(S),'-I'+str(Path.home()/'theos/vendor/include'),'-I'+str(Path.home()/'theos/include'),'-Wall','-Wextra','-Werror=return-type']
+base=['xcrun','clang++','-std=c++17','-fblocks','-fexceptions','-fcxx-exceptions','-target','arm64e-apple-ios15.5','-isysroot',str(sdk),'-I'+str(P),'-I'+str(S),'-I'+str(Path.home()/'theos/vendor/include'),'-I'+str(Path.home()/'theos/include'),'-F'+str(Path.home()/'theos/vendor/lib'),'-F'+str(Path.home()/'theos/vendor/lib/iphone/roothide'),'-F'+str(Path.home()/'theos/vendor/lib/iphone/rootless'),'-Wall','-Wextra','-Werror=return-type']
 for n in ['Tweak.cpp','CaptureEngine.cpp','FeatureAnalyzer.cpp','FeatureServer.cpp']:
  check('service-off-'+n,base+['-fsyntax-only',str(S/n)])
 for n in ['MiniSightRhythmAnalyzer.cpp','vendor/BeatDetektor/BeatDetektor.cpp']:
