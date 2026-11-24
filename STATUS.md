@@ -1,3 +1,15 @@
+# Current: QQ lyrics scoped candidate / authorized push + CI (2026-11-24)
+
+- User explicitly approved only App/plugin lyrics-only push, CI, static packaging verification.
+- Native baseline and mutations remain mandatory; no new device, capture, install, respring or reboot authorization.
+- MiniSight0.8.52; only core plugin payload, no audio capture service.
+- Frozen authorized source: /var/minis/shared/openminis/local-reviews/lyrics-qq-local-20261124/FINAL-SCOPE.json.
+- Scope: strict LRCLIB->QQ, stale-track fence, bounded diagnostic routes; preserve old pet gestures, atlas, bounds, composer.
+- Stage: staged; new native execution/build/package not yet proven.
+
+---
+# Historical records (not current authorization)
+
 # 当前：歌词与音乐真实走跳本地修复（2026-11-23，未推送）
 
 - 本轮用户在现场只读结论后明确“可以”：仅修自动歌词和音乐期间真实换位置走/跳；不沿用11/21原地音乐限制，不触碰日间波浪暂停草稿。
