@@ -1,21 +1,49 @@
-# CleanStatus 0.3.14 — LOCAL candidate, unified compact/expanded overlays
+# CleanStatus 0.3.15 — publication candidate: first binding / fallback correction
 
 ## Authorization / stage
 
-User approved local implementation and verification after installing 0.3.13 and reporting opposite state behavior: Wi-Fi/Bluetooth long press works compact but not after six-control expansion; Cellular works only after six-control expansion then return. Push, CI, package, installation, device writes, SIM actions, respring and restart remain unauthorized.
+User separately approved the corrected local implementation and has now explicitly
+approved pushing this exact 0.3.15 candidate, running dedicated CI and auditing
+its package. Installation, device access, SIM actions, respring and restart remain
+unauthorized. The rejected pan draft remains on HOLD. No production changes are
+introduced by this publication step; CI build/package results are pending here.
 
-Base: published 0.3.13 source ZIP, 157 files. Frozen manifest: `docs/BASELINE-0314-UNIFIED-EXPANSION.json`.
+Base: published .14 commit `19d2a73f2da19181cc2c2eefe650938c0e76aaf5`, exact 160-file
+source ZIP `ee1f88002a80274f8e8701817a1de466b9899ec0948dc53a83621e10ca8c921e`.
+Scope manifest: `docs/BASELINE-0315-ENTRY-BINDING-FALLBACK.json`.
 
-## Scope
+## Confirmed defects / scope
 
-Unify long-press presentation across compact/expanded/unknown valid layouts for Wi-Fi, Bluetooth and Cellular. Keep native short taps, feature/unlock/visibility/presentation/conflict gates, SIM service/helper/card, DataSwitch, persistence and foreign gesture decisions. Do not suppress the native six-control expansion.
+Previously collected .14 evidence: first load was followed by button-not-visible
+and first binding only after native expanded. Exact reason for initial invisibility
+is not identified. Two real fallback calls invert a directTouch argument already
+inverted by the helper, contradicting the action guard. No pan winner is proven.
 
-Wi-Fi/Bluetooth no longer auto-close an active list on expansion and their continuation no longer rejects expanded layout. Cellular no longer rejects unknown/expanded valid state and no longer closes its card on expansion; a bounded overlay-retention flag covers the child view disappearing during the expansion transition.
+Only production change: `Cellular/LCSCellularHooks.m`. Passive preparation on a
+unique identified button is separated from active visible/owned/unlocked usage;
+window lifecycle synchronizes one fallback without replacing a valid direct
+recognizer; trailing layout retry is retained; receive/begin pass raw directTouch;
+actual action rechecks entryReady; route and delayed-outcome diagnostics are
+separate from gesture-inventory budget. .14 Wi-Fi/BT files and all unrelated
+business/storage/UI are frozen; pan and expanded lifetime methods are hash-pinned.
 
-## Local checks
+## Checks / verification boundary
 
-Production cellular gate: 50 C checks. Expansion trace contract: 59 + 3 mutation rejects. CC policy: 658 assertions. Unified expansion contract: 14. Core invariants 476; cellular 6291/167; UI 40; path 173; path model 37; panel 10; verifier 46/11/198. Two changed Obj-C translation units parse with iOS15.5 arm64e `clang -fsyntax-only -Werror`. No UIKit runtime or device validation.
+Local stage complete; user separately approved this push/CI/package audit.
+CI is pending at this publication commit; no native/device result is claimed yet.
+All 20 recorded command exits match expectations; the native environment guard
+returns 77 on Alpine by design, not an executed Foundation test.
 
-## Risks
+Host C runs actual qualification expressions with modeled inputs: 264,102 checks
+and four compiled call-site mutations rejected. Existing core/CC/state/entry/path/
+UI/verifier tests are rerun. Native Foundation fake-object fixture: nine groups
+prepared, syntax-only on Alpine; native assertions and UIKit runtime NOT executed.
+See `../evidence/` and `../LOCAL-RESULT.md` for final exits and hashes.
 
-Not a proven fix. The card may visually overlap the system six-control page; real gesture ordering, hit testing, short tap/cancel, AMFI/loading and true user acceptance require a later CI/package/install/device gate.
+## Risks / next gate
+
+Not a demonstrated on-device fix. Compact hit-target/proxy selection, actual
+gesture order, short-tap delivery, movement/OS cancellation, visual overlap,
+injection and AMFI acceptance remain unverified. No zero-six-control-frame promise.
+Next: complete authorized CI/package audit, then ask separately for installation;
+respring and reboot each require later approval.

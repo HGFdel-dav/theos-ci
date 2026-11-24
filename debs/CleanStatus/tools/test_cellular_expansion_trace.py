@@ -34,7 +34,8 @@ need('BOOL direct=gesture&&self.directPress&&gesture==self.directPress;' in begi
 need('BOOL fallback=gesture&&self.windowPress&&gesture==self.windowPress;' in begin,'fallback recognizer identity checked')
 need('BOOL owned=direct||fallback;' in begin,'nil or foreign recognizer is not owned')
 need('if(direct)local=local&&LCSDirectTouch(self.button);' in begin,'direct entry requires native direct touch')
-need('LCSCellularWindowFallbackAllows(YES,!LCSDirectTouch(self.button),LCSVisible(self.button),local)' in begin,'fallback requires visibility and no direct touch')
+need('LCSCellularWindowFallbackAllows(YES,LCSDirectTouch(self.button),LCSVisible(self.button),local)' in begin,'fallback receives un-negated direct-touch capability')
+need('BOOL local=[self entryReady];' in begin and '[state entryReady]' in receive,'receive/begin share the actual live-view safety gate')
 need('self.windowPress.enabled=NO' in unbind and '[self.boundWindow removeGestureRecognizer:self.windowPress]' in unbind,'unbind detaches the fallback recognizer')
 need('LCSRequiredHookMask=47U' in hook,'expanded lifecycle callback required')
 need('state.expansionKnown=YES;state.expanded=expanded;' in transition,'only observed transition records known state')
@@ -76,14 +77,14 @@ with tempfile.TemporaryDirectory(prefix='lcs312-gate-') as temp:
  def run(header):
   (d/'LCSCellularEntryPolicy.h').write_text(header)
   compiled=subprocess.run(['cc','-std=c11','-O2','-Wall','-Wextra','-Werror','-I'+str(d),str(src),'-o',str(exe)],text=True,capture_output=True)
-  if compiled.returncode:return compiled
+  need(compiled.returncode==0,'production and each bad predicate must compile before execution')
   return subprocess.run([str(exe)],text=True,capture_output=True)
  good=run(policy);need(good.returncode==0,'actual production C predicate execution');print(good.stdout.strip())
  original='bool validExpansion=expansion==LCSCellularExpansionUnknown||'
  need(original in policy,'valid expansion allowlist anchor present')
  mutations=[policy.replace('expansion==LCSCellularExpansionExpanded;','expansion==LCSCellularExpansionCollapsed;'),
-  policy.replace('return validExpansion && gestureIsOwned && localGate;','return gestureIsOwned && localGate;'),
-  policy.replace('return validExpansion && gestureIsOwned && localGate;','return validExpansion && localGate;')]
+  policy.replace('return validExpansion && gestureIsOwned && localGate;','(void)validExpansion; return gestureIsOwned && localGate;'),
+  policy.replace('return validExpansion && gestureIsOwned && localGate;','(void)gestureIsOwned; return validExpansion && localGate;')]
  for mutant_header in mutations:
   mutant=run(mutant_header)
   need(mutant.returncode!=0,'reject invalid expansion or missing ownership/local gate mutation')

@@ -24,8 +24,8 @@ info=plistlib.loads((ROOT/'LocalCleanStatusPrefs/Resources/Info.plist').read_byt
 need(entry['detail']==info['NSPrincipalClass']=='LocalCleanStatusRootListController','panel controller identity')
 need(entry['bundle']==info['CFBundleExecutable']=='LocalCleanStatusPrefs','bundle executable identity')
 need(entry['isController'] is True,'real controller enabled')
-need(info['CFBundleVersion']==info['CFBundleShortVersionString']=='0.3.14','panel version')
-need('Version: 0.3.14' in text('control'),'package version')
+need(info['CFBundleVersion']==info['CFBundleShortVersionString']=='0.3.15','panel version')
+need('Version: 0.3.15' in text('control'),'package version')
 need('Maintainer: Niubiprass' in text('control') and 'Author: Niubiprass' in text('control'),'package author')
 need(entry['icon']=='icon.png' and all(('Resources/'+n) in text('LocalCleanStatusPrefs/Makefile') for n in ('icon.png','icon@2x.png','icon@3x.png')),'three original PreferenceLoader icons')
 for name,size in (('icon.png',29),('icon@2x.png',58),('icon@3x.png',87)):
@@ -216,6 +216,11 @@ need('powerRow.hidden=YES' in listvc,'the power row starts hidden so the on-stat
 need('self.powerRow.hidden=!off;' in listvc and 'powerHeight.constant=off?52:0' in listvc,'the power row appears only while the interface is off')
 need('UIControlEventValueChanged' in listvc and 'applyPoweredOff' in listvc,'the switch drives the interface both ways')
 
+subprocess.run([sys.executable, str(ROOT/'tools/test_cellular_binding_fallback.py')], check=True)
+if sys.platform=='darwin':
+    subprocess.run([sys.executable, str(ROOT/'tools/run_cellular_binding_native.py'), '--native'], check=True)
+else:
+    print('SKIP binding Foundation fake-object runtime: 9 groups are not executed on Alpine.')
 subprocess.run([sys.executable, str(ROOT/'tools/test_unified_expansion.py')], check=True)
 subprocess.run([sys.executable, str(ROOT/'tools/check_preserved_features.py')], check=True)
 subprocess.run([sys.executable, str(ROOT/'tools/check_animations.py')], check=True)

@@ -18,9 +18,9 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-base = json.loads((ROOT / 'docs/BASELINE-0314-UNIFIED-EXPANSION.json').read_text())
-allowed = set(base['allowed_changes']) | {'Cellular/LCSCellularEntryPolicy.h','Cellular/LCSCellularHooks.m','Shared/LocalCleanStatusCCPolicy.h','Sources/LocalCleanStatusControlCenter.m','tests/cc_policy_test.c','tools/check_preserved_features.py','tools/test_cellular_button_priority.py','tools/test_cellular_crash_fix.py','tools/test_cellular_entry.py','tools/test_cellular_path_reuse.py','tools/test_cellular_expansion_trace.py','tools/test_unified_expansion.py','tools/check_cellular.py','tools/check.py','tools/verify_deb.py','LocalCleanStatusPrefs/Resources/Info.plist','LocalCleanStatusDataSwitch/Resources/Info.plist','control','STATUS.md','docs/BASELINE-0.2.5-PROTECTED.json','docs/BASELINE-031-CELLULAR-PROTECTED.json','docs/BASELINE-0314-UNIFIED-EXPANSION.json','docs/CELLULAR-UNIFIED-EXPANSION-DESIGN.md'}
-need(base.get('base_version') == '0.3.13' and len(base['files']) == 157, 'published 0.3.13 frozen source manifest')
+base = json.loads((ROOT / 'docs/BASELINE-0315-ENTRY-BINDING-FALLBACK.json').read_text())
+allowed = set(base['allowed_changes'])
+need(base.get('base_version') == '0.3.14' and len(base['files']) == 160, 'published 0.3.14 frozen source manifest')
 for name, digest in base['files'].items():
     if name not in allowed:
         path = ROOT / name
@@ -56,9 +56,9 @@ need('self.directPress.delegate=self.target' in hook and 'cancelsTouchesInView=Y
 need('previewInteractionShouldBegin:' in hook and 'preview-shouldbegin-unavailable' in hook, 'preview gate is optional and failure is recorded')
 need('contentViewController' not in hook and 'isExpanded' not in hook, 'does not depend on optional container getters')
 need('containerWillTransitionToExpandedContentMode:' in hook, 'native expanded state is tracked via lifecycle')
-need('LCSRoundBegin' not in hook and 'didMoveToWindow' not in hook, 'no global round-button window hook')
+need('LCSRoundBegin' not in hook and 'if(state&&state.button==self)[state bind];' in hook, 'only already marked cellular button is synchronized on window lifecycle')
 need(hook.count('self.windowPress=[[UILongPressGestureRecognizer alloc]')==1 and 'bound-window-fallback' in hook, 'one region-limited fallback recognizer at most')
-need('if(!direct) {' in hook and 'self.windowPress.cancelsTouchesInView=NO' in hook, 'fallback is narrow and never swallows a short tap')
+need('if(!window||self.windowPress)return;' in hook and 'self.windowPress.cancelsTouchesInView=NO' in hook, 'fallback is passive; direct-capable and out-of-region touches still refused')
 need('LCSCellularSIMController' in hook and 'presentViewController:panel' in hook, 'existing SIM card presentation retained')
 need('UIApplicationWillResignActiveNotification' in hook and 'UIApplicationDidBecomeActiveNotification' in hook, 'foreground cleanup and rebind retained')
 

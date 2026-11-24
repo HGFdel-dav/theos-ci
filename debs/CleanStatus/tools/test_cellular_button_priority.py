@@ -8,8 +8,8 @@ def need(v,label):
  global checks
  if not v:raise AssertionError(label)
  checks+=1
-base=json.loads((ROOT/'docs/BASELINE-0314-UNIFIED-EXPANSION.json').read_text())
-allow=set(base['allowed_changes']) | {'Cellular/LCSCellularEntryPolicy.h','Cellular/LCSCellularHooks.m','Shared/LocalCleanStatusCCPolicy.h','Sources/LocalCleanStatusControlCenter.m','tests/cc_policy_test.c','tools/check_preserved_features.py','tools/test_cellular_button_priority.py','tools/test_cellular_crash_fix.py','tools/test_cellular_entry.py','tools/test_cellular_path_reuse.py','tools/test_cellular_expansion_trace.py','tools/test_unified_expansion.py','tools/check_cellular.py','tools/check.py','tools/verify_deb.py','tools/check_preserved_features.py','docs/BASELINE-0.2.5-PROTECTED.json','docs/BASELINE-031-CELLULAR-PROTECTED.json','docs/BASELINE-0314-UNIFIED-EXPANSION.json','docs/CELLULAR-UNIFIED-EXPANSION-DESIGN.md','LocalCleanStatusPrefs/Resources/Info.plist','LocalCleanStatusDataSwitch/Resources/Info.plist','control','STATUS.md'}
+base=json.loads((ROOT/'docs/BASELINE-0315-ENTRY-BINDING-FALLBACK.json').read_text())
+allow=set(base['allowed_changes'])
 for n,h in base['files'].items():
  if n not in allow:need((ROOT/n).is_file() and hashlib.sha256((ROOT/n).read_bytes()).hexdigest()==h,'0.3.11 protected file changed: '+n)
 need('- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gesture' in hook and 'return [self.binding shouldBeginPressedGesture:gesture];' in hook,'independent target implements the callback required by the round hook')
