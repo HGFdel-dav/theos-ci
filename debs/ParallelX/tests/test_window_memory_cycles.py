@@ -55,14 +55,20 @@ class WindowMemoryCycles(unittest.TestCase):
         self.assertIn('![confirmed isEqual:next]',fn)
         self.assertIn('notify_post(PXWindowMemoryNotification.UTF8String)',fn)
     def test_expansion_scope_is_native_event_not_a_frame_timer(self):
-        expand=SOURCE.split('static BOOL PXWMIsParked(',1)[1].split('/* The vendor',1)[0]
+        expand=SOURCE.split('static BOOL PXWMIsParked(',1)[1].split('/* The alpha451 open path',1)[0]
         self.assertIn('context.canvas.window != triggerWindow',expand)
         self.assertIn('PXWMMayApplyExpansion',expand)
         self.assertIn('@finally { PXWMExpansionScope = previous;',expand)
         for forbidden in ('dispatch_after','dispatch_async','saveGeometry:','savePosition:', 'card.frame =', 'object_getIvar','PXCloneFunctionAt','objc_msgSend','context.resolved = NO'):
             self.assertNotIn(forbidden,expand)
-        hook=SOURCE.split('static void PXWMCardSetFrame(',1)[1].split('static void PXWMScheduleInitialSettle(',1)[0]
+        hook=SOURCE.split('static void PXWMCardSetFrame(',1)[1].split('/* One settle pass',1)[0]
+        self.assertIn('PXWMExpansionTarget(context, frame, &expandedTarget)',hook)
         self.assertLess(hook.index('PXWMExpansionTarget(context, frame, &expandedTarget)'),hook.index('PXWMOriginalCardSetFrame(self, command, frame)'))
+        self.assertIn('PXWMContextForCardFrame((UIView *)self)',hook)
+        self.assertIn('if ([bridgeBundle isEqual:candidate.bundle] || bridgeBundle == nil)',SOURCE)
+        self.assertIn('PXWMPrepareInitialLayoutWithNativeFrame(context, &context.initialNativeFrame, YES)',hook)
+        self.assertLess(hook.index('PXWMPrepareInitialLayoutWithNativeFrame(context, &context.initialNativeFrame, YES)'),hook.index('PXWMOriginalCardSetFrame(self, command, frame)'))
+        self.assertLess(hook.index('first_frame_memory_ready'),hook.index('PXWMOriginalCardSetFrame(self, command, frame)'))
         self.assertIn('event.applied = YES;',expand)
         self.assertIn('PXWMRestore(saved, geometry.reference, nativeFrame, &restored)',expand)
         self.assertIn('PXCloneClassInstanceMethodMatches(dockCoordinator, restoreDock, @encode(void), objects)',SOURCE)

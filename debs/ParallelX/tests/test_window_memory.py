@@ -108,8 +108,8 @@ class WindowMemorySourceGuards(unittest.TestCase):
         # The new exact class-method hook only observes and forwards the native
         # external-open event; it must never send an extra open/retry request.
         self.assertIn('PXCloneClassMethodMatches(panel, externalOpen, @encode(void), objects, NULL)',source)
-        self.assertNotIn('PXCloneSendVoid',source.split('static void PXWMExternalOpen(',1)[1].split('/* The vendor',1)[0])
-        self.assertNotIn('objc_msgSend',source.split('static void PXWMExternalOpen(',1)[1].split('/* The vendor',1)[0])
+        self.assertNotIn('PXCloneSendVoid',source.split('static void PXWMExternalOpen(',1)[1].split('/* A parked app',1)[0])
+        self.assertNotIn('objc_msgSend',source.split('static void PXWMExternalOpen(',1)[1].split('/* A parked app',1)[0])
         self.assertIn('PXWindowMemoryInstall(', (ROOT/'Tweak.xm').read_text())
         self.assertIn('PXWMScheduleRestore(ticket)',source)
         self.assertIn('restore_retry_scheduled',source)
@@ -158,7 +158,10 @@ class WindowMemorySourceGuards(unittest.TestCase):
         method=source.split('static void PXWMLayout(id self,SEL command) {',1)[1].split('static void PXWMClose(',1)[0]
         self.assertLess(method.index('PXWMPrepareInitialLayout(context)'),method.index('PXWMOriginalLayout(self,command)'))
         self.assertIn('PXWMOpenTicketKey',method)
-        prepare=source.split('static BOOL PXWMPrepareInitialLayoutWithNativeFrame(PXWMContext *context,\n                                                   const PXWMRect *nativeFrameOverride) {',1)[1].split('static BOOL PXWMPrepareInitialLayout(',1)[0]
+        controller=source.split('static void PXWMControllerLayout(',1)[1].split('static Class PXWMVendorClass(',1)[0]
+        self.assertIn('context->native.entering && !context.resolved',controller)
+        self.assertLess(controller.index('PXWMPrepareInitialLayoutWithNativeFrame(context, NULL, YES)'),controller.index('PXWMTryRestore(context)'))
+        prepare=source.split('static BOOL PXWMPrepareInitialLayoutWithNativeFrame(PXWMContext *context,\n                                                   const PXWMRect *nativeFrameOverride,\n                                                   BOOL allowingVisibleTicket) {',1)[1].split('\nstatic BOOL PXWMPrepareInitialLayout(',1)[0]
         for check in ('PXWMMayPrepareInitialLayout(', 'context->native.initialCleanupSeen',
                       'PXWMReadGeometry(context, YES', 'PXWindowMemoryGeometry(snapshot, context.bundle, key',
                       'PXWMRestore(saved, native.reference, native.frame', 'restore_initial_geometry_prepared'):
@@ -177,7 +180,7 @@ class WindowMemorySourceGuards(unittest.TestCase):
         perform=restore.split('[UIView performWithoutAnimation:^{',1)[1].split('}];',1)[0]
         self.assertLess(perform.index('card.frame = requested;'),perform.index('PXCloneSendVoid(context.bridge, layout)'))
         self.assertLess(restore.index('PXCloneSendVoid(context.bridge, layout)'),restore.index('CGRect actual = card.frame'))
-        initial=source.split('static BOOL PXWMPrepareInitialLayoutWithNativeFrame(PXWMContext *context,\n                                                   const PXWMRect *nativeFrameOverride) {',1)[1].split('static BOOL PXWMPrepareInitialLayout(',1)[0]
+        initial=source.split('static BOOL PXWMPrepareInitialLayoutWithNativeFrame(PXWMContext *context,\n                                                   const PXWMRect *nativeFrameOverride,\n                                                   BOOL allowingVisibleTicket) {',1)[1].split('\nstatic BOOL PXWMPrepareInitialLayout(',1)[0]
         self.assertNotIn('PXWMOriginalLayout(context.bridge',initial)
         open_method=source.split('static void PXWMOpen(',1)[1].split('static void PXWMLayout(',1)[0]
         completion=open_method.split('forwardCompletion = ^(BOOL ok) {',1)[1].split('nativeCompletion(ok);',1)[0]
@@ -186,37 +189,47 @@ class WindowMemorySourceGuards(unittest.TestCase):
 
     def test_initial_open_frame_write_is_redirected_and_content_remeasured_once(self):
         source=(ROOT/'Common/PXWindowMemory.m').read_text()
-        hook=source.split('static void PXWMCardSetFrame(',1)[1].split('static void PXWMScheduleInitialSettle(',1)[0]
+        hook=source.split('static void PXWMCardSetFrame(',1)[1].split('/* One settle pass',1)[0]
         self.assertIn('context.initialTargetActive',hook)
-        self.assertIn('context->native.entering && context->native.initialCleanupSeen',hook)
-        self.assertIn('PXWMPrepareInitialLayoutWithNativeFrame(context, &pendingNative)',hook)
-        self.assertIn('PXWMReadGeometry(context, YES, nativeFrameOverride, &native, &key)',source)
-        self.assertIn('if (ticket && PXWMContexts) [PXWMContexts addObject:ticket];',source)
+        self.assertIn('PXWMContextForCardFrame((UIView *)self)',hook)
+        preflight=hook.split('BOOL preflightReady =',1)[1].split('if (context && context.initialTargetActive',1)[0]
+        self.assertIn('context->native.entering',preflight)
+        self.assertIn('context->native.initialCleanupSeen',preflight)
+        self.assertIn('PXWMReadGeometry(context, YES, &pendingDefault, &pending, &key)',preflight)
+        self.assertIn('window.hidden',source)
+        self.assertIn('PXWMOpeningTicketOwnsCanvas(context, context.canvas)',source)
+        self.assertIn('PXWMPrepareInitialLayoutWithNativeFrame(context, &context.initialNativeFrame, YES)',preflight)
+        self.assertIn('if (!geometryReady)',preflight)
+        self.assertLess(preflight.index('PXWMReadGeometry(context, YES, &pendingDefault, &pending, &key)'),preflight.index('PXWMPrepareInitialLayoutWithNativeFrame(context, &context.initialNativeFrame, YES)'))
         self.assertIn('CACurrentMediaTime() < context.initialTargetDeadline',hook)
         self.assertIn('frame = target;',hook)
         self.assertIn('context.initialNativeFrame',hook)
         self.assertIn('if (sameNative && !same)',hook)
         self.assertLess(hook.index('if (sameNative && !same)'),hook.index('frame = target;'))
-        self.assertLess(hook.index('restore_initial_frame_substituted'),
-                        hook.index('PXWMOriginalCardSetFrame(self, command, frame)'))
+        self.assertLess(hook.index('restore_initial_frame_substituted'),hook.index('PXWMOriginalCardSetFrame(self, command, frame)'))
         settle=source.split('static void PXWMScheduleInitialSettle(',1)[1].split('static BOOL PXWMPrepareInitialLayout(',1)[0]
         self.assertIn('current.initialTargetActive = NO;',settle)
         self.assertIn('restore_initial_settle_skipped_native_change',settle)
         self.assertLess(settle.index('if (!matches && !nativeDefault)'),settle.index('card.frame = target;'))
-        self.assertLess(settle.index('card.frame = target;'),
-                        settle.index('PXWMOriginalLayout(current.bridge, NSSelectorFromString(@"layoutHost"))'))
+        self.assertLess(settle.index('card.frame = target;'),settle.index('PXWMOriginalLayout(current.bridge, NSSelectorFromString(@"layoutHost"))'))
         self.assertIn('current.initialContentRefreshed = YES;',settle)
         self.assertNotIn('PXWMScheduleInitialSettle(current)',settle)
-        prepare=source.split('static BOOL PXWMPrepareInitialLayoutWithNativeFrame(PXWMContext *context,\n                                                   const PXWMRect *nativeFrameOverride) {',1)[1].split('static BOOL PXWMPrepareInitialLayout(',1)[0]
+        prepare=source.split('static BOOL PXWMPrepareInitialLayoutWithNativeFrame(PXWMContext *context,\n                                                   const PXWMRect *nativeFrameOverride,\n                                                   BOOL allowingVisibleTicket) {',1)[1].split('static BOOL PXWMPrepareInitialLayout(PXWMContext *context)',1)[0]
+        self.assertIn('PXWMMayPrepareInitialLayout(',prepare)
+        self.assertIn('visibleTicketPermission',prepare)
+        self.assertIn('store.isLoaded && [snapshot[@"enabled"] boolValue]',prepare)
         self.assertIn('context.initialTargetDeadline = CACurrentMediaTime() + 2.0;',prepare)
-        self.assertIn('PXWMScheduleInitialSettle(context);',prepare)
         gesture=source.split('static void PXWMGestureAction(',1)[1].split('static void PXWMMove(',1)[0]
         self.assertIn('context.initialTargetActive = NO;',gesture)
-        detach=source.split('static PXWMContext *PXWMDetachBinding(',1)[1].split('\n}',1)[0]
+        detach=source.split('static PXWMContext *PXWMDetachBinding(id bridge)',1)[1].split('\n}',1)[0]
         self.assertIn('context.initialTargetActive = NO;',detach)
         install=source.split('PXWM_HOOK(panel,move',1)[1]
-        self.assertIn('PXWM_HOOK(PXWMCardClass,cardFrame,PXWMCardSetFrame,'
-                      'PXWMOriginalCardSetFrame,void (*)(id,SEL,CGRect));',install)
+        self.assertIn('PXWM_HOOK(PXWMCardClass,cardFrame,PXWMCardSetFrame,',install)
+        self.assertIn('PXWMOriginalSetSourceSize',install)
+        source_size=source.split('static void PXWMSetSourceSize(',1)[1].split('\n}',1)[0]
+        self.assertLess(source_size.index('PXWMOriginalSetSourceSize(self, command, size)'),source_size.index('PXWMPrepareInitialLayoutWithNativeFrame(context, NULL, YES)'))
+        self.assertIn('PXWMOpeningTicketOwnsCanvas(candidate, candidate.canvas)',source_size)
+        self.assertNotIn('dispatch_after',source_size)
 
     def test_initial_geometry_requires_native_source_size_not_default_canvas_axes(self):
         source=(ROOT/'Common/PXWindowMemory.m').read_text()
@@ -228,6 +241,8 @@ class WindowMemorySourceGuards(unittest.TestCase):
         self.assertIn('if (!preparingInitialLayout)',read)
         self.assertIn('!PXWMObject(context.bridge, @"scene")',read)
         self.assertIn('hasHostedSurface',read)
+        self.assertIn('BOOL ticketBeforeBundle = preparingInitialLayout && currentTicket && bridgeBundle == nil;',read)
+        self.assertIn('(![bridgeBundle isEqual:context.bundle] && !ticketBeforeBundle)',read)
         check=source.split('static void PXWMVerifyRestore(',1)[1].split('static BOOL PXWMPrepareInitialLayout(',1)[0]
         self.assertIn('PXWMBindingIsActive(check)',check)
         self.assertIn('check.generation != expectedGeneration',check)
@@ -416,6 +431,6 @@ class WindowMemoryAppleStorage(unittest.TestCase):
         self.assertLessEqual(len(logs),256)
         self.assertGreater(len(logs),200)
         self.assertTrue(any(event['event']=='fixture' for event in logs))
-        self.assertTrue(all(event['build']=='clone0.104' for event in logs))
+        self.assertTrue(all(event['build']=='clone0.105' for event in logs))
 
 if __name__ == '__main__': unittest.main(verbosity=2)

@@ -1,202 +1,41 @@
-# ParallelX alpha451 + clone0.104｜沿用 0.103 功能的本地换底候选
+# ParallelX alpha451 + clone0.105｜冷启动首帧恢复时序候选
 
-## 当前批次（以 11/23 上传包为准）
-- 用户「确认」仅授权本地接入和测试。阶段：`local_checks_complete_waiting_push_approval`。未提交、推送、触发 CI、构建 DEB、访问设备、安装、注销或重启。
-- 底包：用户上传作者版 `0.1.0~alpha451` / RootHide `iphoneos-arm64e`，原包 SHA256 `4855744eb0a6b4f6b401b2c9fa318dcee021c6a447f5ad5d0e92d5b22be0a0d5`。`vendor/alpha451` 16 项原版文件与该包逐项相同；量产打包叠加原版 Root.plist 上已有的两条自有设置入口，原版其他设置、图标和新功能不替换。
-- 自有功能基线：已发 `ffb91347fe962dcf0fe8fa114a7946fbcce6cec2` / clone0.103 的 106 文件。除窗口和启动日志的版本标记外，业务源码逐字节相同；继续使用原有账号、设置、记忆文件和格式，不新增清空或迁移，不改写分身、付款、窗口行为。
-- 维持原规则：手动调整才存尺寸，拖动只更新位置，缩小不覆盖记忆；从贴边放大和重新打开使用原记忆，主号/分身共用，横竖屏分开。此前覆盖成默认大小的旧记录不猜回。
-- 对新版实际字节重验方法表、开窗清理顺序、贴边放大设外框再排内容的顺序，更新测试夹具，没有在生产代码写入地址。记录见 `evidence/native-layout/README.md`。`../ci/build-parallelx.yml` 仅离线准备新版基线引用，仍要求 iPhoneOS15.5 SDK、RootHide arm64e；CI 未运行。
-- 本地回归 192 项：175 项实跑通过、17 项 Apple 专用跳过。两种原包/固定载荷校验通过；iOS 15.5 arm64e 的 4 个单元语法检查通过（没有生成 iOS 机器码）。
-- 真实加载、首次开窗、小窗反复放大、内容对齐、原版手势与新增返回相关逻辑、分身和付款仍未真机验收。新候选不覆盖旧 0.103 的发布包或源码；旧包作为已验包回滚材料，不宣称功能已真机通过。
+## 本批授权与阶段
+- 用户只批准本地修改和检查，目标是冷启动时**首次可见前**应用已保存的窗口框，而不是先默认再缩小。
+- 阶段：`local_checks_complete_waiting_push_approval`。未提交、未推送、未 CI、未构建 DEB、未安装、未注销或重启；手机仍为已交付的 clone0.104。
+- 基线：已发布 clone0.104（commit `57a2b8cc373e3029b3a43ecd6ec94a32626d2fc9`）的 106 文件源码，已与发布 Source.zip 逐字核对；作者 alpha451 16 个原版文件不变。
+- 版本：`0.1.0~alpha451+clone0.105`。账号、设置、记忆文件路径/格式/schema、分身、付款与作者新功能均未改。
 
----
+## 已证症状（只读，来自实装 0.104）
+- 用户录屏 `video_23322F7F.mp4` 显示冷启动 Inspector 先出现默认大框，随后变小。
+- 设备日志实例：`native_window_bound_with_memory`（+2ms，记忆已加载）→ `restore_initial_geometry_prepared`（+217ms，此时 `windowHidden=false`，默认 312×675 已存在）→ 替换（+272ms）→ 内容重排（约 +1.13s）。
+- 因此至少一条开窗路径在默认框可见后才完成恢复；不能把 0.103/0.104 的本地/CI 通过当作手机已修好。
+- 最早那次开窗事件已被 256 条诊断环形缓冲挤掉，不能伪造首帧逐调用栈；本次候选需要装后新日志确认命中点。
 
-# ParallelX alpha440 + clone0.103｜只记真实调整尺寸，接通贴边放大（历史）
+## 本次唯一生产改动
+文件 `Common/PXWindowMemory.m`：
+1. `setFrame:` 钩子不再只认已发布的绑定 context；通过当前 canvas 与 `PXWMOpenTicketKey` 精确匹配正在打开的 ticket，并识别它的 PXHostCard，从而在**原版第一笔默认外框写入之前**读取方向、参考尺寸、真实 `hostedSourceSize` 和记忆记录。
+2. 只有所有证据齐全、记忆已加载、功能开启、没有手势/待保存时才预计算并替换；真实内容方向未知时拒绝猜测，继续原版默认，并留下脱敏 `first_frame_memory_waiting_*` / `no_record` / `disabled` 诊断（每个方向仅一次）。
+3. 新增 `PXSceneBridge setSourceSize:` 钩子：转发原调用后，若该 bridge 有正在打开的 ticket，立即用新源尺寸准备记忆框；非当前 ticket、已绑定窗口或非主线程一律只转发。
+4. `viewDidLayoutSubviews` 钩子对正在打开、尚未恢复的 context 先尝试准备，再执行原有恢复/重试。
+5. 保留贴边放大 `PXWMExpansionTarget` 的原帧目录替换调用；保留原版 `layoutHost` 内容布局与 900ms 单次 settle，不隐藏窗口、不改内容 transform、不延时强压、不按 App 特判。
+6. 异常/取消/关闭仍清除初始终态；无记录、关闭开关、方向不匹配、源尺寸仍不可用则退回原版默认，不创建或清空记忆。
 
-## 历史本地阶段（2026-11-23，已发布结果见 0.103 的 release/STATUS.md）
-- 授权：用户确认「真实resize完成才更新尺寸、移动只改位置、缩小贴边/自动布局/取消/关闭不覆盖尺寸；小窗放大和再开窗用同一记录；主号分身共用、方向隔离、原版手势和其他功能设置不动」，并明确同意本地动手。本批未获push/CI/install/设备写入/注销重启同意。
-- 基线：已发布且前轮只读确认为实装的 clone0.102，commit `5b58c3b068c120ac2b3f6756fb7062b5fa160536`。104文件源码哈希与已发Source.zip全同，冻结 `../evidence/BASELINE-0102.json`；新候选独立复制，旧树与手机未改。
-- 已证故障：Settings在rev85记220×476；同serial8贴边放大到312×675没有新open/close；之后move把default连尺寸一起存rev86。完整证据在旧目录 `research/dock-readonly-20261123/`。不误归CHiQ或起点、不说没存盘。
-- 保存修正：手势带真实resize/move类型和原处理前的正常起始尺寸，Ended且变化≥0.5才保存尺寸。移动调用独立savePosition，在原文件锁内读取最新同方向记录，只变位置，保留宽高/参考尺寸；无记录不因移动创建尺寸记录。沿用现有隐根、原子落盘/读回/通知；schema仍1，无猜测迁移/清空旧记忆。
-- 放大接入：核实alpha440原生 `restoreDockTapped:` →已有host展开→原card identity transform→setFrame→layoutIfNeeded→同bridge.layoutHost。仅在原selector同步事件作用范围，选中此前已停靠且仍绑定的card，读该方向记忆，替换一次原生放大目标；随后内容重算原样执行。补点击小窗、external打开已停靠应用、面板搜索动作三类入口；退出/异常必清scope，不新增延时强压、不读取Swift ivar/写vendor/改内容transform。原初次开窗保护保持0.102，不延长。
-- 收起/取消：dockTapped/底部双击/长按前只提交已完成且稳定的真实手势；其余迟到保存取消，所有原版动作参数/BOOL返回保留。关闭取消待保存，缩小window尺寸不采成用户resize。
-- 运行诊断：分别记录尺寸/位置保存及读回宽高、展开入口、记忆目标/默认分支/未就绪原因、原selector返回是否应用，以及每个Hook是否装上；有界脱敏日志，不加用户弹窗。
-- 本地检查：192项unittest，175执行通过、17个Apple runtime专属跳过（含新增2存储过程）；新增8循环/原版字节/接线测试通过；生产循环C夹具4067断言、原策略6692断言真执行；原包和pinned-vendor validate均通过；WindowMemory/Store及Apple存储夹具iOS15.5 arm64e语法检查通过（仅解析，不产iOS机器码）。独立审查未发现已证阻断问题，非真机验收。
-- 保护：16个作者原版文件逐字节不变，Tweak/设置UI/付款/分身/路径/Makefile保持；Launch唯一变化为build标记。版本 `0.1.0~alpha440+clone0.103`，布局记录仍主号分身共用和四方向key。
-- **未验证**：未CI/链接/签名/DEB/安装加载/真机。实际小窗点击是否进入所核分支、第一次frame和内容观感、快速来回/横竖屏/键盘/付款/取消手势必须后续真机验。如果原版在某路径延后动画块到scope之外，本补丁保原行为并记未应用，不冒充成功。旧版曾覆盖成默认的历史记录不自动猜回，装机后需一次真实调整更新。
-- 阶段：`local_checks_complete_waiting_push_approval`。证据报告 `../research/NATIVE-DOCK-ENTRY.md`、`../evidence/LOCAL-RESULT.md`；本地完成不等于手机已修好。推送CI/验包须另问，安装/注销/重启各自另问。
+## 本地检查
+- `python3 -m unittest discover -s tests -p 'test_*.py' -v`：192 项，175 实跑通过、17 项 Apple runtime 专用跳过。
+- `python3 tools/validate.py` 与 `--pinned-vendor`：均 `ALL LOCAL CHECKS PASSED`，含上传原包 SHA 与 16 个 vendor 载荷。
+- 新增/更新的源码契约测试覆盖：票据匹配、第一笔默认 frame 前读取、`window` 可见性不参与初始恢复、源尺寸事件先转发后准备、宿主布局先准备后恢复、贴边放大调用仍存在、失败日志不猜方向。
+- `test_window_memory_cycles.py` 8 项通过，含生产 C 循环 4067 断言、策略 6692、4 个变异拒绝、alpha451 方法表字节。
+- **未做**：本机无 Apple SDK/arm64e 编译，未生成 iOS 机器码、未链接、未签名、未 CI、未 DEB、未安装加载/真机。静态检查与 CI 通过都不能代替手机首帧验收。
 
----
+## 仍需真机验证
+1. 有记忆的冷启动：第一帧是否直接是记忆框（不是先默认再缩），日志是否出现 `first_frame_memory_ready` 且 `substituted` 在首次可见前；若仍出现 `waiting_for_native_source`，记录 gate 与时间。
+2. 无记忆 App、关闭记忆、记忆损坏：是否保持原版默认，不产生空白/卡死。
+3. 正常 resize/move 分型保存、关闭/取消、缩小贴边→放大、横竖屏、键盘/付款/分身、作者新返回手势是否无回归。
+4. 安装、注销、重启各自另行授权；本候选不以本地或 CI 成功声称手机已修复。
 
-# ParallelX alpha440 + clone0.102｜接入作者最新版（历史）
-
-## 当前状态（2026-11-22，本地完成，未推送）
-- 用户批准：以作者 alpha440 原版为底，把我们的全部功能接过去。本轮只做本地接入与检查；未推送、未 CI、未构建、未安装、未操作设备、未注销/重启。
-- 原版载荷已整体替换为作者 alpha440（DEB SHA256 `bc8a18cf048cc19e2951c0f0b485e54ac0b43823aaa289ef2e8e1d64cce2b017`，主库 SHA256 `8fae4085b131ff577173584d4bb4bc53530764d4df441d519e2ae64bdbfae9dd`）。`vendor/alpha440` 16 个文件，`tools/baseline-alpha440.json` 记录逐文件哈希。
-- 保留下来的自有功能（未改行为）：分身账号菜单与切换、付款选号路由、窗口大小/位置记忆（含 clone0.101 的首帧恢复与超时重试）、诊断日志、设置叠加行（分身账号 / 窗口大小与位置记忆）。两份设置入口仍叠在作者 Root.plist 上；作者新版未改该文件。
-- 作者新版带来的变化（二进制自带，我们未改）：主库与设置界面更新、相机组件更新、`System.plist` 的「右边缘滑动返回」增加即时生效通知。
-- 静态复核结论：`PXSceneBridge openApplication:...` 仍按 `close → setCanvas: → setKeyboardOverlay: → setBundleID: → publishHostedCamera:` 顺序执行；`layoutHost`（`0x639b4`）仍通过 `sourceSize` 桩读真实源尺寸；`hostedSourceSize`（`0x647e4`）尾跳转到同一桩。我们依赖的全部选择器与签名在新版中都存在，新增 `tests/fixtures/window-memory-alpha440-abi.json` 记录方法与顺序证据，`evidence/native-layout/README.md` 已改为新版地址。
-- 本地检查通过：182 项 unittest（15 项 Apple 专用跳过）；`tools/validate.py` 与 `--pinned-vendor` 同时通过（原版 DEB 哈希、16 项载荷、结构、版本、主机测试）；两个改动模块以 iPhoneOS15.5 SDK / arm64e `clang -fsyntax-only` 通过。
-- 未验证：未编译机器码、未 CI、未验 DEB、未安装、未注销重启。首帧是否直接为记忆尺寸、内容是否跟随、上滑关闭与底部双击/长按缩小、分屏超时重试是否解决起点读书，全部仍需真机确认。静态顺序一致不等于运行行为一致。
-
----
-
-# ParallelX alpha437 + clone0.101｜跨 App 首显记忆恢复与分屏超时恢复（历史）
-
-## 当前状态（2026-11-22）
-- 生产基线：clone0.100 提交 `527a48b982cd759daa9d85f8f5648345cf60b347`。用户授权：本地修改和测试，适用于所有 App 的记忆窗口恢复以及分屏流程；未授权推送、CI、构建验包、安装或设备读写，注销/重启也未授权。
-- 通用窗口候选：在开窗期间把当前票据放入弱上下文表；当原版首次给 `PXHostCard` 写入新默认外框时，用该次即将写入的真实外框、当前屏幕参考尺寸和已保存的方向记录计算恢复目标，并在转发该帧之前应用。只在原版开窗票据、初始清理完成且原版仍处于 entering 时执行；平常 resize、gesture、无记忆 App 路径原样转发。此路径针对所有 App，不含 CHiQ 特判。
-- 分屏候选：若目标账号仍读回匹配、原版桥已到达，但 10 秒内一直没有原版 completion，则保留失败快照并做最多两次已有的原生 close/open 重试；每次真正重开前再次核对账号，发现新目标或账号变化即停止。成功门槛未放宽：仍需目标账号匹配、native completion/正确桥接、正确 bundle/scene/hosted surface 和窗口可见；不转全屏、不杀应用进程。
-- 本地回归：完整 unittest 182 项通过（15 项 Apple Foundation 专用跳过）；窗口记忆 23 项（9 skip）、分屏运行时 32 项（6 skip）；`tools/validate.py --pinned-vendor` 全量通过；两个改动的 Objective-C 文件以 iPhoneOS15.5 SDK、arm64e `clang -fsyntax-only` 通过。
-- **尚未证明修复**：窗口首帧恢复、原版内容布局、上滑关闭/底部双击长按缩小，均未真机验收；起点读书的缺失 completion 是否能由受限重试恢复也未实测。测试和语法检查不等于安装加载/真机成功。未做 CI/机器码构建/DEB 验包/安装/设备操作。
-- 候选目录：`source/`；只读设备证据及详细判断见 `evidence/LOCAL-REVIEW-STATUS.md`。
-
----
-
-# ParallelX alpha437 + clone0.100｜尺寸记忆窄修，已推送待CI
-
-## 当前候选（2026-11-22）
-- 用户澄清范围：只记忆用户调整后的窗口大小和位置，并在之后打开时恢复；不改其他功能或设置。必须保留原版上滑关闭、底部双击/长按缩小等操作。
-- 基线为已发布并由用户安装的 clone0.99；未触设备。候选从该提交的隔离仓建立。
-- 唯一生产改动 `Common/PXWindowMemory.m`：恢复目标准备时记录本次原版默认外框；开窗短保护期间只把与该默认外框相符、且目标不同的 `PXHostCard setFrame:` 写入替换为已记忆外框；任何不同于默认外框的后续原版写入原样转发。900ms单次收尾仅在外框仍等于默认值时恢复，若原版已改成第三种外框则记 `restore_initial_settle_skipped_native_change` 并原样保留。手势开始和关闭仍沿原逻辑取消记忆恢复保护。
-- 唯一测试改动 `tests/test_window_memory.py`：确保只接管相同默认外框，其他写入和收尾路径不越权。没有新增设置、手势钩子、交互逻辑或存储格式变化；未改厂商二进制、保存门禁、共享主号/分身规则。
-- 本地检查通过：182项 unittest（167通过、15项Apple专用跳过）；生产C策略6692断言；`tools/validate.py` 使用保存的原版 DEB（SHA256 `d60fc0395666c22d594b3d105a1d8129d40ee31224e2865df7bc10f73d8e1750`）全量通过；`--pinned-vendor`通过；`Common/PXWindowMemory.m` iOS15.5 SDK/arm64e `clang -fsyntax-only`通过；diff whitespace检查通过。仅上述两文件与0.99发布源码不同。
-- 风险/未验证：缩小动画若原版使用与默认frame完全相同的setFrame写入，仍可能被窄门误认为开窗默认尺寸；静态和宿主测试无法证明真机原版动画路径。必须用真机分别验普通冷启动首帧、恢复尺寸、上滑关闭、底部双击/长按缩小、取消手势、无记录默认与手动保存。未做 CI/构建/验包/安装/注销/重启；不声称修好。
-- 用户已明确授权推送及CI/验包；提交后等待结果。安装、设备读写、注销、重启未获授权。
-
-
-## 本轮状态（2026-11-22，优先于下方归档）
-- 用户明确以「第一次加窗口记忆的 0.94（alpha437+clone0.94，提交 `be29740`）」为对照基线，指出它有效但有首次不恢复/第二次才恢复的问题；本轮授权仅「继续修复」本地，未授权推送、CI、安装、注销或重启。
-- 只读真机核实（0.98 实装）：QQ 两次缩放均 `save_user_geometry` + `save_verified`，`window-memory.plist` revision 44 保存约 220×476；随后 `restore_initial_geometry_prepared` 命中，约 0.25 秒后 `restore_postlayout_geometry_changed`（normal=true, matches=false）。**结论更正：不是没保存、不是读不到，是原版开窗后续布局把已恢复外框改回默认。**
-- 原版 alpha437 静态反汇编（`research/open-*`、`native-close-method.txt`）：`open` 在 `0x6ae30` 先 close 旧场景，`0x6b3fc` 调用 `layoutHost`，并在 `0x41a68/0x41bd4`、`0x4230c` 的显示动画里再次写 `hostCard.frame`。所以任何「开窗动画前一次性恢复」都会被动画目标覆盖；只在动画后再改外框又会与内容缩放脱节（0.97 的问题）。
-- 0.99 修复（只改 `Common/PXWindowMemory.m`）：
-  1. 命中手动记忆时记录本次目标外框并武装 2 秒保护窗口；
-  2. 只对 `PXHostCard setFrame:` 的开窗期写入替换成记忆外框 —— 动画本身直接以正确尺寸为目标，不产生「先默认再跳回」的可见跳变；
-  3. 显示动画结束后（900ms，单次、不循环）复核：若仍被改成别的尺寸则无动画设回，并调用一次原版 `layoutHost`，让内容按真实宿主尺寸重新计算；
-  4. 用户一碰窗口、关闭、方向代次变化或超时即撤销接管；无记忆 App、取消路径完全走原版。
-- 未改：手动保存门禁与 `resizeHost:` 入口、分身/账号切换、付款、诊断通道、原版 vendor 二进制、原版动画与内容 transform。
-- 本地检查：182 项 unittest（167 执行通过 + 15 项 Apple 专用在 iSH 跳过，新增 1 项首次接管回归）；`tools/validate.py`（原版 alpha437 DEB 全量基线）与 `--pinned-vendor` 全部通过；改动文件 arm64e/iOS15.5 `-fsyntax-only` 通过。相对 0.98 仅 7 个文件变化（记忆实现、两个构建标记、control/control.in、两个测试），无其他生产改动。
-- 已推送提交 `5ace404f64af62d8106e58ae4e9d937f5eb8fbaf`（父 `ab44cbdc`，分支 `parallelx-safe-mode-20261104`）。CI run `44969540297` attempt1 success，job `build (roothide)`；提交内 STATUS 仍是推送前版本（仅差 CI 结果，源码一致）。
-- 已独立下载 artifact `14733335789`（736333B，SHA256 `359462294ff4fefbc16d6e374524e0338d274aed0e9aa07b91664052d47a57b9`）并验包：DEB 452994B / SHA256 `2e9041cd2e198cda132552bfab1d2d162aa0bcb1296c192ad07ef72ba037ccac`；28 项载荷，原版 15 文件逐字节一致；仅 postinst（chmod + exit 0，不注销/不重启，无 setuid）；两库 minOS 15.0，PAC 0 issues，签名页 68+35 全过；dSYM UUID 与二进制一致。
-- 交付：`attachments/ParallelX-alpha437-clone0.99-20261122/` 与 `shared/ParallelX-clone099-save-20261122/release/`（DEB、Source.zip 127 文件、artifact、构建日志、dSYM、SHA256SUMS、VERIFICATION-REPORT.md）。
-- 未验证：未安装、未写设备、未注销/重启。真机「首次打开即恢复」「内容不裁切」「无闪动」以及 `setFrame:` 接管的动画观感仍需装机验收。
-
----
-
-## 0.98 批次归档（历史，勿当作当前状态）
-
-## 本轮状态（2026-11-21，优先于下方归档）
-- 用户已明确授权 0.98 正常推送、GitHub CI 监控、日志检查和产物验包；未授权安装、设备写入、注销或重启。
-- 当前手机实装0.97；用户视频显示App内容未随浮窗正确缩放，且每次开窗出现移位/闪动。录屏保留于 `evidence/USER-097-REGRESSION.mp4`，SHA256 `0ddd4aa357782f246a64cd97e4aaea1b840267b6d333b82c679781f15827b1d7`。
-- 源码对照确认0.97在 `PXWMTryRestore` 中把原版 `layoutHost` 调用移到记忆外框赋值之前，并新增只改外框、不重算内容的后置重复回压。0.98从已推送0.96恢复该生产源码逐字节基线；额外版本/诊断标记/状态/测试更改除外。厂商原版二进制未动。
-- 原版 `layoutHost` 静态反汇编显示会以源内容尺寸和窗口边界计算等比缩放并设置宿主变换；记录于 `evidence/native-layout/README.md`。这是静态调用证据，非当前手机运行时追踪。
-- 最终完整检查：181项测试，166项执行通过、15项Apple专用测试在iSH跳过；`tools/validate.py`、`--pinned-vendor`、三个生产Objective-C文件arm64e/iOS15.5语法及`git diff --check`均通过。原版vendor无变化。
-- 相对0.97共11个文件差异：生产布局恢复顺序回到0.96、诊断构建标记、control版本、布局顺序测试、静态证据及STATUS；未改付款/分身路由或原版二进制。主`/tmp/ci-work` HEAD仍0ae2d109，仅既有STATUS笔记dirty未碰。
-- 0.98尚未推送、未触发CI、未构建或验包、未安装/写设备；内容跟随与闪动仍待装机真机验收。当前`push_authorized_preflight_passed`。本轮授权仅推送+CI/验包；安装另问，注销/重启未授权。
-- 设备当前实装为用户自行安装的 0.96，RootHide 根 `.jbroot-142AF1688D97DF62`。只读诊断显示恢复后有原版布局回调将部分有记忆窗口改回默认的事件，但该判断仍需 0.97 真机验收。
-- 0.97 候选仅对当前打开时确实命中手动记忆的窗口，记录本次恢复的目标；原版后续 layoutHost/控制器布局覆盖后，无动画重应用该目标。手势开始或方向改变即解除保护。未命中手动记忆的 App 仍走原版默认布局；本地代码路径与回归断言覆盖此条件。
-- 最终本地检查：181 项 unittest，166 项执行通过、15 项 Apple 专用测试在 iSH 跳过；定向窗口测试22项中13项执行通过、9项Apple专用跳过。`tools/validate.py`、`--pinned-vendor`及三个生产Objective-C文件的arm64e/iOS15.5语法检查均通过；厂商原版载荷逐字节无变化。
-- 相对已推送0.96只有诊断构建标记、版本号、布局顺序回归测试和状态/静态证据变化；`PXWindowMemory.m`生产实现与0.96逐字节一致。这个回退消除了0.97新增的相反调用顺序；不能因此宣称真机内容跟随已经验收。
-- 0.98尚未推送、未触发CI、未构建DEB、未安装/写设备；录屏中的内容对齐、首开跳闪和手动拖动保存仍待新版本真机验收。状态：`local_checks_complete_waiting_push_approval`；若用户同意推送，安装另行确认，注销/重启未授权。
-
----
-
-## 0.96 已推送批次归档
-- 用户自行安装了0.96；当时交付记录中的“尚未安装”已被用户更正，不应继续引用。
-- 0.96 提交 `67120a27bbd1cceb20235d66000b39768690601f` 与 CI/DEB 结果保留在下方历史；不代表0.97状态。
-- 用户最新明确“修好了就推”，授权本批0.96候选的提交、正常推送、GitHub CI监控、失败日志分析及针对实际构建问题的限定修正；该授权仅适用于0.96，当时不包括安装、设备写入、注销或重启。用户随后自行安装0.96；0.97需单独授权推送。
-- 实装只读确认为alpha437+clone0.95；发布基线 `b6e3f2d8e1b9ecab63d6edaa88111cd1d37f8d4a`。隔离候选 `shared/ParallelX-alpha437-clone096-20261121/source`；主 `/tmp/ci-work` 保持0ae2d10和旧STATUS本地笔记，未改。
-- 真机证据：微信10:21:53.494 code19/done10825ms失败，失败前现场已被32环挤掉；随后同账号3393ms、复用221ms和换账号3780ms成功。code19具体失败门禁未知，不凭后续成功倒推根因。微信已存约267.66×579.24的窗口记忆，不能说未写盘。窗口日志256环已覆盖当次微信恢复过程，后续其他App的恢复时序不能冒充该次微信证据。
-- 窗口候选：在原版layoutHost之前准备当前窗口记忆尺寸，初始准备与保存门禁分离。仅当前票据经过原生清理、canvas/bundle匹配且真实sourceSize有效才可提前准备；未满足仍保留原回退。不猜方向、不隐藏窗口、不删除原版动画、不编辑内容transform，用户手势/关闭/代次变化仍保护保存与恢复。此实现尚未在Apple编译或真机证明“先大后缩”消失。
-- 诊断候选：保留原pollOpened可见性循环字节一致；补bridge/scene/surface/canvas/window/层级/交集/回调/账号回读门禁快照，未知不记成失败，按变化有界节流。现有32事件环外，同一原子文件额外保留最近4次失败摘要（每次最多12事件），避免后续成功挤掉。未放宽成功门槛、不吞报错、不新建重试行为。
-- 本地最终复核：180项unittest，165执行通过、15项Apple专用测试跳过；生产窗口策略6692断言、开窗诊断8471断言、读取工具6项测试通过；四个生产.m静态语法检查通过；alpha437原包和pinned-vendor validate通过。
-- 已正常推送提交 `67120a27bbd1cceb20235d66000b39768690601f`，父提交 `b6e3f2d8e1b9ecab63d6edaa88111cd1d37f8d4a`。GitHub CI run `44891091018` attempt1成功：Apple arm64e编译、180项测试、9项Apple Foundation存储测试、pinned alpha437校验和实际DEB验包全部成功。
-- RootHide arm64e DEB大小451192B，SHA256 `7c18a7ed8b42a893b5308ffce161e9f540a01cc193141d68df752cee0baf159c`；artifact `14701882706`，ZIP SHA256 `2c0131a65a1ccdb1e52ba37ec3f56cabce2fa7fa0f25a64660b7d9fb0fd75cda`；PAC无问题，签名页全部通过，维护脚本不注销/不重启。
-- 已交付 `attachments/ParallelX-alpha437-clone0.96-20261121/`；用户之后自行安装了0.96。未由助手执行设备写入、注销或重启；0.96实装后的首次尺寸观感及新归档实际保存效果尚未完整验收。
-- Apple CI、DEB验包、真机首次打开是否直接为记忆尺寸、失败后助手能否读取新归档，均未验证。
-- 关闭动画最新更正：用户已查到并转述原作者说明，原作者主动移除了用户所说的上滑缩小收起效果。按此说明不再将该效果缺失列为本批集成待修复问题，未恢复或重写动画。此前静态对照只能证明相关动画代码仍存在、两版原版载荷相同，不能由此断言用户所指效果未被原作者移除或运行分支仍会使用它；先前表述过强，予以更正。原始只读证据保留在 `evidence/close-animation/`，不得拿它反驳该作者说明。
-- 日志要求按用户最新澄清更正：日志是让助手事后直接定位原因，不是给用户增加提醒。已撤回编号/保存状态提示及专用代码，原showError函数与已发0.95逐字节一致；机器日志仍有独立失败编号、CXLaunchFailures最近4次失败档、每次最多12条过程事件，不被成功打开挤掉。
-- 新增 `tools/read_launch_diagnostics.py`：助手通过只读MCP读取当前动态RootHide根下日志，直接解析失败归档/滚动记录、保留原始plist；无需用户记编号或手动导出。已实测读取当前0.95设备的微信code19；旧日志现场缺失会明说，不补造原因。6项本地解析测试覆盖归档耐成功滚动、去重、旧格式unknown、动态根只读调用、截断和损坏负例。
-- code19原故障的具体门禁仍未知。新候选将清理前现场写入独立失败档；助手读取工具已通过真实设备只读与离线夹具验证，但0.96新日志的iOS实际写入/重启后保留尚未装机验收。不能用测试或旧版可读结果代替新候选真机证据。
-- 当前阶段：`ci_and_package_verified_waiting_install_approval`。CI和DEB验包通过不等于手机已修好；code19根因、首次显示观感和新日志真机落盘仍待安装验收。上滑收起效果按原作者已移除处理，不擅自恢复。
-
----
-# 以下均为旧批次归档，不代表0.97当前状态
-# 0.96推送授权只覆盖0.96，不自动延续到0.97
-# ParallelX alpha437 + clone0.95｜历史快照
-
-## 当前状态（2026-11-21）
-- 手机实装0.94。真机记录证明记忆已读入，且第二次开窗恢复；首次调整尺寸时方向未就绪，导致当次保存被跳过。已存记录后来可读，不能归因于“没写盘”。
-- 另有一处代码时序缺陷：前台刷新和记忆读入通知共用一个注册标记，前者先注册会挡住后者。0.95将其拆为独立标记；存储读回通知会尝试恢复，并为仍未完成的窗口继续安排有界重试。这是源码和测试确认的修正，尚非真机验收结论。
-- 用户本轮授权推送并监控 CI；范围是当前 alpha437 clone0.95 修复、普通 GitHub 推送、构建监控及针对真实构建失败的限定修正。未授权安装、设备写入、注销或重启。
-- 版本 `0.1.0~alpha437+clone0.95`。用户松手后若几何/方向暂不可读，最多3秒重读同一窗口；只保存实际读到且方向一致的几何，不猜方向。首次开窗恢复最多尝试约10秒；手势、改号、关闭或代次变化会使待执行任务失效，不新开App、不杀进程、不触发付款。
-- 最终本地复核：158项 unittest，149通过、9项Apple Foundation测试在非Apple环境跳过；生产C策略4434项通过；alpha437原包SHA256与16项载荷完整校验通过，pinned-vendor校验通过。
-- 尚无0.95 Apple编译、GitHub CI、DEB验包或真机验收证据。实际首次保存/恢复、最终布局稳定及相邻功能仍待相应阶段单独验证。
-- 过程失误记录：候选文件至少两次被误覆盖为不完整内容；每次均从已验0.94源码ZIP按字节恢复后重新编辑。未触及已发布包、手机或主Git源码。另更正了通知观察者共用标记的问题。
-
----
-# 旧批次状态归档
-# ParallelX clone0.93 窗口记忆｜本地候选
-
-## 本批推送授权与进度（2026-11-20）
-- 用户本轮明确「监控修复推送」：授权当前窗口记忆候选的提交、推送、GitHub CI 监控及针对真实构建失败的限定修正；不包含安装、卸载、注销、重启或手机配置写入。
-- 推送前远端 `parallelx-safe-mode-20261104` 与本地均为 `2f0d81540af3477ddad777174dddcb7ca1af8bbf`；94 个候选文件与冻结记录一致，完整 validate 再次通过。
-- 旧 `CXRemember` 已只读对照：仅参考保存/恢复原则，不恢复旧隐藏卡片、反复强调内容缩放、跨方向兜底或旧 ABI 读取。旧模块留文件但后期未参与构建，不作为运行成功基线。
-- 当前阶段：`push_authorized_preflight_passed`；CI、验包和真机结果在下轮实际执行后另记，不能提前算通过。
-- 下方“未授权/未推送”描述是本地检查完成时的历史快照；本节为本轮最新授权。
-
-## 本轮状态（2026-11-20，优先于下方历史）
-- 用户确认所有 App 记忆窗口大小/位置、横竖屏隔离、分身共用、默认开启、可关闭/清空，并明确同意本地实现。
-- 当前已发布源码基线是 `2f0d81540af3477ddad777174dddcb7ca1af8bbf`（clone0.92）；用户已自行安装 0.92 并反馈暂未发现问题。不是下方历史中的 0.8/0.9。
-- 隔离候选 `/var/minis/shared/ParallelX-window-memory-20261120/source`；原 `/tmp/ci-work` 保持基线，无本轮改动。候选版本为 clone0.93。
-- 阶段：`local_checks_complete_waiting_push_approval`。尚未提交、推送、CI、安装或设备写入；注销/重启均未获准。
-- 本地 156 项测试：147 执行通过，9 Apple Foundation 原生存储测试明确 SKIP。生产 C 4364 断言、4 编译变异负例、原版 6 接口 ABI 字节证据、固定原版 DEB 与 16 vendor 文件保护、完整 validate 均通过。
-- 新增独立窗口记忆模块和设置页，不改原版二进制、不重写既有账号/付款/通知路由。既有 PXClonePrefs 无真实跨进程文件锁，因此新状态使用同一根解析/原子 I/O，但隔离保存、独立 flock，不把窗口数据并入 CXStore。
-- 保存、读回、通知、运行端应用、后续布局几何核对写入限量脱敏诊断；开启/清空/取消和横屏交错已加入本地政策测试。
-- iOS 编译、真机加载、实际尺寸恢复、横屏/键盘/停靠及普通/分身/付款相邻回归未验证，不将静态通过说成真机成功。
-- 完整结果 `LOCAL-WINDOW-MEMORY-RESULT.md`；研究和接口证据 `research/WINDOW-MEMORY.md`；回滚包及测试结果在上级 `evidence/`。
-- 下一步仅在用户新的推送许可后同步候选、构建并验包；安装、注销、重启另问。
-
----
-## 以下为 clone0.9 历史归档，不代表当前版本或本轮授权
-# ParallelX clone0.9 本地修复状态
-## 当前授权与基线
-- 用户2026-11-07明确「现在继续修复吧」：授权历史对照、本地修正与检查。
-- **未授权本轮 commit/push/CI、安装/卸载、设备配置修改、注销/重启**；clone0.8旧推送授权不延续。
-- 从已发布提交 `9c9db4b764c67127995f018089f2ef801443892c:debs/ParallelX` 精确archive到 `/var/minis/shared/ParallelX-clone0.9-local-20261107`，隔离候选无.git。
-- `/tmp/ci-work`保持上述commit且clean，不同步/commit/push本轮更改。
-- 合并包`com.moxuan.parallelx`，只注入SpringBoard与原有Preferences面板；iPhone12/A14/iOS15.5/RootHide/arm64e，SDK15.5，iOS机器码仅获授权后的GitHub CI。
-
-## 上版事实与已知回归
-- clone0.8 CI #10/42254647548双scheme成功并已交付；用户自行安装。只读dpkg确认当前clone0.8，用户报告默认可开、非默认打不开。
-- 默认能开不代表整条分屏或A→B→A验收通过。
-- 真实libcrane arm64e `0x84d4`：无需生物认证分支在`0x86a4`先setActiveContainer(...reload:)，再于`0x86b8/0x86bc`回调NO；认证路径才YES。clone0.8 `ok && active==target`把正常NO误判失败且不回读。
-- 旧clone0.9/clone1.11认证兜底已有同样`success && active==target`。主路径通常走无callback的接口，不能把旧版成功当认证分支验证通过。原始历史同故障是否已修仍按研究证据确认，不编造。
-- 受保护目录list_dir和run_command均没找到launch-trace。旧record忽略解析/写入错误；不把日志缺失直接当成某一条路径错误已证实。
-
-## 本轮最小修复目标
-1. 保留Crane原认证、reload:NO；真实NO/YES只表示回调到达，两者都进有界active回读，只有target一致才允许原生分屏打开。
-2. 回调未达、取消/超时、回读空/错账号、旧令牌/重复回调不得开窗或并发认证；保留旧进程退出、最新目标、A→B→A和新增C门禁。
-3. 唯一隐根路径解析共用且缓存；补路径解析失败回退、日志原子写+读回与可见失败反馈，不写真实var，不覆写CXStore、不重新搬迁用户配置。
-4. 将真实libcrane NO分支做成固定证据fixture和生产C测试，避免再让错误模型测试全绿。
-5. 原版vendor、普通应用开窗、菜单UI、账号隐藏开关与既有偏好存储不重写。
-
-## 当前阶段
-`local_checks_complete_waiting_push_approval`：回调真因与诊断隐根修复已完成本地检查，详细结果/证据见`LOCAL-RESULT.md`。
-
-- 不再用raw BOOL当成功；真实NO/YES都进Verifying，active回读、可见后才开。
-- 新增Crane原字形成fixture+生产测试，root/containment也是C生产头，既不再测假模型。
-- Path与Trace完整检已改；114 host与三套C全过。仍需CI与真机。
-
-## 检查状态
-- 114项host；85068条Flow；916条root；29条真实文件I/O，全部通过。
-- baseline DEB精确hash、vendor16文件逐字节、plists、两scheme维护脚本/control、结构/unused/版本门禁过。
-- 均为host，无ObjC编译、CI、DEB、真机；tree-sitter ObjC仍Segfault，不计语法检。
-- 只读原设备libcrane/Preferences meta；未改设备文件、配置或安装。
-- 潜在残余：SpringBoard真实jbroot/realpath未采样，父目录竞态非无锁全覆盖，Crane认证权限/取消待真机；最后分身删空仍不删行。
-
-## 下一闸门
-等用户当前阶段批准clone0.9 commit/push+GitHub CI。未获批准不commit/push；编译失败只修报错，不自动安装/注销。
-
-## 回滚
-clone0.7、clone0.8交付目录与设备现状保持不动；本候选可从9c9db4b回归。
+## 证据与回滚
+- 基线冻结：`evidence/BASELINE-0104.json`（106 文件哈希、Source.zip SHA）。
+- 用户录屏与设备日志：`../research/coldstart-readonly-20261124/`（只读取证，另目录，不随候选源码打包之外的旧证据）。
+- 本候选回滚：重新安装已交付 `ParallelX-alpha451-clone0.104-20261124` 的 DEB 即可；旧 0.103 包也保留。
+- 推送/CI/验包须单独批准；批准前不提交、不触发 CI。
