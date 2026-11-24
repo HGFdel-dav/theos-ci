@@ -2,21 +2,21 @@
   "schema": 2,
   "baseline": {
     "package": "com.moxuan.parallelx",
-    "version": "0.1.0~alpha451",
+    "version": "0.1.0~alpha455",
     "architecture": "iphoneos-arm64e",
     "depends": "mobilesubstrate, preferenceloader, firmware (>= 15.0), firmware (<< 16.0)",
-    "deb_sha256": "4855744eb0a6b4f6b401b2c9fa318dcee021c6a447f5ad5d0e92d5b22be0a0d5"
+    "deb_sha256": "56a7777e73c07632d6c00d521a7c09251bb87c850b23c181071745a5febacde0"
   },
-  "vendor_root": "vendor/alpha451",
+  "vendor_root": "vendor/alpha455",
   "payload_sha256": {
-    "Library/MobileSubstrate/DynamicLibraries/ParallelX.dylib": "1e6af715a04e9f8b7bcf53c58235419f94bd25b4adcb05abc26a028d0849abdb",
+    "Library/MobileSubstrate/DynamicLibraries/ParallelX.dylib": "324e10caca12770671e2c4b35e25c6dc7033939ebdcaf6c439993e9deb2d7389",
     "Library/MobileSubstrate/DynamicLibraries/ParallelX.plist": "86345479d62d39c2b9fc6f879bbed191913b153deefa1aa486ca1e19c8664304",
-    "Library/MobileSubstrate/DynamicLibraries/ParallelXCameraSupport.dylib": "4e3c90a9c9d4d8947c9950a39868c0b2c68d3aac64df9ef87432868ace2ee482",
+    "Library/MobileSubstrate/DynamicLibraries/ParallelXCameraSupport.dylib": "e79f21234798099db01ffaba0e89cd78a78048795fb8e57fde93750af5dfd351",
     "Library/MobileSubstrate/DynamicLibraries/ParallelXCameraSupport.plist": "a4e9e95e43b1b1f1306214f5c8c1e1c0ee8f76a9f52bb748715573b243902d34",
     "Library/PreferenceBundles/ParallelXPrefs.bundle/External.plist": "be17f2ac78710da42ecb80ba4c245a3c3a105bc94ad8bd77ede4c939122b1b60",
     "Library/PreferenceBundles/ParallelXPrefs.bundle/Info.plist": "2b9b76c0fdc2e3f662dde9a9e7cb6c5d480c403d09c3e9a578feb1f82e8ddebc",
     "Library/PreferenceBundles/ParallelXPrefs.bundle/Keyboard.plist": "40286d38f5dadeb827836d28a9893a1b7c6ecaa0230335bf7cdd1446b8787266",
-    "Library/PreferenceBundles/ParallelXPrefs.bundle/ParallelXPrefs": "a8981082dcac6bc7d46247263420b71e83987cfeb59488e548627706d4c1ad04",
+    "Library/PreferenceBundles/ParallelXPrefs.bundle/ParallelXPrefs": "1e6f0b1076ac9b0431bf46f0ca10a1845458a263e683d0364277baa173505490",
     "Library/PreferenceBundles/ParallelXPrefs.bundle/Root.plist": "fdc372db421b7f49dcb4d283afda6ef1cf2ea6a9cc7aa20283294898b6df7ec3",
     "Library/PreferenceBundles/ParallelXPrefs.bundle/SettingsHelp.plist": "faa658d8712994cb460cb34f2341e099fec70d2728b68df603fb357f572ad8d5",
     "Library/PreferenceBundles/ParallelXPrefs.bundle/System.plist": "621e850cc247efd11dd5526e54de23272c1a84ce477c95aba3d9fc1fd965aeac",

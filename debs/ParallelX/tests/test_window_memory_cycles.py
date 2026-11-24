@@ -55,7 +55,7 @@ class WindowMemoryCycles(unittest.TestCase):
         self.assertIn('![confirmed isEqual:next]',fn)
         self.assertIn('notify_post(PXWindowMemoryNotification.UTF8String)',fn)
     def test_expansion_scope_is_native_event_not_a_frame_timer(self):
-        expand=SOURCE.split('static BOOL PXWMIsParked(',1)[1].split('/* The alpha451 open path',1)[0]
+        expand=SOURCE.split('static BOOL PXWMIsParked(',1)[1].split('/* The alpha455 open path',1)[0]
         self.assertIn('context.canvas.window != triggerWindow',expand)
         self.assertIn('PXWMMayApplyExpansion',expand)
         self.assertIn('@finally { PXWMExpansionScope = previous;',expand)
@@ -91,7 +91,7 @@ class WindowMemoryCycles(unittest.TestCase):
         self.assertIn('return PXWMOriginalConfiguredActionSearch(self, command, action, fromSearch)',action)
 
     def test_dock_hooks_match_original_relative_method_table(self):
-        fixture=json.loads((ROOT/'tests/fixtures/window-memory-alpha451-abi.json').read_text())
+        fixture=json.loads((ROOT/'tests/fixtures/window-memory-alpha455-abi.json').read_text())
         image=(ROOT/fixture['sample']).read_bytes()
         start,end=(int(v,16) for v in fixture['selref_range'])
         def relative(a):return a+struct.unpack_from('<i',image,a)[0]
@@ -104,8 +104,8 @@ class WindowMemoryCycles(unittest.TestCase):
             if start<=name<end:name=struct.unpack_from('<Q',image,name)[0]&0xffffffff
             self.assertEqual(cstr(name),m['selector'])
 
-    def test_native_alpha451_dock_frame_is_set_before_native_content_layout(self):
-        fixture=json.loads((ROOT/'tests/fixtures/window-memory-alpha451-abi.json').read_text())
+    def test_native_alpha455_dock_frame_is_set_before_native_content_layout(self):
+        fixture=json.loads((ROOT/'tests/fixtures/window-memory-alpha455-abi.json').read_text())
         image=(ROOT/fixture['sample']).read_bytes()
         self.assertEqual(hashlib.sha256(image).hexdigest(),fixture['sample_sha256'])
         def word(a):return struct.unpack_from('<I',image,a)[0]
@@ -122,10 +122,10 @@ class WindowMemoryCycles(unittest.TestCase):
         self.assertEqual(word(0x4f9c0),0xf9400c14) # card at native dockedHost+24
         self.assertEqual(word(0x4fa18),0xf9401660) # bridge at native dockedHost+40
         # setTransform -> setFrame -> layoutIfNeeded -> bridge.layoutHost
-        selectors=[(0x4f9c8,0x4f9e4,0x9f028,b'setTransform:'),
-                   (0x4f9ec,0x4fa04,0x9ef08,b'setFrame:'),
-                   (0x4fa0c,0x4fa14,0x9eca8,b'layoutIfNeeded'),
-                   (0x4fa20,0x4fa24,0x9eca0,b'layoutHost')]
+        selectors=[(0x4f9c8,0x4f9e4,0x9f038,b'setTransform:'),
+                   (0x4f9ec,0x4fa04,0x9ef18,b'setFrame:'),
+                   (0x4fa0c,0x4fa14,0x9ecb0,b'layoutIfNeeded'),
+                   (0x4fa20,0x4fa24,0x9eca8,b'layoutHost')]
         for a,call,ref,selector in selectors:
             adrp,ldr=word(a-4),word(a)
             self.assertEqual(adrp&0x9f00001f,0x90000008) # ADRP x8
@@ -134,7 +134,7 @@ class WindowMemoryCycles(unittest.TestCase):
             if imm&(1<<20): imm-=1<<21
             self.assertEqual(((a-4)&~4095)+(imm<<12)+((ldr>>10)&0xfff)*8,ref)
             self.assertEqual(word(call)>>26,0b100101)
-            self.assertEqual(branch(call),0x7c824) # objc_msgSend
+            self.assertEqual(branch(call),0x7d294) # objc_msgSend
             name=struct.unpack_from('<Q',image,ref)[0]&0xffffffff
             self.assertEqual(image[name:image.index(b'\0',name)],selector)
 

@@ -379,7 +379,7 @@ static BOOL PXWMConfiguredActionSearch(id self, SEL command, id action, BOOL fro
     @finally { PXWMExpansionScope = previous; PXWMEndExpansion(scope); }
 }
 
-/* The alpha451 open path can make the new window visible while its geometry
+/* The alpha455 open path can make the new window visible while its geometry
  * gate is still catching up. Resolve the ticket before forwarding the first
  * default PXHostCard frame so the original reveal uses the saved target. */
 /* Resolve the exact current canvas card even before PXSceneBridge.open returns

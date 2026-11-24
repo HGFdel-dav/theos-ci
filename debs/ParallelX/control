@@ -1,8 +1,8 @@
 Package: com.moxuan.parallelx
 Name: ParallelX
-Version: 0.1.0~alpha451+clone0.105
+Version: 0.1.0~alpha455+clone0.106
 Architecture: iphoneos-arm64e
-Description: ParallelX alpha451 with Crane clone-account integration and native split-screen routing.
+Description: ParallelX alpha455 with Crane clone-account integration and native split-screen routing.
 Author: moxuan
 Maintainer: Niubiprass <maintainer@localhost>
 Section: Tweaks

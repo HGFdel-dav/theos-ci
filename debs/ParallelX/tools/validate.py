@@ -10,8 +10,8 @@ import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEB = os.environ.get("BASELINE_DEB", "/var/minis/shared/ParallelX-alpha451-clone0104-20261123/evidence/alpha451-original.deb")
-MANIFEST_PATH = os.path.join(ROOT, "tools/baseline-alpha451.json")
+DEB = os.environ.get("BASELINE_DEB", "/var/minis/shared/ParallelX-alpha455-clone0106-20261124/evidence/alpha455-original.deb")
+MANIFEST_PATH = os.path.join(ROOT, "tools/baseline-alpha455.json")
 with open(MANIFEST_PATH, encoding="utf-8") as manifest_file:
     BASELINE = json.load(manifest_file)
 VENDOR = os.path.join(ROOT, BASELINE["vendor_root"])
@@ -45,7 +45,7 @@ def main():
     baseline_fields = BASELINE["baseline"]
     has_deb = not args.pinned_vendor and os.path.isfile(DEB)
     if args.pinned_vendor:
-        print("CI pinned alpha451 payload mode; source archive not present on the runner", baseline_fields["deb_sha256"])
+        print("CI pinned alpha455 payload mode; source archive not present on the runner", baseline_fields["deb_sha256"])
     elif has_deb:
         digest = sha(DEB)
         if digest != baseline_fields["deb_sha256"]:
@@ -61,7 +61,7 @@ def main():
         if errors == metadata_errors:
             print("ok baseline package metadata")
     else:
-        errors += fail("exact baseline DEB missing; set BASELINE_DEB to the supplied alpha451 package")
+        errors += fail("exact baseline DEB missing; set BASELINE_DEB to the supplied alpha455 package")
 
     expected_payload = BASELINE["payload_sha256"]
     payload_errors = errors
@@ -71,7 +71,7 @@ def main():
             vendor_files.append(os.path.relpath(os.path.join(base, name), VENDOR))
     vendor_files.sort()
     if vendor_files != sorted(expected_payload):
-        errors += fail("vendor file set differs from exact alpha451 source manifest")
+        errors += fail("vendor file set differs from exact alpha455 source manifest")
     for rel, expected in sorted(expected_payload.items()):
         path = os.path.join(VENDOR, rel)
         if not os.path.isfile(path):

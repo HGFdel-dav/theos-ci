@@ -4,7 +4,7 @@ from pathlib import Path
 import plistlib
 
 root = Path(__file__).resolve().parents[1]
-original = root / "vendor/alpha451/Library/PreferenceBundles/ParallelXPrefs.bundle/Root.plist"
+original = root / "vendor/alpha455/Library/PreferenceBundles/ParallelXPrefs.bundle/Root.plist"
 out = root / "layout/Library/PreferenceBundles/ParallelXPrefs.bundle/Root.plist"
 data = plistlib.loads(original.read_bytes())
 items = data.setdefault("items", [])

@@ -8,7 +8,7 @@ endif
 # A single user-supplied RootHide/arm64e vendor baseline cannot be repackaged as
 # a verified rootless engine. Keep old versions' builds in their own commits.
 ifeq ($(THEOS_PACKAGE_SCHEME),rootless)
-$(error alpha451 requires its original RootHide arm64e runtime)
+$(error alpha455 requires its original RootHide arm64e runtime)
 endif
 ARCHS = arm64e
 PACKAGE_FORMAT = deb
@@ -70,24 +70,24 @@ after-stage::
 		"$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/ParallelXClone.dylib" \
 		"$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/ParallelXPrefsUI.dylib"
 
-# One merged ParallelX package: preserve the alpha451 vendor payload, then
+# One merged ParallelX package: preserve the alpha455 vendor payload, then
 # overlay only the original Root.plist with the new in-page account row.
 before-package::
 	@mkdir -p "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries"
-	@cp vendor/alpha451/Library/MobileSubstrate/DynamicLibraries/ParallelX.dylib "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/ParallelX.dylib"
+	@cp vendor/alpha455/Library/MobileSubstrate/DynamicLibraries/ParallelX.dylib "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/ParallelX.dylib"
 	@chmod 755 "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/ParallelX.dylib"
-	@cp vendor/alpha451/Library/MobileSubstrate/DynamicLibraries/ParallelX.plist "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/ParallelX.plist"
+	@cp vendor/alpha455/Library/MobileSubstrate/DynamicLibraries/ParallelX.plist "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/ParallelX.plist"
 	@chmod 644 "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/ParallelX.plist"
-	@cp vendor/alpha451/Library/MobileSubstrate/DynamicLibraries/ParallelXCameraSupport.dylib "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/ParallelXCameraSupport.dylib"
+	@cp vendor/alpha455/Library/MobileSubstrate/DynamicLibraries/ParallelXCameraSupport.dylib "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/ParallelXCameraSupport.dylib"
 	@chmod 755 "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/ParallelXCameraSupport.dylib"
-	@cp vendor/alpha451/Library/MobileSubstrate/DynamicLibraries/ParallelXCameraSupport.plist "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/ParallelXCameraSupport.plist"
+	@cp vendor/alpha455/Library/MobileSubstrate/DynamicLibraries/ParallelXCameraSupport.plist "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/ParallelXCameraSupport.plist"
 	@chmod 644 "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/ParallelXCameraSupport.plist"
 	@mkdir -p "$(THEOS_STAGING_DIR)/Library/PreferenceBundles/ParallelXPrefs.bundle"
-	@cp -a vendor/alpha451/Library/PreferenceBundles/ParallelXPrefs.bundle/. "$(THEOS_STAGING_DIR)/Library/PreferenceBundles/ParallelXPrefs.bundle/"
+	@cp -a vendor/alpha455/Library/PreferenceBundles/ParallelXPrefs.bundle/. "$(THEOS_STAGING_DIR)/Library/PreferenceBundles/ParallelXPrefs.bundle/"
 	@cp layout/Library/PreferenceBundles/ParallelXPrefs.bundle/Root.plist "$(THEOS_STAGING_DIR)/Library/PreferenceBundles/ParallelXPrefs.bundle/Root.plist"
 	@chmod 644 "$(THEOS_STAGING_DIR)/Library/PreferenceBundles/ParallelXPrefs.bundle/Root.plist"
 	@mkdir -p "$(THEOS_STAGING_DIR)/Library/PreferenceLoader/Preferences"
-	@cp vendor/alpha451/Library/PreferenceLoader/Preferences/ParallelX.plist "$(THEOS_STAGING_DIR)/Library/PreferenceLoader/Preferences/ParallelX.plist"
+	@cp vendor/alpha455/Library/PreferenceLoader/Preferences/ParallelX.plist "$(THEOS_STAGING_DIR)/Library/PreferenceLoader/Preferences/ParallelX.plist"
 	@chmod 644 "$(THEOS_STAGING_DIR)/Library/PreferenceLoader/Preferences/ParallelX.plist"
 	@cp ParallelXPrefsUI.plist "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/ParallelXPrefsUI.plist"
 	@chmod 644 "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/ParallelXPrefsUI.plist"

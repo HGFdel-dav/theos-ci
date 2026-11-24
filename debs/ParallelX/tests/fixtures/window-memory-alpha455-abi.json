@@ -1,99 +1,99 @@
 {
-  "sample_sha256": "1e6af715a04e9f8b7bcf53c58235419f94bd25b4adcb05abc26a028d0849abdb",
-  "sample": "vendor/alpha451/Library/MobileSubstrate/DynamicLibraries/ParallelX.dylib",
-  "source": "alpha451 original Objective-C relative method table, open and dock animation call order",
+  "sample_sha256": "324e10caca12770671e2c4b35e25c6dc7033939ebdcaf6c439993e9deb2d7389",
+  "sample": "vendor/alpha455/Library/MobileSubstrate/DynamicLibraries/ParallelX.dylib",
+  "source": "alpha455 original Objective-C relative method table, open and dock animation call order",
   "selref_range": [
     "0x9e978",
-    "0x9fd18"
+    "0x9fd40"
   ],
   "methods": [
     {
       "selector": "resizeHost:",
-      "entry": "0x7f638",
+      "entry": "0x80158",
       "imp": "0x57a30",
       "encoding": "v24@0:8@16"
     },
     {
       "selector": "moveHost:",
-      "entry": "0x7f650",
+      "entry": "0x80170",
       "imp": "0x596cc",
       "encoding": "v24@0:8@16"
     },
     {
       "selector": "openApplication:inView:keyboardOverlay:completion:",
-      "entry": "0x7f974",
-      "imp": "0x73598",
+      "entry": "0x80494",
+      "imp": "0x73d68",
       "encoding": "v48@0:8@16@24@32@?40"
     },
     {
       "selector": "layoutHost",
-      "entry": "0x7f7c4",
+      "entry": "0x802e4",
       "imp": "0x6aef8",
       "encoding": "v16@0:8"
     },
     {
       "selector": "close",
-      "entry": "0x7f98c",
-      "imp": "0x7422c",
+      "entry": "0x804ac",
+      "imp": "0x749b8",
       "encoding": "v16@0:8"
     },
     {
       "selector": "viewDidLayoutSubviews",
-      "entry": "0x7f1dc",
+      "entry": "0x7fcfc",
       "imp": "0x10000",
       "encoding": "v16@0:8"
     },
     {
       "selector": "hostedSourceSize",
-      "entry": "0x7f7f4",
-      "imp": "0x6cd20",
+      "entry": "0x80314",
+      "imp": "0x6d4f0",
       "encoding": "{CGSize=dd}16@0:8"
     },
     {
       "selector": "hasHostedSurface",
-      "entry": "0x7f800",
-      "imp": "0x6cd24",
+      "entry": "0x80320",
+      "imp": "0x6d4f4",
       "encoding": "B16@0:8"
     },
     {
       "selector": "performConfiguredAction:",
-      "entry": "0x7f914",
-      "imp": "0x713bc",
+      "entry": "0x80434",
+      "imp": "0x71b8c",
       "encoding": "B24@0:8@16"
     },
     {
       "selector": "performConfiguredAction:fromSearchFavorites:",
-      "entry": "0x7f908",
-      "imp": "0x71328",
+      "entry": "0x80428",
+      "imp": "0x71af8",
       "encoding": "B28@0:8@16B24"
     },
     {
       "selector": "openFullscreenApplication:",
-      "entry": "0x7f740",
+      "entry": "0x80260",
       "imp": "0x691e0",
       "encoding": "B24@0:8@16"
     },
     {
       "selector": "externalOpenApplication:",
-      "entry": "0x7f4f4",
+      "entry": "0x80014",
       "imp": "0x29b68",
       "encoding": "v24@0:8@16"
     },
     {
       "selector": "switcherRemovedApplication:",
-      "entry": "0x7f4ac",
+      "entry": "0x7ffcc",
       "imp": "0x29920",
       "encoding": "v24@0:8@16"
     },
     {
       "selector": "start",
-      "entry": "0x7f458",
+      "entry": "0x7ff78",
       "imp": "0x27b98",
       "encoding": "v16@0:8"
     },
     {
       "selector": "updatePluginEnabled",
-      "entry": "0x7f464",
+      "entry": "0x7ff84",
       "imp": "0x288f4",
       "encoding": "v16@0:8"
     }
@@ -103,7 +103,7 @@
       "owner": "PXDockCoordinator",
       "kind": "instance",
       "selector": "restoreDockTapped:",
-      "entry": "0x7f180",
+      "entry": "0x7fca0",
       "imp": "0x4c9c8",
       "encoding": "v24@0:8@16"
     },
@@ -111,7 +111,7 @@
       "owner": "PXPanelEntry",
       "kind": "instance",
       "selector": "dockTapped:",
-      "entry": "0x7f608",
+      "entry": "0x80128",
       "imp": "0x55a78",
       "encoding": "v24@0:8@16"
     },
@@ -119,7 +119,7 @@
       "owner": "PXPanelEntry",
       "kind": "instance",
       "selector": "bottomDoubleTapped",
-      "entry": "0x7f65c",
+      "entry": "0x8017c",
       "imp": "0x5a210",
       "encoding": "v16@0:8"
     },
@@ -127,7 +127,7 @@
       "owner": "PXPanelEntry",
       "kind": "instance",
       "selector": "bottomHeld:",
-      "entry": "0x7f668",
+      "entry": "0x80188",
       "imp": "0x5a26c",
       "encoding": "v24@0:8@16"
     },
@@ -135,34 +135,34 @@
       "owner": "PXPanelEntry",
       "kind": "class",
       "selector": "externalOpenApplication:",
-      "entry": "0x7f4f4",
+      "entry": "0x80014",
       "imp": "0x29b68",
       "encoding": "v24@0:8@16"
     }
   ],
   "open_calls": [
     {
-      "at": "0x73614",
-      "stub": "0x7d2c0",
-      "selref": "0x9ea58",
+      "at": "0x73de4",
+      "stub": "0x7dd60",
+      "selref": "0x9ea60",
       "selector": "close"
     },
     {
-      "at": "0x73674",
-      "stub": "0x7e520",
-      "selref": "0x9eef0",
+      "at": "0x73e44",
+      "stub": "0x7efe0",
+      "selref": "0x9ef00",
       "selector": "setCanvas:"
     },
     {
-      "at": "0x73680",
-      "stub": "0x7e7a0",
-      "selref": "0x9ef90",
+      "at": "0x73e50",
+      "stub": "0x7f260",
+      "selref": "0x9efa0",
       "selector": "setKeyboardOverlay:"
     },
     {
-      "at": "0x7368c",
-      "stub": "0x7e500",
-      "selref": "0x9eee8",
+      "at": "0x73e5c",
+      "stub": "0x7efc0",
+      "selref": "0x9eef8",
       "selector": "setBundleID:"
     }
   ]
