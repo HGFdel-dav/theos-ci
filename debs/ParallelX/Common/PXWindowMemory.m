@@ -430,8 +430,10 @@ static void PXWMCardSetFrame(id self, SEL command, CGRect frame) {
                 BOOL hasRecord = loaded && [snapshot[@"enabled"] boolValue] && geometryReady &&
                     PXWindowMemoryGeometry(snapshot, context.bundle, key, &saved);
                 BOOL prepared = NO;
-                if (geometryReady && hasRecord && !context.resolved)
-                    prepared = PXWMPrepareInitialLayoutWithNativeFrame(context, &context.initialNativeFrame, YES);
+                if (geometryReady && hasRecord && !context.resolved) {
+                    PXWMRect initialNative = context.initialNativeFrame;
+                    prepared = PXWMPrepareInitialLayoutWithNativeFrame(context, &initialNative, YES);
+                }
                 if (prepared)
                     PXWMLog(context, @"first_frame_memory_ready",
                             @{@"defaultW":@(pendingDefault.width), @"defaultH":@(pendingDefault.height),
