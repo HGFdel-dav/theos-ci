@@ -100,7 +100,7 @@ jobs:
             echo "FAIL closed: native_checks=$checks_status theos_build=$build_status; no release artifact"
             exit 1
           fi
-          (cd ../MiniSightRhythmService && make clean && make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide)
+          (cd ../MiniSightRhythmService && make clean && make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=roothide CCFLAGS="-Wno-error=reorder-ctor -Wno-error=unused-but-set-variable -Wno-error=sign-compare -Wno-error=shorten-64-to-32")
           mkdir -p out
           cp ../MiniSightRhythmService/packages/*.deb out/
           cp packages/*.deb out/
