@@ -494,17 +494,22 @@ class WindowMemoryAppleStorage(unittest.TestCase):
         self.run_action('enable'); self.run_action('saveB')
         self.assertIn('com.example.b',self.run_action('read')['snapshot']['apps'])
 
-    def test_move_preserves_last_resize_size_and_cannot_create_size(self):
+    def test_move_creates_record_with_observed_size_and_preserves_it(self):
+        # Approved rule: a move with no record remembers position + the size the
+        # user actually saw; a later move must never overwrite a stored size.
         self.run_action('move')
-        self.assertEqual(self.run_action('read')['snapshot']['apps'],{})
+        moved=self.run_action('read')['snapshot']['apps']['com.example.a']['0']
+        self.assertEqual(moved[2:],[312,675.2,0,0,390,844])
+        self.assertNotEqual(moved[:2],[0,0])
         self.run_action('saveA')
         old=self.run_action('read')['snapshot']['apps']['com.example.a']['0']
         self.run_action('move')
         updated=self.run_action('read')['snapshot']['apps']['com.example.a']['0']
         self.assertEqual(updated[2:],old[2:])
         self.assertNotEqual(updated[:2],old[:2])
+        # A move in another orientation with no record is remembered too.
         self.run_action('moveNoSlot')
-        self.assertNotIn('2',self.run_action('read')['snapshot']['apps']['com.example.a'])
+        self.assertIn('2',self.run_action('read')['snapshot']['apps']['com.example.a'])
 
     def test_position_transaction_uses_latest_size_and_respects_clear_disable(self):
         self.run_action('resizeThenMove')
