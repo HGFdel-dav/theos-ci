@@ -151,7 +151,7 @@ static BOOL PXWMOpeningTicketOwnsCanvas(PXWMContext *context, UIView *canvas) {
  * limited to generation zero and never applies to an ordinary resize/layout. */
 static BOOL PXWMInitialFrameMayPrepare(PXWMContext *context) {
     return context && context->native.serial && context->native.initialCleanupSeen &&
-           !context->native.cancelled && context->generation == 0 &&
+           !context->native.cancelled && context.generation == 0 &&
            !context.resolved && !context.interacting && !context.savePending &&
            (context->native.entering || context->native.bound);
 }
