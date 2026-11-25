@@ -955,9 +955,17 @@ static void PXWMSettleSave(PXWMGesture *stamp, NSUInteger attempt) {
     }
     context.key = key; context.keyKnown = YES; context.resolved = YES;
     if (stamp.resizing) {
-        if (!PXWMUserSizeChanged(stamp.startingSizeKnown, stamp.startingFrame, geometry.frame)) {
-            PXWMLog(context, @"resize_unchanged_or_unknown_no_save", @{@"startingSizeKnown":@(stamp.startingSizeKnown)});
-            return;
+        BOOL startingKnown = stamp.startingSizeKnown;
+        if (!PXWMUserSizeChanged(startingKnown, stamp.startingFrame, geometry.frame)) {
+            /* An unreadable starting frame must not throw the gesture away: the
+             * window is normal, settled and the user finished a resize. Only a
+             * *known* unchanged size is a real no-op. */
+            if (startingKnown) {
+                PXWMLog(context, @"resize_unchanged_no_save", @{@"startingSizeKnown":@YES});
+                return;
+            }
+            PXWMLog(context, @"resize_unknown_start_saved",
+                    @{@"w":@(geometry.frame.width), @"h":@(geometry.frame.height)});
         }
         PXWMLog(context, @"save_user_geometry", @{@"x":@(geometry.frame.x),@"y":@(geometry.frame.y),
                   @"w":@(geometry.frame.width),@"h":@(geometry.frame.height), @"resize":@YES,
@@ -1181,6 +1189,10 @@ static void PXWMOpen(id self,SEL command,id bundle,id canvas,id overlay,void (^c
                               @"toW":@(bindTarget.width), @"toH":@(bindTarget.height),
                               @"orientationKey":@(bindKey),
                               @"revision":PXWindowMemoryStore.shared.snapshot[@"revision"] ?: @0});
+                    /* Same one-shot settle the prepared path uses: if the vendor
+                     * animation later lands on the native default, put the
+                     * remembered frame back once, without animation. */
+                    PXWMScheduleInitialSettle(ticket);
                 }
                 PXWMLog(ticket, @"native_window_bound", @{});
             } else {

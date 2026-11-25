@@ -264,7 +264,7 @@ static BOOL PXWMValidState(id value) {
         NSMutableDictionary *safe = [NSMutableDictionary dictionary];
         for (NSString *key in values)
             if ([key isKindOfClass:NSString.class] && [values[key] isKindOfClass:NSNumber.class]) safe[key] = values[key];
-        [events addObject:@{ @"time": @(NSDate.date.timeIntervalSince1970), @"build": @"clone0.111",
+        [events addObject:@{ @"time": @(NSDate.date.timeIntervalSince1970), @"build": @"clone0.112",
                              @"pid": @(getpid()), @"event": name ?: @"unknown", @"state": safe }];
         while (events.count > 256) [events removeObjectAtIndex:0];
         [self writeDocument:events name:PXWMLogFile error:NULL];
@@ -300,7 +300,10 @@ static BOOL PXWMValidState(id value) {
                             error = PXWMError(7, @"窗口方向或参考尺寸已变化，未更新记忆位置");
                     }
                     NSArray *packed = PXWMPackGeometry(merged);
-                    if (!noRememberedSize && !error && ![frames[key] isEqual:packed]) {
+                    /* A move with no record still owns its position: create the
+                     * record from the observed (normal) geometry so the next open
+                     * uses it. Existing records keep their stored size. */
+                    if (!error && ![frames[key] isEqual:packed]) {
                         if (!apps[identifier] && apps.count >= 512) {
                             error = PXWMError(5, @"窗口记忆条目已达到上限");
                         } else {
@@ -332,7 +335,7 @@ static BOOL PXWMValidState(id value) {
         PXWMGeometry readback = {0};
         BOOL hasReadback = PXWindowMemoryGeometry(confirmed, identifier, orientation, &readback);
         [self diagnostic:stale ? @"save_discarded_after_reset" :
-              (noRememberedSize ? @"position_no_size_no_save" :
+              (noRememberedSize ? (changed ? @"position_only_created" : @"position_only_unchanged") :
                [NSString stringWithFormat:@"%@_%@", action, ok ? @"verified" : @"failed"])
                   details:@{ @"orientation": @(orientation), @"revision": confirmed[@"revision"] ?: @0,
                              @"appHash": @(([action isEqual:@"save"] || positionOnly) ? PXWMIdentifierHash(identifier.UTF8String) : 0),

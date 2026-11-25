@@ -88,6 +88,23 @@ class WindowMemoryPolicy(unittest.TestCase):
         self.assertNotRegex(source,r'alpha\s*=\s*0')
         self.assertNotIn('setHidden:YES',source)
 
+    def test_save_rules_cover_move_and_unknown_start(self):
+        src=(ROOT/'Common/PXWindowMemory.m').read_text()
+        save=src.split('PXWMMaySave([snapshot[@"enabled"] boolValue], stamp.epoch',1)[1].split('static void PXWMGestureAction',1)[0]
+        self.assertIn('BOOL startingKnown = stamp.startingSizeKnown;',save)
+        self.assertIn('if (startingKnown) {',save)
+        self.assertIn('resize_unknown_start_saved',save)
+        self.assertIn('resize_unchanged_no_save',save)
+        self.assertNotIn('resize_unchanged_or_unknown_no_save',src)
+        self.assertIn('savePosition:geometry bundle:context.bundle',save)
+        store=(ROOT/'Common/PXWindowMemoryStore.m').read_text()
+        self.assertIn('if (!error && ![frames[key] isEqual:packed]) {',store)
+        self.assertIn('position_only_created',store)
+        self.assertNotIn('position_no_size_no_save',store)
+        self.assertIn('if (!noRememberedSize && !PXWMUpdateRememberedPosition(latest, geometry, &merged))',store)
+        bind=src.split('if (bindRecord && ticket.card) {',1)[1].split('PXWMLog(ticket, @"native_window_bound"',1)[0]
+        self.assertIn('PXWMScheduleInitialSettle(ticket);',bind)
+
     def test_bind_applies_remembered_frame(self):
         source=(ROOT/'Common/PXWindowMemory.m').read_text()
         bind=source.split('first_frame_memory_applied_at_bind',1)[0].rsplit('if (PXWMNativeReturned(&ticket->native',1)[1]
@@ -543,6 +560,6 @@ class WindowMemoryAppleStorage(unittest.TestCase):
         self.assertLessEqual(len(logs),256)
         self.assertGreater(len(logs),200)
         self.assertTrue(any(event['event']=='fixture' for event in logs))
-        self.assertTrue(all(event['build']=='clone0.111' for event in logs))
+        self.assertTrue(all(event['build']=='clone0.112' for event in logs))
 
 if __name__ == '__main__': unittest.main(verbosity=2)

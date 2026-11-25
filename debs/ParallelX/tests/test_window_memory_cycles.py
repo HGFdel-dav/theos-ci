@@ -40,7 +40,7 @@ class WindowMemoryCycles(unittest.TestCase):
         self.assertLess(gesture.index('stamp.startingFrame = startingFrame'),gesture.index('if (original) original(panel,command,gesture);',gesture.index('stamp.startingFrame')))
         settle=SOURCE.split('static void PXWMSettleSave(',1)[1].split('static void PXWMGestureAction(',1)[0]
         self.assertIn('if (stamp.resizing)',settle)
-        self.assertIn('PXWMUserSizeChanged(stamp.startingSizeKnown, stamp.startingFrame, geometry.frame)',settle)
+        self.assertIn('PXWMUserSizeChanged(startingKnown, stamp.startingFrame, geometry.frame)',settle)
         self.assertIn('savePosition:geometry',settle)
         self.assertIn('saveGeometry:geometry',settle)
         self.assertIn('gesture_cancel_no_save',gesture)
@@ -48,8 +48,8 @@ class WindowMemoryCycles(unittest.TestCase):
         fn=STORE.split('- (void)change:',1)[1].split('- (void)saveGeometry:',1)[0]
         self.assertLess(fn.index('[self lockDocument:&error]'),fn.index('PXWMUpdateRememberedPosition(latest, geometry, &merged)'))
         self.assertIn('!PXWMUnpackGeometry(frames[key], &latest)',fn)
-        self.assertIn('if (!noRememberedSize && !error && ![frames[key] isEqual:packed])',fn)
-        self.assertIn('position_no_size_no_save',fn)
+        self.assertIn('if (!error && ![frames[key] isEqual:packed])',fn)
+        self.assertIn('position_only_created',fn)
         self.assertIn('if (ok && changed)',fn)
         self.assertIn('[self writeDocument:next name:PXWMStateFile error:&error]',fn)
         self.assertIn('![confirmed isEqual:next]',fn)
