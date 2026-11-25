@@ -28,7 +28,7 @@ jobs:
         working-directory: debs/MiniSight
         run: |
           set -euo pipefail
-          test "$(sed -n 's/^Version: //p' control)" = "0.8.55"
+          test "$(sed -n 's/^Version: //p' control)" = "0.8.56"
           python3 tools/check_host.py
           python3 tools/check_repairs_20261107.py
           python3 scripts/test_minisight_pet_paths_20261122.py --mutations

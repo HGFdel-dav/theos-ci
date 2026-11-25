@@ -736,7 +736,7 @@ static NSString *const kMiniSightCenterY   = @"MiniSightCenterY";
 static NSString *const kMiniSightText      = @"Minis 操作中";
 // 版本号：与 DEBIAN/control 的 Version 同步。诊断日志会打印它，
 // 便于装机后确认跑的是哪一版（strings MiniSight.dylib | grep 也能看到）。
-static NSString *const kMiniSightVersion   = @"0.8.55";
+static NSString *const kMiniSightVersion   = @"0.8.56";
 
 #pragma mark - 全局状态
 
@@ -1440,6 +1440,17 @@ static void MiniSightApplyRuntimeConfig(void) {
         gMiniSightPet.preferredFPS = c.frameLimit == 1 ? 30 : (c.frameLimit == 2 ? 60 : (c.frameLimit == 3 ? 120 : 0));
         gMiniSightPet.activityActive = gMiniSightBurst || gMiniSightActivityExecuting;
         gMiniSightPet.soundEnabled = c.sound;
+        // Actual effective values, not merely settings-save intent. This
+        // bounded transition record survives even when diagnostics details are off.
+        static NSDictionary *lastActivityApplied;
+        NSDictionary *applied = @{@"source": @"plugin", @"reason": @"activity_applied",
+            @"enabled": @(gMiniSightPet.dailyActionsEnabled), @"value": @(gMiniSightPet.roamPace),
+            @"duration_ms": @((NSInteger)lrint(gMiniSightPet.roamInterval * 1000.)),
+            @"active": @(gMiniSightPet.activityActive)};
+        if (![lastActivityApplied isEqual:applied]) {
+            lastActivityApplied = applied;
+            MSDiagEvent(@"pet", @"config", @"ok", applied);
+        }
     }
     gMiniSightBubbleScale = MSClamp(c.bubbleScale, 0.8, 1.6);
     gMiniSightTextScale = MSClamp(c.textScale, 0.8, 1.6);

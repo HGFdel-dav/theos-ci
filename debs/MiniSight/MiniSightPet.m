@@ -124,7 +124,9 @@ static CGPoint MSPetCGPoint(MSPoint p) { return CGPointMake((CGFloat)p.x, (CGFlo
     CGRect _lastSpriteRect;
     BOOL _wantsPlaying, _suspended, _hasCenterBounds;
     CFTimeInterval _dailyActionDue, _dailyActionHoldUntil, _dailyFallbackBegan;
-    BOOL _dailyActionsEnabled;
+    BOOL _dailyActionsEnabled, _dailyFirstFramePending;
+    CFTimeInterval _dailyPausedRemaining, _dailyDiagAt, _musicDiagAt;
+    NSUInteger _dailyBlockers, _musicInputMode;
     MSPetDailyFallback _dailyFallback;
     unsigned _lastDailyFallback;
     BOOL _geometryReady, _settingGeometry, _motionActive;
@@ -162,6 +164,7 @@ static CGPoint MSPetCGPoint(MSPoint p) { return CGPointMake((CGFloat)p.x, (CGFlo
 - (BOOL)shouldAnimate;
 - (BOOL)mayRoam;
 - (BOOL)mayPerformMusicMotion;
+- (BOOL)measuredMusicInputAt:(CFTimeInterval)now;
 - (void)checkRhythmAtTime:(CFTimeInterval)now;
 - (void)reconcilePlayback;
 - (void)reconcilePlaybackOnce;
@@ -271,7 +274,7 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
         _longPressEnabled = YES; // Configuration storage; the host owns gestures.
         _roamPace = 1.;
         _dailyActionsEnabled = YES;
-        _rhythmFollowing = YES; // Safe default: no measured input means quiet.
+        _rhythmFollowing = YES; // Measured music only; ordinary life stays independent.
         self.contentMode = UIViewContentModeScaleAspectFit;
         self.userInteractionEnabled = YES;
         self.layer.contentsGravity = kCAGravityResizeAspect;
@@ -555,6 +558,10 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
            (area.w > 0. || area.h > 0.);
 }
 
+- (BOOL)measuredMusicInputAt:(CFTimeInterval)now {
+    return _rhythmFollowing && _effects.musicPlaying && MSPetRhythmFresh(&_rhythmPolicy, now);
+}
+
 - (BOOL)mayPerformMusicMotion {
     // Follow the user's roam OFF/pace settings; assistant activity, chat and
     // approval own attention. Music never takes over gesture/physics ownership.
@@ -592,12 +599,11 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     if (_dailyActionHoldUntil > 0.) [self tryDailyActionAt:now];
     if (![self mayRoam]) {
         [self invalidateRoamTimer];
-        // Cancel a real trajectory once. Repeated layout/owner refreshes must
-        // not clear an unrelated hold, sleep or user-owned dragging direction.
+        // Do not rewrite a drag or active motion to idle while an owner holds it.
         if (_motionActive || _motionLink || _physicsMotion) [self cancelMotion];
         if (_gravityImpulseDuration > 0. || _gravityLink) [self cancelGravityImpulse];
     }
-    if (_effects.musicPlaying && ![self mayPerformMusicMotion]) {
+    if (((!_rhythmFollowing && _effects.musicPlaying) || _musicMotion) && ![self mayPerformMusicMotion]) {
         [self invalidateRoamTimer];
         if (_musicMotion && !_physicsMotion && !_dragging) [self cancelMotion];
     }
@@ -637,7 +643,7 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     if (![self shouldAnimate]) { [self reconcilePlayback]; return; }
     CFTimeInterval now = CACurrentMediaTime();
     [self checkRhythmAtTime:now];
-    if (_effects.musicPlaying && ![self mayPerformMusicMotion]) {
+    if (((!_rhythmFollowing && _effects.musicPlaying) || _musicMotion) && ![self mayPerformMusicMotion]) {
         [self invalidateRoamTimer];
         if (_musicMotion && !_physicsMotion && !_dragging) [self cancelMotion];
     }
@@ -699,9 +705,9 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     BOOL poseFree = !_motionActive && !_dragging && !_landingRecoveryStage && _stateHoldUntil <= 0. &&
         !_resident.sleeping && !_resident.waking && !_activityActive && !_motionLockReasons && !_lyricsSuppressed &&
         !_roamingPaused && !_interactionActive && !_effects.presentationBlocked && !_effects.autonomyHeld && !UIAccessibilityIsReduceMotionEnabled();
-    if (poseFree && _effects.musicPlaying && _state == MiniSightPetStateIdle)
+    if (poseFree && _effects.musicPlaying && (!_rhythmFollowing || [self measuredMusicInputAt:now]) && _state == MiniSightPetStateIdle)
         [self setSpriteState:MiniSightPetStateMusic];
-    else if (_state == MiniSightPetStateMusic && (!_effects.musicPlaying || !poseFree))
+    else if (_state == MiniSightPetStateMusic && (!_effects.musicPlaying || (_rhythmFollowing && ![self measuredMusicInputAt:now]) || !poseFree))
         [self setSpriteState:MiniSightPetStateIdle];
     [_effects setLegacyState:_state waking:_resident.waking];
     if (_effects.hasActions) return;
@@ -715,7 +721,7 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
         _column = MSPetDailyFallbackColumn(_dailyFallback, now - _dailyFallbackBegan);
         [self applySpriteFrame]; return;
     }
-    if (_state == MiniSightPetStateDragging || _state == MiniSightPetStateMusic) {
+    if (_dragging || _state == MiniSightPetStateMusic) {
         if (_state == MiniSightPetStateDragging) _column = MSPetPoseColumnAt((int)_state, now - _poseBegan);
         [self applySpriteFrame]; return;
     }
@@ -723,9 +729,8 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
         NSInteger next;
         if (_state == MiniSightPetStateSleeping) {
             next = _resident.waking ? MSPetResidentWakeColumn(now - _resident.wakeBegan)
-                                     : MSPetResidentSleepColumn(now - _resident.sleepBegan);
+                                    : MSPetResidentSleepColumn(now - _resident.sleepBegan);
         } else {
-            // Randomness is consumed only when arming a blink, never every FPS.
             BOOL needsDelay = _resident.nextBlinkAt <= 0. ||
                 (_resident.blinking && now - _resident.blinkBegan >= 6. * kMiniSightIdleSpriteInterval);
             next = MSPetResidentIdleColumn(&_resident, now, needsDelay ? MSPetRandomUnit() : 0.5);
@@ -794,8 +799,7 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
         NSInteger col = MIN(MAX(0, column), MAX(0, maxCol - 1));
         NSInteger totalCols = packCols * innerCols, totalRows = packRows * innerRows;
         rect = CGRectMake((CGFloat)((v % packCols) * innerCols + col) / totalCols,
-                          (CGFloat)((v / packCols) * innerRows +
-                              row) / totalRows,
+                          (CGFloat)((v / packCols) * innerRows + row) / totalRows,
                           1.0 / totalCols, 1.0 / totalRows);
     }
     // Crop the frame out of the sheet instead of relying on contentsRect:
@@ -811,6 +815,11 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     _gravityLayer.contentsRect = CGRectMake(0, 0, 1, 1);
     _gravityLayer.contents = cell ? (__bridge id)cell : nil;
     [CATransaction commit];
+    if (cell && _dailyFirstFramePending && _dailyFallback != MSPetDailyNone) {
+        _dailyFirstFramePending = NO;
+        MSDiagEvent(@"pet", @"daily_action", @"ok", @{@"source": @"plugin", @"reason": @"daily_first_frame",
+            @"action_id": @((unsigned)_dailyFallback), @"frame_count": @([self frameCountForRow:row]), @"frame_index": @(column)});
+    }
     if (cell) CGImageRelease(cell);
 }
 
@@ -1095,7 +1104,7 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     NSAssert(NSThread.isMainThread, @"Daily actions are main-thread owned");
     if (_dailyActionsEnabled == enabled) return;
     _dailyActionsEnabled = enabled;
-    if (!enabled) [self cancelDailyAction];
+    if (!enabled) { [self cancelDailyAction]; _dailyPausedRemaining = 0.; }
     // No dedicated daily timer exists. The existing sprite clock may continue
     // for manual/resident animation, but cannot rearm daily work while OFF.
 }
@@ -1104,23 +1113,41 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
         _state == MSPetDailyFallbackPose(_dailyFallback) && !_motionActive && !_physicsMotion &&
         !_dragging && !_landingRecoveryStage && _stateHoldUntil <= 0. &&
         !_resident.sleeping && !_resident.waking;
-    _dailyActionDue = 0.; _dailyActionHoldUntil = 0.; _dailyFallbackBegan = 0.;
-    _dailyFallback = MSPetDailyNone;
+    _dailyActionDue = 0.; _dailyActionHoldUntil = 0.; _dailyFallbackBegan = 0.; _dailyPausedRemaining = 0.;
+    _dailyFallback = MSPetDailyNone; _dailyFirstFramePending = NO;
     [_effects cancelDailyAction];
     if (restore) [self setSpriteState:MiniSightPetStateIdle];
 }
 - (void)scheduleDailyActionFrom:(CFTimeInterval)now {
-    if (_dailyActionsEnabled && _dailyActionDue <= 0. && !_effects.musicPlaying)
-        _dailyActionDue = now + MSPetRandomRange(8.0, 14.0);
+    if (_dailyActionsEnabled && _dailyActionDue <= 0.) {
+        _dailyActionDue = now + (_dailyPausedRemaining > 0. ? _dailyPausedRemaining : MSPetRandomRange(8.0, 14.0));
+        _dailyPausedRemaining = 0.;
+    }
 }
 - (void)tryDailyActionAt:(CFTimeInterval)now {
-    BOOL blocked = !_dailyActionsEnabled || ![self shouldAnimate] || _resident.sleeping || _resident.waking ||
-        _landingRecoveryStage || _motionActive || _physicsMotion || _dragging || _activityActive ||
-        _lyricsSuppressed || _motionLockReasons || _interactionActive || _effects.presentationBlocked ||
-        _effects.musicPlaying || _stateHoldUntil > now || (_effects.autonomyHeld && _dailyActionHoldUntil <= 0.) ||
-        UIAccessibilityIsReduceMotionEnabled();
-    if (blocked) { [self cancelDailyAction]; return; }
-    if (_dailyActionHoldUntil > now) return;
+    // Bits describe independent owners, not musical metadata. Pausing preserves
+    // remaining eligible wait, never a backlog of actions; hard gates retire art now.
+    NSUInteger blockers = (!_dailyActionsEnabled ? 1u : 0u) | (![self shouldAnimate] ? 2u : 0u) |
+        ((_resident.sleeping || _resident.waking) ? 4u : 0u) | (_landingRecoveryStage ? 8u : 0u) |
+        (_motionActive ? 16u : 0u) | (_physicsMotion ? 32u : 0u) | (_dragging ? 64u : 0u) |
+        ((_activityActive || _lyricsSuppressed || _motionLockReasons || _interactionActive || _effects.presentationBlocked) ? 128u : 0u) |
+        ((_effects.musicPlaying && (!_rhythmFollowing || [self measuredMusicInputAt:now])) ? 256u : 0u) |
+        ((_stateHoldUntil > now || (_effects.autonomyHeld && _dailyActionHoldUntil <= 0.)) ? 512u : 0u) |
+        (UIAccessibilityIsReduceMotionEnabled() ? 1024u : 0u);
+    if (blockers != _dailyBlockers || now - _dailyDiagAt >= 30.) {
+        _dailyBlockers = blockers; _dailyDiagAt = now;
+        MSDiagEvent(@"pet", @"daily_action", @"ok", @{@"source": @"plugin", @"reason": @"daily_gate",
+            @"blockers": @(blockers), @"due_ms": @((NSInteger)lrint(fmax(0., _dailyActionDue - now) * 1000.)),
+            @"action_id": @((unsigned)_dailyFallback), @"enabled": @(_dailyActionsEnabled)});
+    }
+    if (blockers) {
+        double remaining = _dailyActionDue > 0. ? fmax(.05, _dailyActionDue - now) : _dailyPausedRemaining;
+        if (_dailyActionHoldUntil > 0.) remaining = MSPetRandomRange(8.0, 14.0);
+        [self cancelDailyAction];
+        _dailyPausedRemaining = (blockers & (1u | 2u | 4u | 1024u)) ? 0. : remaining;
+        return;
+    }
+    if (_dailyActionHoldUntil > now || (_dailyActionHoldUntil > 0. && !_dailyFallback && _effects.autonomyHeld)) return;
     if (_dailyActionHoldUntil > 0.) {
         [self cancelDailyAction];
         _dailyActionDue = now + MSPetRandomRange(14.0, 25.0);
@@ -1136,6 +1163,7 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
         if (duration > 0.) {
             _lastDailyFallback = (unsigned)_dailyFallback;
             _dailyFallbackBegan = now;
+            _dailyFirstFramePending = YES;
             [self setSpriteState:(MiniSightPetState)MSPetDailyFallbackPose(_dailyFallback)];
         }
     }
@@ -1146,14 +1174,14 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     _dailyActionDue = 0.;
     _dailyActionHoldUntil = now + duration + .25;
     [self invalidateRoamTimer]; // Pose ownership never changes the center or transform.
-    MSDiagEvent(@"pet", @"daily_action", @"ok", @{@"source": @"plugin", @"duration_ms": @((NSInteger)lrint(duration * 1000.))});
+    MSDiagEvent(@"pet", @"daily_action", @"ok", @{@"source": @"plugin", @"reason": @"daily_selected", @"action_id": @((unsigned)_dailyFallback), @"duration_ms": @((NSInteger)lrint(duration * 1000.))});
 }
 
 - (void)scheduleRoam {
-    if (_rhythmFollowing && _effects.musicPlaying) {
+    if ([self measuredMusicInputAt:CACurrentMediaTime()]) {
         [self invalidateRoamTimer]; return; // No free-running/fallback beat.
     }
-    if (_effects.autonomyHeld || (_effects.musicPlaying && ![self mayPerformMusicMotion])) {
+    if ((_effects.presentationBlocked && !_activityActive) || _effects.autonomyHeld || (!_rhythmFollowing && _effects.musicPlaying && ![self mayPerformMusicMotion])) {
         [self invalidateRoamTimer]; return;
     }
     // A state hold (waving) owns the sprite state: frameTick arms the next roam.
@@ -1168,9 +1196,8 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
         [self armRoamTimerWithDelay:resumedDelay];
         return;
     }
-    // Preserve the original weighted walk/jump/wave choices and pace table.
-    // Assistant activity changes the delay, not sprite or display-link FPS.
-    NSTimeInterval base = _effects.musicPlaying ? MSPetRandomRange(1.5, 2.3) : _activityActive
+    // Preserve the original weighted choices and pause/resume delay.
+    NSTimeInterval base = (!_rhythmFollowing && _effects.musicPlaying) ? MSPetRandomRange(1.5, 2.3) : _activityActive
         ? MSPetRandomRange(kMiniSightRoamActiveLo, kMiniSightRoamActiveHi)
         : MSPetRandomRange(kMiniSightRoamIdleLo, kMiniSightRoamIdleHi);
     NSTimeInterval delay = MSPetRoamDelay(base, _roamPace, _roamInterval,
@@ -1198,15 +1225,13 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
 }
 
 - (void)roamOnce {
-    if (_rhythmFollowing && _effects.musicPlaying) { [self invalidateRoamTimer]; return; }
+    if ([self measuredMusicInputAt:CACurrentMediaTime()]) { [self invalidateRoamTimer]; return; }
     if (_effects.autonomyHeld) { [self invalidateRoamTimer]; return; }
     [self updateResidentAtTime:CACurrentMediaTime()];
-    if (![self mayRoam] || _motionActive) { [self invalidateRoamTimer]; return; }
-    // A fired timer must not leave a stale pointer that blocks a bounded
-    // attention hold or the next old roaming action from arming its successor.
     [self invalidateRoamTimer];
+    if ((_effects.presentationBlocked && !_activityActive) || ![self mayRoam] || _motionActive) return;
     if ([self consumeAttentionAtTime:CACurrentMediaTime()]) return;
-    if (_effects.musicPlaying) {
+    if (!_rhythmFollowing && _effects.musicPlaying) {
         if (![self mayPerformMusicMotion] || _landingRecoveryStage || _stateHoldUntil > 0.) return;
         MSPetMusicTravel travel = MSPetMusicTravelAt([self feasibleCenters], MSPetPoint(self.center), _musicMotionStep);
         if (travel.valid) {
@@ -1226,8 +1251,7 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
                                            MSPetRandomUnit(), MSPetRandomUnit(), false);
         [self startMotionTo:MSPetCGPoint(target) jump:NO rest:MSPetRandomRange(0.35, 1.1)];
     } else if (roll < 80) {
-        // Use a nearby lane target; the shared solver limits the arc so neither
-        // the pet head nor its chat bubble crosses the reserved top boundary.
+        // Hop to the next nearby lane, with the arc capped by the safe range.
         CGPoint origin = self.center;
         MSPoint target = MSPetNearbyTarget(area, MSPetPoint(origin),
                                            MSPetRandomUnit(), MSPetRandomUnit(), true);
@@ -1275,7 +1299,7 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     _rhythmFollowing = following;
     _effects.rhythmFollowing = following;
     [self invalidateRoamTimer];
-    if (following && _effects.musicPlaying && _motionActive && !_physicsMotion && !_dragging)
+    if (following && _musicMotion && !_physicsMotion && !_dragging)
         [self cancelMotion];
     [self reconcilePlayback];
 }
@@ -1292,24 +1316,45 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     _rhythmStarting = NO;
     _rhythmAction = (MSPetRhythmAction){0};
     [_effects applyRhythmStrength:0 pulse:0];
-    if (_musicMotion && !_physicsMotion && !_dragging) [self cancelMotion];
+    if (_musicMotion && !_physicsMotion && !_dragging) {
+        [self cancelMotion];
+        [self ensureFrameTimer];
+        [self scheduleRoam]; // The measured link may have owned the only clock.
+    }
 }
 - (void)checkRhythmAtTime:(CFTimeInterval)now {
     if (!_rhythmFollowing) return;
     if (![self mayPerformMusicMotion] || _dragging || _interactionActive || _physicsMotion ||
         !MSPetRhythmFresh(&_rhythmPolicy, now)) [self clearRhythm];
+    NSUInteger mode = [self measuredMusicInputAt:now] ? 2u : (_effects.musicPlaying ? 1u : 0u);
+    if (mode != _musicInputMode || (_effects.musicPlaying && now - _musicDiagAt >= 30.)) {
+        _musicInputMode = mode; _musicDiagAt = now;
+        MSDiagEvent(@"pet", @"state", @"ok", @{@"source": @"plugin", @"reason": @"music_input_mode",
+            @"input_mode": @(mode), @"input_ready": @(mode == 2u), @"enabled": @(_rhythmFollowing)});
+    }
 }
 - (void)applyRhythmFrame:(MSRhythmFrame)frame receivedAt:(CFTimeInterval)receivedAt {
     NSAssert(NSThread.isMainThread, @"Rhythm is main-thread owned");
     if (!_rhythmFollowing) return;
     BOOL gate = [self mayPerformMusicMotion] && !_dragging && !_physicsMotion && !_interactionActive;
-    BOOL available = gate && !_motionActive && !_landingRecoveryStage &&
-        _stateHoldUntil <= 0. && !_effects.autonomyHeld;
+    BOOL available = gate && (!_motionActive || !_musicMotion) && !_landingRecoveryStage &&
+        _stateHoldUntil <= 0. && (!_effects.autonomyHeld || _dailyActionHoldUntil > 0.);
     MSPetRhythmAction action = MSPetRhythmConsume(&_rhythmPolicy, frame,
         receivedAt, CACurrentMediaTime(), [self feasibleCenters], MSPetPoint(self.center), available);
-    if (!gate || !action.accepted) { [self clearRhythm]; return; }
+    if (!gate || !action.accepted) {
+        if (CACurrentMediaTime() - _musicDiagAt >= 5.) {
+            _musicDiagAt = CACurrentMediaTime();
+            MSDiagEvent(@"pet", @"state", @"ok", @{@"source": @"plugin",
+                @"reason": gate ? @"rhythm_frame_rejected" : @"rhythm_owner_blocked", @"valid": @(action.accepted), @"input_ready": @NO});
+        }
+        [self clearRhythm]; return;
+    }
+    [self invalidateRoamTimer];
+    if (_dailyActionHoldUntil > 0.) [self cancelDailyAction];
     [_effects applyRhythmStrength:action.strength pulse:action.pulse];
     if (!action.valid || !available) return;
+    [self cancelDailyAction];
+    if (_motionActive && !_musicMotion && !_physicsMotion && !_dragging) [self cancelMotion];
     _rhythmAction = action;
     _rhythmStarting = YES;
     _musicMotion = YES;
@@ -1324,15 +1369,15 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
 - (void)setMusicPosition:(NSTimeInterval)position { _effects.musicPosition = position; }
 - (void)setMusicPlaying:(BOOL)playing {
     if (_effects.musicPlaying == playing) return;
-    if (playing) [self cancelDailyAction];
+    if (playing && !_rhythmFollowing) [self cancelDailyAction];
     _effects.musicPlaying = playing;
     [self clearRhythm];
     MSDiagEvent(@"pet", @"state", @"ok", @{@"source": @"plugin", @"active": @((BOOL)playing), @"reason": @"music_state"});
-    [self invalidateRoamTimer];
+    if (!_rhythmFollowing) [self invalidateRoamTimer];
     if (playing) {
         _musicMotionStep = 0;
         // Retire only the old automatic route, not a manual drag or fling.
-        if (_motionActive && !_physicsMotion && !_dragging) [self cancelMotion];
+        if (_musicMotion && !_physicsMotion && !_dragging) [self cancelMotion];
         [self wakeForInteraction];
     } else {
         // Freeze at the current real center; no snap to an unfinished target.
@@ -1480,6 +1525,7 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
     [self checkRhythmAtTime:CACurrentMediaTime()];
     if (!_motionActive || _activeMotionGeneration != _motionGeneration) return;
     if (![self shouldAnimate] || _roamingPaused || _interactionActive || _motionLockReasons ||
+        (!_physicsMotion && _effects.presentationBlocked && !_activityActive) ||
         (_musicMotion && ![self mayPerformMusicMotion])) {
         // Freeze at the actual position, then let reconcile resume the sprite clock.
         [self cancelMotion];
@@ -1496,7 +1542,7 @@ double MiniSightGravityFilterRoll(double previous, double sample, double deltaTi
         BOOL absorbed = MSGravityBodyAbsorbHardFloor(&_gravityBody, [self feasibleCenters], hits);
         if ((hits & MSGravityHitFloor) && (_loggedFloorGeneration != generation || absorbed)) {
             _loggedFloorGeneration = generation;
-            MSDiagEvent(@"pet", @"state", @"ok", @{ @"source": @"plugin", @"reason": @"floor_contact", @"value": @(absorbed ? 2 : 1), @"generation": @(generation) });
+            MSDiagEvent(@"pet", @"state", @"ok", @{@"source": @"plugin", @"reason": @"floor_contact", @"value": @(absorbed ? 2 : 1), @"generation": @(generation)});
         }
         self.center = MSPetCGPoint(_gravityBody.position);
         // Geometry callbacks may hide, replace, resize, or lock this pet.
