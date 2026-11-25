@@ -27,6 +27,7 @@ typedef NS_ENUM(unsigned, PXWMGeometryGate) {
 @property(nonatomic, strong) PXWMGesture *pendingGesture;
 @property(nonatomic) PXWMRect initialTarget;
 @property(nonatomic) PXWMRect initialNativeFrame;
+@property(nonatomic) BOOL initialTargetAppliedAtBind;
 @property(nonatomic) BOOL initialTargetActive;
 @property(nonatomic) unsigned initialTargetKey;
 @property(nonatomic) uint64_t initialTargetEpoch;
@@ -609,7 +610,7 @@ static void PXWMCardSetFrame(id self, SEL command, CGRect frame) {
                     fabs(frame.size.height-native.size.height)<0.5;
                 BOOL same = fabs(frame.origin.x-target.origin.x)<0.5 && fabs(frame.origin.y-target.origin.y)<0.5 &&
                     fabs(frame.size.width-target.size.width)<0.5 && fabs(frame.size.height-target.size.height)<0.5;
-                if (sameNative && !same) {
+                if (!same && (sameNative || context.initialTargetAppliedAtBind)) {
                     if (!context.initialFrameSubstituted) {
                         context.initialFrameSubstituted = YES;
                         PXWMLog(context, @"restore_initial_frame_substituted",
@@ -1134,6 +1135,53 @@ static void PXWMOpen(id self,SEL command,id bundle,id canvas,id overlay,void (^c
                 [PXWMContexts addObject:ticket];
                 /* Remember the card while canvas and bundle still match exactly. */
                 if (!ticket.card) ticket.card = PXWMFindCard(ticket.canvas);
+                if (!ticket.card) {
+                    id hostView = PXWMObject(self, @"hostView");
+                    if ([hostView isKindOfClass:UIView.class]) ticket.card = PXWMFindCard(hostView);
+                }
+                /* Bind is the last moment canvas+bundle still match this open, and
+                 * the window has not been shown yet. Hand the remembered frame to
+                 * the card here instead of waiting for the vendor's later write. */
+                PXWMRect bindTarget; unsigned bindKey = 0;
+                BOOL bindRecord = PXWMInitialCardSavedFrame(ticket, &bindTarget, &bindKey);
+                if (bindRecord && !ticket.card) {
+                    /* Bounded: one record per open says the record existed but the
+                     * card was not reachable at bind. */
+                    static uint64_t lastBindMissSerial;
+                    if (lastBindMissSerial != ticket->native.serial) {
+                        lastBindMissSerial = ticket->native.serial;
+                        PXWMLog(ticket, @"first_frame_bind_no_card",
+                                @{@"serial":@(ticket->native.serial)});
+                    }
+                }
+                if (bindRecord && ticket.card) {
+                    UIView *card = ticket.card;
+                    PXWMRect nativeFrame = PXWMFromRect(card.frame);
+                    ticket.initialNativeFrame = nativeFrame;
+                    ticket.initialTarget = bindTarget;
+                    ticket.initialTargetKey = bindKey;
+                    ticket.key = bindKey;
+                    ticket.keyKnown = YES;
+                    ticket.initialTargetEpoch =
+                        [PXWindowMemoryStore.shared.snapshot[@"epoch"] unsignedLongLongValue];
+                    ticket.initialTargetDeadline = CACurrentMediaTime() + 2.0;
+                    ticket.initialTargetAppliedAtBind = YES;
+                    ticket.initialFrameSubstituted = NO;
+                    ticket.initialContentRefreshed = NO;
+                    ticket.restoring = YES;
+                    [UIView performWithoutAnimation:^{
+                        card.frame = PXWMToRect(bindTarget);
+                        [card setNeedsLayout]; [card layoutIfNeeded];
+                    }];
+                    ticket.restoring = NO;
+                    ticket.initialTargetActive = YES;
+                    ticket.resolved = YES;
+                    PXWMLog(ticket, @"first_frame_memory_applied_at_bind",
+                            @{@"fromW":@(nativeFrame.width), @"fromH":@(nativeFrame.height),
+                              @"toW":@(bindTarget.width), @"toH":@(bindTarget.height),
+                              @"orientationKey":@(bindKey),
+                              @"revision":PXWindowMemoryStore.shared.snapshot[@"revision"] ?: @0});
+                }
                 PXWMLog(ticket, @"native_window_bound", @{});
             } else {
                 PXWMLog(ticket, @"native_window_not_bound", @{@"current":@(current), @"matches":@(matches),

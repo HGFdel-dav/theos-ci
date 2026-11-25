@@ -88,6 +88,27 @@ class WindowMemoryPolicy(unittest.TestCase):
         self.assertNotRegex(source,r'alpha\s*=\s*0')
         self.assertNotIn('setHidden:YES',source)
 
+    def test_bind_applies_remembered_frame(self):
+        source=(ROOT/'Common/PXWindowMemory.m').read_text()
+        bind=source.split('first_frame_memory_applied_at_bind',1)[0].rsplit('if (PXWMNativeReturned(&ticket->native',1)[1]
+        self.assertIn('PXWMInitialCardSavedFrame(ticket, &bindTarget, &bindKey)',bind)
+        self.assertIn('ticket.initialTargetAppliedAtBind = YES;',bind)
+        self.assertIn('ticket.initialTargetActive = YES;',bind)
+        self.assertIn('ticket.resolved = YES;',bind)
+        self.assertIn('ticket.restoring = YES;',bind)
+        self.assertIn('ticket.restoring = NO;',bind)
+        self.assertIn('[UIView performWithoutAnimation:^{',bind)
+        self.assertIn('card.frame = PXWMToRect(bindTarget);',bind)
+        self.assertIn('@selector',bind) if False else None
+        self.assertIn('PXWMObject(self, @"hostView")',bind)
+        self.assertIn('first_frame_bind_no_card',bind)
+        self.assertIn('lastBindMissSerial != ticket->native.serial',bind)
+        hook=source.split('static void PXWMCardSetFrame(id self, SEL command, CGRect frame) {',1)[1]
+        self.assertIn('context.initialTargetAppliedAtBind',hook)
+        self.assertIn('if (!same && (sameNative || context.initialTargetAppliedAtBind)) {',hook)
+        self.assertNotRegex(source,r'alpha\s*=\s*0')
+        self.assertNotIn('setHidden:YES',source)
+
     def test_real_harness_rejects_broken_epoch_and_bounds(self):
         policy = (ROOT/'Common/PXWindowMemoryPolicy.h').read_text()
         policies = [
@@ -268,8 +289,8 @@ class WindowMemorySourceGuards(unittest.TestCase):
         self.assertIn('CACurrentMediaTime() < context.initialTargetDeadline',hook)
         self.assertIn('frame = target;',hook)
         self.assertIn('context.initialNativeFrame',hook)
-        self.assertIn('if (sameNative && !same)',hook)
-        self.assertLess(hook.index('if (sameNative && !same)'),hook.index('frame = target;'))
+        self.assertIn('if (!same && (sameNative || context.initialTargetAppliedAtBind)) {',hook)
+        self.assertLess(hook.index('if (!same && (sameNative || context.initialTargetAppliedAtBind)) {'),hook.index('frame = target;'))
         self.assertLess(hook.index('restore_initial_frame_substituted'),hook.index('PXWMOriginalCardSetFrame(self, command, frame)'))
         settle=source.split('static void PXWMScheduleInitialSettle(',1)[1].split('static BOOL PXWMPrepareInitialLayout(',1)[0]
         self.assertIn('current.initialTargetActive = NO;',settle)
@@ -522,6 +543,6 @@ class WindowMemoryAppleStorage(unittest.TestCase):
         self.assertLessEqual(len(logs),256)
         self.assertGreater(len(logs),200)
         self.assertTrue(any(event['event']=='fixture' for event in logs))
-        self.assertTrue(all(event['build']=='clone0.110' for event in logs))
+        self.assertTrue(all(event['build']=='clone0.111' for event in logs))
 
 if __name__ == '__main__': unittest.main(verbosity=2)

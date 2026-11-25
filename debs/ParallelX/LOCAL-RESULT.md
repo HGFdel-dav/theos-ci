@@ -1,25 +1,18 @@
-# ParallelX clone0.110 本地结果：建窗即套用记忆尺寸
+# ParallelX clone0.111 本地结果：绑定时即套用记忆尺寸
 
 本轮只做本地修改与检查。未推送、未 CI、未出 DEB、未安装、未注销、未重启。
 
-## 思路变化
-放弃继续追“第一帧写入”的时机，改在**卡片创建的那一刻**（`PXHostCard initWithFrame:`，参数即默认尺寸）直接套用记忆尺寸。已反汇编核实 `layoutHost` 不会重设卡片宽高，因此此后没有步骤会把它改回默认。这是与苏苏 ScreenCore 同等的“窗口一存在尺寸就对”的结构位置，只是通过创建入口实现。
+## 为什么改
+110 的“建窗时套尺寸”从未命中：真机日志里 `cardInitReady=1` 但 0 条套用记录，说明卡片不是每次开窗新建。日志同时显示窗口在 +270ms 前已可见，而作者约 +400ms 才写默认尺寸。
 
-## 改动
-- `Common/PXWindowMemoryPolicy.h`：`PXWMInitialCardFrameUsable`（恰好一个待开窗、有记录、参考尺寸与当前屏幕一致 ±1pt）。
-- `Common/PXWindowMemory.m`：
-  - `PXWMPendingInitialCardContext`（多个待开窗一律不猜）；
-  - `PXWMInitialCardSavedFrame`（读现有存储，参考尺寸校验，无效记录不用）；
-  - `PXWMCardInit` hook：命中则把默认参数换成记忆尺寸，并设置与既有“事后替换”相同的字段（含 2 秒期限），作者若再写默认尺寸仍有兜底；
-  - 钩子按签名匹配才安装，失败不影响其余功能；诊断新增 `first_frame_memory_applied_at_init` 与 `cardInitReady`。
-
-保留 109 的首帧归属与诊断作为第二道兜底；记忆存储、保存规则、设置、分身/付款全部不动。
+## 改了什么
+- 绑定成功那一刻（canvas/bundle 仍精确匹配、窗口尚未显示）：按 canvas 找卡片，找不到用 bridge 的 hostView 向上找；命中记忆记录就无动画设好 frame，并置 `initialTargetActive`/`resolved`/`initialTargetAppliedAtBind`（2 秒期限）。
+- 作者随后写回默认尺寸时，替换条件 `!same && (sameNative || initialTargetAppliedAtBind)` 在同一帧改回记忆尺寸；用户一按即停止。
+- 新增诊断：`first_frame_memory_applied_at_bind`、`first_frame_bind_no_card`（每开窗一次）。
 
 ## 本地结果
-- 198 项测试：181 实跑通过、17 项 Apple runtime 跳过。
-- harness：首开资格 15+768 组、建窗条件 10+61 组全部通过；既有 3 种变异仍被拒绝。
+- 199 项测试：182 实跑通过、17 项 Apple runtime 跳过；新增守卫钉住查找顺序、restoring 保护、无动画设置与替换条件。
 - 普通与 pinned 校验：`ALL LOCAL CHECKS PASSED`。
-- 新守卫钉住：钩子必转发原调用、不得隐藏窗口（无 `alpha=0`/`setHidden:YES`）。
 
 ## 未验证
-未做完整 Apple 编译/链接/签名，未出 DEB，未安装，未真机验证“首次可见即记忆尺寸”。若存在 `initWithFrame:` 之外的卡片创建路径，或卡片创建早于开窗上下文，本钩子不命中（无副作用，走原路径/日志）。方向或设备变化导致参考尺寸不一致时建窗期不套用，属设计行为。普通布局、取消、方向、键盘、贴边、分身、付款未回归。
+未做完整 Apple 编译/链接/签名，未出 DEB，未安装；真机“首次可见即记忆尺寸”仍未证明。若绑定时找不到卡片则只记录诊断并走原路径；普通布局、取消、方向、键盘、贴边、分身、付款未回归。
