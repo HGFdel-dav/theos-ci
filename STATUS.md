@@ -1,12 +1,10 @@
-# Current: MiniSight daily-action local candidate (2026-11-25; not pushed)
+# Current: MiniSight/OpenMinis daily-action repeat fix (2026-11-25; local repair, ready to push)
 
-- User approved local-only changes for richer everyday pet animation, separate from roaming; preserve lyrics/music logic, drag/chat/sleep/interaction priorities and old single-action imports.
-- Baseline HEAD `ddb9a4d09af442b6f474f4b9c0c7302d0593a0de` (MiniSight 0.8.52). Release candidate target is 0.8.53; candidate changes are uncommitted in this isolated copy only; no push, GitHub CI run, DEB, install, device action, audio capture, respring or reboot.
-- The existing GitHub Actions plugin workflow now includes the portable daily-action test; its YAML and local invocation were checked. The build still retains the pinned iPhoneOS 15.5 SDK native typecheck/runtime gates, which will execute only in the authorized GitHub runner. Workflow edit remains local; GitHub has not run it.
-- Plugin-side portable daily-action test ran 7/7; existing ActionLibrary static tests and source-mirror parity passed. Apple SDK/ImageIO/UIKit, CI/build/package, plugin load and phone visuals are not verified.
-- Local host-C/path, static parser/importer, source-mirror and package checks passed. Apple SDK/ImageIO/UIKit, CI/build/package, plugin load and phone visuals are not verified.
-- 48-action package is 5,760 frames. Artwork source terms are non-commercial; do not publish/package it for public or commercial distribution without resolving those terms.
-- Detailed evidence: `/var/minis/shared/openminis/local-reviews/pet-lively-reuse-20261125/local-candidate/LOCAL-RESULT.md`. Stop at local-check gate; push/build and install each need separate approval.
+- The first App build383 CI completed successfully. MiniSight 0.8.53 run `45533886412` failed closed in the rootless job because the native fixture caught a real production bug: ordinary idle selection overwrote the last daily-action ID, allowing a daily clip to repeat after returning to idle. RootHide passed that randomized run, so the old test was probabilistic, not a false positive.
+- Repair scope is limited to both mirrored `MiniSightPetEffects.m`, both mirrored native runtime fixtures, both portable daily-action tests, both diagnostic version allowlists, App workflow build `384`, plugin control/workflow version `0.8.54`. No lyrics/music capture, roaming policy, old single-GIF fallback, drag/chat/sleep priority, device or updater changes.
+- Production fix: `_lastDailyClip` is independent from `_lastClip`; only `idleAlt` updates it, daily selection avoids it, normal idle/tap selection retains its old `_lastClip` behavior, and a manifest change clears the daily history. Single remaining usable clip may still repeat; music/drag/failed-clip behavior remains blocked or falls back as before.
+- New native fixture makes daily selection deterministic across both category rolls (`0` and `84`), exercises repeated daily→idle cycles, tap and cancelled drag preservation, music blocking, singleton reuse, failed-clip fallback, and manifest-history clearing. Portable suite is 9/9 on both sides; local C/static/path/bounds/liveliness checks passed. Apple native execution is reserved for GitHub CI and was skipped locally on iSH.
+- Current isolated trees are not yet committed or pushed after this repair. Next authorized action is commit/push to new App build384 and plugin 0.8.54 branches, then monitor both GitHub CI jobs and independently verify artifacts. Installation, updater publication, device, audio capture, logout and reboot remain unauthorized.
 
 ---
 # Historical records (not current authorization)
