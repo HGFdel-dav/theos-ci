@@ -2,6 +2,7 @@
 #import "MiniSightBridgeIO.h"
 #import "MiniSightShownReadback.h"
 #import <ImageIO/ImageIO.h>
+#import <CommonCrypto/CommonDigest.h>
 #import <math.h>
 
 @implementation MiniSightResources
@@ -16,6 +17,7 @@ static UIImage *MSAtlas;
         @"minisight.gravity": @"gravity", @"minisight.gravity.strength": @"gravityStrength",
         @"minisight.gravity.shake": @"gravityShake", @"minisight.interaction": @"interaction",
         @"minisight.gesture.single": @"singleTap", @"minisight.gesture.double": @"doubleTap",
+        @"minisight.actions.daily": @"dailyActionsEnabled",
         @"minisight.gesture.long": @"longPress", @"minisight.activity": @"activity",
         @"minisight.activity.interval": @"activityInterval", @"minisight.frameLimit": @"frameLimit",
         @"minisight.dragResponse": @"dragResponse", @"minisight.petSound": @"sound",
@@ -183,6 +185,38 @@ static UIImage *MSLoadAtlas(NSString *path, BOOL single, BOOL key) {
     MSAtlasIdentity = identity; MSAtlas = image;
     return image;
 }
+static BOOL MSAtlasMetadataReadable(id value) {
+    if (![value isKindOfClass:NSDictionary.class]) return NO;
+    NSDictionary *meta = value;
+    id kind = meta[@"sourceKind"];
+    if (kind && ![kind isKindOfClass:NSString.class]) return NO;
+    for (NSString *key in @[@"layoutVersion", @"selectedVariant", @"variants"]) {
+        id number = meta[key];
+        if (!number) continue; // Older missing fields keep their old defaults.
+        if (![number isKindOfClass:NSNumber.class] || CFGetTypeID((__bridge CFTypeRef)number) == CFBooleanGetTypeID()) return NO;
+        double n = [number doubleValue];
+        if (!isfinite(n) || floor(n) != n || n < 0 || n > 72) return NO;
+        if ([key isEqualToString:@"layoutVersion"] && n > 4) return NO;
+        if ([key isEqualToString:@"selectedVariant"] && n >= 72) return NO;
+        if ([key isEqualToString:@"variants"] && n < 1) return NO;
+    }
+    id action = meta[@"actionPack"];
+    if (action && ![action isKindOfClass:NSString.class]) return NO;
+    return YES;
+}
+static UIImage *MSLoadDefaultAtlas(NSString *container) {
+    NSString *path = [container stringByAppendingPathComponent:@"Documents/MiniSight/defaults/base-storage-atlas.png"];
+    NSDictionary *attrs = path ? [NSFileManager.defaultManager attributesOfItemAtPath:path error:nil] : nil;
+    if (![attrs[NSFileType] isEqual:NSFileTypeRegular] || [attrs[NSFileSize] unsignedLongLongValue] > 1024 * 1024) return nil;
+    NSData *data = [NSData dataWithContentsOfFile:path];
+    if (!data.length) return nil;
+    unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+    CC_SHA256(data.bytes, (CC_LONG)data.length, digest);
+    NSMutableString *hex = [NSMutableString stringWithCapacity:64];
+    for (NSUInteger i = 0; i < CC_SHA256_DIGEST_LENGTH; ++i) [hex appendFormat:@"%02x", digest[i]];
+    if (![hex isEqualToString:@"fc7560e05d55c3276e3fc808a162583acfac9611b43e93f5682cd8cf61ccda9e"]) return nil;
+    return MSLoadAtlas(path, YES, YES); // Same one-time orientation/keying as a layout-3 user sheet.
+}
 + (void)refreshPreferences:(void (^)(NSString *, NSDictionary *))completion {
     dispatch_async(MSResourceQueue(), ^{
         @autoreleasepool {
@@ -233,16 +267,25 @@ static UIImage *MSLoadAtlas(NSString *path, BOOL single, BOOL key) {
                 if ([key isKindOfClass:NSString.class] && [key hasPrefix:@"minisight."]) filtered[key] = prefs[key];
             }
             NSString *petPath = [container stringByAppendingPathComponent:@"Documents/MiniSight/pet.png"];
-            NSData *metaData = [NSData dataWithContentsOfFile:[container stringByAppendingPathComponent:@"Documents/MiniSight/pet.json"]];
-            NSDictionary *petMeta = metaData ? [NSJSONSerialization JSONObjectWithData:metaData options:0 error:nil] : nil;
-            BOOL single = [petMeta isKindOfClass:NSDictionary.class] &&
-                [petMeta[@"sourceKind"] isEqual:@"singleImage"];
+            NSString *metaPath = [container stringByAppendingPathComponent:@"Documents/MiniSight/pet.json"];
+            BOOL hasMetadata = [NSFileManager.defaultManager fileExistsAtPath:metaPath];
+            NSDictionary *metaAttrs = hasMetadata ? [NSFileManager.defaultManager attributesOfItemAtPath:metaPath error:nil] : nil;
+            BOOL boundedMeta = !hasMetadata || ([metaAttrs[NSFileType] isEqual:NSFileTypeRegular] &&
+                [metaAttrs[NSFileSize] unsignedLongLongValue] <= 16 * 1024);
+            NSData *metaData = hasMetadata && boundedMeta ? [NSData dataWithContentsOfFile:metaPath] : nil;
+            id object = metaData ? [NSJSONSerialization JSONObjectWithData:metaData options:0 error:nil] : nil;
+            BOOL badMetadata = hasMetadata && (!boundedMeta || !MSAtlasMetadataReadable(object));
+            NSDictionary *petMeta = !badMetadata && [object isKindOfClass:NSDictionary.class] ? object : nil;
+            BOOL single = [petMeta[@"sourceKind"] isEqual:@"singleImage"];
             // Layout 1 is an ordinary photo and keeps its colours. A sheet
             // (3/4) and a pack (0) are keyed; 245 stored photos as layout 3.
             BOOL key = !(single && [petMeta[@"layoutVersion"] integerValue] < 3);
-            UIImage *atlas = petPath ? MSLoadAtlas(petPath, single, key) : nil;
+            UIImage *atlas = !badMetadata && petPath ? MSLoadAtlas(petPath, single, key) : nil;
             NSMutableDictionary *snapshot = [[self mergedPreferencesWithContainer:container preferences:filtered] mutableCopy];
-            NSString *action = [petMeta[@"actionPack"] isKindOfClass:NSString.class] ? petMeta[@"actionPack"] : nil;
+            BOOL usingDefault = NO;
+            if (!atlas) { atlas = MSLoadDefaultAtlas(container); usingDefault = atlas != nil; }
+            snapshot[@"_minisightDefaultAsset"] = @((BOOL)usingDefault);
+            NSString *action = !usingDefault && [petMeta[@"actionPack"] isKindOfClass:NSString.class] ? petMeta[@"actionPack"] : nil;
             NSArray *parts = [action componentsSeparatedByString:@"/"];
             if (parts.count == 3 && [parts[0] isEqualToString:@"actionpacks"] &&
                 [[NSUUID alloc] initWithUUIDString:parts[1]] && [parts[2] isEqualToString:@"actions.json"]) {

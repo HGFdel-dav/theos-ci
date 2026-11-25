@@ -24,6 +24,7 @@
 #import "MiniSightLayout.h"
 #import "MiniSightBubbleView.h"
 #import "MiniSightResources.h"
+#import "MiniSightAssetFallbackPolicy.h"
 #import "MiniSightPreferences.h"
 #import "MiniSightGravity.h"
 #import "MiniSightMotionPolicy.h"
@@ -36,6 +37,7 @@
 #import "MiniSightRuntimeConfig.h"
 #import "MiniSightBlip.h"
 #import "MiniSightMusicMonitor.h"
+#import "MiniSightRhythmClient.h"
 #import "MiniSightMusicPresentationPolicy.h"
 #import <Photos/Photos.h>
 #import <notify.h>
@@ -74,6 +76,7 @@ static CGRect MiniSightScreenRect(void);
 static NSString *gMiniSightContainer;
 static NSDictionary *gMiniSightPreferences;
 static UIImage *gMiniSightAtlas;
+static BOOL gMiniSightUsingDefaultAtlas = NO;
 static NSString *gMiniSightActionManifest;
 static BOOL gMiniSightShown = NO, gMiniSightResourcesReady = NO;
 static uint64_t gMiniSightSettingsEpoch = 0, gMiniSightPreferencesEpoch = 0, gMiniSightFadeEpoch = 0;
@@ -90,12 +93,15 @@ static void MiniSightReloadSettings(void);
 // 0 pack, 1 whole static image, 2 legacy outer cell,
 // 3 8x9 single animation sheet, 4 static 72-pose sheet.
 static NSInteger MiniSightSpriteLayoutForContainer(NSString *container) {
+    if (gMiniSightUsingDefaultAtlas) return 3;
     if (container.length == 0) return 0;
     NSString *path = [container stringByAppendingPathComponent:@"Documents/MiniSight/pet.json"];
     NSData *data = [NSData dataWithContentsOfFile:path];
     NSDictionary *meta = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
     if (![meta isKindOfClass:NSDictionary.class] || ![meta[@"sourceKind"] isEqual:@"singleImage"]) return 0;
-    NSInteger layout = [meta[@"layoutVersion"] integerValue];
+    id rawLayout = meta[@"layoutVersion"];
+    if (rawLayout && ![rawLayout isKindOfClass:NSNumber.class]) return 0;
+    NSInteger layout = [rawLayout integerValue];
     if (layout >= 4) return 4;
     if (layout == 3) return 3;
     if (layout == 2) return 2;
@@ -154,6 +160,10 @@ static CGFloat MiniSightPetSize(void) {
 }
 static BOOL MiniSightAlwaysShow(void) { return [MiniSightPref(@"minisight.mode") integerValue] == 1; }
 static BOOL MiniSightShown(void) { return gMiniSightShown && !gMiniSightUserHidden; }
+static BOOL MiniSightDailyActionsEnabled(void) {
+    id value = MiniSightPref(@"minisight.actions.daily");
+    return value ? [value boolValue] : YES;
+}
 
 static void MiniSightApplyShownReadback(void) {
     BOOL known = [MiniSightPref(@"_minisightShownKnown") boolValue];
@@ -726,7 +736,7 @@ static NSString *const kMiniSightCenterY   = @"MiniSightCenterY";
 static NSString *const kMiniSightText      = @"Minis 操作中";
 // 版本号：与 DEBIAN/control 的 Version 同步。诊断日志会打印它，
 // 便于装机后确认跑的是哪一版（strings MiniSight.dylib | grep 也能看到）。
-static NSString *const kMiniSightVersion   = @"0.8.52";
+static NSString *const kMiniSightVersion   = @"0.8.55";
 
 #pragma mark - 全局状态
 
@@ -882,6 +892,13 @@ static NSTimeInterval MiniSightSnapshotMotionPosition(NSDictionary *snapshot) {
     double age = NSDate.date.timeIntervalSince1970 - [stamp doubleValue];
     return fmax(0., [pos doubleValue]) + fmin(5., fmax(0., age));
 }
+static NSUInteger MiniSightSnapshotMusicToken(NSDictionary *snapshot) {
+    id value = snapshot[@"generation"];
+    if (![value isKindOfClass:NSNumber.class] || CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID()) return 0;
+    double token = [value doubleValue];
+    return isfinite(token) && token >= 1. && token <= 9007199254740991. && floor(token) == token
+        ? (NSUInteger)token : 0;
+}
 static void MiniSightUpdateMusic(void) {
     BOOL lyrics = [MiniSightPref(@"minisight.music.lyrics") boolValue];
     BOOL motion = [MiniSightPref(@"minisight.music.motion") boolValue];
@@ -893,6 +910,8 @@ static void MiniSightUpdateMusic(void) {
         gMiniSightPet.musicPlaying = [snapshot[@"playing"] boolValue] && [snapshot[@"motionEnabled"] boolValue];
         gMiniSightPet.lyricsSuppressed = gMiniSightBubbleShown || gMiniSightConfirming ||
             MiniSightChatPanel.existingPanel.isVisible || gMiniSightBurst;
+        MiniSightRhythmConfigurePet(gMiniSightPet, gMiniSightPet.musicPlaying,
+                                   MiniSightSnapshotMusicToken(snapshot));
     };
     if (!monitor.presentationHandler) monitor.presentationHandler = ^{ return MiniSightMusicPresentation(); };
     NSDictionary *presentation = MiniSightMusicPresentation();
@@ -903,6 +922,8 @@ static void MiniSightUpdateMusic(void) {
     gMiniSightPet.musicPosition = MiniSightSnapshotMotionPosition(snapshot);
     gMiniSightPet.musicPlaying = motion && allowed && [snapshot[@"playing"] boolValue];
     gMiniSightPet.lyricsSuppressed = gMiniSightBubbleShown || gMiniSightConfirming || MiniSightChatPanel.existingPanel.isVisible || gMiniSightBurst;
+    MiniSightRhythmConfigurePet(gMiniSightPet, motion && allowed && [snapshot[@"playing"] boolValue],
+                               MiniSightSnapshotMusicToken(snapshot));
 }
 
 static BOOL MiniSightGravityEnabled(void) {
@@ -1408,6 +1429,7 @@ static CGPoint MiniSightDefaultAnchor(void) {
 static void MiniSightApplyRuntimeConfig(void) {
     MiniSightRuntimeConfig *c = MiniSightRuntimeConfig.shared;
     if (gMiniSightPet) {
+        gMiniSightPet.dailyActionsEnabled = MiniSightDailyActionsEnabled();
         CGFloat size = MiniSightPetSize();
         if (fabs(gMiniSightPet.bounds.size.width - size) > 0.5) {
             gMiniSightPet.bounds = CGRectMake(0, 0, size, size);
@@ -1865,6 +1887,7 @@ static void MiniSightRequestResources(BOOL force, void (^completion)(void)) {
         panel.appearancePreferences = gMiniSightPreferences;
         gMiniSightShown = shown;
         gMiniSightAtlas = atlas;
+        gMiniSightUsingDefaultAtlas = [preferences[@"_minisightDefaultAsset"] boolValue];
         gMiniSightTintBase = atlas;
         gMiniSightActionManifest = [preferences[@"_minisightActionManifest"] isKindOfClass:NSString.class]
             ? [preferences[@"_minisightActionManifest"] copy] : nil;
@@ -2052,12 +2075,14 @@ static void MiniSightBuildUI(void) {
             MiniSightRefreshChatAnchor();
         };
         gMiniSightPet.longPressEnabled = MiniSightLongPressEnabled();
+        gMiniSightPet.dailyActionsEnabled = MiniSightDailyActionsEnabled();
+        gMiniSightPet.rhythmFollowing = YES; // Without measured input there is no timed imitation dance.
         NSInteger builtLayout = MiniSightSpriteLayoutForContainer(gMiniSightContainer);
         gMiniSightPet.spriteLayout = builtLayout;
         gMiniSightPet.actionManifestPath = gMiniSightActionManifest;
         MSDiagEvent(@"assets", @"layout", @"ok", @{ @"source": @"plugin", @"layout": @(builtLayout), @"reason": @"build" });
         NSString *variantPath = [gMiniSightContainer stringByAppendingPathComponent:@"Documents/MiniSight/variant"];
-        gMiniSightPet.variantIndex = [[NSString stringWithContentsOfFile:variantPath encoding:NSUTF8StringEncoding error:nil] integerValue];
+        gMiniSightPet.variantIndex = gMiniSightUsingDefaultAtlas ? 0 : [[NSString stringWithContentsOfFile:variantPath encoding:NSUTF8StringEncoding error:nil] integerValue];
         gMiniSightPet.reducedWork = [NSProcessInfo processInfo].lowPowerModeEnabled;
         [root addSubview:gMiniSightPet];
         [gMiniSightPet addGestureRecognizer:pan];
@@ -2231,6 +2256,7 @@ static void MiniSightHide(void) {
             window.alpha = 1.0; // 下次显示从 0 开始淡入
             MiniSightStopPulse();
             gMiniSightPet.activityActive = NO;
+            MiniSightRhythmConfigurePet(gMiniSightPet, NO, 0);
             [gMiniSightPet stopPlaying];
         }
         MiniSightUpdateMusic();
@@ -2256,7 +2282,7 @@ static void MiniSightDestroyUI(void) {
     gMiniSightConfirmId = nil;
     if (gMiniSightBubble) { [gMiniSightBubble removeFromSuperview]; gMiniSightBubble = nil; gMiniSightBubbleLabel = nil; gMiniSightBubbleTail = nil; }
     gMiniSightConfirmBar = nil;
-    if (gMiniSightPet) { [gMiniSightPet stopPlaying]; gMiniSightPet = nil; }
+    if (gMiniSightPet) { MiniSightRhythmConfigurePet(gMiniSightPet, NO, 0); [gMiniSightPet stopPlaying]; gMiniSightPet = nil; }
     gMiniSightAnchorValid = NO;
     gMiniSightDragOriginValid = NO;
     gMiniSightDragging = NO;
@@ -2335,7 +2361,9 @@ static void MiniSightConvergeSettings(BOOL resourcesFresh) {
     BOOL wasUserHidden = gMiniSightUserHidden;
     MiniSightApplyShownReadback();
     NSInteger renderer = MiniSightRenderer(), style = MiniSightStyle();
-    BOOL structural = renderer != gMiniSightAppliedRenderer || style != gMiniSightAppliedStyle;
+    BOOL repairMissingPet = MSAssetNeedsHostRebuild(resourcesFresh, style == 1, gMiniSightBuilt,
+                                                   gMiniSightPet != nil, gMiniSightAtlas != nil);
+    BOOL structural = renderer != gMiniSightAppliedRenderer || style != gMiniSightAppliedStyle || repairMissingPet;
     if (structural) {
         MiniSightStopGravity();
         MiniSightDestroyUI();

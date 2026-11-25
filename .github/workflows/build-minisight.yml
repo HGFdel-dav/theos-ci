@@ -2,7 +2,7 @@ name: MiniSight Build
 
 on:
   push:
-    branches: [minisight-0.4.0-chat-freeze, minisight-0.7.0-unified-20261105, minisight-0.8.0-20261105, minisight-0.8.1-20261106, minisight-0.8.2-20261107, minisight-0.8.3-20261107, minisight-0.8.5-20261108, minisight-0.8.6-20261108, minisight-0.8.7-20261108, minisight-0.8.8-20261108, minisight-0.8.9-20261108, minisight-0.8.10-20261108, minisight-0.8.11-20261108, minisight-0.8.12-20261108, minisight-0.8.13-20261108, minisight-0.8.14-20261108, minisight-0.8.15-20261108, minisight-0.8.16-20261108, minisight-0.8.17-20261108, minisight-0.8.18-20261108, minisight-0.8.19-20261108, minisight-0.8.20-20261108, minisight-0.8.21-20261108, minisight-0.8.22-20261108, minisight-0.8.23-20261108, minisight-0.8.24-20261108, minisight-0.8.25-20261108, minisight-0.8.26-20261108, minisight-0.8.27-20261108, minisight-0.8.28-20261108, minisight-0.8.29-20261108, minisight-0.8.30-20261108, minisight-0.8.31-20261108, minisight-0.8.32-20261108, minisight-0.8.33-20261108, minisight-0.8.34-20261108, minisight-0.8.35-20261108, minisight-0.8.36-20261108, minisight-0.8.37-20261108, minisight-0.8.38-20261108, minisight-0.8.39-20261108, minisight-0.8.40-20261110, minisight-0.8.42-20261111, minisight-0.8.44-20261116, minisight-0.8.45-20261116, minisight-0.8.47-20261118, minisight-0.8.48-20261119, minisight-0.8.49-20261119, minisight-0.8.50-20261121, minisight-0.8.51-20261123, minisight-0.8.52-lyrics-qq-20261124, minisight-0.8.54-daily-actions-20261125]
+    branches: [minisight-0.4.0-chat-freeze, minisight-0.7.0-unified-20261105, minisight-0.8.0-20261105, minisight-0.8.1-20261106, minisight-0.8.2-20261107, minisight-0.8.3-20261107, minisight-0.8.5-20261108, minisight-0.8.6-20261108, minisight-0.8.7-20261108, minisight-0.8.8-20261108, minisight-0.8.9-20261108, minisight-0.8.10-20261108, minisight-0.8.11-20261108, minisight-0.8.12-20261108, minisight-0.8.13-20261108, minisight-0.8.14-20261108, minisight-0.8.15-20261108, minisight-0.8.16-20261108, minisight-0.8.17-20261108, minisight-0.8.18-20261108, minisight-0.8.19-20261108, minisight-0.8.20-20261108, minisight-0.8.21-20261108, minisight-0.8.22-20261108, minisight-0.8.23-20261108, minisight-0.8.24-20261108, minisight-0.8.25-20261108, minisight-0.8.26-20261108, minisight-0.8.27-20261108, minisight-0.8.28-20261108, minisight-0.8.29-20261108, minisight-0.8.30-20261108, minisight-0.8.31-20261108, minisight-0.8.32-20261108, minisight-0.8.33-20261108, minisight-0.8.34-20261108, minisight-0.8.35-20261108, minisight-0.8.36-20261108, minisight-0.8.37-20261108, minisight-0.8.38-20261108, minisight-0.8.39-20261108, minisight-0.8.40-20261110, minisight-0.8.42-20261111, minisight-0.8.44-20261116, minisight-0.8.45-20261116, minisight-0.8.47-20261118, minisight-0.8.48-20261119, minisight-0.8.49-20261119, minisight-0.8.50-20261121, minisight-0.8.51-20261123, minisight-0.8.52-lyrics-qq-20261124, minisight-0.8.55-complete-local-20261125]
     paths:
       - 'debs/MiniSight/**'
       - '.github/workflows/build-minisight.yml'
@@ -28,11 +28,13 @@ jobs:
         working-directory: debs/MiniSight
         run: |
           set -euo pipefail
-          test "$(sed -n 's/^Version: //p' control)" = "0.8.54"
+          test "$(sed -n 's/^Version: //p' control)" = "0.8.55"
           python3 tools/check_host.py
           python3 tools/check_repairs_20261107.py
           python3 scripts/test_minisight_pet_paths_20261122.py --mutations
           python3 scripts/test_minisight_daily_actions_20261125.py
+          python3 scripts/test_minisight_resource_fallback_20261125.py --require-native
+          python3 scripts/test_minisight_rhythm_20261125.py
           python3 scripts/test_minisight_lyrics_20261116.py --plugin-root . --require-native
           python3 scripts/test_minisight_media_repair_20261119.py --require-native
           python3 scripts/test_minisight_music_monitor_20261116.py --plugin-root . --require-native

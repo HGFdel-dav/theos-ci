@@ -2,13 +2,14 @@
 //  MiniSightPet.h
 //  MiniSight
 //
-//  Petdex-style animated pet. The upstream 8x9 format names rows idle,
-//  running-right, running-left, waving, jumping, failed, waiting, running,
-//  review. Legacy sleep/wake role names here are policy, not proof of artwork.
+//  Petdex-style animated pet. Post-loader 8x9 atlas: idle (6), left/right
+//  walk (8 each), wave (4), jump (5); upstream row 5 is named failed (8).
+//  Legacy sleep/wake names are policy labels, not verified new art sequences.
 //  Frame counts/timings follow crafter-station/petdex (MIT code; art separately licensed).
 //
 
 #import <UIKit/UIKit.h>
+#import "MiniSightRhythmFrame.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -41,8 +42,22 @@ typedef NS_OPTIONS(NSUInteger, MiniSightPetMotionLockReason) {
 - (void)updateDraggingTarget:(CGPoint)center NS_SWIFT_NAME(updateDraggingTarget(_:));
 - (void)endDraggingCancelled:(BOOL)cancelled NS_SWIFT_NAME(endDraggingCancelled(_:));
 @property (nonatomic, copy, nullable) NSString *actionManifestPath;
+/// Independent non-moving daily poses, default YES. NO cancels only this
+/// owner's pose/clip; no daily timer survives it, no manual motion is cancelled.
+@property (nonatomic) BOOL dailyActionsEnabled;
 @property (nonatomic, copy, nullable) NSString *lyricsLine;
 @property (nonatomic) BOOL musicPlaying;
+/// Explicit host opt-in, default NO. YES + musicPlaying disables legacy timer
+/// travel/position sway. Feed real/fixture frames on main thread only.
+@property (nonatomic) BOOL rhythmFollowing;
+- (void)applyRhythmFrame:(MSRhythmFrame)frame receivedAt:(CFTimeInterval)receivedAt;
+/// Track/connection generation changes must call this BEFORE new input.
+/// Fences old sequence/epoch callbacks; never cancels a manual drag/fling.
+- (void)clearRhythm;
+/// Use ONLY after the client has fenced a new server/session. Token is an
+/// opaque nonzero owner identity; repeated same-token calls are no-ops.
+/// Allows a restarted service to reuse a formerly retired stream epoch.
+- (void)resetRhythmForSession:(uint64_t)sessionToken;
 @property (nonatomic) NSTimeInterval musicPosition;
 @property (nonatomic) BOOL lyricsSuppressed;
 
@@ -57,6 +72,15 @@ typedef NS_OPTIONS(NSUInteger, MiniSightPetMotionLockReason) {
 - (void)setSuspended:(BOOL)suspended;
 /// Independent owner-scoped gates; clearing one never clears another owner.
 - (void)setMotionLocked:(BOOL)locked forReason:(MiniSightPetMotionLockReason)reason;
+/// Reset resident inactivity and wake without acquiring drag/jump/fling ownership.
+/// These APIs never start stopped, suspended, or hidden playback.
+- (void)wakeForInteraction;
+/// Queue one short row-3 wave; expires after 3 seconds while another pose owns it.
+- (void)requestAttentionResponse;
+/// Request bounded idle sleep; ignored while hidden/stopped/active/locked or a
+/// gesture/motion/held action owns the pose. NO wakes, never starts playback.
+- (void)setResidentSleeping:(BOOL)sleeping;
+@property (nonatomic, readonly, getter=isResidentSleeping) BOOL residentSleeping;
 
 /// Main-thread normalized roll input in the range -1...1 (-1 left, +1 right).
 /// The visual tilt is finite and clamped; this never changes center, bounds, or
@@ -103,18 +127,6 @@ typedef NS_OPTIONS(NSUInteger, MiniSightPetMotionLockReason) {
 @property (nonatomic) BOOL interactionActive;
 /// Low power: longer resident-idle gaps only; sprite/movement/gravity stay fluid.
 @property (nonatomic) BOOL reducedWork;
-
-/// Record a real interaction and wake without replacing drag/walk/jump/fling.
-/// Safe to repeat during a gesture; does not start playback or clear any lock.
-- (void)wakeForInteraction;
-/// One short raised-hand response (row 3) when its pose is available; otherwise
-/// queue it for at most 3 seconds. Call once per tap/chat/voice/approval event,
-/// not for every stream token, gravity sample, layout update or drag Changed.
-- (void)requestAttentionResponse;
-/// Request bounded idle sleep; ignored while hidden/stopped/active/locked or a
-/// gesture/motion/held action owns the pose. NO wakes, never starts playback.
-- (void)setResidentSleeping:(BOOL)sleeping;
-@property (nonatomic, readonly, getter=isResidentSleeping) BOOL residentSleeping;
 
 /// Compatibility callback storage only. The host owns/invokes the unified press.
 @property (nonatomic, copy, nullable) void (^onLongPress)(void);

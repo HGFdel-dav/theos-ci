@@ -1,3 +1,28 @@
+# MiniSight 0.8.55 — authorized CI candidate, not installed
+
+## Authorization and scope (2026-11-25)
+User explicitly approved “那就推送吧”: one normal commit/push of the audited 0.8.55 candidate to HGFdel-dav/theos-ci, branch minisight-0.8.55-complete-local-20261125, GitHub CI monitoring and dual-DEB static verification/delivery. This authorization does NOT include installing, device/MCP access, real audio, sockets, enabling transport/capture, respring/reboot, App/IPA changes, or fixes/re-pushes after a CI failure. Automatic compaction is discussion only and excluded.
+
+## Provenance and exact source scope
+Base: 236c7ab8f0acf0efd02ee972801bd5fa0385ffa4 (published MiniSight 0.8.54). Independent publishing tree copied original .git and tree; original tree remains clean. Approved candidate: /var/minis/shared/openminis/local-reviews/pet-complete-local-20261125. Its 11 SHA256SUMS and all 3006 manifest entries matched; 2 unlisted App __pycache__ bytecode files are outside plugin scope and are not synchronized/staged. Only debs/MiniSight and .github/workflows/build-minisight.yml are candidate source changes; this root STATUS records the current separately granted publication facts.
+
+## Candidate behavior and hard gates
+Typed runtime int/q PID classification, hidden first-direct-loss candidate and fresh PID sandwich; daily actions default YES and scoped cancellation; independently loaded bad-resource fallback and host rebuild; credible-input-only rhythm following default YES. MINISIGHT_ENABLE_RHYTHM_TRANSPORT=0 remains the default. No capture service is included, and no flag=1 build is authorized. FINALPACKAGE=1, strip logs, Theos 958fea4f779943505b15b93c88bb4db8d97b346d and SDK15.5 pin 4a48e5409f8ea6ac422c44d91b86fa0f8ae010ff remain fixed. Native regression gates are retained; iSH does not compile iOS.
+
+## CI trigger safety
+The base/published tree's build-theos.yml is workflow_dispatch-only, unchanged in this commit; it cannot trigger on this branch push. The live default branch's generic build-theos.yml has a broader push trigger, but is not the workflow tree used for this branch push. Other project workflows are read-only and not modified or dispatched.
+
+## Current verification boundary
+Local portable results and any native SKIP are recorded under candidate release/plugin0855. At this commit, CI/package validation is pending and no package success is claimed. A CI failure requires full logs and a concrete report, not blind rerun or weakened fixtures. Delivery evidence stays outside the Git tree.
+
+No phone background-lyrics or actual beat-following acceptance: partial song matching was not relaxed, optional barepulse still FAIL, actual transport/capture is disabled and the package has no capture service. CodeDirectory integrity does not prove signature trust or runtime loading. No App/capture files or old release deliverables are changed.
+
+## Pre-push local checks
+Actual isolated-tree rerun: monitor 8 tests (7 PASS / 1 native SKIP), daily 9/9 PASS, resource fallback C 32 states PASS / native SKIP, 70 production bodies and 5 compiled music mutants rejected, original lyrics portable suite PASS. Actionlint and non-vendor diff check PASS. Full diff --check exits 2 solely for cosmetic whitespace in original-byte MIT BeatDetektor import; candidate library bytes were preserved, not silently reformatted or represented as a clean exit. Apple native runtime remains pending GitHub CI.
+
+---
+# Preserved prior STATUS (historical, not current authorization)
+
 # Current: MiniSight/OpenMinis daily-action repeat fix (2026-11-25; local repair, ready to push)
 
 - The first App build383 CI completed successfully. MiniSight 0.8.53 run `45533886412` failed closed in the rootless job because the native fixture caught a real production bug: ordinary idle selection overwrote the last daily-action ID, allowing a daily clip to repeat after returning to idle. RootHide passed that randomized run, so the old test was probabilistic, not a false positive.
