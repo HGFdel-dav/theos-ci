@@ -28,6 +28,8 @@ typedef NS_ENUM(unsigned, PXWMGeometryGate) {
 @property(nonatomic) PXWMRect initialTarget;
 @property(nonatomic) PXWMRect initialNativeFrame;
 @property(nonatomic) BOOL initialTargetAppliedAtBind;
+@property(nonatomic, copy) NSString *probeSignature;
+@property(nonatomic) BOOL sourceSizeSeen;
 @property(nonatomic) BOOL initialTargetActive;
 @property(nonatomic) unsigned initialTargetKey;
 @property(nonatomic) uint64_t initialTargetEpoch;
@@ -511,26 +513,57 @@ static void PXWMProbeContentGeometry(PXWMContext *context, unsigned stage) {
     if (!context) return;
     UIView *card = context.card;
     if (!card) card = PXWMFindCard(context.canvas);
-    if (!card) {
-        PXWMLog(context, @"content_geometry_probe", @{@"stage":@(stage), @"card":@(0)});
-        return;
-    }
-    CGSize cardSize = card.bounds.size;
-    CGSize canvasSize = context.canvas ? context.canvas.bounds.size : CGSizeZero;
-    CGSize source = CGSizeZero;
+    if (!card) return;
+    UIView *canvas = context.canvas;
     id bridge = context.bridge;
+    UIView *host = PXWMObject(bridge, @"hostView");
+    if (![host isKindOfClass:UIView.class]) host = nil;
+    CGSize cardSize = card.bounds.size;
+    CGSize canvasSize = canvas ? canvas.bounds.size : CGSizeZero;
+    CGSize hostSize = host ? host.bounds.size : CGSizeZero;
+    CGSize source = CGSizeZero;
     SEL sel = NSSelectorFromString(@"sourceSize");
     if (bridge && PXCloneInstanceMethodMatches(bridge, sel, @encode(CGSize), @[])) {
         @try { source = ((CGSize (*)(id,SEL))objc_msgSend)(bridge, sel); }
         @catch (__unused NSException *exception) { source = CGSizeZero; }
     }
-    BOOL mismatch = fabs(canvasSize.width - cardSize.width) > 1 ||
-                    fabs(canvasSize.height - cardSize.height) > 1;
+    CGAffineTransform t = host ? host.transform : CGAffineTransformIdentity;
+    double scale = (source.width > 0 && hostSize.width > 0) ? hostSize.width / source.width : 0;
+    double expected = (source.width > 0 && canvasSize.width > 0) ? canvasSize.width / source.width : 0;
+    BOOL clip = hostSize.width > cardSize.width + 1 || hostSize.height > cardSize.height + 1;
+    BOOL canvasMismatch = fabs(canvasSize.width - cardSize.width) > 1 ||
+                          fabs(canvasSize.height - cardSize.height) > 1;
+    BOOL scaleMismatch = expected > 0 && scale > 0 && fabs(scale - expected) > 0.01;
+    /* Change-only: a steady window writes nothing, an abnormal one records. */
+    NSString *signature = [NSString stringWithFormat:@"%.1f/%.1f|%.1f/%.1f|%.1f/%.1f|%.3f|%d%d%d|%.3f",
+        cardSize.width, cardSize.height, canvasSize.width, canvasSize.height,
+        hostSize.width, hostSize.height, scale, (int)clip, (int)canvasMismatch,
+        (int)scaleMismatch, (double)t.a];
+    if (stage > 0 && [signature isEqualToString:context.probeSignature ?: @""]) return;
+    context.probeSignature = signature;
     PXWMLog(context, @"content_geometry_probe",
-            @{@"stage":@(stage), @"cardW":@(cardSize.width), @"cardH":@(cardSize.height),
+            @{@"stage":@(stage),
+              @"cardW":@(cardSize.width), @"cardH":@(cardSize.height),
               @"canvasW":@(canvasSize.width), @"canvasH":@(canvasSize.height),
+              @"hostW":@(hostSize.width), @"hostH":@(hostSize.height),
               @"sourceW":@(source.width), @"sourceH":@(source.height),
-              @"mismatch":@(mismatch ? 1 : 0)});
+              @"scale":@(scale), @"expectScale":@(expected), @"ta":@((double)t.a),
+              @"clip":@(clip ? 1 : 0), @"canvasMismatch":@(canvasMismatch ? 1 : 0),
+              @"scaleMismatch":@(scaleMismatch ? 1 : 0)});
+}
+
+/* Sample a live window at 1s (first 30s) then 5s (about 8 minutes). Only state
+ * changes are written, so a healthy window stays silent. */
+static void PXWMScheduleProbe(PXWMContext *context, NSUInteger tick) {
+    if (!context) return;
+    __weak PXWMContext *weakContext = context;
+    int64_t delay = tick < 30 ? NSEC_PER_SEC : 5 * NSEC_PER_SEC;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, delay), dispatch_get_main_queue(), ^{
+        PXWMContext *current = weakContext;
+        if (!current || !PXWMBindingIsActive(current)) return;
+        PXWMProbeContentGeometry(current, 4);
+        if (tick < 130) PXWMScheduleProbe(current, tick + 1);
+    });
 }
 
 /* The vendor gives the card its default frame here, before any window exists.
@@ -707,6 +740,7 @@ static void PXWMScheduleInitialSettle(PXWMContext *context) {
         if (!current.initialContentRefreshed && current.bridge && PXWMOriginalLayout) {
             current.initialContentRefreshed = YES;
             PXWMOriginalLayout(current.bridge, NSSelectorFromString(@"layoutHost"));
+            PXWMProbeContentGeometry(current, 3);
             PXWMLog(current, @"restore_initial_content_refreshed",
                     @{ @"substituted":@(current.initialFrameSubstituted) });
             PXWMProbeContentGeometry(current, 1);
@@ -797,6 +831,22 @@ static BOOL PXWMPrepareInitialLayout(PXWMContext *context) {
 static void PXWMSetSourceSize(id self, SEL command, CGSize size) {
     if (PXWMOriginalSetSourceSize) PXWMOriginalSetSourceSize(self, command, size);
     if (!NSThread.isMainThread || !PXWMContexts) return;
+    /* The first open of a session can lay content out before this size exists
+     * (probe showed sourceW=0). Once the real size arrives, let the vendor run
+     * its own layout pass once more so the content is scaled against it. */
+    if (size.width > 0 && size.height > 0 && PXWMOriginalLayout) {
+        for (PXWMContext *candidate in PXWMContexts.allObjects) {
+            if (candidate.bridge != self || !candidate.keyKnown) continue;
+            if (!PXWMBindingIsActive(candidate) || candidate.interacting || candidate.savePending) continue;
+            if (candidate.sourceSizeSeen) continue;
+            candidate.sourceSizeSeen = YES;
+            PXWMOriginalLayout(self, NSSelectorFromString(@"layoutHost"));
+            PXWMLog(candidate, @"content_relaid_after_source_size",
+                    @{@"sourceW":@(size.width), @"sourceH":@(size.height)});
+            PXWMProbeContentGeometry(candidate, 5);
+            break;
+        }
+    }
     PXWMContext *context = nil;
     for (PXWMContext *candidate in PXWMContexts.allObjects) {
         if (candidate.bridge != self || !PXWMOpeningTicketOwnsCanvas(candidate, candidate.canvas)) continue;
@@ -1233,11 +1283,7 @@ static void PXWMOpen(id self,SEL command,id bundle,id canvas,id overlay,void (^c
                      * remembered frame back once, without animation. */
                     PXWMScheduleInitialSettle(ticket);
                     PXWMProbeContentGeometry(ticket, 0);
-                    __weak PXWMContext *weakProbe = ticket;
-                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2500*NSEC_PER_MSEC),
-                                   dispatch_get_main_queue(), ^{
-                        PXWMProbeContentGeometry(weakProbe, 2);
-                    });
+                    PXWMScheduleProbe(ticket, 0);
                 }
                 PXWMLog(ticket, @"native_window_bound", @{});
             } else {
