@@ -64,7 +64,12 @@ static void AtlasLayouts(void) {
     [pet applySpriteFrame]; ExpectCrop(pet, image, CGRectMake(192, 312, 96, 104));
     // Approved neutral-row blink: preserve anchor/interpolation/seek crop checks.
     MiniSightPetEffects *effects = [pet valueForKey:@"effects"];
+    // Default measured-input mode must stay quiet even with a stale music position.
     [pet setValue:@8 forKey:@"state"]; effects.musicPosition = 3.75; effects.musicPlaying = YES;
+    [pet applySpriteFrame]; ExpectCrop(pet, image, CGRectMake(0, 0, 96, 104));
+    Now += .20; [pet applySpriteFrame]; ExpectCrop(pet, image, CGRectMake(0, 0, 96, 104));
+    // Explicit legacy fallback retains the original anchor/interpolation/seek checks.
+    [pet setValue:@NO forKey:@"rhythmFollowing"]; effects.musicPosition = 3.75;
     [pet applySpriteFrame]; ExpectCrop(pet, image, CGRectMake(96, 0, 96, 104));
     Now += .20; [pet applySpriteFrame]; ExpectCrop(pet, image, CGRectMake(288, 0, 96, 104));
     effects.musicPosition = .08; [pet applySpriteFrame]; ExpectCrop(pet, image, CGRectMake(0, 0, 96, 104));
