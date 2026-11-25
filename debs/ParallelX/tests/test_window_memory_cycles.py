@@ -65,7 +65,7 @@ class WindowMemoryCycles(unittest.TestCase):
         self.assertIn('PXWMExpansionTarget(context, frame, &expandedTarget)',hook)
         self.assertLess(hook.index('PXWMExpansionTarget(context, frame, &expandedTarget)'),hook.index('PXWMOriginalCardSetFrame(self, command, frame)'))
         self.assertIn('PXWMContextForCardFrame((UIView *)self)',hook)
-        self.assertIn('if ([bridgeBundle isEqual:candidate.bundle] || bridgeBundle == nil)',SOURCE)
+        self.assertIn('BOOL bundleMatches = [bridgeBundle isEqual:candidate.bundle] || bridgeBundle == nil;',SOURCE)
         self.assertIn('PXWMRect initialNative = context.initialNativeFrame;',hook)
         self.assertIn('PXWMPrepareInitialLayoutWithNativeFrame(context, &initialNative, YES)',hook)
         self.assertLess(hook.index('PXWMPrepareInitialLayoutWithNativeFrame(context, &initialNative, YES)'),hook.index('PXWMOriginalCardSetFrame(self, command, frame)'))

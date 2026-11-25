@@ -144,6 +144,27 @@ static BOOL PXWMOpeningTicketOwnsCanvas(PXWMContext *context, UIView *canvas) {
            context.bundle.length > 0;
 }
 
+/* A newly bound context still owns the first native frame until either the
+ * initial target is prepared or a user/native lifecycle transition advances
+ * its generation. This covers the handoff where native open has returned but
+ * the first PXHostCard frame is written just afterwards. It is deliberately
+ * limited to generation zero and never applies to an ordinary resize/layout. */
+static BOOL PXWMInitialFrameMayPrepare(PXWMContext *context) {
+    return context && context->native.serial && context->native.initialCleanupSeen &&
+           !context->native.cancelled && context->generation == 0 &&
+           !context.resolved && !context.interacting && !context.savePending &&
+           (context->native.entering || context->native.bound);
+}
+
+/* During the synchronous native open, the bridge can still expose the previous
+ * canvas/bundle for a short handoff window. The ticket already owns the
+ * incoming canvas and the previous scene cleanup has completed, so this is a
+ * narrower fact than a normal bound-context match. Never use it after the
+ * ticket has left the entering state. */
+static BOOL PXWMTicketMayUseIncomingAssociation(PXWMContext *context, BOOL preparingInitialLayout) {
+    return preparingInitialLayout && PXWMOpeningTicketOwnsCanvas(context, context.canvas);
+}
+
 static BOOL PXWMBindingIsActive(PXWMContext *context) {
     id bridge = context.bridge;
     return context && bridge && objc_getAssociatedObject(bridge, PXWMContextKey) == context &&
@@ -178,9 +199,10 @@ static BOOL PXWMReadGeometry(PXWMContext *context, BOOL preparingInitialLayout,
     }
     context.geometryGate = PXWMGateScene;
     id bridgeBundle = PXWMObject(context.bridge, @"bundleID");
-    BOOL ticketBeforeBundle = preparingInitialLayout && currentTicket && bridgeBundle == nil;
-    if (PXWMObject(context.bridge, @"canvas") != canvas ||
-        (![bridgeBundle isEqual:context.bundle] && !ticketBeforeBundle)) return NO;
+    BOOL bridgeCanvasMatches = PXWMObject(context.bridge, @"canvas") == canvas;
+    BOOL bundleMatches = [bridgeBundle isEqual:context.bundle] || bridgeBundle == nil;
+    BOOL ticketOwnsIncoming = PXWMTicketMayUseIncomingAssociation(context, preparingInitialLayout) && bundleMatches;
+    if ((!bridgeCanvasMatches || !bundleMatches) && !ticketOwnsIncoming) return NO;
     if (!preparingInitialLayout && (!canvas.userInteractionEnabled ||
         !PXWMObject(context.bridge, @"scene") || !PXWMBool(context.bridge, @"hasHostedSurface"))) return NO;
     context.geometryGate = PXWMGateTransient;
@@ -394,10 +416,17 @@ static PXWMContext *PXWMContextForCardFrame(UIView *card) {
             objc_getAssociatedObject(candidate.bridge, PXWMOpenTicketKey) == candidate;
         if (!bound && !currentTicket) continue;
         BOOL ownsCard = candidate.card == card;
+        if (!ownsCard && candidate.canvas && PXWMInitialFrameMayPrepare(candidate) &&
+            PXWMFindCard(candidate.canvas) == card) {
+            ownsCard = YES;
+            if (!candidate.card) candidate.card = card;
+        }
         if (!ownsCard && currentTicket && candidate.canvas &&
-            PXWMObject(candidate.bridge, @"canvas") == candidate.canvas) {
+            (PXWMObject(candidate.bridge, @"canvas") == candidate.canvas ||
+             PXWMTicketMayUseIncomingAssociation(candidate, YES))) {
             id bridgeBundle = PXWMObject(candidate.bridge, @"bundleID");
-            if ([bridgeBundle isEqual:candidate.bundle] || bridgeBundle == nil)
+            BOOL bundleMatches = [bridgeBundle isEqual:candidate.bundle] || bridgeBundle == nil;
+            if (bundleMatches)
                 ownsCard = PXWMFindCard(candidate.canvas) == card;
         }
         if (!ownsCard) continue;
@@ -414,9 +443,9 @@ static void PXWMCardSetFrame(id self, SEL command, CGRect frame) {
             PXWMContext *context = PXWMContextForCardFrame((UIView *)self);
             CGRect expandedTarget;
             if (PXWMExpansionTarget(context, frame, &expandedTarget)) frame = expandedTarget;
-            BOOL preflightReady = context && context->native.entering &&
-                context->native.initialCleanupSeen && !context.initialTargetActive &&
-                !context.restoring && !context.interacting && !context.savePending;
+            BOOL preflightReady = PXWMInitialFrameMayPrepare(context) &&
+                !context.initialTargetActive && !context.restoring &&
+                !context.interacting && !context.savePending;
             PXWMRect pendingDefault = PXWMFromRect(frame);
             if (preflightReady) context.card = (UIView *)self;
             if (preflightReady && !context.initialTargetActive) {
@@ -529,9 +558,13 @@ static BOOL PXWMPrepareInitialLayoutWithNativeFrame(PXWMContext *context,
     id bridge = context.bridge;
     BOOL currentTicket = bridge && objc_getAssociatedObject(bridge, PXWMOpenTicketKey) == context;
     id bridgeBundle = PXWMObject(bridge, @"bundleID");
-    BOOL matching = bridge && context.canvas && PXWMObject(bridge, @"canvas") == context.canvas &&
-        ([bridgeBundle isEqual:context.bundle] ||
-         (allowingVisibleTicket && currentTicket && bridgeBundle == nil));
+    BOOL ticketOwnsIncoming = PXWMTicketMayUseIncomingAssociation(context, allowingVisibleTicket) &&
+        ([bridgeBundle isEqual:context.bundle] || bridgeBundle == nil);
+    BOOL matching = bridge && context.canvas &&
+        ((PXWMObject(bridge, @"canvas") == context.canvas &&
+          ([bridgeBundle isEqual:context.bundle] ||
+           (allowingVisibleTicket && currentTicket && bridgeBundle == nil))) ||
+         ticketOwnsIncoming);
     PXWindowMemoryStore *store = PXWindowMemoryStore.shared;
     NSDictionary *snapshot = store.snapshot;
     BOOL ticketOwns = PXWMOpeningTicketOwnsCanvas(context, context.canvas);
