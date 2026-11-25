@@ -25,6 +25,69 @@ class WindowMemoryPolicy(unittest.TestCase):
             self.assertIn('WINDOW_MEMORY_POLICY_PASS', text)
             self.assertGreater(int(text.split('checks=')[1]), 4000)
 
+    def test_first_open_eligibility_policy_executes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            binary = Path(temp) / 'handoff'
+            subprocess.run([shutil.which('cc') or 'cc', '-std=c11', '-Wall', '-Wextra', '-Werror',
+                            str(ROOT/'tests/window_memory_handoff_harness.c'), '-lm', '-o', str(binary)],
+                           check=True)
+            text = subprocess.check_output([str(binary)], text=True)
+            self.assertIn('WINDOW_MEMORY_HANDOFF_PASS', text)
+            self.assertGreaterEqual(int(text.split('checks=')[1]), 400)
+            # The same production header, with the generation rule removed, must
+            # be rejected by the same harness: the negative is really compiled.
+            policy = (ROOT/'Common/PXWindowMemoryPolicy.h').read_text()
+            mutations = [
+                ('if (generation != 0 || resolved || interacting || savePending) return false;',
+                 'if (resolved || interacting || savePending) return false;'),
+                ('    return entering || bound;', '    return true;'),
+                ('    if (!serial || !cleanupSeen || cancelled) return false;',
+                 '    if (!serial) return false;'),
+            ]
+            for old, new in mutations:
+                with self.subTest(rule=old):
+                    self.assertEqual(policy.count(old), 1)
+                    target = Path(temp)/'mut'
+                    (target/'Common').mkdir(parents=True)
+                    (target/'tests').mkdir(parents=True)
+                    (target/'Common/PXWindowMemoryPolicy.h').write_text(policy.replace(old, new))
+                    shutil.copy2(ROOT/'tests/window_memory_handoff_harness.c', target/'tests/harness.c')
+                    broken = target/'mutated'
+                    subprocess.run(['cc', '-std=c11', '-Wno-unused-parameter',
+                                    str(target/'tests/harness.c'), '-lm', '-o', str(broken)],
+                                   check=True)
+                    run = subprocess.run([str(broken)], capture_output=True, text=True)
+                    self.assertNotEqual(run.returncode, 0, 'mutated policy was accepted')
+                    shutil.rmtree(target)
+
+    def test_card_creation_receives_remembered_frame(self):
+        source=(ROOT/'Common/PXWindowMemory.m').read_text()
+        hook=source.split('static id PXWMCardInit(id self, SEL command, CGRect frame) {',1)[1].split('\n}',1)[0]
+        self.assertIn('PXWMPendingInitialCardContext()',hook)
+        self.assertIn('PXWMInitialCardSavedFrame(context, &target, &key)',hook)
+        self.assertIn('return PXWMOriginalCardInit(self, command, adjusted);',hook)
+        self.assertIn('context.resolved = YES;',hook)
+        self.assertIn('context.initialTargetActive = YES;',hook)
+        pending=source.split('static PXWMContext *PXWMPendingInitialCardContext(void) {',1)[1].split('\n}',1)[0]
+        self.assertIn('PXWMInitialFrameMayPrepare(candidate)',pending)
+        self.assertIn('candidate.card',pending)
+        self.assertIn('if (found) return nil;',pending)
+        saved=source.split('static BOOL PXWMInitialCardSavedFrame(',1)[1].split('\n}',1)[0]
+        self.assertIn('PXWMInitialCardFrameUsable(YES, true, saved.reference.width, saved.reference.height,',saved)
+        self.assertIn('screen.width, screen.height',saved)
+        self.assertIn('PXWMValidRect(saved.frame)',saved)
+        policy=(ROOT/'Common/PXWindowMemoryPolicy.h').read_text()
+        usable=policy.split('static inline bool PXWMInitialCardFrameUsable(',1)[1].split('\n}',1)[0]
+        self.assertIn('!exactlyOnePending || !hasRecord',usable)
+        self.assertIn('fabs(savedRefW - currentW) <= 1.0',usable)
+        self.assertIn('fabs(savedRefH - currentH) <= 1.0',usable)
+        self.assertIn('PXWM_HOOK(PXWMCardClass,cardInit,PXWMCardInit,PXWMOriginalCardInit',source)
+        self.assertIn('@selector(initWithFrame:)',source)
+        self.assertIn('@"cardInitReady"',source)
+        # The window is never hidden while waiting for the remembered size.
+        self.assertNotRegex(source,r'alpha\s*=\s*0')
+        self.assertNotIn('setHidden:YES',source)
+
     def test_real_harness_rejects_broken_epoch_and_bounds(self):
         policy = (ROOT/'Common/PXWindowMemoryPolicy.h').read_text()
         policies = [
@@ -46,7 +109,7 @@ class WindowMemoryPolicy(unittest.TestCase):
         for source, mutations in policies:
             for old,new in mutations:
                 with self.subTest(old=old), tempfile.TemporaryDirectory() as temp:
-                    target=Path(temp); (target/'Common').mkdir(); (target/'tests').mkdir()
+                    target=Path(temp); (target/'Common').mkdir(parents=True); (target/'tests').mkdir(parents=True)
                     self.assertEqual(source.count(old),1,old)
                     (target/'Common/PXWindowMemoryPolicy.h').write_text(source.replace(old,new))
                     shutil.copy2(ROOT/'tests/window_memory_harness.c',target/'tests/harness.c')
@@ -245,7 +308,29 @@ class WindowMemorySourceGuards(unittest.TestCase):
         self.assertIn('BOOL ticketOwnsIncoming = PXWMTicketMayUseIncomingAssociation(context, preparingInitialLayout) && bundleMatches;',read)
         self.assertIn('BOOL bridgeCanvasMatches = PXWMObject(context.bridge, @"canvas") == canvas;',read)
         self.assertIn('BOOL bundleMatches = [bridgeBundle isEqual:context.bundle] || bridgeBundle == nil;',read)
-        self.assertIn('&& !ticketOwnsIncoming) return NO;',read)
+        self.assertIn('&& !ticketOwnsIncoming && !handoffOwnsCard) return NO;',read)
+        # The handoff proof must stay bounded to the first open and must never
+        # bypass the foreign-bundle rejection.
+        self.assertIn('BOOL handoffOwnsCard = preparingInitialLayout && bundleMatches &&',read)
+        helper=source.split('static BOOL PXWMInitialHandoffOwnsCard(',1)[1].split('\n}',1)[0]
+        self.assertIn('PXWMInitialFrameMayPrepare(context)',helper)
+        self.assertIn('context.card == card',helper)
+        self.assertIn('PXWMFindCard(context.canvas) == card',helper)
+        frame_gate=source.split('static BOOL PXWMInitialFrameMayPrepare(',1)[1].split('\n}',1)[0]
+        self.assertIn('PXWMInitialHandoffEligible((uint64_t)context->native.serial,',frame_gate)
+        self.assertIn('(uint64_t)context.generation',frame_gate)
+        policy=(ROOT/'Common/PXWindowMemoryPolicy.h').read_text()
+        eligible=policy.split('static inline bool PXWMInitialHandoffEligible(',1)[1].split('\n}',1)[0]
+        self.assertIn('generation != 0',eligible)
+        self.assertIn('entering || bound',eligible)
+        self.assertNotIn('bundle.length > 0',helper)
+        self.assertIn('PXWMInitialHandoffOwnsCard(candidate, card)',source.split('static PXWMContext *PXWMContextForCardFrame(',1)[1].split('\n}',1)[0])
+        prepare=source.rsplit('static BOOL PXWMPrepareInitialLayoutWithNativeFrame(',1)[1].split('PXWindowMemoryStore *store',1)[0]
+        self.assertIn('handoffOwnsCard',prepare)
+        self.assertIn('PXWMInitialHandoffOwnsCard(context, context.card)',prepare)
+        self.assertIn('if (!ticket.card) ticket.card = PXWMFindCard(ticket.canvas);',source)
+        self.assertIn('else if (preparingInitialLayout && PXWMInitialFrameMayPrepare(context)) card = context.card;',source)
+        self.assertNotIn('card = candidate.card;',source)
         self.assertIn('PXWMInitialFrameMayPrepare',source)
         self.assertNotIn('BOOL ticketBeforeBundle = preparingInitialLayout && currentTicket && bridgeBundle == nil;',read)
         self.assertNotIn('(![bridgeBundle isEqual:context.bundle] && !ticketBeforeBundle)',read)
@@ -437,6 +522,6 @@ class WindowMemoryAppleStorage(unittest.TestCase):
         self.assertLessEqual(len(logs),256)
         self.assertGreater(len(logs),200)
         self.assertTrue(any(event['event']=='fixture' for event in logs))
-        self.assertTrue(all(event['build']=='clone0.108' for event in logs))
+        self.assertTrue(all(event['build']=='clone0.110' for event in logs))
 
 if __name__ == '__main__': unittest.main(verbosity=2)

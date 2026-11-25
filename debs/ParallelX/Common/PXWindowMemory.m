@@ -94,6 +94,7 @@ static void (*PXWMOriginalMove)(id, SEL, id);
 static void (*PXWMOriginalResize)(id, SEL, id);
 static void (*PXWMOriginalControllerLayout)(id, SEL);
 static void (*PXWMOriginalCardSetFrame)(id, SEL, CGRect);
+static id (*PXWMOriginalCardInit)(id, SEL, CGRect);
 static void (*PXWMOriginalSetSourceSize)(id, SEL, CGSize);
 static void PXWMScheduleRestore(PXWMContext *context);
 static void PXWMScheduleInitialSettle(PXWMContext *context);
@@ -150,10 +151,70 @@ static BOOL PXWMOpeningTicketOwnsCanvas(PXWMContext *context, UIView *canvas) {
  * the first PXHostCard frame is written just afterwards. It is deliberately
  * limited to generation zero and never applies to an ordinary resize/layout. */
 static BOOL PXWMInitialFrameMayPrepare(PXWMContext *context) {
-    return context && context->native.serial && context->native.initialCleanupSeen &&
-           !context->native.cancelled && context.generation == 0 &&
-           !context.resolved && !context.interacting && !context.savePending &&
-           (context->native.entering || context->native.bound);
+    return context && PXWMInitialHandoffEligible((uint64_t)context->native.serial,
+        context->native.initialCleanupSeen, context->native.cancelled,
+        (uint64_t)context.generation, context.resolved, context.interacting,
+        context.savePending, context->native.entering, context->native.bound);
+}
+
+/* The bridge republishes canvas/bundle for the incoming scene at some point
+ * AFTER the native open returns (measured: still mismatched a few ms after a
+ * successful exact-match bind). The window's own view tree stays authoritative:
+ * the card about to be framed is the card captured when the binding was
+ * confirmed, or an ancestor of the canvas this opening ticket received. Both
+ * are limited to the unresolved generation-zero window of one open; an ordinary
+ * resize/layout never satisfies them. */
+static BOOL PXWMInitialHandoffOwnsCard(PXWMContext *context, UIView *card) {
+    if (!PXWMInitialFrameMayPrepare(context) || !card) return NO;
+    if (context.card == card) return YES;
+    return context.canvas != nil && PXWMFindCard(context.canvas) == card;
+}
+
+/* Diagnostics must stay content-free: only nil/same/different, never a name. */
+enum { PXWMLinkNil = 0, PXWMLinkSame = 1, PXWMLinkDifferent = 2 };
+static unsigned PXWMLinkState(id observed, id expected) {
+    if (!observed) return PXWMLinkNil;
+    return observed == expected ? PXWMLinkSame : PXWMLinkDifferent;
+}
+static unsigned PXWMIdentityState(id observed, id expected) {
+    if (!observed) return PXWMLinkNil;
+    return [observed isEqual:expected] ? PXWMLinkSame : PXWMLinkDifferent;
+}
+
+/* The card being created right now is the earliest owner of the default frame.
+ * Only claim it for the one unresolved opening ticket; several pending opens
+ * must never be disambiguated by a guess. */
+static PXWMContext *PXWMPendingInitialCardContext(void) {
+    if (!NSThread.isMainThread || !PXWMContexts) return nil;
+    PXWMContext *found = nil;
+    for (PXWMContext *candidate in PXWMContexts.allObjects) {
+        if (!PXWMInitialFrameMayPrepare(candidate) || candidate.card) continue;
+        if (found) return nil; // Ambiguous: leave the original frame untouched.
+        found = candidate;
+    }
+    return found;
+}
+
+/* Use a remembered frame at card creation only when it was recorded for the
+ * screen we are on now; a different reference size is reconciled later. */
+static BOOL PXWMInitialCardSavedFrame(PXWMContext *context, PXWMRect *target, unsigned *outKey) {
+    if (!context || !target) return NO;
+    PXWindowMemoryStore *store = PXWindowMemoryStore.shared;
+    if (!store.isLoaded) return NO;
+    NSDictionary *snapshot = store.snapshot;
+    if (![snapshot[@"enabled"] boolValue]) return NO;
+    CGSize screen = UIScreen.mainScreen.bounds.size;
+    for (unsigned key = 0; key < 4; key++) {
+        PXWMGeometry saved;
+        if (!PXWindowMemoryGeometry(snapshot, context.bundle, key, &saved)) continue;
+        if (!PXWMInitialCardFrameUsable(YES, true, saved.reference.width, saved.reference.height,
+                                        screen.width, screen.height)) continue;
+        if (!PXWMValidRect(saved.frame)) continue;
+        *target = saved.frame;
+        if (outKey) *outKey = key;
+        return YES;
+    }
+    return NO;
 }
 
 /* During the synchronous native open, the bridge can still expose the previous
@@ -186,7 +247,9 @@ static BOOL PXWMReadGeometry(PXWMContext *context, BOOL preparingInitialLayout,
     }
     UIView *canvas = context.canvas;
     UIView *card = PXWMFindCard(canvas);
-    context.card = card;
+    if (card) context.card = card;
+    /* Only the first-open handoff may fall back to the card captured at bind. */
+    else if (preparingInitialLayout && PXWMInitialFrameMayPrepare(context)) card = context.card;
     UIWindow *window = card.window;
     context.geometryGate = PXWMGateView;
     if (!card || !canvas || !window || !card.superview || window.screen != UIScreen.mainScreen) return NO;
@@ -202,7 +265,11 @@ static BOOL PXWMReadGeometry(PXWMContext *context, BOOL preparingInitialLayout,
     BOOL bridgeCanvasMatches = PXWMObject(context.bridge, @"canvas") == canvas;
     BOOL bundleMatches = [bridgeBundle isEqual:context.bundle] || bridgeBundle == nil;
     BOOL ticketOwnsIncoming = PXWMTicketMayUseIncomingAssociation(context, preparingInitialLayout) && bundleMatches;
-    if ((!bridgeCanvasMatches || !bundleMatches) && !ticketOwnsIncoming) return NO;
+    /* A republished bridge canvas no longer identifies the incoming scene, but
+     * the card we are about to frame still does. Never accept a foreign bundle. */
+    BOOL handoffOwnsCard = preparingInitialLayout && bundleMatches &&
+        PXWMInitialHandoffOwnsCard(context, card);
+    if ((!bridgeCanvasMatches || !bundleMatches) && !ticketOwnsIncoming && !handoffOwnsCard) return NO;
     if (!preparingInitialLayout && (!canvas.userInteractionEnabled ||
         !PXWMObject(context.bridge, @"scene") || !PXWMBool(context.bridge, @"hasHostedSurface"))) return NO;
     context.geometryGate = PXWMGateTransient;
@@ -416,8 +483,7 @@ static PXWMContext *PXWMContextForCardFrame(UIView *card) {
             objc_getAssociatedObject(candidate.bridge, PXWMOpenTicketKey) == candidate;
         if (!bound && !currentTicket) continue;
         BOOL ownsCard = candidate.card == card;
-        if (!ownsCard && candidate.canvas && PXWMInitialFrameMayPrepare(candidate) &&
-            PXWMFindCard(candidate.canvas) == card) {
+        if (!ownsCard && PXWMInitialHandoffOwnsCard(candidate, card)) {
             ownsCard = YES;
             if (!candidate.card) candidate.card = card;
         }
@@ -437,10 +503,63 @@ static PXWMContext *PXWMContextForCardFrame(UIView *card) {
     return match;
 }
 
+/* The vendor gives the card its default frame here, before any window exists.
+ * Hand the remembered frame to the original call instead of fighting the first
+ * frame afterwards. Everything stays referential: one pending open, a record
+ * made for this screen, and the original call is always executed. */
+static id PXWMCardInit(id self, SEL command, CGRect frame) {
+    if (!PXWMOriginalCardInit) return nil;
+    CGRect adjusted = frame;
+    if (NSThread.isMainThread && PXWMContexts) {
+        PXWMContext *context = PXWMPendingInitialCardContext();
+        PXWMRect target = {0, 0, 0, 0}; unsigned key = 0;
+        if (context && PXWMInitialCardSavedFrame(context, &target, &key)) {
+            adjusted = PXWMToRect(target);
+            context.card = (UIView *)self;
+            context.initialNativeFrame = PXWMFromRect(frame);
+            context.initialTarget = target;
+            context.initialTargetKey = key;
+            context.key = key;
+            context.keyKnown = YES;
+            context.initialTargetEpoch = [PXWindowMemoryStore.shared.snapshot[@"epoch"] unsignedLongLongValue];
+            context.initialTargetDeadline = CACurrentMediaTime() + 2.0;
+            context.initialTargetActive = YES;
+            context.resolved = YES;
+            context.initialPreparationWaitLogged = NO;
+            context.initialContentRefreshed = NO;
+            context.initialFrameSubstituted = NO;
+            PXWMLog(context, @"first_frame_memory_applied_at_init",
+                    @{@"defaultW":@(frame.size.width), @"defaultH":@(frame.size.height),
+                      @"targetW":@(target.width), @"targetH":@(target.height),
+                      @"orientationKey":@(key),
+                      @"revision":PXWindowMemoryStore.shared.snapshot[@"revision"] ?: @0});
+        }
+    }
+    return PXWMOriginalCardInit(self, command, adjusted);
+}
+
 static void PXWMCardSetFrame(id self, SEL command, CGRect frame) {
     if (PXWMOriginalCardSetFrame) {
         if (NSThread.isMainThread && PXWMContexts) {
             PXWMContext *context = PXWMContextForCardFrame((UIView *)self);
+            if (!context) {
+                /* Bounded: one content-free record per opening serial, so a
+                 * failed first frame always says whether the hook even resolved
+                 * an owning context. */
+                static uint64_t lastMissSerial;
+                uint64_t serial = 0; NSUInteger pending = 0;
+                for (PXWMContext *candidate in PXWMContexts.allObjects)
+                    if (PXWMInitialFrameMayPrepare(candidate)) {
+                        pending++;
+                        if (candidate->native.serial > serial) serial = candidate->native.serial;
+                    }
+                if (serial && serial != lastMissSerial) {
+                    lastMissSerial = serial;
+                    PXWMLog(nil, @"first_frame_no_context",
+                            @{@"serial":@(serial), @"pending":@(pending),
+                              @"w":@(frame.size.width), @"h":@(frame.size.height)});
+                }
+            }
             CGRect expandedTarget;
             if (PXWMExpansionTarget(context, frame, &expandedTarget)) frame = expandedTarget;
             BOOL preflightReady = PXWMInitialFrameMayPrepare(context) &&
@@ -469,7 +588,15 @@ static void PXWMCardSetFrame(id self, SEL command, CGRect frame) {
                               @"targetW":@(context.initialTarget.width), @"targetH":@(context.initialTarget.height),
                               @"revision":snapshot[@"revision"] ?: @0});
                 if (!prepared) {
-                    if (!geometryReady) { if (PXWMShouldLogRestoreWait((unsigned)++context.restoreRetryAttempts, context.geometryGate, context.restoreRetryLoggedGate)) { context.restoreRetryLoggedGate=context.geometryGate; PXWMLog(context, @"first_frame_memory_waiting_for_native_source", @{@"gate":@(context.geometryGate), @"attempt":@(context.restoreRetryAttempts), @"defaultW":@(context.initialNativeFrame.width), @"defaultH":@(context.initialNativeFrame.height)}); } }
+                    if (!geometryReady) { if (PXWMShouldLogRestoreWait((unsigned)++context.restoreRetryAttempts, context.geometryGate, context.restoreRetryLoggedGate)) {
+                        context.restoreRetryLoggedGate=context.geometryGate;
+                        PXWMLog(context, @"first_frame_memory_waiting_for_native_source",
+                                @{@"gate":@(context.geometryGate), @"attempt":@(context.restoreRetryAttempts),
+                                  @"defaultW":@(context.initialNativeFrame.width), @"defaultH":@(context.initialNativeFrame.height),
+                                  @"canvas":@(PXWMLinkState(PXWMObject(context.bridge, @"canvas"), context.canvas)),
+                                  @"bundle":@(PXWMIdentityState(PXWMObject(context.bridge, @"bundleID"), context.bundle)),
+                                  @"cardOwns":@(PXWMInitialHandoffOwnsCard(context, (UIView *)self) ? 1 : 0),
+                                  @"hidden":@(((UIView *)self).window.hidden ? 1 : 0)}); } }
                     else if (!context.initialPreparationWaitLogged) { context.initialPreparationWaitLogged=YES; if (!loaded) PXWMLog(context, @"first_frame_memory_waiting_for_store", @{@"revision":snapshot[@"revision"] ?: @0}); else if (![snapshot[@"enabled"] boolValue]) PXWMLog(context, @"first_frame_memory_disabled", @{@"revision":snapshot[@"revision"] ?: @0}); else if (!hasRecord) PXWMLog(context, @"first_frame_memory_no_record", @{@"orientationKey":@(key), @"revision":snapshot[@"revision"] ?: @0}); else PXWMLog(context, @"first_frame_memory_not_prepared", @{@"gate":@(context.geometryGate), @"resolved":@(context.resolved)}); }
                 }
             }
@@ -560,11 +687,14 @@ static BOOL PXWMPrepareInitialLayoutWithNativeFrame(PXWMContext *context,
     id bridgeBundle = PXWMObject(bridge, @"bundleID");
     BOOL ticketOwnsIncoming = PXWMTicketMayUseIncomingAssociation(context, allowingVisibleTicket) &&
         ([bridgeBundle isEqual:context.bundle] || bridgeBundle == nil);
+    BOOL handoffOwnsCard = allowingVisibleTicket &&
+        ([bridgeBundle isEqual:context.bundle] || bridgeBundle == nil) &&
+        PXWMInitialHandoffOwnsCard(context, context.card);
     BOOL matching = bridge && context.canvas &&
         ((PXWMObject(bridge, @"canvas") == context.canvas &&
           ([bridgeBundle isEqual:context.bundle] ||
            (allowingVisibleTicket && currentTicket && bridgeBundle == nil))) ||
-         ticketOwnsIncoming);
+         ticketOwnsIncoming || handoffOwnsCard);
     PXWindowMemoryStore *store = PXWindowMemoryStore.shared;
     NSDictionary *snapshot = store.snapshot;
     BOOL ticketOwns = PXWMOpeningTicketOwnsCanvas(context, context.canvas);
@@ -1002,6 +1132,8 @@ static void PXWMOpen(id self,SEL command,id bundle,id canvas,id overlay,void (^c
             if (PXWMNativeReturned(&ticket->native, current, matches, returnedNormally)) {
                 objc_setAssociatedObject(self, PXWMContextKey, ticket, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 [PXWMContexts addObject:ticket];
+                /* Remember the card while canvas and bundle still match exactly. */
+                if (!ticket.card) ticket.card = PXWMFindCard(ticket.canvas);
                 PXWMLog(ticket, @"native_window_bound", @{});
             } else {
                 PXWMLog(ticket, @"native_window_not_bound", @{@"current":@(current), @"matches":@(matches),
@@ -1129,6 +1261,12 @@ BOOL PXWindowMemoryInstall(Class panel,Class bridge,Class hostController) {
     PXWM_HOOK(bridge,close,PXWMClose,PXWMOriginalClose,void (*)(id,SEL));
     PXWM_HOOK(hostController,controllerLayout,PXWMControllerLayout,PXWMOriginalControllerLayout,void (*)(id,SEL));
     PXWM_HOOK(PXWMCardClass,cardFrame,PXWMCardSetFrame,PXWMOriginalCardSetFrame,void (*)(id,SEL,CGRect));
+    SEL cardInit = @selector(initWithFrame:);
+    // Optional: if the vendor ever stops creating cards with a frame, the
+    // pre-existing first-frame path stays the fallback.
+    if (PXCloneClassInstanceMethodMatches(PXWMCardClass, cardInit, @encode(id),
+            @[[NSString stringWithUTF8String:@encode(CGRect)]]))
+        PXWM_HOOK(PXWMCardClass,cardInit,PXWMCardInit,PXWMOriginalCardInit,id (*)(id,SEL,CGRect));
     SEL setSourceSize = NSSelectorFromString(@"setSourceSize:");
     NSString *sizeType = [NSString stringWithUTF8String:@encode(CGSize)];
     if (PXCloneClassInstanceMethodMatches(bridge, setSourceSize, @encode(void), @[sizeType]))
@@ -1175,6 +1313,7 @@ BOOL PXWindowMemoryInstall(Class panel,Class bridge,Class hostController) {
                  PXWMOriginalClose && PXWMOriginalControllerLayout;
     [store diagnostic:@"hook_status" details:@{@"ready":@(ready),
         @"cardFrameReady":@(PXWMOriginalCardSetFrame != NULL),
+        @"cardInitReady":@(PXWMOriginalCardInit != NULL),
         @"dockExpansionReady":@(PXWMOriginalRestoreDockTapped != NULL),
         @"externalExpansionReady":@(PXWMOriginalExternalOpen != NULL),
         @"actionExpansionReady":@(PXWMOriginalConfiguredAction != NULL && PXWMOriginalConfiguredActionSearch != NULL),

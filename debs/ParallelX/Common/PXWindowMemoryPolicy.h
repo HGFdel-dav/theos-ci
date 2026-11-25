@@ -193,6 +193,32 @@ static inline bool PXWMNativeBindingActive(const PXWMNativeLifecycle *state, uin
            !state->entering && !state->cancelled;
 }
 
+/* The first native frame of an open belongs to that open only while it is
+ * unresolved, untouched by the user and still generation zero. A user move or
+ * resize, a cancel or a committed frame advances the generation and ends it.
+ * Entering covers the synchronous open; bound covers the handoff just after the
+ * native call returns, before the bridge republishes canvas/bundle. */
+static inline bool PXWMInitialHandoffEligible(uint64_t serial, bool cleanupSeen, bool cancelled,
+                                              uint64_t generation, bool resolved, bool interacting,
+                                              bool savePending, bool entering, bool bound) {
+    if (!serial || !cleanupSeen || cancelled) return false;
+    if (generation != 0 || resolved || interacting || savePending) return false;
+    return entering || bound;
+}
+
+/* The host card is born with a frame, so that argument is the earliest point a
+ * remembered size can be handed to the vendor - before the window exists. Only
+ * usable when this is the single pending open and the record was made for the
+ * very screen we are on; otherwise the frame must be reconciled later instead
+ * of guessed here. */
+static inline bool PXWMInitialCardFrameUsable(bool exactlyOnePending, bool hasRecord,
+                                              double savedRefW, double savedRefH,
+                                              double currentW, double currentH) {
+    if (!exactlyOnePending || !hasRecord) return false;
+    if (!(savedRefW > 0) || !(savedRefH > 0) || !(currentW > 0) || !(currentH > 0)) return false;
+    return fabs(savedRefW - currentW) <= 1.0 && fabs(savedRefH - currentH) <= 1.0;
+}
+
 /* Geometry preparation is permitted inside the native open only after its
  * old-scene cleanup and assignment of this canvas/bundle. Saves still require
  * the complete visible, bound host. No ownership is inferred from a pointer. */

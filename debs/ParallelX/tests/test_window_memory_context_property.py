@@ -101,7 +101,7 @@ __attribute__((objc_root_class))
         # native really is the explicitly public C lifecycle ivar, not a property.
         self.assertIn('@public\n    PXWMNativeLifecycle native;', interface)
         self.assertIn('context->native.serial', helper)
-        self.assertIn('context.generation == 0', helper)
+        self.assertIn('(uint64_t)context.generation', helper)
 
 
 if __name__ == '__main__':
