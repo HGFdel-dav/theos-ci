@@ -6,6 +6,8 @@
   },
   "cases": [
     {"name": "valid-png", "valid": true, "alpha": true},
+    {"name": "valid-daily-category", "valid": true, "set": {"/clips/0/category": "play"}},
+    {"name": "unknown-category", "valid": false, "set": {"/clips/0/category": "walk"}},
     {"name": "valid-music", "valid": true, "make": "music"},
     {"name": "valid-all-roles", "valid": true, "make": "all-roles"},
     {"name": "valid-nested-path", "valid": true, "set": {"/clips/0/frames/0/file": "nested/pixels.png"}},

@@ -237,7 +237,7 @@ class StaticContract(unittest.TestCase):
     """Source/fixture assertions only; deliberately NOT a Python parser surrogate."""
     def test_public_contract(self):
         for api in ("loadManifestAtPath:", "requestFrameForClip:", "purgeFrames", "cancelPendingFrameRequests",
-                    "identifier", "role", "durations", "duration", "frameCount"):
+                    "identifier", "role", "category", "durations", "duration", "frameCount"):
             self.assertIn(api, HEADER)
         self.assertIn("readonly", HEADER)
         self.assertIn("Caller must fence superseded load results", HEADER)
@@ -256,7 +256,7 @@ class StaticContract(unittest.TestCase):
     def test_native_strict_path_and_parser_guards(self):
         for text in ("openat(", "O_NOFOLLOW", "O_NONBLOCK", "S_ISREG", "MSALSameFile", "fstat(fd, &after)",
                      "CFBooleanGetTypeID", "MSALJSONEnvelope", "clips[identifier]", "[allowed containsObject:role]",
-                     "CGRectGetMaxX(rect) > 1", "candidate / aspect", "kCGImageAlphaPremultipliedLast",
+                     "allowedCategories", "category:category", "@[@\"category\"]", "CGRectGetMaxX(rect) > 1", "candidate / aspect", "kCGImageAlphaPremultipliedLast",
                      "CGContextClearRect", "MSALOrientedRect", "CGContextClipToRect",
                      "MSALOpenDirectory(state->rootPath)", "MSALOpenDirectory(rootPath)",
                      "canBeConvertedToEncoding:NSUTF8StringEncoding", "state->canvasWidth",

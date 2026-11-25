@@ -95,6 +95,10 @@ static void Fixture(NSDictionary *entry) {
             CHECK(clip.frameCount > 0 && clip.durations.count == clip.frameCount && clip.duration <= 120.000001);
         }
         MiniSightActionClip *idle = library.roles[@"idle"].firstObject;
+        if ([entry[@"name"] isEqual:@"valid-daily-category"])
+            CHECK([idle.category isEqualToString:@"play"]); // Production parser retained the optional category.
+        if ([entry[@"name"] isEqual:@"valid-png"])
+            CHECK(idle.category == nil); // Legacy manifests remain category-free.
         NSArray *colors = entry[@"colors"];
         NSUInteger count = colors ? colors.count : MIN(idle.frameCount, 2);
         for (NSUInteger i = 0; i < count; i++)

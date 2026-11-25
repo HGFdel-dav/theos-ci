@@ -107,8 +107,8 @@ def main(argv=None):
                     print(result.stdout, end='')
                     if result.returncode:
                         raise RuntimeError('baseline runtime failed: ' + result.stderr)
-                    if result.stdout.count('NATIVE PASS: ') != 19:
-                        raise RuntimeError('missing original 11 / atlas 6 / in-place-land 1 native groups plus summary')
+                    if result.stdout.count('NATIVE PASS: ') != 20:
+                        raise RuntimeError('missing original 11 / atlas 6 / in-place-land 1 / daily-action 1 native groups plus summary')
                 elif result.returncode != 1 or 'FAIL:' not in result.stderr:
                     raise RuntimeError(name + ' did not fail by a runtime assertion: ' + result.stderr)
                 else:

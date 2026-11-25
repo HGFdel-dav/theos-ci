@@ -1,11 +1,12 @@
-# Current: QQ lyrics scoped candidate / authorized push + CI (2026-11-24)
+# Current: MiniSight daily-action local candidate (2026-11-25; not pushed)
 
-- User explicitly approved only App/plugin lyrics-only push, CI, static packaging verification.
-- Native baseline and mutations remain mandatory; no new device, capture, install, respring or reboot authorization.
-- MiniSight0.8.52; only core plugin payload, no audio capture service.
-- Frozen authorized source: /var/minis/shared/openminis/local-reviews/lyrics-qq-local-20261124/FINAL-SCOPE.json.
-- Scope: strict LRCLIB->QQ, stale-track fence, bounded diagnostic routes; preserve old pet gestures, atlas, bounds, composer.
-- Stage: staged; new native execution/build/package not yet proven.
+- User approved local-only changes for richer everyday pet animation, separate from roaming; preserve lyrics/music logic, drag/chat/sleep/interaction priorities and old single-action imports.
+- Baseline HEAD `ddb9a4d09af442b6f474f4b9c0c7302d0593a0de` (MiniSight 0.8.52). Release candidate target is 0.8.53; candidate changes are uncommitted in this isolated copy only; no push, GitHub CI run, DEB, install, device action, audio capture, respring or reboot.
+- The existing GitHub Actions plugin workflow now includes the portable daily-action test; its YAML and local invocation were checked. The build still retains the pinned iPhoneOS 15.5 SDK native typecheck/runtime gates, which will execute only in the authorized GitHub runner. Workflow edit remains local; GitHub has not run it.
+- Plugin-side portable daily-action test ran 7/7; existing ActionLibrary static tests and source-mirror parity passed. Apple SDK/ImageIO/UIKit, CI/build/package, plugin load and phone visuals are not verified.
+- Local host-C/path, static parser/importer, source-mirror and package checks passed. Apple SDK/ImageIO/UIKit, CI/build/package, plugin load and phone visuals are not verified.
+- 48-action package is 5,760 frames. Artwork source terms are non-commercial; do not publish/package it for public or commercial distribution without resolving those terms.
+- Detailed evidence: `/var/minis/shared/openminis/local-reviews/pet-lively-reuse-20261125/local-candidate/LOCAL-RESULT.md`. Stop at local-check gate; push/build and install each need separate approval.
 
 ---
 # Historical records (not current authorization)
