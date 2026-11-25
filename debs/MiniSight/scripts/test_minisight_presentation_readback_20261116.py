@@ -65,6 +65,21 @@ class Source(unittest.TestCase):
         support = (FIXTURE/'support.m').read_text()
         self.assertIn('#include "tweak_presentation.inc"', support)
         self.assertIn('#include "resources_shown_writer.inc"', support)
+    def test_resource_recovery_fixture_uses_real_policy(self):
+        support = (FIXTURE/'support.m').read_text()
+        self.assertIn('#import "MiniSightAssetFallbackPolicy.h"', support)
+        self.assertNotIn('static inline bool MSAssetNeedsHostRebuild', support)
+        self.assertIn('gMiniSightBuilt = NO; gMiniSightPet = nil;', support)
+        runtime = (FIXTURE/'runtime.m').read_text()
+        for required in ('CompleteResource(defaultResource)', 'CompleteResource(customResource)',
+                         'nonfresh preferences cannot manufacture a resource repair',
+                         'fresh real resource completion reads default flag and rebuilds a missing pet once',
+                         'fresh repair never overrides persisted OFF or shows a hidden host',
+                         'App owner cannot receive a duplicate SpringBoard show from fresh repair',
+                         'fresh repair in idle call mode builds a hidden host but never forces show',
+                         'fresh missing atlas cannot trigger a host repair',
+                         'nonpet style cannot trigger missing-pet repair'):
+            self.assertIn(required, runtime)
 
 class Native(unittest.TestCase):
     def compile_and_run(self, directory, *, reject=False):
@@ -96,7 +111,10 @@ class Native(unittest.TestCase):
         mutations = [
             [ ('!MSMusicEpochIsCurrent(gMiniSightSettingsEpoch, epoch) || gMiniSightSettingsRefreshAgain', 'NO'),
               ('if (!MSMusicEpochIsCurrent(gMiniSightSettingsEpoch, gMiniSightPreferencesEpoch)) {', 'if (NO) {') ],
-            [ ('MiniSightConvergeSettings(YES);', 'MiniSightUpdateMusic();') ]
+            [ ('MiniSightConvergeSettings(YES);', 'MiniSightUpdateMusic();') ],
+            [ (' || repairMissingPet;', ';') ],
+            [ ('gMiniSightUsingDefaultAtlas = [preferences[@"_minisightDefaultAsset"] boolValue];',
+               'gMiniSightUsingDefaultAtlas = NO;') ]
         ]
         for edits in mutations:
             with self.subTest(mutation=edits):

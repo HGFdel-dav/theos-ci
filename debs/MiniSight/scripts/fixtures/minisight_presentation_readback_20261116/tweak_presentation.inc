@@ -57,6 +57,7 @@ static void MiniSightRequestResources(BOOL force, void (^completion)(void)) {
         panel.appearancePreferences = gMiniSightPreferences;
         gMiniSightShown = shown;
         gMiniSightAtlas = atlas;
+        gMiniSightUsingDefaultAtlas = [preferences[@"_minisightDefaultAsset"] boolValue];
         gMiniSightTintBase = atlas;
         gMiniSightActionManifest = [preferences[@"_minisightActionManifest"] isKindOfClass:NSString.class]
             ? [preferences[@"_minisightActionManifest"] copy] : nil;
@@ -101,7 +102,9 @@ static void MiniSightConvergeSettings(BOOL resourcesFresh) {
     BOOL wasUserHidden = gMiniSightUserHidden;
     MiniSightApplyShownReadback();
     NSInteger renderer = MiniSightRenderer(), style = MiniSightStyle();
-    BOOL structural = renderer != gMiniSightAppliedRenderer || style != gMiniSightAppliedStyle;
+    BOOL repairMissingPet = MSAssetNeedsHostRebuild(resourcesFresh, style == 1, gMiniSightBuilt,
+                                                   gMiniSightPet != nil, gMiniSightAtlas != nil);
+    BOOL structural = renderer != gMiniSightAppliedRenderer || style != gMiniSightAppliedStyle || repairMissingPet;
     if (structural) {
         MiniSightStopGravity();
         MiniSightDestroyUI();

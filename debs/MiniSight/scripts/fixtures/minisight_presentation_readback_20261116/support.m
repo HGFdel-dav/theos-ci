@@ -3,6 +3,7 @@
 #import <stdatomic.h>
 #import "MiniSightMusicPresentationPolicy.h"
 #import "MiniSightShownReadback.h"
+#import "MiniSightAssetFallbackPolicy.h"
 // No UIKit, media source, device bridge, microphone or real preferences.
 @interface UIImage : NSObject @end
 @implementation UIImage @end
@@ -37,6 +38,7 @@ static UIImage *gMiniSightAtlas, *gMiniSightTintBase;
 static NSString *gMiniSightActionManifest;
 static MiniSightPetView *gMiniSightPet;
 static BOOL gMiniSightShown, gMiniSightResourcesReady, gMiniSightResourceLoading;
+static BOOL gMiniSightBuilt, gMiniSightUsingDefaultAtlas;
 static BOOL gMiniSightSettingsLoading, gMiniSightSettingsRefreshAgain, gMiniSightResourceRefreshAgain;
 static BOOL gMiniSightShownWritePending, gMiniSightHideObservedOff, gMiniSightUserHidden, gMiniSightBurst;
 static NSString *gMiniSightHidePreviousShownIdentity;
@@ -61,9 +63,17 @@ static void MiniSightStopGravity(void) {}
 static void MiniSightNameWakeCancel(NSString *reason, BOOL panel) { (void)reason; (void)panel; }
 static void MiniSightCancelConfirm(void) {}
 static void MiniSightHide(void) {}
-static void MiniSightDestroyUI(void) { ++destroyed; }
-static void MiniSightShow(void) { ++showed; gMiniSightAppliedRenderer = MiniSightRenderer(); gMiniSightAppliedStyle = MiniSightStyle(); }
-static void MiniSightBuildUI(void) { ++built; }
+// Synthetic UI only: mirror production host/pet lifetime, never clone recovery policy.
+static void MiniSightDestroyUI(void) { ++destroyed; gMiniSightBuilt = NO; gMiniSightPet = nil; }
+static void MiniSightBuildUI(void) {
+    if (!gMiniSightResourcesReady) { MiniSightRequestResources(NO, ^{ MiniSightBuildUI(); }); return; }
+    if (gMiniSightBuilt) return;
+    ++built; gMiniSightBuilt = YES;
+    if (MiniSightStyle() == 1 && gMiniSightAtlas) {
+        gMiniSightPet = [MiniSightPetView new]; gMiniSightPet.image = gMiniSightAtlas;
+    }
+}
+static void MiniSightShow(void) { ++showed; MiniSightBuildUI(); gMiniSightAppliedRenderer = MiniSightRenderer(); gMiniSightAppliedStyle = MiniSightStyle(); }
 static void MiniSightApplySettingsLive(void) { ++applied; }
 static void MiniSightUpdateMusic(void) { ++musicUpdates; }
 static void MiniSightNameWakeUpdate(void) {}

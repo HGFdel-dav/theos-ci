@@ -100,6 +100,64 @@ int main(void) { @autoreleasepool {
     [MiniSightResources writeShown:NO container:@"relative-invalid" verifiedReadback:^(BOOL ok, NSString *identity) { (void)identity; verified = ok; done = YES; }];
     Wait(^{ return done; });
     Check(!verified && atomic_load(&notifications) == before, @"failure reports NO and never posts success");
+
+    // New production resource recovery path; all preceding stale/hide/save negatives stay intact.
+    Check(!resourceReads.count && !preferenceReads.count && !gMiniSightResourceLoading && !gMiniSightSettingsLoading,
+          @"old asynchronous scenarios drained before recovery cases");
+    Check(MSMusicWriteShownVerified(YES, gMiniSightContainer), @"enable recovery scenario");
+    desiredRenderer = 0; desiredStyle = 1;
+    gMiniSightUserHidden = NO; gMiniSightShownWritePending = NO;
+    gMiniSightPreferences = Preferences(); gMiniSightPreferencesEpoch = gMiniSightSettingsEpoch;
+    gMiniSightAppliedRenderer = 0; gMiniSightAppliedStyle = 1;
+    gMiniSightResourcesReady = YES; gMiniSightBuilt = YES; gMiniSightPet = nil; gMiniSightAtlas = nil;
+    NSUInteger recoveryBuilt = built, recoveryDestroyed = destroyed, recoveryShowed = showed;
+    MiniSightConvergeSettings(NO);
+    Check(built == recoveryBuilt && destroyed == recoveryDestroyed && showed == recoveryShowed && gMiniSightBuilt && !gMiniSightPet,
+          @"nonfresh preferences cannot manufacture a resource repair");
+    MiniSightRequestResources(YES, nil);
+    NSMutableDictionary *defaultResource = [Preferences() mutableCopy]; defaultResource[@"_minisightDefaultAsset"] = @YES;
+    CompleteResource(defaultResource);
+    Check(gMiniSightUsingDefaultAtlas && gMiniSightBuilt && gMiniSightPet && gMiniSightPet.image == gMiniSightAtlas &&
+          built == recoveryBuilt + 1 && destroyed == recoveryDestroyed + 1 && showed == recoveryShowed + 1,
+          @"fresh real resource completion reads default flag and rebuilds a missing pet once");
+    MiniSightConvergeSettings(YES);
+    Check(built == recoveryBuilt + 1 && destroyed == recoveryDestroyed + 1,
+          @"existing pet does not repeatedly rebuild on fresh convergence");
+    MiniSightPetView *recoveredPet = gMiniSightPet;
+    MiniSightRequestResources(YES, nil);
+    NSMutableDictionary *customResource = [Preferences() mutableCopy]; customResource[@"_minisightDefaultAsset"] = @NO;
+    CompleteResource(customResource);
+    Check(!gMiniSightUsingDefaultAtlas && gMiniSightPet == recoveredPet && built == recoveryBuilt + 1,
+          @"custom resource completion clears old default flag without needless rebuild");
+
+    Check(MSMusicWriteShownVerified(NO, gMiniSightContainer), @"OFF before fresh repair");
+    gMiniSightPreferences = Preferences(); gMiniSightBuilt = YES; gMiniSightPet = nil;
+    recoveryBuilt = built; recoveryShowed = showed; recoveryDestroyed = destroyed;
+    MiniSightConvergeSettings(YES);
+    Check(!MiniSightShown() && !gMiniSightBuilt && !gMiniSightPet && built == recoveryBuilt && showed == recoveryShowed && destroyed == recoveryDestroyed + 1,
+          @"fresh repair never overrides persisted OFF or shows a hidden host");
+    Check(MSMusicWriteShownVerified(YES, gMiniSightContainer), @"ON for App ownership negative");
+    desiredRenderer = 1; gMiniSightPreferences = Preferences();
+    gMiniSightAppliedRenderer = 1; gMiniSightAppliedStyle = 1; gMiniSightBuilt = YES; gMiniSightPet = nil;
+    MiniSightConvergeSettings(YES);
+    Check(MiniSightAppOwnsPresentation() && !gMiniSightBuilt && !gMiniSightPet && built == recoveryBuilt && showed == recoveryShowed,
+          @"App owner cannot receive a duplicate SpringBoard show from fresh repair");
+    desiredRenderer = 0;
+    NSMutableDictionary *callMode = [Preferences() mutableCopy]; callMode[@"minisight.mode"] = @0;
+    gMiniSightPreferences = callMode; gMiniSightAppliedRenderer = 0; gMiniSightAppliedStyle = 1;
+    gMiniSightBuilt = YES; gMiniSightPet = nil;
+    MiniSightConvergeSettings(YES);
+    Check(gMiniSightBuilt && gMiniSightPet && built == recoveryBuilt + 1 && showed == recoveryShowed,
+          @"fresh repair in idle call mode builds a hidden host but never forces show");
+    gMiniSightPet = nil; gMiniSightAtlas = nil;
+    recoveryBuilt = built; recoveryDestroyed = destroyed;
+    MiniSightConvergeSettings(YES);
+    Check(built == recoveryBuilt && destroyed == recoveryDestroyed && !gMiniSightPet,
+          @"fresh missing atlas cannot trigger a host repair");
+    gMiniSightAtlas = [UIImage new]; desiredStyle = 0; gMiniSightPreferences = Preferences(); gMiniSightAppliedStyle = 0;
+    MiniSightConvergeSettings(YES);
+    Check(built == recoveryBuilt && destroyed == recoveryDestroyed && !gMiniSightPet,
+          @"nonpet style cannot trigger missing-pet repair");
     [NSFileManager.defaultManager removeItemAtPath:gMiniSightContainer error:nil];
     [NSFileManager.defaultManager removeItemAtPath:writeContainer error:nil];
     puts("NATIVE PRESENTATION READBACK PASS: production writer, hidden latch, coalescing, resource tail, App path, failure and cancellation");

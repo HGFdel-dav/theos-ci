@@ -2,8 +2,8 @@
   "kind": "literal-production-excerpt-no-behavior-clone",
   "tweak": {
     "static void MiniSightApplyShownReadback(void) {": "65839e09db33e5f50f850ddfe536b4d1940d193e8bda4adf9a0ca3403d5e3d8b",
-    "static void MiniSightRequestResources(BOOL force, void (^completion)(void)) {": "8d263b7093dd132517f9b003fb904486ad64fe3e21305256dbdc50ffca6a3516",
-    "static void MiniSightConvergeSettings(BOOL resourcesFresh) {": "e900314fe98d815e326e2d1b1109355d5c5cd61668bcd951d06e3081fe7ac086",
+    "static void MiniSightRequestResources(BOOL force, void (^completion)(void)) {": "051f11e335f279c539c15cd36d30c89ee487f535471b9bad83a78a9508670f1b",
+    "static void MiniSightConvergeSettings(BOOL resourcesFresh) {": "60f69a441c0636c12830aecf85858e52cf129ef53ea9772775e7d82911fb5db2",
     "static void MiniSightReloadSettings(void) {": "64e16ba2a233ea5ca70aefc5c3ad52548b86c828a61b3f33b4693d603ae17b4f",
     "static void MiniSightUserHide(void) {": "9ab56060737a7eb6f6cb48da3e3c81861bc148acc30c5ec896d6f60b3506ef14"
   },
