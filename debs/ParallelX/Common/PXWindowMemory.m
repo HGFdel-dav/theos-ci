@@ -504,6 +504,35 @@ static PXWMContext *PXWMContextForCardFrame(UIView *card) {
     return match;
 }
 
+/* Content-free probe: does the hosted canvas track the host card? A mismatch
+ * means the window frame is right while the content is still laid out for
+ * another size. Sizes only; never any content, name or identifier. */
+static void PXWMProbeContentGeometry(PXWMContext *context, unsigned stage) {
+    if (!context) return;
+    UIView *card = context.card;
+    if (!card) card = PXWMFindCard(context.canvas);
+    if (!card) {
+        PXWMLog(context, @"content_geometry_probe", @{@"stage":@(stage), @"card":@(0)});
+        return;
+    }
+    CGSize cardSize = card.bounds.size;
+    CGSize canvasSize = context.canvas ? context.canvas.bounds.size : CGSizeZero;
+    CGSize source = CGSizeZero;
+    id bridge = context.bridge;
+    SEL sel = NSSelectorFromString(@"sourceSize");
+    if (bridge && PXCloneInstanceMethodMatches(bridge, sel, @encode(CGSize), @[])) {
+        @try { source = ((CGSize (*)(id,SEL))objc_msgSend)(bridge, sel); }
+        @catch (__unused NSException *exception) { source = CGSizeZero; }
+    }
+    BOOL mismatch = fabs(canvasSize.width - cardSize.width) > 1 ||
+                    fabs(canvasSize.height - cardSize.height) > 1;
+    PXWMLog(context, @"content_geometry_probe",
+            @{@"stage":@(stage), @"cardW":@(cardSize.width), @"cardH":@(cardSize.height),
+              @"canvasW":@(canvasSize.width), @"canvasH":@(canvasSize.height),
+              @"sourceW":@(source.width), @"sourceH":@(source.height),
+              @"mismatch":@(mismatch ? 1 : 0)});
+}
+
 /* The vendor gives the card its default frame here, before any window exists.
  * Hand the remembered frame to the original call instead of fighting the first
  * frame afterwards. Everything stays referential: one pending open, a record
@@ -601,8 +630,16 @@ static void PXWMCardSetFrame(id self, SEL command, CGRect frame) {
                     else if (!context.initialPreparationWaitLogged) { context.initialPreparationWaitLogged=YES; if (!loaded) PXWMLog(context, @"first_frame_memory_waiting_for_store", @{@"revision":snapshot[@"revision"] ?: @0}); else if (![snapshot[@"enabled"] boolValue]) PXWMLog(context, @"first_frame_memory_disabled", @{@"revision":snapshot[@"revision"] ?: @0}); else if (!hasRecord) PXWMLog(context, @"first_frame_memory_no_record", @{@"orientationKey":@(key), @"revision":snapshot[@"revision"] ?: @0}); else PXWMLog(context, @"first_frame_memory_not_prepared", @{@"gate":@(context.geometryGate), @"resolved":@(context.resolved)}); }
                 }
             }
+            /* A frame applied at bind is held for as long as this window lives and
+             * the user keeps their hands off it: the vendor reloads content seconds
+             * later and would otherwise snap the window back to its default size. */
+            BOOL holding = context.initialTargetAppliedAtBind ||
+                CACurrentMediaTime() < context.initialTargetDeadline;
+            BOOL transformed = !CGAffineTransformIsIdentity(((UIView *)self).transform);
+            BOOL fullscreen = context.bridge && PXWMBool(context.bridge, @"fullscreenHandoff");
+            BOOL holdBlocked = context.initialTargetAppliedAtBind && (transformed || fullscreen);
             if (context && context.initialTargetActive && !context.restoring && !context.interacting &&
-                !context.savePending && CACurrentMediaTime() < context.initialTargetDeadline) {
+                !context.savePending && holding && !holdBlocked) {
                 CGRect target = PXWMToRect(context.initialTarget);
                 CGRect native = PXWMToRect(context.initialNativeFrame);
                 BOOL sameNative = fabs(frame.origin.x-native.origin.x)<0.5 &&
@@ -636,7 +673,8 @@ static void PXWMScheduleInitialSettle(PXWMContext *context) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,900*NSEC_PER_MSEC),dispatch_get_main_queue(), ^{
         PXWMContext *current = weakContext;
         if (!current || !current.initialTargetActive) return;
-        current.initialTargetActive = NO;
+        /* Keep holding when this target came from bind; only the timeout path ends here. */
+        if (!current.initialTargetAppliedAtBind) current.initialTargetActive = NO;
         if (!PXWMBindingIsActive(current) || current.interacting || current.savePending ||
             !current.keyKnown || current.key != key || !current.card) return;
         if ([PXWindowMemoryStore.shared.snapshot[@"epoch"] unsignedLongLongValue] != epoch) return;
@@ -671,6 +709,7 @@ static void PXWMScheduleInitialSettle(PXWMContext *context) {
             PXWMOriginalLayout(current.bridge, NSSelectorFromString(@"layoutHost"));
             PXWMLog(current, @"restore_initial_content_refreshed",
                     @{ @"substituted":@(current.initialFrameSubstituted) });
+            PXWMProbeContentGeometry(current, 1);
         }
     });
 }
@@ -1193,6 +1232,12 @@ static void PXWMOpen(id self,SEL command,id bundle,id canvas,id overlay,void (^c
                      * animation later lands on the native default, put the
                      * remembered frame back once, without animation. */
                     PXWMScheduleInitialSettle(ticket);
+                    PXWMProbeContentGeometry(ticket, 0);
+                    __weak PXWMContext *weakProbe = ticket;
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2500*NSEC_PER_MSEC),
+                                   dispatch_get_main_queue(), ^{
+                        PXWMProbeContentGeometry(weakProbe, 2);
+                    });
                 }
                 PXWMLog(ticket, @"native_window_bound", @{});
             } else {

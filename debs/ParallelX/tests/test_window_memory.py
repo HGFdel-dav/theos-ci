@@ -105,6 +105,29 @@ class WindowMemoryPolicy(unittest.TestCase):
         bind=src.split('if (bindRecord && ticket.card) {',1)[1].split('PXWMLog(ticket, @"native_window_bound"',1)[0]
         self.assertIn('PXWMScheduleInitialSettle(ticket);',bind)
 
+    def test_bind_target_is_held_and_content_is_probed(self):
+        src=(ROOT/'Common/PXWindowMemory.m').read_text()
+        sub=src.split('static void PXWMCardSetFrame',1)[1].split('static void PXWMScheduleInitialSettle',1)[0]
+        self.assertIn('BOOL holding = context.initialTargetAppliedAtBind ||',sub)
+        self.assertIn('BOOL holdBlocked = context.initialTargetAppliedAtBind && (transformed || fullscreen);',sub)
+        self.assertIn('!context.savePending && holding && !holdBlocked',sub)
+        self.assertIn('CGAffineTransformIsIdentity(((UIView *)self).transform)',sub)
+        self.assertIn('PXWMBool(context.bridge, @"fullscreenHandoff")',sub)
+        settle=src.split('static void PXWMScheduleInitialSettle',1)[1].split('/* Native layoutHost',1)[0]
+        self.assertIn('if (!current.initialTargetAppliedAtBind) current.initialTargetActive = NO;',settle)
+        self.assertIn('PXWMProbeContentGeometry(current, 1);',settle)
+        probe=src.split('static void PXWMProbeContentGeometry',1)[1].split('/* The vendor gives the card',1)[0]
+        self.assertIn('@{@"stage":@(stage), @"cardW":@(cardSize.width), @"cardH":@(cardSize.height),',probe)
+        self.assertIn('@"canvasW":@(canvasSize.width)',probe)
+        self.assertIn('@"sourceW":@(source.width)',probe)
+        self.assertIn('@"mismatch":@(mismatch ? 1 : 0)',probe)
+        bind=src.split('if (bindRecord && ticket.card) {',1)[1].split('PXWMLog(ticket, @"native_window_bound"',1)[0]
+        self.assertIn('PXWMProbeContentGeometry(ticket, 0);',bind)
+        self.assertIn('PXWMProbeContentGeometry(weakProbe, 2);',bind)
+        # the probe is read-only: it must never resize or transform hosted content
+        for forbidden in ('canvas.transform','canvas.frame =','setBounds:','setTransform:'):
+            self.assertNotIn(forbidden,probe)
+
     def test_bind_applies_remembered_frame(self):
         source=(ROOT/'Common/PXWindowMemory.m').read_text()
         bind=source.split('first_frame_memory_applied_at_bind',1)[0].rsplit('if (PXWMNativeReturned(&ticket->native',1)[1]
@@ -565,6 +588,6 @@ class WindowMemoryAppleStorage(unittest.TestCase):
         self.assertLessEqual(len(logs),256)
         self.assertGreater(len(logs),200)
         self.assertTrue(any(event['event']=='fixture' for event in logs))
-        self.assertTrue(all(event['build']=='clone0.112' for event in logs))
+        self.assertTrue(all(event['build']=='clone0.113' for event in logs))
 
 if __name__ == '__main__': unittest.main(verbosity=2)
