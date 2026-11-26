@@ -13,6 +13,7 @@
 @property(nonatomic, assign) BOOL refreshScheduled;
 @property(nonatomic, assign) BOOL refreshing;
 @property(nonatomic, assign) BOOL configurationDirty;
+@property(nonatomic, weak) UIViewController *lastRegisteredInteractionController;
 @end
 
 @implementation DYYYFloatingButtonCoordinator
@@ -79,10 +80,26 @@
     return YES;
 }
 
++ (BOOL)isRelaxedVisibleInteractionController:(UIViewController *)controller {
+    UIView *view = controller.viewIfLoaded;
+    UIWindow *window = view.window;
+    if (!window || window.hidden || CGRectIsEmpty(view.bounds)) return NO;
+    for (UIView *ancestor = view; ancestor; ancestor = ancestor.superview) {
+        if (ancestor.hidden || ancestor.alpha <= 0.01) return NO;
+    }
+    for (UIViewController *child = controller; child; child = child.parentViewController) {
+        UIViewController *presented = child.presentedViewController;
+        if (presented.viewIfLoaded.window && !presented.isBeingDismissed) return NO;
+    }
+    CGRect rect = [view convertRect:view.bounds toView:window];
+    return CGRectIntersectsRect(rect, window.bounds);
+}
+
 + (UIViewController *)currentInteractionController {
+    DYYYFloatingButtonCoordinator *coordinator = [self sharedCoordinator];
     UIViewController *best = nil;
     CGFloat bestArea = 0;
-    for (UIViewController *controller in [self sharedCoordinator].interactions) {
+    for (UIViewController *controller in coordinator.interactions) {
         if (![self isControllerVisible:controller]) continue;
         UIView *view = controller.viewIfLoaded;
         CGRect rect = [view convertRect:view.bounds toView:view.window];
@@ -93,12 +110,30 @@
             bestArea = area;
         }
     }
+
+    // 41.x 的播放页可能挂在自定义容器中，导航栈检查会把真实可见页误判为离屏。
+    // 只在严格扫描没有结果时使用最近一次布局登记，并仍要求它确实在可见窗口内。
+    if (!best && [self isRelaxedVisibleInteractionController:coordinator.lastRegisteredInteractionController]) {
+        best = coordinator.lastRegisteredInteractionController;
+    }
     return best;
 }
 
 + (void)registerInteractionController:(UIViewController *)controller {
     if (!controller || !NSThread.isMainThread) return;
-    [[self sharedCoordinator].interactions addObject:controller];
+    DYYYFloatingButtonCoordinator *coordinator = [self sharedCoordinator];
+    [coordinator.interactions addObject:controller];
+    coordinator.lastRegisteredInteractionController = controller;
+    [self setNeedsRefresh];
+}
+
++ (void)unregisterInteractionController:(UIViewController *)controller {
+    if (!controller || !NSThread.isMainThread) return;
+    DYYYFloatingButtonCoordinator *coordinator = [self sharedCoordinator];
+    [coordinator.interactions removeObject:controller];
+    if (coordinator.lastRegisteredInteractionController == controller) {
+        coordinator.lastRegisteredInteractionController = nil;
+    }
     [self setNeedsRefresh];
 }
 

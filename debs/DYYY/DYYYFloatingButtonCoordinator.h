@@ -11,6 +11,7 @@ typedef NS_OPTIONS(NSUInteger, DYYYFloatingButtonVisibility) {
 // 页面事件只登记事实，两个按钮的 hidden 统一在协调器中更新。
 @interface DYYYFloatingButtonCoordinator : NSObject
 + (void)registerInteractionController:(UIViewController *)controller;
++ (void)unregisterInteractionController:(UIViewController *)controller;
 + (UIViewController *)currentInteractionController;
 + (BOOL)isControllerVisible:(UIViewController *)controller;
 + (void)commentController:(UIViewController *)controller visible:(BOOL)visible;

@@ -11390,6 +11390,7 @@ static Class tabBarButtonClass = nil;
 
 - (void)viewDidDisappear:(BOOL)animated {
     %orig;
+    [DYYYFloatingButtonCoordinator unregisterInteractionController:self];
     [DYYYFloatingButtonCoordinator refresh];
 }
 
