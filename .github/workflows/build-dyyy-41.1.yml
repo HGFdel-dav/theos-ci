@@ -1,0 +1,72 @@
+name: DYYY 41.1 Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: DYYY ${{ matrix.scheme }}
+    runs-on: macos-15-intel
+    strategy:
+      fail-fast: false
+      matrix:
+        scheme: [rootless, roothide]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Theos and iPhoneOS 15.5 SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install ldid xz dpkg
+          git clone --recursive https://github.com/roothide/theos.git "$HOME/theos"
+          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/xybp888/iOS-SDKs.git "$HOME/iossdks"
+          ( cd "$HOME/iossdks" && git sparse-checkout set iPhoneOS15.5.sdk )
+          mkdir -p "$HOME/theos/sdks"
+          cp -R "$HOME/iossdks/iPhoneOS15.5.sdk" "$HOME/theos/sdks/"
+
+      - name: Build DYYY
+        shell: bash
+        env:
+          SCHEME: ${{ matrix.scheme }}
+        run: |
+          set -euo pipefail
+          cd debs/DYYY
+          make clean || true
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME="$SCHEME" SCHEME="$SCHEME"
+
+      - name: Verify and collect package
+        shell: bash
+        env:
+          SCHEME: ${{ matrix.scheme }}
+        run: |
+          set -euo pipefail
+          cd debs/DYYY
+          DEB=$(find packages -maxdepth 1 -type f -name '*.deb' -print -quit)
+          test -n "$DEB"
+          dpkg-deb -I "$DEB"
+          dpkg-deb -c "$DEB"
+          DYLIB=$(find ../../packages -maxdepth 1 -type f -name "DYYY-*-${SCHEME}.dylib" -print -quit)
+          test -n "$DYLIB"
+          file "$DYLIB"
+          ldid -e "$DYLIB" > /tmp/DYYY-entitlements.plist
+          mkdir -p "$GITHUB_WORKSPACE/artifacts/$SCHEME"
+          cp "$DEB" "$GITHUB_WORKSPACE/artifacts/$SCHEME/"
+          cp "$DYLIB" "$GITHUB_WORKSPACE/artifacts/$SCHEME/"
+          cp /tmp/DYYY-entitlements.plist "$GITHUB_WORKSPACE/artifacts/$SCHEME/"
+          ( cd "$GITHUB_WORKSPACE/artifacts/$SCHEME" && sha256sum * > SHA256SUMS )
+          cat "$GITHUB_WORKSPACE/artifacts/$SCHEME/SHA256SUMS"
+
+      - name: Upload DYYY artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DYYY-41.1-${{ matrix.scheme }}
+          if-no-files-found: error
+          path: artifacts/${{ matrix.scheme }}/
