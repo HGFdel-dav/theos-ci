@@ -132,8 +132,8 @@
       "sha256": "d63fdce848ace8e195912e0db9751f55d3b430c669c270e33cb4ec4d7894b9ae"
     },
     "scripts/test_release_pair.py": {
-      "bytes": 6476,
-      "sha256": "866bb281528a1ec0c501d86de039358718f19fcc752dd39d8ba626bf292dbc9e"
+      "bytes": 6486,
+      "sha256": "7bb7d73f6f174bf67007776d82ed88a49285a01dd036a42745e81152ed4eeb10"
     },
     "shared/MiniSightRhythmAnalyzer.cpp": {
       "bytes": 9601,

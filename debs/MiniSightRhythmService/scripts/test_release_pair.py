@@ -31,7 +31,7 @@ cases=[]
 if any(x in (S/'control').read_text() for x in ['local-candidate','source-only','placeholder']):assert current_identity_blocked,'placeholder must refuse packaging'
 for scheme,failure in [('roothide',None),('rootless',None),('roothide','plugin-build'),('rootless','missing-service'),('roothide','missing-plugin'),('rootless','duplicate-package'),('rootless','wrong-arch'),('roothide','wrong-slice'),('rootless','wrong-sdk'),('roothide','wrong-prefix'),('rootless','wrong-filter'),('roothide','stale')]:
  with tempfile.TemporaryDirectory() as td:
-  base=Path(td);service=base/'MiniSightRhythmService';plugin=base/'MiniSight';out=base/'out';calls=[]
+  base=Path(td).resolve();service=base/'MiniSightRhythmService';plugin=base/'MiniSight';out=base/'out';calls=[]
   for root,name in [(service,'MiniSightRhythmService'),(plugin,'MiniSight')]:
    root.mkdir();(root/'Makefile').write_text('# mock only\n')
    (root/'control').write_text('Package: org.mock.'+name.lower()+'\nVersion: 1.0\n')
