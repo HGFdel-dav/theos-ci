@@ -56,7 +56,10 @@ for arch in ['arm64', 'arm64e']:
              str(ROOT/'tests/native_policy_compile_20261116.mm')], 120)
 checked('native ActionLibrary', ['python3','scripts/test_minisight_action_library_20261116.py','--root',str(ROOT.parent.parent),
     '--ci','--ios-sdk',a.ios_sdk], 540)
-checked('native Foundation lyrics', ['python3','scripts/test_minisight_lyrics_20261116.py','--require-native'], 300)
+# Full required lyrics baseline + compiled negative suite was measured at 486s
+# in the preceding Portable step. Keep a bounded budget that permits the SAME
+# complete suite here; do not skip tests or accept an incomplete native run.
+checked('native Foundation lyrics', ['python3','scripts/test_minisight_lyrics_20261116.py','--require-native'], 900)
 checked('native Foundation music', ['python3','scripts/test_minisight_music_monitor_20261116.py','--require-native'], 150)
 checked('native shared-cache music symbols', ['python3','scripts/test_minisight_music_symbols_20261118.py','--require-native'], 300)
 checked('atlas restore source gate', ['python3','scripts/test_minisight_atlas_restore_20261118.py'], 60)
