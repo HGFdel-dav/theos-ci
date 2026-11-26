@@ -5,10 +5,12 @@
 
 @interface PXWindowMemoryController ()
 @property(nonatomic, strong) id memoryObserver;
+@property(nonatomic, strong) id diagnosticObserver;
 @end
 @implementation PXWindowMemoryController
 - (void)dealloc {
     if (_memoryObserver) [NSNotificationCenter.defaultCenter removeObserver:_memoryObserver];
+    if (_diagnosticObserver) [NSNotificationCenter.defaultCenter removeObserver:_diagnosticObserver];
 }
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -22,6 +24,14 @@
         if (!controller || !controller.isViewLoaded || !controller.view.window) return;
         controller->_specifiers = nil;
         [controller reloadSpecifiers];
+    }];
+    self.diagnosticObserver=[NSNotificationCenter.defaultCenter
+        addObserverForName:PXWindowDiagnosticStatusNotification object:PXWindowMemoryStore.shared
+        queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+        (void)note;
+        PXWindowMemoryController *controller=weakSelf;
+        if (!controller || !controller.isViewLoaded || !controller.view.window) return;
+        controller->_specifiers=nil; [controller reloadSpecifiers];
     }];
     [PXWindowMemoryStore.shared reload];
 }
@@ -50,9 +60,12 @@
         reset.buttonAction = @selector(confirmClear);
         [items addObject:reset];
         PSSpecifier *explanation = [PSSpecifier groupSpecifierWithName:@"诊断记录"];
-        [explanation setProperty:@"记录保存、读回、恢复和跳过原因，最多保留 256 条；不记录账号名、聊天、链接或密码。关闭记忆不会清空已有尺寸，清空操作也不会移动当前窗口。" forKey:@"footerText"];
+        [explanation setProperty:@"记录保存、读回、恢复和跳过原因，普通记录最多256条；另留最近4次异常开窗，每段最多前12条、后12条（后续观察120秒），普通记录不会挤掉异常片段。不记录账号名、聊天、链接或密码。关闭记忆不清空已有尺寸，清空也不移动当前窗口。" forKey:@"footerText"];
         [items addObject:explanation];
         [items addObject:[self toggle:@"记录窗口记忆诊断" key:@"diagnostics"]];
+        PSSpecifier *diagnosticStatus=[PSSpecifier groupSpecifierWithName:@"诊断写入状态"];
+        [diagnosticStatus setProperty:PXWindowMemoryStore.shared.diagnosticStatusText forKey:@"footerText"];
+        [items addObject:diagnosticStatus];
         NSString *error = PXWindowMemoryStore.shared.errorText;
         NSString *status = error.length ? error :
             (PXWindowMemoryStore.shared.isLoaded ?

@@ -109,14 +109,16 @@ class WindowMemoryPolicy(unittest.TestCase):
         src=(ROOT/'Common/PXWindowMemory.m').read_text()
         sub=src.split('static void PXWMCardSetFrame',1)[1].split('static void PXWMScheduleInitialSettle',1)[0]
         self.assertIn('BOOL holding = context.initialTargetAppliedAtBind ||',sub)
-        self.assertIn('BOOL holdBlocked = context.initialTargetAppliedAtBind && (transformed || fullscreen);',sub)
+        self.assertIn('BOOL holdBlocked = (context.initialTargetAppliedAtBind && (transformed || fullscreen)) ||',sub)
+        self.assertIn('context.initialTargetEpoch != [holdSnapshot[@"epoch"] unsignedLongLongValue]',sub)
+        self.assertIn('![holdSnapshot[@"enabled"] boolValue]',sub)
         self.assertIn('!context.savePending && holding && !holdBlocked',sub)
         self.assertIn('CGAffineTransformIsIdentity(((UIView *)self).transform)',sub)
         self.assertIn('PXWMBool(context.bridge, @"fullscreenHandoff")',sub)
         settle=src.split('static void PXWMScheduleInitialSettle',1)[1].split('/* Native layoutHost',1)[0]
         self.assertIn('if (!current.initialTargetAppliedAtBind) current.initialTargetActive = NO;',settle)
         self.assertIn('PXWMProbeContentGeometry(current, 1);',settle)
-        probe=src.split('static void PXWMProbeContentGeometry',1)[1].split('static void PXWMScheduleProbe',1)[0]
+        probe=src.split('static void PXWMProbeContentGeometry(PXWMContext *context, unsigned stage) {',1)[1].split('static void PXWMScheduleProbe',1)[0]
         self.assertIn('@"canvasW":@(canvasSize.width)',probe)
         self.assertIn('@"hostW":@(hostSize.width)',probe)
         self.assertIn('@"sourceW":@(source.width)',probe)
@@ -600,6 +602,6 @@ class WindowMemoryAppleStorage(unittest.TestCase):
         self.assertLessEqual(len(logs),256)
         self.assertGreater(len(logs),200)
         self.assertTrue(any(event['event']=='fixture' for event in logs))
-        self.assertTrue(all(event['build']=='clone0.114' for event in logs))
+        self.assertTrue(all(event['build']=='clone0.116' for event in logs))
 
 if __name__ == '__main__': unittest.main(verbosity=2)

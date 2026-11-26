@@ -1,5 +1,7 @@
 #import "PXWindowMemory.h"
 #import "PXWindowMemoryStore.h"
+#import "PXWindowContinuity.h"
+#import "PXWindowDiagnosticPolicy.h"
 #import "PXCloneRuntime.h"
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
@@ -16,6 +18,8 @@ typedef NS_ENUM(unsigned, PXWMGeometryGate) {
 @interface PXWMContext : NSObject {
 @public
     PXWMNativeLifecycle native;
+    PXWMDiagnosticGate diagnosticGate;
+    PXWMDiagnosticGate diagnosticIncidentGate;
 }
 @property(nonatomic, weak) id bridge;
 @property(nonatomic, weak) UIView *canvas;
@@ -29,7 +33,25 @@ typedef NS_ENUM(unsigned, PXWMGeometryGate) {
 @property(nonatomic) PXWMRect initialNativeFrame;
 @property(nonatomic) BOOL initialTargetAppliedAtBind;
 @property(nonatomic, copy) NSString *probeSignature;
+@property(nonatomic) CFTimeInterval diagnosticProbeTime;
+@property(nonatomic) unsigned diagnosticProbeFlags;
+@property(nonatomic) BOOL diagnosticProbeKnown;
+@property(nonatomic) unsigned diagnosticProbeSuppressed;
 @property(nonatomic) BOOL sourceSizeSeen;
+@property(nonatomic) BOOL continuityActive;
+@property(nonatomic) BOOL continuityMove;
+@property(nonatomic) BOOL continuitySyncing;
+@property(nonatomic) BOOL continuityScheduled;
+@property(nonatomic) NSUInteger continuityScheduleGeneration;
+@property(nonatomic, copy) NSString *continuitySyncKey;
+@property(nonatomic) NSUInteger continuitySyncAttempts;
+@property(nonatomic) NSUInteger continuityBudgetGeneration;
+@property(nonatomic) NSUInteger continuityBudgetAttempts;
+@property(nonatomic) NSUInteger continuityFrameReports;
+@property(nonatomic) NSUInteger continuityGeneration;
+@property(nonatomic) uint64_t continuityEpoch;
+@property(nonatomic) unsigned continuityKey;
+@property(nonatomic) PXWMGeometry continuityGeometry;
 @property(nonatomic) BOOL initialTargetActive;
 @property(nonatomic) unsigned initialTargetKey;
 @property(nonatomic) uint64_t initialTargetEpoch;
@@ -100,6 +122,8 @@ static void (*PXWMOriginalCardSetFrame)(id, SEL, CGRect);
 static id (*PXWMOriginalCardInit)(id, SEL, CGRect);
 static void (*PXWMOriginalSetSourceSize)(id, SEL, CGSize);
 static void PXWMScheduleRestore(PXWMContext *context);
+static void PXWMQueueContentSync(PXWMContext *context);
+static void PXWMProbeContentGeometry(PXWMContext *context, unsigned stage);
 static void PXWMScheduleInitialSettle(PXWMContext *context);
 static BOOL PXWMPrepareInitialLayoutWithNativeFrame(PXWMContext *context,
                                                    const PXWMRect *nativeFrameOverride,
@@ -123,6 +147,10 @@ static void PXWMLog(PXWMContext *context, NSString *event, NSDictionary *details
         state[@"generation"] = @(context.generation);
         state[@"openSerial"] = @(context->native.serial);
         state[@"orientation"] = @(context.key);
+        NSDictionary *snapshot=PXWindowMemoryStore.shared.snapshot;
+        state[@"epoch"] = state[@"epoch"] ?: snapshot[@"epoch"] ?: @0;
+        state[@"revision"] = state[@"revision"] ?: snapshot[@"revision"] ?: @0;
+        state[@"monotonicMs"] = @((uint64_t)(CACurrentMediaTime()*1000));
         if (context.openedAt > 0)
             state[@"elapsedMs"] = @((unsigned long long)(1000 * (CACurrentMediaTime() - context.openedAt)));
     }
@@ -314,6 +342,266 @@ static BOOL PXWMNormalGeometry(PXWMContext *context, PXWMGeometry *out, unsigned
     return PXWMReadGeometry(context, NO, NULL, out, key);
 }
 
+/* Runtime target is separate from the opening ticket. User moves update its
+ * centre; a real resize replaces it. Epoch/generation/identity prevent stale
+ * work from reaching a different window or a cleared preference snapshot. */
+static void PXWMDiagnosticReasonLog(PXWMContext *context,unsigned lane,unsigned reason,BOOL incident) {
+    if (!context || ![PXWindowMemoryStore.shared.snapshot[@"diagnostics"] boolValue]) return;
+    PXWMDiagnosticGate *gate=incident ? &context->diagnosticIncidentGate : &context->diagnosticGate;
+    if (!PXWMDiagnosticShouldRecord(gate,(uint64_t)context.generation,lane,reason)) {
+        if (gate->count>=PXWMDiagnosticReasonLimit && !gate->limitReported) {
+            gate->limitReported=true;
+            PXWMLog(context,@"diagnostic_reason_limit",@{@"lane":@(lane),@"lastReason":@(reason),
+                @"criticalLane":@(incident),@"recorded":@(gate->count)});
+        }
+        return;
+    }
+    UIView *card=context.card;
+    CGRect frame=card ? card.frame : CGRectZero;
+    PXWMLog(context,@"continuity_decision",
+        @{@"lane":@(lane),@"reason":@(reason),@"diagIncident":@(incident),
+          @"gate":@(context.geometryGate),@"active":@(context.continuityActive),
+          @"interacting":@(context.interacting),@"savePending":@(context.savePending),
+          @"targetEpoch":@(context.continuityEpoch),@"targetGeneration":@(context.continuityGeneration),
+          @"targetKey":@(context.continuityKey),@"attempts":@(context.continuitySyncAttempts),
+          @"totalAttempts":@(context.continuityBudgetAttempts),
+          @"x":@(frame.origin.x),@"y":@(frame.origin.y),@"w":@(frame.size.width),@"h":@(frame.size.height),
+          @"targetX":@(context.continuityGeometry.frame.x),@"targetY":@(context.continuityGeometry.frame.y),
+          @"targetW":@(context.continuityGeometry.frame.width),@"targetH":@(context.continuityGeometry.frame.height),
+          @"windowPresent":@(card.window!=nil),@"hidden":@(card.window.hidden),
+          @"windowAlpha":@(card.window.alpha),@"cardHidden":@(card.hidden),@"cardAlpha":@(card.alpha),
+          @"scenePresent":@(PXWMObject(context.bridge,@"scene")!=nil),
+          @"surface":@(PXWMBool(context.bridge,@"hasHostedSurface")),
+          @"keyboard":@(PXWMBool(context.bridge,@"isHostedKeyboardVisible")),
+          @"fullscreen":@(PXWMBool(context.bridge,@"fullscreenHandoff")),
+          @"canvasInteractive":@(context.canvas.userInteractionEnabled),
+          @"bundleMatch":@([PXWMObject(context.bridge,@"bundleID") isEqual:context.bundle]),
+          @"canvasMatch":@(PXWMObject(context.bridge,@"canvas")==context.canvas)});
+}
+
+/* Observe the existing apply boundaries. These samples do not change frame,
+ * visibility, animation or scheduling. Model vs presentation is explicit. */
+static void PXWMFirstFrameSnapshot(PXWMContext *context,PXWMRect target,unsigned path,unsigned phase) {
+    if (!context || ![PXWindowMemoryStore.shared.snapshot[@"diagnostics"] boolValue]) return;
+    UIView *card=context.card;
+    if (!card) { PXWMDiagnosticReasonLog(context,PXWMLaneFirstFrame,PXWMReasonNoCard,NO); return; }
+    CGRect frame=card.frame,bounds=card.bounds;
+    CALayer *presentation=card.layer.presentationLayer;
+    CGRect shown=presentation ? presentation.frame : card.layer.frame;
+    CGAffineTransform transform=card.transform;
+    BOOL visible=card.window && !card.window.hidden && card.window.alpha>0.1;
+    for (UIView *view=card;view;view=view.superview)
+        if (view.hidden || view.alpha<=0.1) visible=NO;
+    BOOL differs= !PXWMRectNear(PXWMFromRect(frame),target,1);
+    PXWMLog(context,@"first_frame_boundary",
+        @{@"path":@(path),@"phase":@(phase),@"visible":@(visible),@"hasPresentation":@(presentation!=nil),
+          @"x":@(frame.origin.x),@"y":@(frame.origin.y),@"w":@(frame.size.width),@"h":@(frame.size.height),
+          @"boundsX":@(bounds.origin.x),@"boundsY":@(bounds.origin.y),
+          @"centerX":@(card.center.x),@"centerY":@(card.center.y),
+          @"shownX":@(shown.origin.x),@"shownY":@(shown.origin.y),
+          @"shownW":@(shown.size.width),@"shownH":@(shown.size.height),
+          @"targetX":@(target.x),@"targetY":@(target.y),
+          @"targetW":@(target.width),@"targetH":@(target.height),
+          @"ta":@(transform.a),@"tb":@(transform.b),@"tc":@(transform.c),@"td":@(transform.d),
+          @"tx":@(transform.tx),@"ty":@(transform.ty),
+          @"windowPresent":@(card.window!=nil),@"windowHidden":@(card.window.hidden),
+          @"diagIncident":@(phase==0 && visible && differs && target.width>0)});
+}
+
+static void PXWMArmContinuity(PXWMContext *context, PXWMGeometry geometry,
+                              unsigned key, uint64_t epoch, BOOL moving) {
+    NSDictionary *snapshot = PXWindowMemoryStore.shared.snapshot;
+    if (!context || !PXWMBindingIsActive(context) || !PXWMValidGeometry(geometry) ||
+        ![snapshot[@"enabled"] boolValue] || epoch != [snapshot[@"epoch"] unsignedLongLongValue]) {
+        unsigned reason=!PXWMBindingIsActive(context) ? PXWMReasonBinding :
+            !PXWMValidGeometry(geometry) ? PXWMReasonGeometry :
+            ![snapshot[@"enabled"] boolValue] ? PXWMReasonDisabled : PXWMReasonEpoch;
+        PXWMDiagnosticReasonLog(context,PXWMLaneArm,reason,NO); return;
+    }
+    context.continuityFrameReports=0;
+    context.continuityGeometry = geometry;
+    context.continuityKey = key;
+    context.continuityEpoch = epoch;
+    context.continuityGeneration = context.generation;
+    context.continuityMove = moving;
+    context.continuityActive = YES;
+    PXWMLog(context,@"continuity_armed",@{@"moving":@(moving),@"key":@(key),@"targetEpoch":@(epoch),
+        @"x":@(geometry.frame.x),@"y":@(geometry.frame.y),@"w":@(geometry.frame.width),@"h":@(geometry.frame.height)});
+}
+
+static BOOL PXWMContinuityReady(PXWMContext *context) {
+    if (!context || !context.continuityActive || context.restoring) {
+        PXWMDiagnosticReasonLog(context,PXWMLaneReady,context.restoring ? PXWMReasonRestoring : PXWMReasonInactive,NO);
+        return NO;
+    }
+    NSDictionary *snapshot = PXWindowMemoryStore.shared.snapshot;
+    PXWMGeometry current; unsigned key = 0;
+    BOOL normal = PXWMNormalGeometry(context, &current, &key);
+    BOOL identity = PXWMObject(context.bridge,@"canvas") == context.canvas &&
+        [PXWMObject(context.bridge,@"bundleID") isEqual:context.bundle] &&
+        PXWMFindCard(context.canvas) == context.card;
+    BOOL reference = normal && PXWMRectNear(current.reference,context.continuityGeometry.reference,1);
+    BOOL transient = !normal || !context.canvas.userInteractionEnabled ||
+        PXWMBool(context.bridge,@"fullscreenHandoff") ||
+        PXWMBool(context.bridge,@"isHostedKeyboardVisible");
+    BOOL allowed = PXWMContinuityAllowed(PXWMBindingIsActive(context),identity,
+        [snapshot[@"enabled"] boolValue],context.continuityEpoch,
+        [snapshot[@"epoch"] unsignedLongLongValue],context.continuityGeneration,
+        context.generation,transient,normal && key==context.continuityKey,reference);
+    if (!allowed) {
+        unsigned reason=!PXWMBindingIsActive(context) ? PXWMReasonBinding : !identity ? PXWMReasonIdentity :
+            ![snapshot[@"enabled"] boolValue] ? PXWMReasonDisabled :
+            context.continuityEpoch!=[snapshot[@"epoch"] unsignedLongLongValue] ? PXWMReasonEpoch :
+            context.continuityGeneration!=context.generation ? PXWMReasonGeneration :
+            transient ? PXWMReasonTransient : key!=context.continuityKey ? PXWMReasonDirection : PXWMReasonReference;
+        PXWMDiagnosticReasonLog(context,PXWMLaneReady,reason,reason==PXWMReasonIdentity);
+    }
+    if (context.continuityEpoch != [snapshot[@"epoch"] unsignedLongLongValue] ||
+        context.continuityGeneration != context.generation || ![snapshot[@"enabled"] boolValue] ||
+        (normal && (!reference || key!=context.continuityKey))) {
+        context.continuityActive=NO;
+        context.initialTargetActive=NO;
+    }
+    return allowed;
+}
+
+static BOOL PXWMContentGeometry(PXWMContext *context, PXWMRect *shown,
+                                PXWMRect *expected, double *scale) {
+    UIView *canvas = context.canvas;
+    UIView *host = PXWMObject(context.bridge,@"hostView");
+    if (!canvas || ![host isKindOfClass:UIView.class] || host==canvas ||
+        ![host isDescendantOfView:canvas] || !host.window || host.window!=canvas.window) {
+        PXWMDiagnosticReasonLog(context,PXWMLaneContent,(!canvas || ![host isKindOfClass:UIView.class]) ?
+            PXWMReasonNoHost : PXWMReasonHostTree,NO); return NO;
+    }
+    CGSize source = CGSizeZero;
+    SEL selector = NSSelectorFromString(@"sourceSize");
+    if (!PXCloneInstanceMethodMatches(context.bridge,selector,@encode(CGSize),@[])) {
+        PXWMDiagnosticReasonLog(context,PXWMLaneContent,PXWMReasonNoSourceMethod,YES); return NO;
+    }
+    @try { source=((CGSize (*)(id,SEL))objc_msgSend)(context.bridge,selector); }
+    @catch (__unused NSException *exception) {
+        PXWMDiagnosticReasonLog(context,PXWMLaneContent,PXWMReasonSourceException,YES); return NO;
+    }
+    if (!PXWMContentFit(PXWMFromRect(canvas.bounds),source.width,source.height,expected,scale)) {
+        PXWMDiagnosticReasonLog(context,PXWMLaneContent,PXWMReasonSourceSize,NO); return NO;
+    }
+    CGRect converted=[host convertRect:host.bounds toView:canvas];
+    *shown=PXWMFromRect(converted);
+    if (!PXWMValidRect(*shown)) PXWMDiagnosticReasonLog(context,PXWMLaneContent,PXWMReasonConvertedRect,YES);
+    return PXWMValidRect(*shown);
+}
+
+static BOOL PXWMReconcileRuntimeFrame(PXWMContext *context) {
+    if (!PXWMContinuityReady(context) || context.interacting || context.savePending ||
+        context.continuitySyncing) {
+        PXWMDiagnosticReasonLog(context,PXWMLaneReconcile,context.interacting ? PXWMReasonInteracting :
+            context.savePending ? PXWMReasonSavePending : context.continuitySyncing ? PXWMReasonSyncing : PXWMReasonInactive,NO);
+        return NO;
+    }
+    UIView *card=context.card;
+    PXWMRect actual=PXWMFromRect(card.frame),target=context.continuityGeometry.frame;
+    if (PXWMRectNear(actual,target,0.5)) return NO;
+    context.restoring=YES;
+    @try {
+        [UIView performWithoutAnimation:^{
+            card.frame=PXWMToRect(target);
+            [card setNeedsLayout]; [card layoutIfNeeded];
+        }];
+    } @finally { context.restoring=NO; }
+    PXWMLog(context,@"runtime_geometry_reconciled",
+        @{@"diagIncident":@YES,@"fromX":@(actual.x),@"fromY":@(actual.y),@"fromW":@(actual.width),@"fromH":@(actual.height),
+          @"toX":@(target.x),@"toY":@(target.y),@"toW":@(target.width),@"toH":@(target.height)});
+    return YES;
+}
+
+static void PXWMQueueContentSync(PXWMContext *context) {
+    if (!context || (context.continuityScheduled && context.continuityScheduleGeneration==context.generation) ||
+        context.continuitySyncing || context.restoring || !PXWMContinuityReady(context) || !PXWMOriginalLayout ||
+        (context.interacting && !context.continuityMove)) {
+        unsigned reason=context.continuityScheduled ? PXWMReasonQueued : context.continuitySyncing ? PXWMReasonSyncing :
+            context.restoring ? PXWMReasonRestoring : !context.continuityActive ? PXWMReasonInactive :
+            !PXWMOriginalLayout ? PXWMReasonNoLayout : context.interacting ? PXWMReasonResize : PXWMReasonTransient;
+        PXWMDiagnosticReasonLog(context,PXWMLaneQueue,reason,reason==PXWMReasonNoLayout); return;
+    }
+    PXWMRect shown,expected; double scale=0;
+    if (!PXWMContentGeometry(context,&shown,&expected,&scale)) return;
+    BOOL canvasMatches=fabs(context.canvas.bounds.size.width-context.card.bounds.size.width)<=1 &&
+        fabs(context.canvas.bounds.size.height-context.card.bounds.size.height)<=1;
+    if (canvasMatches && PXWMRectNear(shown,expected,1)) return;
+    NSString *syncKey=[NSString stringWithFormat:@"%llu/%lu/%@/%@/%.4f/%@",
+        (unsigned long long)context.continuityEpoch,(unsigned long)context.generation,
+        NSStringFromCGRect(context.card.bounds),NSStringFromCGRect(context.canvas.bounds),
+        scale,NSStringFromCGRect(PXWMToRect(expected))];
+    if (![context.continuitySyncKey isEqual:syncKey]) {
+        context.continuitySyncKey=syncKey; context.continuitySyncAttempts=0;
+    }
+    if (context.continuityBudgetGeneration!=context.generation) {
+        context.continuityBudgetGeneration=context.generation;
+        context.continuityBudgetAttempts=0;
+    }
+    if (!PXWMContentSyncMayAttempt((unsigned)context.continuitySyncAttempts,
+                                  (unsigned)context.continuityBudgetAttempts)) {
+        PXWMDiagnosticReasonLog(context,PXWMLaneQueue,PXWMReasonBudget,YES); return;
+    }
+    context.continuityScheduled=YES;
+    NSUInteger generation=context.generation;
+    context.continuityScheduleGeneration=generation;
+    NSDictionary *diagnosticTicket=@{@"appHash":@(PXWMAppHash(context.bundle)),
+        @"openSerial":@(context->native.serial),@"generation":@(generation),
+        @"epoch":@(context.continuityEpoch)};
+    PXWMLog(context,@"content_sync_queued",@{@"diagIncident":@YES,@"attempts":@(context.continuitySyncAttempts),
+        @"totalAttempts":@(context.continuityBudgetAttempts),@"expectedW":@(expected.width),@"expectedH":@(expected.height)});
+    __weak PXWMContext *weakContext=context;
+    /* One coalesced next-main-turn correction per observed layout change.
+     * This is not a polling loop; probes are read-only and never call this. */
+    dispatch_async(dispatch_get_main_queue(), ^{
+        PXWMContext *current=weakContext;
+        if (!current) {
+            [PXWindowMemoryStore.shared diagnostic:@"content_sync_context_released" details:diagnosticTicket]; return;
+        }
+        if (current.continuityScheduleGeneration==generation) current.continuityScheduled=NO;
+        if (current.generation!=generation || current.continuitySyncing ||
+            !PXWMContinuityReady(current) ||
+            (current.interacting && !current.continuityMove)) {
+            PXWMDiagnosticReasonLog(current,PXWMLaneCallback,current.generation!=generation ? PXWMReasonGeneration :
+                current.continuitySyncing ? PXWMReasonSyncing : current.interacting ? PXWMReasonResize : PXWMReasonTransient,NO);
+            return;
+        }
+        PXWMRect before,target; double expectedScale=0;
+        if (!PXWMContentGeometry(current,&before,&target,&expectedScale)) return;
+        BOOL canvasStillMatches=fabs(current.canvas.bounds.size.width-current.card.bounds.size.width)<=1 &&
+            fabs(current.canvas.bounds.size.height-current.card.bounds.size.height)<=1;
+        if (canvasStillMatches && PXWMRectNear(before,target,1)) {
+            PXWMLog(current,@"content_sync_already_matched",@{@"queuedGeneration":@(generation)}); return;
+        }
+        if (![current.continuitySyncKey isEqual:syncKey] ||
+            !PXWMContentSyncMayAttempt((unsigned)current.continuitySyncAttempts,
+                                      (unsigned)current.continuityBudgetAttempts)) {
+            PXWMDiagnosticReasonLog(current,PXWMLaneCallback,
+                ![current.continuitySyncKey isEqual:syncKey] ? PXWMReasonChangedTarget : PXWMReasonBudget,YES); return;
+        }
+        current.continuitySyncAttempts++; current.continuityBudgetAttempts++;
+        current.continuitySyncing=YES;
+        @try {
+            [current.card setNeedsLayout]; [current.card layoutIfNeeded];
+            PXWMOriginalLayout(current.bridge,NSSelectorFromString(@"layoutHost"));
+        } @finally { current.continuitySyncing=NO; }
+        PXWMRect after,afterTarget; double afterScale=0;
+        BOOL measured=PXWMContentGeometry(current,&after,&afterTarget,&afterScale);
+        PXWMLog(current,@"content_layout_reconciled",
+            @{@"beforeX":@(before.x),@"beforeY":@(before.y),
+              @"beforeW":@(before.width),@"beforeH":@(before.height),
+              @"expectedW":@(target.width),@"expectedH":@(target.height),
+              @"measured":@(measured),@"matches":@(measured && PXWMRectNear(after,afterTarget,1)),
+              @"afterX":@(measured ? after.x : 0),@"afterY":@(measured ? after.y : 0),
+              @"afterW":@(measured ? after.width : 0),@"afterH":@(measured ? after.height : 0),
+              @"attempts":@(current.continuitySyncAttempts),@"totalAttempts":@(current.continuityBudgetAttempts),
+              @"diagIncident":@(!measured || !PXWMRectNear(after,afterTarget,1))});
+        PXWMProbeContentGeometry(current,6);
+    });
+}
+
 static void PXWMVerifyRestore(PXWMContext *context, PXWMRect restored, unsigned key, uint64_t epoch) {
     NSUInteger expectedGeneration = context.generation;
     __weak PXWMContext *weakContext = context;
@@ -409,6 +697,7 @@ static BOOL PXWMExpansionTarget(PXWMContext *context, CGRect incoming, CGRect *r
     event.applied = YES;
     context.key = key; context.keyKnown = YES; context.resolved = YES;
     *result = PXWMToRect(restored);
+    PXWMArmContinuity(context,(PXWMGeometry){restored,geometry.reference},key,event.epoch,NO);
     PXWMLog(context, @"expansion_remembered_target", @{@"fromW":@(incoming.size.width),
               @"fromH":@(incoming.size.height), @"toW":@(restored.width), @"toH":@(restored.height),
               @"revision":snapshot[@"revision"] ?: @0});
@@ -528,28 +817,58 @@ static void PXWMProbeContentGeometry(PXWMContext *context, unsigned stage) {
         @catch (__unused NSException *exception) { source = CGSizeZero; }
     }
     CGAffineTransform t = host ? host.transform : CGAffineTransformIdentity;
-    double scale = (source.width > 0 && hostSize.width > 0) ? hostSize.width / source.width : 0;
-    double expected = (source.width > 0 && canvasSize.width > 0) ? canvasSize.width / source.width : 0;
-    BOOL clip = hostSize.width > cardSize.width + 1 || hostSize.height > cardSize.height + 1;
+    PXWMRect shown={0},fit={0}; double expected=0;
+    BOOL measured=PXWMContentGeometry(context,&shown,&fit,&expected);
+    double scale=measured && source.width>0 ? shown.width/source.width : 0;
+    double boundsRatio=(source.width>0 && hostSize.width>0) ? hostSize.width/source.width : 0;
+    CGRect canvasBounds=canvas ? canvas.bounds : CGRectZero;
+    BOOL clip=measured && (shown.x<canvasBounds.origin.x-1 || shown.y<canvasBounds.origin.y-1 ||
+        shown.x+shown.width>CGRectGetMaxX(canvasBounds)+1 ||
+        shown.y+shown.height>CGRectGetMaxY(canvasBounds)+1);
     BOOL canvasMismatch = fabs(canvasSize.width - cardSize.width) > 1 ||
                           fabs(canvasSize.height - cardSize.height) > 1;
-    BOOL scaleMismatch = expected > 0 && scale > 0 && fabs(scale - expected) > 0.01;
-    /* Change-only: a steady window writes nothing, an abnormal one records. */
-    NSString *signature = [NSString stringWithFormat:@"%.1f/%.1f|%.1f/%.1f|%.1f/%.1f|%.3f|%d%d%d|%.3f",
-        cardSize.width, cardSize.height, canvasSize.width, canvasSize.height,
-        hostSize.width, hostSize.height, scale, (int)clip, (int)canvasMismatch,
-        (int)scaleMismatch, (double)t.a];
+    BOOL scaleMismatch=measured && (fabs(shown.width-fit.width)>1 || fabs(shown.height-fit.height)>1);
+    BOOL positionMismatch=measured && (fabs(shown.x-fit.x)>1 || fabs(shown.y-fit.y)>1);
+    CGRect cardFrame=card.frame;
+    CALayer *presentation=card.layer.presentationLayer;
+    CGRect visibleFrame=presentation ? presentation.frame : card.layer.frame;
+    /* Include position/full transform and ownership, not only the dimensions. */
+    NSString *signature=[NSString stringWithFormat:@"%@|%@|%@|%@|%@|%@|%@|%d/%d/%d/%d",
+        NSStringFromCGRect(cardFrame),NSStringFromCGRect(visibleFrame),NSStringFromCGRect(canvasBounds),
+        NSStringFromCGSize(source),NSStringFromCGRect(PXWMToRect(shown)),NSStringFromCGAffineTransform(t),
+        NSStringFromCGSize(hostSize),(int)measured,(int)clip,(int)canvasMismatch,(int)positionMismatch];
     if (stage > 0 && [signature isEqualToString:context.probeSignature ?: @""]) return;
+    unsigned flags=(measured?1u:0u)|(canvasMismatch?2u:0u)|(scaleMismatch?4u:0u)|(positionMismatch?8u:0u);
+    CFTimeInterval now=CACurrentMediaTime();
+    if (stage>0 && stage!=6 && context.diagnosticProbeKnown && flags==context.diagnosticProbeFlags &&
+        now-context.diagnosticProbeTime<0.25) {
+        if (context.diagnosticProbeSuppressed<65535) context.diagnosticProbeSuppressed++;
+        return;
+    }
+    unsigned suppressed=context.diagnosticProbeSuppressed;context.diagnosticProbeSuppressed=0;
+    context.diagnosticProbeTime=now;context.diagnosticProbeFlags=flags;context.diagnosticProbeKnown=YES;
     context.probeSignature = signature;
     PXWMLog(context, @"content_geometry_probe",
-            @{@"stage":@(stage),
+            @{@"stage":@(stage),@"suppressed":@(suppressed),
               @"cardW":@(cardSize.width), @"cardH":@(cardSize.height),
               @"canvasW":@(canvasSize.width), @"canvasH":@(canvasSize.height),
               @"hostW":@(hostSize.width), @"hostH":@(hostSize.height),
               @"sourceW":@(source.width), @"sourceH":@(source.height),
+              @"probeSchema":@3,@"measured":@(measured),@"boundsRatio":@(boundsRatio),
               @"scale":@(scale), @"expectScale":@(expected), @"ta":@((double)t.a),
+              @"tb":@((double)t.b),@"tc":@((double)t.c),@"td":@((double)t.d),
+              @"tx":@((double)t.tx),@"ty":@((double)t.ty),
+              @"cardX":@(cardFrame.origin.x),@"cardY":@(cardFrame.origin.y),
+              @"shownX":@(visibleFrame.origin.x),@"shownY":@(visibleFrame.origin.y),
+              @"shownW":@(visibleFrame.size.width),@"shownH":@(visibleFrame.size.height),
+              @"contentX":@(shown.x),@"contentY":@(shown.y),
+              @"contentW":@(shown.width),@"contentH":@(shown.height),
+              @"bundleMatch":@([PXWMObject(bridge,@"bundleID") isEqual:context.bundle]),
+              @"canvasMatch":@(PXWMObject(bridge,@"canvas")==canvas),
+              @"cardMatch":@(PXWMFindCard(canvas)==card),
               @"clip":@(clip ? 1 : 0), @"canvasMismatch":@(canvasMismatch ? 1 : 0),
-              @"scaleMismatch":@(scaleMismatch ? 1 : 0)});
+              @"positionMismatch":@(positionMismatch),@"scaleMismatch":@(scaleMismatch ? 1 : 0),
+              @"diagIncident":@(measured && (positionMismatch || scaleMismatch || canvasMismatch))});
 }
 
 /* Sample a live window at 1s (first 30s) then 5s (about 8 minutes). Only state
@@ -625,6 +944,31 @@ static void PXWMCardSetFrame(id self, SEL command, CGRect frame) {
             }
             CGRect expandedTarget;
             if (PXWMExpansionTarget(context, frame, &expandedTarget)) frame = expandedTarget;
+            if (PXWMContinuityReady(context) &&
+                (!context.interacting || context.continuityMove) &&
+                (!context.savePending || context.continuityMove)) {
+                PXWMRect requested=PXWMFromRect(frame), target=context.continuityGeometry.frame;
+                BOOL accepted=YES;
+                if (context.continuityMove) {
+                    PXWMGeometry moving={requested,context.continuityGeometry.reference};
+                    accepted=PXWMKeepMoveSize(context.continuityGeometry,moving,&target);
+                }
+                if (accepted) {
+                    if (!PXWMRectNear(requested,target,0.5) && context.continuityFrameReports++<6)
+                        PXWMLog(context,@"runtime_frame_preserved",
+                            @{@"fromX":@(requested.x),@"fromY":@(requested.y),
+                              @"fromW":@(requested.width),@"fromH":@(requested.height),
+                              @"toX":@(target.x),@"toY":@(target.y),
+                              @"toW":@(target.width),@"toH":@(target.height),
+                              @"moving":@(context.continuityMove)});
+                    frame=PXWMToRect(target);
+                    if (context.continuityMove) {
+                        PXWMGeometry latest=context.continuityGeometry;
+                        latest.frame=target;
+                        context.continuityGeometry=latest;
+                    }
+                }
+            }
             BOOL preflightReady = PXWMInitialFrameMayPrepare(context) &&
                 !context.initialTargetActive && !context.restoring &&
                 !context.interacting && !context.savePending;
@@ -670,7 +1014,14 @@ static void PXWMCardSetFrame(id self, SEL command, CGRect frame) {
                 CACurrentMediaTime() < context.initialTargetDeadline;
             BOOL transformed = !CGAffineTransformIsIdentity(((UIView *)self).transform);
             BOOL fullscreen = context.bridge && PXWMBool(context.bridge, @"fullscreenHandoff");
-            BOOL holdBlocked = context.initialTargetAppliedAtBind && (transformed || fullscreen);
+            NSDictionary *holdSnapshot=PXWindowMemoryStore.shared.snapshot;
+            BOOL holdBlocked = (context.initialTargetAppliedAtBind && (transformed || fullscreen)) ||
+                ![holdSnapshot[@"enabled"] boolValue] ||
+                context.initialTargetEpoch != [holdSnapshot[@"epoch"] unsignedLongLongValue] ||
+                PXWMBool(context.bridge,@"isHostedKeyboardVisible");
+            if (holdBlocked && (![(holdSnapshot)[@"enabled"] boolValue] ||
+                context.initialTargetEpoch != [holdSnapshot[@"epoch"] unsignedLongLongValue]))
+                context.initialTargetActive=NO;
             if (context && context.initialTargetActive && !context.restoring && !context.interacting &&
                 !context.savePending && holding && !holdBlocked) {
                 CGRect target = PXWMToRect(context.initialTarget);
@@ -692,6 +1043,7 @@ static void PXWMCardSetFrame(id self, SEL command, CGRect frame) {
             }
         }
         PXWMOriginalCardSetFrame(self, command, frame);
+        if (NSThread.isMainThread) PXWMQueueContentSync(PXWMContextForCardFrame((UIView *)self));
     }
 }
 
@@ -703,17 +1055,28 @@ static void PXWMScheduleInitialSettle(PXWMContext *context) {
     __weak PXWMContext *weakContext = context;
     unsigned key = context.initialTargetKey;
     uint64_t epoch = context.initialTargetEpoch;
+    NSUInteger generation=context.generation;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,900*NSEC_PER_MSEC),dispatch_get_main_queue(), ^{
         PXWMContext *current = weakContext;
-        if (!current || !current.initialTargetActive) return;
+        if (!current || !current.initialTargetActive || current.generation!=generation) {
+            PXWMDiagnosticReasonLog(current,PXWMLaneFirstFrame,current.generation!=generation ?
+                PXWMReasonGeneration : PXWMReasonInactive,NO); return;
+        }
         /* Keep holding when this target came from bind; only the timeout path ends here. */
         if (!current.initialTargetAppliedAtBind) current.initialTargetActive = NO;
         if (!PXWMBindingIsActive(current) || current.interacting || current.savePending ||
-            !current.keyKnown || current.key != key || !current.card) return;
-        if ([PXWindowMemoryStore.shared.snapshot[@"epoch"] unsignedLongLongValue] != epoch) return;
+            !current.keyKnown || current.key != key || !current.card) {
+            PXWMDiagnosticReasonLog(current,PXWMLaneFirstFrame,!PXWMBindingIsActive(current) ? PXWMReasonBinding :
+                current.interacting ? PXWMReasonInteracting : current.savePending ? PXWMReasonSavePending :
+                !current.card ? PXWMReasonNoCard : PXWMReasonDirection,NO); return;
+        }
+        if ([PXWindowMemoryStore.shared.snapshot[@"epoch"] unsignedLongLongValue] != epoch) {
+            PXWMDiagnosticReasonLog(current,PXWMLaneFirstFrame,PXWMReasonEpoch,NO); return;
+        }
         UIView *card = current.card;
         CGRect target = PXWMToRect(current.initialTarget);
         CGRect native = PXWMToRect(current.initialNativeFrame);
+        PXWMFirstFrameSnapshot(current,current.initialTarget,3,0);
         CGRect actual = card.frame;
         BOOL matches = fabs(actual.origin.x-target.origin.x)<1 && fabs(actual.origin.y-target.origin.y)<1 &&
             fabs(actual.size.width-target.size.width)<1 && fabs(actual.size.height-target.size.height)<1;
@@ -745,6 +1108,7 @@ static void PXWMScheduleInitialSettle(PXWMContext *context) {
                     @{ @"substituted":@(current.initialFrameSubstituted) });
             PXWMProbeContentGeometry(current, 1);
         }
+        PXWMFirstFrameSnapshot(current,current.initialTarget,3,1);
     });
 }
 
@@ -787,12 +1151,14 @@ static BOOL PXWMPrepareInitialLayoutWithNativeFrame(PXWMContext *context,
     PXWMRect restored;
     if (!PXWMRestore(saved, native.reference, native.frame, &restored)) return NO;
     UIView *card = context.card;
+    PXWMFirstFrameSnapshot(context,restored,2,0);
     context.restoring = YES;
     [UIView performWithoutAnimation:^{
         card.frame = PXWMToRect(restored);
         [card setNeedsLayout]; [card layoutIfNeeded];
     }];
     context.restoring = NO;
+    PXWMFirstFrameSnapshot(context,restored,2,1);
     CGRect actual = card.frame;
     BOOL matched = fabs(actual.origin.x-restored.x)<1 && fabs(actual.origin.y-restored.y)<1 &&
         fabs(actual.size.width-restored.width)<1 && fabs(actual.size.height-restored.height)<1;
@@ -809,6 +1175,8 @@ static BOOL PXWMPrepareInitialLayoutWithNativeFrame(PXWMContext *context,
         context.initialPreparationWaitLogged = NO;
         context.initialContentRefreshed = NO;
         context.initialFrameSubstituted = NO;
+        PXWMArmContinuity(context,(PXWMGeometry){restored,native.reference},key,
+                          [snapshot[@"epoch"] unsignedLongLongValue],NO);
         PXWMScheduleInitialSettle(context);
     }
     PXWMLog(context, matched ? @"restore_initial_geometry_prepared" : @"restore_initial_geometry_rejected",
@@ -897,6 +1265,11 @@ static void PXWMTryRestore(PXWMContext *context) {
     CGRect actual = card.frame;
     BOOL matched = fabs(actual.origin.x-requested.origin.x)<1 && fabs(actual.origin.y-requested.origin.y)<1 &&
                    fabs(actual.size.width-requested.size.width)<1 && fabs(actual.size.height-requested.size.height)<1;
+    if (matched) {
+        PXWMArmContinuity(context,(PXWMGeometry){PXWMFromRect(actual),native.reference},key,
+                          [snapshot[@"epoch"] unsignedLongLongValue],NO);
+        PXWMQueueContentSync(context);
+    }
     PXWMLog(context, matched ? @"restore_geometry_applied" : @"restore_native_layout_changed",
             @{ @"x": @(actual.origin.x), @"y": @(actual.origin.y), @"w": @(actual.size.width),
                @"h": @(actual.size.height), @"expectedW":@(requested.size.width), @"expectedH":@(requested.size.height),
@@ -982,6 +1355,7 @@ static void PXWMSettleSave(PXWMGesture *stamp, NSUInteger attempt) {
         (fabs(fmin(host.width,host.height)-fmin(screen.width,screen.height)) > 3 ||
          fabs(fmax(host.width,host.height)-fmax(screen.width,screen.height)) > 3);
     if (parked) {
+        context.continuityActive=NO; context.continuityMove=NO;
         context.savePending = NO; context.pendingGesture = nil;
         context.generation++;
         PXWMLog(context, @"save_cancelled_parked_window", @{});
@@ -1011,6 +1385,7 @@ static void PXWMSettleSave(PXWMGesture *stamp, NSUInteger attempt) {
         return; // keep savePending set so a late restore cannot overwrite the user
     }
     if (!normal) {
+        context.continuityActive=NO; context.continuityMove=NO;
         context.savePending = NO;
         PXWMLog(context, @"save_skipped_non_normal_or_reset", @{ @"gate":@(context.geometryGate), @"samples":@(stamp.samples) });
         return;
@@ -1021,6 +1396,7 @@ static void PXWMSettleSave(PXWMGesture *stamp, NSUInteger attempt) {
     stamp.orientationKnown = orientationKnown;
     stamp.orientation = orientation;
     if (!orientationResolved) {
+        context.continuityActive=NO; context.continuityMove=NO;
         context.savePending = NO;
         PXWMLog(context, @"save_skipped_direction_change", @{ @"known":@(orientationKnown), @"started":@(orientation), @"current":@(key) });
         return;
@@ -1029,6 +1405,7 @@ static void PXWMSettleSave(PXWMGesture *stamp, NSUInteger attempt) {
                               stamp.generation, context.generation, NO) ||
         !PXWMMayCommitGesture(stamp.orientationKnown, stamp.orientation, key,
                               stamp.generation, context.generation)) {
+        context.continuityActive=NO; context.continuityMove=NO;
         context.savePending = NO;
         PXWMLog(context, @"save_skipped_direction_change", @{ @"known":@(stamp.orientationKnown),
                    @"started":@(stamp.orientation), @"current":@(key), @"samples":@(stamp.samples) });
@@ -1038,11 +1415,37 @@ static void PXWMSettleSave(PXWMGesture *stamp, NSUInteger attempt) {
     NSDictionary *snapshot = PXWindowMemoryStore.shared.snapshot;
     if (!PXWMMaySave([snapshot[@"enabled"] boolValue], stamp.epoch,
                     [snapshot[@"epoch"] unsignedLongLongValue], !animation, normal, YES)) {
+        context.continuityActive=NO; context.continuityMove=NO;
         PXWMLog(context, @"save_skipped_non_normal_or_reset", @{@"gate":@(context.geometryGate),
                    @"normal":@(normal), @"animation":@(animation), @"epoch":@(stamp.epoch),
                    @"currentEpoch":snapshot[@"epoch"] ?: @0}); return;
     }
     context.key = key; context.keyKnown = YES; context.resolved = YES;
+    if (!stamp.resizing) {
+        PXWMGeometry saved,merged;
+        PXWMRect target;
+        BOOL hasSize=PXWMContinuityReady(context) && context.continuityKey==key;
+        if (hasSize) saved=context.continuityGeometry;
+        else hasSize=PXWindowMemoryGeometry(snapshot,context.bundle,key,&saved);
+        if (hasSize && PXWMUpdateRememberedPosition(saved,geometry,&merged) &&
+            PXWMRestore(merged,geometry.reference,geometry.frame,&target) &&
+            !PXWMRectNear(geometry.frame,target,0.5)) {
+            context.restoring=YES;
+            @try {
+                [UIView performWithoutAnimation:^{
+                    card.frame=PXWMToRect(target);
+                    [card setNeedsLayout]; [card layoutIfNeeded];
+                }];
+            } @finally { context.restoring=NO; }
+            geometry.frame=PXWMFromRect(card.frame);
+            if (!PXWMValidGeometry(geometry)) return;
+        }
+    }
+    PXWMArmContinuity(context,geometry,key,stamp.epoch,NO);
+    PXWMQueueContentSync(context);
+    PXWMLog(context,@"gesture_end_geometry",
+        @{@"x":@(geometry.frame.x),@"y":@(geometry.frame.y),
+          @"w":@(geometry.frame.width),@"h":@(geometry.frame.height),@"resize":@(stamp.resizing)});
     if (stamp.resizing) {
         BOOL startingKnown = stamp.startingSizeKnown;
         if (!PXWMUserSizeChanged(startingKnown, stamp.startingFrame, geometry.frame)) {
@@ -1073,10 +1476,26 @@ static void PXWMGestureAction(id panel, SEL command, UIGestureRecognizer *gestur
         if (original) original(panel,command,gesture); return;
     }
     UIGestureRecognizerState phase = gesture.state;
+    if (phase==UIGestureRecognizerStateCancelled || phase==UIGestureRecognizerStateFailed) {
+        PXWMGesture *cancelled=objc_getAssociatedObject(gesture,PXWMGestureKey);
+        cancelled.context.continuityActive=NO;
+        cancelled.context.continuityMove=NO;
+    }
     if (phase == UIGestureRecognizerStateBegan) {
         PXWMContext *context = PXWMContextForGesture(gesture);
         if (context) {
+            PXWMGeometry moveAnchor=context.continuityGeometry;
+            unsigned moveKey=context.continuityKey;
+            BOOL canKeepSize=PXWMContinuityReady(context);
+            NSDictionary *moveSnapshot=PXWindowMemoryStore.shared.snapshot;
+            if (!canKeepSize && context.continuityActive &&
+                context.continuityGeneration==context.generation &&
+                context.continuityEpoch==[moveSnapshot[@"epoch"] unsignedLongLongValue] &&
+                [moveSnapshot[@"enabled"] boolValue] && PXWMValidGeometry(moveAnchor))
+                canKeepSize=YES; // Retain the known target; Ready still gates every application.
+            if (!canKeepSize) canKeepSize=PXWMNormalGeometry(context,&moveAnchor,&moveKey);
             context.generation++; context.interacting = YES; context.resolved = YES; context.savePending = NO;
+            context.continuityActive=NO; context.continuityMove=NO;
             context.pendingGesture = nil;
             context.initialTargetActive = NO;
             PXWMGesture *stamp = [PXWMGesture new];
@@ -1090,14 +1509,41 @@ static void PXWMGestureAction(id panel, SEL command, UIGestureRecognizer *gestur
             stamp.orientationKnown = PXWMCaptureGestureOrientation(context, &startingKey);
             stamp.orientation = startingKey;
             if (stamp.orientationKnown) { context.keyKnown = YES; context.key = startingKey; }
+            if (!stamp.resizing && canKeepSize)
+                PXWMArmContinuity(context,moveAnchor,moveKey,stamp.epoch,YES);
             objc_setAssociatedObject(gesture,PXWMGestureKey,stamp,OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             PXWMLog(context, @"gesture_begin", @{@"resize":@(command == NSSelectorFromString(@"resizeHost:")),
-                     @"geometryKnown":@(stamp.orientationKnown), @"gate":@(context.geometryGate)});
+                     @"geometryKnown":@(stamp.orientationKnown), @"gate":@(context.geometryGate),
+                     @"startKnown":@(stamp.startingSizeKnown),@"startX":@(startingFrame.x),
+                     @"startY":@(startingFrame.y),@"startW":@(startingFrame.width),
+                     @"startH":@(startingFrame.height),@"sizeHeld":@(context.continuityActive)});
         } else {
             PXWMLog(nil, @"gesture_no_bound_window", @{@"resize":@(command == NSSelectorFromString(@"resizeHost:"))});
         }
     }
     if (original) original(panel,command,gesture);
+    PXWMGesture *activeStamp=objc_getAssociatedObject(gesture,PXWMGestureKey);
+    if (activeStamp && !activeStamp.resizing && phase!=UIGestureRecognizerStateCancelled &&
+        phase!=UIGestureRecognizerStateFailed) {
+        PXWMContext *moving=activeStamp.context;
+        PXWMGeometry observed; unsigned observedKey=0;
+        if (PXWMContinuityReady(moving) && PXWMNormalGeometry(moving,&observed,&observedKey) &&
+            observedKey==moving.continuityKey) {
+            PXWMRect target;
+            if (PXWMKeepMoveSize(moving.continuityGeometry,observed,&target)) {
+                PXWMGeometry latest=moving.continuityGeometry; latest.frame=target;
+                moving.continuityGeometry=latest;
+                if (!PXWMRectNear(observed.frame,target,0.5)) {
+                    moving.restoring=YES;
+                    @try {
+                        moving.card.frame=PXWMToRect(target);
+                        [moving.card setNeedsLayout]; [moving.card layoutIfNeeded];
+                    } @finally { moving.restoring=NO; }
+                }
+            }
+        }
+        PXWMQueueContentSync(moving);
+    }
     if (phase == UIGestureRecognizerStateEnded || phase == UIGestureRecognizerStateCancelled ||
         phase == UIGestureRecognizerStateFailed) {
         PXWMGesture *stamp = objc_getAssociatedObject(gesture,PXWMGestureKey);
@@ -1112,6 +1558,7 @@ static void PXWMGestureAction(id panel, SEL command, UIGestureRecognizer *gestur
                 context.savePending = NO;
                 context.pendingGesture = nil;
                 context.generation++;
+                context.continuityActive=NO; context.continuityMove=NO;
                 PXWMLog(context,@"gesture_cancel_no_save",@{});
             }
         }
@@ -1148,6 +1595,7 @@ static void PXWMPrepareForNativePark(UIWindow *window) {
     context.generation++;
     context.savePending = NO; context.pendingGesture = nil;
     context.interacting = NO; context.initialTargetActive = NO;
+    context.continuityActive=NO; context.continuityMove=NO;
     PXWMLog(context, @"native_park_no_size_save", @{});
 }
 static void PXWMDockTapped(id self, SEL command, id sender) {
@@ -1173,6 +1621,7 @@ static PXWMContext *PXWMDetachBinding(id bridge) {
         context.generation++;
         context.pendingGesture = nil; context.savePending = NO;
         context.initialTargetActive = NO;
+        context.continuityActive=NO; context.continuityMove=NO;
         objc_setAssociatedObject(bridge, PXWMContextKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     return context;
@@ -1265,14 +1714,20 @@ static void PXWMOpen(id self,SEL command,id bundle,id canvas,id overlay,void (^c
                     ticket.initialTargetAppliedAtBind = YES;
                     ticket.initialFrameSubstituted = NO;
                     ticket.initialContentRefreshed = NO;
+                    PXWMFirstFrameSnapshot(ticket,bindTarget,1,0);
                     ticket.restoring = YES;
                     [UIView performWithoutAnimation:^{
                         card.frame = PXWMToRect(bindTarget);
                         [card setNeedsLayout]; [card layoutIfNeeded];
                     }];
                     ticket.restoring = NO;
+                    PXWMFirstFrameSnapshot(ticket,bindTarget,1,1);
                     ticket.initialTargetActive = YES;
                     ticket.resolved = YES;
+                    PXWMGeometry remembered;
+                    NSDictionary *bindSnapshot=PXWindowMemoryStore.shared.snapshot;
+                    if (PXWindowMemoryGeometry(bindSnapshot,ticket.bundle,bindKey,&remembered))
+                        PXWMArmContinuity(ticket,remembered,bindKey,ticket.initialTargetEpoch,NO);
                     PXWMLog(ticket, @"first_frame_memory_applied_at_bind",
                             @{@"fromW":@(nativeFrame.width), @"fromH":@(nativeFrame.height),
                               @"toW":@(bindTarget.width), @"toH":@(bindTarget.height),
@@ -1323,9 +1778,13 @@ static void PXWMLayout(id self,SEL command) {
         // post-cleanup ticket can prepare geometry inside native open.
         context = objc_getAssociatedObject(self,PXWMOpenTicketKey) ?: objc_getAssociatedObject(self,PXWMContextKey);
         PXWMPrepareInitialLayout(context);
+        PXWMReconcileRuntimeFrame(context);
     }
     if (PXWMOriginalLayout) PXWMOriginalLayout(self,command);
     if (NSThread.isMainThread) {
+        PXWMReconcileRuntimeFrame(context);
+        PXWMQueueContentSync(context);
+        PXWMProbeContentGeometry(context,3);
         // Native layout establishes hostCard's default geometry and sourceSize.
         // Apply saved geometry now, before the original returns to its reveal/centering
         // completion; otherwise the first visible frame can still be the default.
@@ -1352,6 +1811,8 @@ static void PXWMControllerLayout(id self,SEL command) {
     UIWindow *window = [self isKindOfClass:UIViewController.class] ? [(UIViewController *)self view].window : nil;
     for (PXWMContext *context in PXWMContexts.allObjects) {
         if (!window || context.canvas.window != window) continue;
+        PXWMReconcileRuntimeFrame(context);
+        PXWMQueueContentSync(context);
         if (context->native.entering && !context.resolved)
             PXWMPrepareInitialLayoutWithNativeFrame(context, NULL, YES);
         PXWMTryRestore(context);

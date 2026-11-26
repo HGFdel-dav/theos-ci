@@ -5,6 +5,7 @@
 NS_ASSUME_NONNULL_BEGIN
 FOUNDATION_EXPORT NSString *const PXWindowMemoryNotification;
 FOUNDATION_EXPORT NSString *const PXWindowMemoryDidLoadNotification;
+FOUNDATION_EXPORT NSString *const PXWindowDiagnosticStatusNotification;
 
 /* Uses the existing cached RootHide path resolver and verified atomic I/O.
  * The document is isolated from CXStore: account/UI writers cannot overwrite it.
@@ -14,6 +15,10 @@ FOUNDATION_EXPORT NSString *const PXWindowMemoryDidLoadNotification;
 - (NSDictionary *)snapshot;
 - (BOOL)isLoaded;
 - (NSString *)errorText;
+/* Diagnostic health is independent: a logging failure never invalidates the
+ * geometry snapshot or toggles the memory feature. */
+- (uint64_t)diagnosticStatus;
+- (NSString *)diagnosticStatusText;
 - (void)reload;
 /* Only the real completed resize calls saveGeometry. Position updates merge
  * with the latest same-direction record under the existing file lock; without

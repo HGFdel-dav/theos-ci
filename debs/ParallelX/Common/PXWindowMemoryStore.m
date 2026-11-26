@@ -2,6 +2,8 @@
 #import "PXClonePaths.h"
 #import "PXCloneRootPolicy.h"
 #import "PXCloneTraceIO.h"
+#import "PXWindowDiagnosticHistory.h"
+#import <os/log.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <notify.h>
@@ -13,6 +15,9 @@ NSString *const PXWindowMemoryDidLoadNotification = @"PXWindowMemoryDidLoadNotif
 static const char *PXWMStateFile = "com.niubiprass.clonex.window-memory.plist";
 static const char *PXWMLockFile = "com.niubiprass.clonex.window-memory.lock";
 static const char *PXWMLogFile = "com.niubiprass.clonex.window-memory-diagnostics.plist";
+static const char *PXWMIncidentFile = "com.niubiprass.clonex.window-memory-incidents.plist";
+NSString *const PXWindowDiagnosticStatusNotification = @"PXWindowDiagnosticStatusNotification";
+static const char *PXWMDiagnosticChannel = "com.niubiprass.parallelxclone/window-diagnostic-health";
 
 static NSDictionary *PXWMDefaults(void) {
     return @{ @"schema": @1, @"revision": @0, @"epoch": @0,
@@ -100,6 +105,18 @@ static BOOL PXWMValidState(id value) {
     struct stat _directoryIdentity;
     int _directory;
     int _notifyToken;
+    int _diagnosticToken;
+    NSString *_diagnosticSession;
+    uint64_t _diagnosticSequence;
+    uint64_t _diagnosticStatus;
+    unsigned _diagnosticFailureCount;
+    unsigned _diagnosticLastFailure;
+    unsigned _diagnosticLastError;
+    unsigned _diagnosticPublishedState;
+    CFAbsoluteTime _diagnosticLastPublished;
+    CFAbsoluteTime _diagnosticLastSystemLog;
+    CFAbsoluteTime _diagnosticLastNotifyLog;
+    unsigned _diagnosticNotificationError;
     BOOL _loaded;
 }
 @end
@@ -123,12 +140,23 @@ static BOOL PXWMValidState(id value) {
     int status = notify_register_dispatch(PXWindowMemoryNotification.UTF8String, &_notifyToken,
                 _worker, ^(int token) { (void)token; [weakSelf loadOnWorker]; });
     if (status != NOTIFY_STATUS_OK) _notifyToken = -1;
+    _diagnosticSession=NSUUID.UUID.UUIDString;
+    _diagnosticToken=-1;
+    int diagnosticStatus=notify_register_dispatch(PXWMDiagnosticChannel,&_diagnosticToken,_worker,^(int token) {
+        uint64_t value=0;
+        if (notify_get_state(token,&value)==NOTIFY_STATUS_OK) [weakSelf receiveDiagnosticStatus:value];
+    });
+    if (diagnosticStatus!=NOTIFY_STATUS_OK) {
+        _diagnosticToken=-1;_diagnosticNotificationError=(unsigned)diagnosticStatus;
+        os_log_error(OS_LOG_DEFAULT,"PXWindowDiagnostic health registration failed code=%{public}u",(unsigned)diagnosticStatus);
+    }
     [self reload];
     return self;
 }
 - (void)dealloc {
     if (_directory >= 0) close(_directory);
     if (_notifyToken >= 0) notify_cancel(_notifyToken);
+    if (_diagnosticToken >= 0) notify_cancel(_diagnosticToken);
 }
 - (NSDictionary *)snapshot {
     [_memoryLock lock]; NSDictionary *snapshot = _snapshot; [_memoryLock unlock];
@@ -139,6 +167,80 @@ static BOOL PXWMValidState(id value) {
 }
 - (NSString *)errorText {
     [_memoryLock lock]; NSString *message = _errorText; [_memoryLock unlock]; return message;
+}
+- (void)receiveDiagnosticStatus:(uint64_t)value {
+    [_memoryLock lock];
+    BOOL localFailure=(_diagnosticStatus&255)>PXWMDiagnosticVerified &&
+        (_diagnosticStatus>>48)==(uint64_t)(getpid()&65535);
+    if (localFailure && (value&255)==PXWMDiagnosticVerified && (value>>48)!=(_diagnosticStatus>>48)) {
+        [_memoryLock unlock]; return;
+    }
+    BOOL changed=_diagnosticStatus!=value; _diagnosticStatus=value; [_memoryLock unlock];
+    if (changed) dispatch_async(dispatch_get_main_queue(), ^{
+        [NSNotificationCenter.defaultCenter postNotificationName:PXWindowDiagnosticStatusNotification object:self];
+    });
+}
+- (uint64_t)diagnosticStatus {
+    uint64_t value=0,local=0;
+    [_memoryLock lock]; local=_diagnosticStatus; [_memoryLock unlock];
+    if ((local&255)>PXWMDiagnosticVerified && (local>>48)==(uint64_t)(getpid()&65535)) return local;
+    if (_diagnosticToken>=0 && notify_get_state(_diagnosticToken,&value)==NOTIFY_STATUS_OK && value) return value;
+    return local;
+}
+- (NSString *)diagnosticStatusText {
+    [_memoryLock lock]; unsigned notificationError=_diagnosticNotificationError; [_memoryLock unlock];
+    if (notificationError) return [NSString stringWithFormat:@"诊断状态通知不可用（错误 %u）；本进程有独立错误记录，不能据此确认另一进程写入成功。",notificationError];
+    uint64_t status=self.diagnosticStatus;
+    unsigned current=(unsigned)(status&255),last=(unsigned)((status>>8)&255);
+    unsigned count=(unsigned)((status>>32)&65535),code=(unsigned)((status>>16)&65535);
+    if (!current) return @"本次尚未确认诊断写入；状态不依赖诊断文件。";
+    if (current==PXWMDiagnosticVerified)
+        return last ? [NSString stringWithFormat:@"诊断现已写入并读回；记录进程曾失败 %u 次，最近原因 %u（错误 %u），故障期间的记录可能缺失。",count,last,code] :
+            @"最近一次诊断已写入并读回。";
+    NSArray *reasons=@[@"未知",@"已读回",@"目录或日志锁不可用",@"普通记录无法读取",
+        @"异常片段无法读取",@"普通记录写入失败",@"异常片段写入失败",@"异常片段超过容量上限",
+        @"普通记录写后读回失败",@"异常片段写后读回失败"];
+    NSString *reason=current<reasons.count ? reasons[current] : @"未知故障";
+    return [NSString stringWithFormat:@"诊断未完整保存：%@（错误 %u）。窗口记忆本身不受此状态控制。",reason,code];
+}
+- (void)reportDiagnosticState:(PXWMDiagnosticIOState)state error:(NSError *)error {
+    CFAbsoluteTime now=CFAbsoluteTimeGetCurrent();
+    if (state!=PXWMDiagnosticVerified) {
+        if (_diagnosticFailureCount<65535) _diagnosticFailureCount++;
+        _diagnosticLastFailure=(unsigned)state;
+        _diagnosticLastError=(unsigned)llabs((long long)(error.code ?: EIO));
+        if (!_diagnosticLastSystemLog || now-_diagnosticLastSystemLog>=5) {
+            _diagnosticLastSystemLog=now;
+            os_log_error(OS_LOG_DEFAULT,"PXWindowDiagnostic IO failure state=%{public}u code=%{public}u count=%{public}u",
+                         (unsigned)state,_diagnosticLastError,_diagnosticFailureCount);
+        }
+    }
+    /* Repeat errors update local counters but publish at most once per 5s.
+     * A state transition (including recovery) remains immediately observable. */
+    if (_diagnosticPublishedState==(unsigned)state && now-_diagnosticLastPublished<5) return;
+    _diagnosticPublishedState=(unsigned)state; _diagnosticLastPublished=now;
+    uint64_t value=PXWMDiagnosticPackStatus((unsigned)state,_diagnosticLastFailure,
+                       _diagnosticLastError,_diagnosticFailureCount)|((uint64_t)(getpid()&65535)<<48);
+    [self receiveDiagnosticStatus:value];
+    if (_diagnosticToken>=0) {
+        uint64_t remote=0;notify_get_state(_diagnosticToken,&remote);
+        /* A successful Settings writer must not erase SpringBoard's failure. */
+        BOOL foreignFailure=((remote&255)>PXWMDiagnosticVerified || ((remote>>8)&255)>0) &&
+            (remote>>48)!=(value>>48);
+        BOOL foreignActiveFailure=(remote&255)>PXWMDiagnosticVerified && (remote>>48)!=(value>>48);
+        if (!(state==PXWMDiagnosticVerified && (foreignActiveFailure || (foreignFailure && !_diagnosticLastFailure)))) {
+            int sent=notify_set_state(_diagnosticToken,value);
+            if (sent==NOTIFY_STATUS_OK) sent=notify_post(PXWMDiagnosticChannel);
+            [_memoryLock lock]; _diagnosticNotificationError=(unsigned)sent; [_memoryLock unlock];
+            if (sent!=NOTIFY_STATUS_OK && (!_diagnosticLastNotifyLog || now-_diagnosticLastNotifyLog>=5)) {
+                _diagnosticLastNotifyLog=now;
+                os_log_error(OS_LOG_DEFAULT,"PXWindowDiagnostic health notification failed code=%{public}u",(unsigned)sent);
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [NSNotificationCenter.defaultCenter postNotificationName:PXWindowDiagnosticStatusNotification object:self];
+                });
+            }
+        }
+    }
 }
 - (void)publish:(NSDictionary *)snapshot error:(NSError *)error {
     [_memoryLock lock];
@@ -179,13 +281,15 @@ static BOOL PXWMValidState(id value) {
 
 - (id)readDocument:(const char *)name absent:(BOOL *)absent error:(NSError **)error {
     if (absent) *absent = NO;
-    int fd = openat(_directory, name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    BOOL diagnostic=!strcmp(name,PXWMLogFile) || !strcmp(name,PXWMIncidentFile);
+    int fd = openat(_directory, name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | (diagnostic ? O_NONBLOCK : 0));
     if (fd < 0) {
         if (errno == ENOENT) { if (absent) *absent = YES; return nil; }
         if (error) *error = PXWMError(2, @"窗口记忆文件无法安全读取"); return nil;
     }
     struct stat st;
-    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) || st.st_size < 0 || st.st_size > 2 * 1024 * 1024) {
+    off_t limit=!strcmp(name,PXWMIncidentFile) ? PXWMDiagnosticArchiveBytes : 2*1024*1024;
+    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) || st.st_size < 0 || st.st_size > limit) {
         close(fd); if (error) *error = PXWMError(2, @"窗口记忆文件类型或大小异常"); return nil;
     }
     NSMutableData *data = [NSMutableData dataWithLength:(NSUInteger)st.st_size];
@@ -223,7 +327,9 @@ static BOOL PXWMValidState(id value) {
     int errorNumber = 0;
     PXCloneTraceIOResult result = PXCloneWriteTraceAt(_directory, name, data.bytes, data.length, &errorNumber);
     if (result != PXCloneTraceIOVerified) {
-        if (error) *error = PXWMError(errorNumber ?: EIO, @"窗口记忆写入或逐字节读回未通过");
+        if (error) *error = [NSError errorWithDomain:@"com.niubiprass.parallelxclone.window-memory"
+            code:errorNumber ?: EIO userInfo:@{NSLocalizedDescriptionKey:@"窗口记忆写入或逐字节读回未通过",
+                                               @"traceIOResult":@(result)}];
         return NO;
     }
     return [self directoryCurrent:error];
@@ -249,26 +355,63 @@ static BOOL PXWMValidState(id value) {
     dispatch_async(_worker, ^{ [self loadOnWorker]; });
 }
 - (void)diagnostic:(NSString *)event details:(NSDictionary *)details {
-    NSString *name = [event copy];
-    NSDictionary *values = [details copy];
+    if (![[self snapshot][@"diagnostics"] boolValue]) return;
+    NSString *name=[event copy]; NSDictionary *values=[details copy];
+    NSTimeInterval observed=NSDate.date.timeIntervalSince1970;
     dispatch_async(_worker, ^{
         if (![[self snapshot][@"diagnostics"] boolValue]) return;
-        NSError *error = nil;
-        int lock = [self lockDocument:&error];
-        if (lock < 0) return;
-        BOOL absent = NO;
-        id old = [self readDocument:PXWMLogFile absent:&absent error:NULL];
-        NSMutableArray *events = [old isKindOfClass:NSArray.class] ? [old mutableCopy] : [NSMutableArray array];
-        /* Fixed names and numeric/boolean values only. No account names, IDs,
-         * URLs, chat content, tokens or arbitrary exception descriptions. */
-        NSMutableDictionary *safe = [NSMutableDictionary dictionary];
-        for (NSString *key in values)
-            if ([key isKindOfClass:NSString.class] && [values[key] isKindOfClass:NSNumber.class]) safe[key] = values[key];
-        [events addObject:@{ @"time": @(NSDate.date.timeIntervalSince1970), @"build": @"clone0.114",
-                             @"pid": @(getpid()), @"event": name ?: @"unknown", @"state": safe }];
-        while (events.count > 256) [events removeObjectAtIndex:0];
-        [self writeDocument:events name:PXWMLogFile error:NULL];
-        flock(lock, LOCK_UN); close(lock);
+        NSMutableDictionary *safe=[NSMutableDictionary dictionary];
+        for (NSString *key in values) {
+            if (safe.count>=128) break;
+            if ([key isKindOfClass:NSString.class] && key.length<=64 &&
+                [values[key] isKindOfClass:NSNumber.class] && isfinite([values[key] doubleValue])) safe[key]=values[key];
+        }
+        NSDictionary *entry=@{@"time":@(observed),@"build":@"clone0.116",@"pid":@(getpid()),
+            @"session":self->_diagnosticSession,@"sequence":@(++self->_diagnosticSequence),
+            @"event":name.length && name.length<=96 ? name : @"invalid_event",@"state":safe};
+        NSError *error=nil;
+        int lock=[self lockDocument:&error];
+        if (lock<0) { [self reportDiagnosticState:PXWMDiagnosticLockFailed error:error]; return; }
+        PXWMDiagnosticIOState result=PXWMDiagnosticVerified;
+        @try {
+            BOOL recentAbsent=NO,archiveAbsent=NO;
+            NSError *recentError=nil,*archiveError=nil;
+            id old=[self readDocument:PXWMLogFile absent:&recentAbsent error:&recentError];
+            BOOL recentOK=recentAbsent || (old && PXWMDiagnosticValidRecent(old));
+            NSMutableArray *events=recentOK && !recentAbsent ? [old mutableCopy] : [NSMutableArray array];
+            if (!recentOK) { result=PXWMDiagnosticRecentReadFailed; error=recentError; }
+            id archive=[self readDocument:PXWMIncidentFile absent:&archiveAbsent error:&archiveError];
+            BOOL archiveOK=archiveAbsent || (archive && PXWMDiagnosticValidArchive(archive));
+            if (!archiveOK) { result=PXWMDiagnosticArchiveReadFailed; error=archiveError; }
+            if (archiveOK) {
+                NSDictionary *previous=archiveAbsent ? @{@"schema":@1,@"incidents":@[]} : archive;
+                NSDictionary *next=PXWMDiagnosticMerge(previous,events,entry);
+                if (![next isEqual:previous]) {
+                    NSData *encoded=[NSPropertyListSerialization dataWithPropertyList:next
+                        format:NSPropertyListBinaryFormat_v1_0 options:0 error:&archiveError];
+                    if (!encoded || encoded.length>PXWMDiagnosticArchiveBytes) {
+                        result=PXWMDiagnosticArchiveSizeFailed;error=archiveError;
+                    } else if (![self writeDocument:next name:PXWMIncidentFile error:&archiveError]) {
+                        result=[archiveError.userInfo[@"traceIOResult"] unsignedIntegerValue]==PXCloneTraceIOReadbackFailed ?
+                            PXWMDiagnosticArchiveReadbackFailed : PXWMDiagnosticArchiveWriteFailed;
+                        error=archiveError;
+                    }
+                }
+            }
+            if (recentOK) {
+                [events addObject:entry];
+                while (events.count > 256) [events removeObjectAtIndex:0];
+                if (![self writeDocument:events name:PXWMLogFile error:&recentError]) {
+                    result=[recentError.userInfo[@"traceIOResult"] unsignedIntegerValue]==PXCloneTraceIOReadbackFailed ?
+                        PXWMDiagnosticRecentReadbackFailed : PXWMDiagnosticRecentWriteFailed;
+                    error=recentError;
+                }
+            }
+        } @catch (__unused NSException *exception) {
+            result=PXWMDiagnosticArchiveReadFailed;
+            error=PXWMError(EINVAL,@"诊断结构无法安全处理，保留原文件");
+        } @finally { flock(lock,LOCK_UN); close(lock); }
+        [self reportDiagnosticState:result error:error];
     });
 }
 - (void)change:(NSString *)operation bundle:(NSString *)bundle orientation:(unsigned)orientation

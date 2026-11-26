@@ -47,6 +47,7 @@ class WindowMemoryContextPropertySyntax(unittest.TestCase):
         # production C lifecycle header. Only unrelated framework class/type
         # declarations are shimmed for a host-only syntax translation unit.
         prefix = '''#include "Common/PXWindowMemoryPolicy.h"
+#include "Common/PXWindowDiagnosticPolicy.h"
 typedef signed char BOOL;
 typedef unsigned long NSUInteger;
 typedef double CFTimeInterval;
