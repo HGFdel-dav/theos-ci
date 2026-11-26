@@ -736,7 +736,7 @@ static NSString *const kMiniSightCenterY   = @"MiniSightCenterY";
 static NSString *const kMiniSightText      = @"Minis 操作中";
 // 版本号：与 DEBIAN/control 的 Version 同步。诊断日志会打印它，
 // 便于装机后确认跑的是哪一版（strings MiniSight.dylib | grep 也能看到）。
-static NSString *const kMiniSightVersion   = @"0.8.56";
+static NSString *const kMiniSightVersion   = @"0.8.57";
 
 #pragma mark - 全局状态
 
@@ -892,8 +892,24 @@ static NSTimeInterval MiniSightSnapshotMotionPosition(NSDictionary *snapshot) {
     double age = NSDate.date.timeIntervalSince1970 - [stamp doubleValue];
     return fmax(0., [pos doubleValue]) + fmin(5., fmax(0., age));
 }
+static double MiniSightSnapshotMeasuredPosition(NSDictionary *snapshot) {
+    id valid = snapshot[@"progressAvailable"], rate = snapshot[@"motionRate"];
+    id position = snapshot[@"motionTime"], stamp = snapshot[@"time"];
+    if (![valid isKindOfClass:NSNumber.class] || CFGetTypeID((__bridge CFTypeRef)valid) != CFBooleanGetTypeID() || ![valid boolValue]) return NAN;
+    for (id value in @[rate ?: NSNull.null, position ?: NSNull.null, stamp ?: NSNull.null])
+        if (![value isKindOfClass:NSNumber.class] || CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID() || !isfinite([value doubleValue])) return NAN;
+    // The receiver's seek comparator assumes normal playback rate. Other rates
+    // keep beat input enabled but do not manufacture normal-rate seek evidence.
+    double age = NSDate.date.timeIntervalSince1970 - [stamp doubleValue];
+    double value = [position doubleValue];
+    if ([rate doubleValue] != 1. || age < -1. || age > 5. || value < 0. || value > 3600.) return NAN;
+    value += fmax(0., age);
+    return value <= 3600. ? value : NAN;
+}
 static NSUInteger MiniSightSnapshotMusicToken(NSDictionary *snapshot) {
-    id value = snapshot[@"generation"];
+    // v1 legacy snapshots have only the lyric generation; new snapshots carry
+    // an independent music lease. A malformed new lease must not fall back.
+    id value = snapshot[@"rhythmGeneration"] ?: snapshot[@"generation"];
     if (![value isKindOfClass:NSNumber.class] || CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID()) return 0;
     double token = [value doubleValue];
     return isfinite(token) && token >= 1. && token <= 9007199254740991. && floor(token) == token
@@ -910,8 +926,8 @@ static void MiniSightUpdateMusic(void) {
         gMiniSightPet.musicPlaying = [snapshot[@"playing"] boolValue] && [snapshot[@"motionEnabled"] boolValue];
         gMiniSightPet.lyricsSuppressed = gMiniSightBubbleShown || gMiniSightConfirming ||
             MiniSightChatPanel.existingPanel.isVisible || gMiniSightBurst;
-        MiniSightRhythmConfigurePet(gMiniSightPet, gMiniSightPet.musicPlaying,
-                                   MiniSightSnapshotMusicToken(snapshot));
+        MiniSightRhythmConfigurePetWithPosition(gMiniSightPet, gMiniSightPet.musicPlaying,
+                                   MiniSightSnapshotMusicToken(snapshot), MiniSightSnapshotMeasuredPosition(snapshot));
     };
     if (!monitor.presentationHandler) monitor.presentationHandler = ^{ return MiniSightMusicPresentation(); };
     NSDictionary *presentation = MiniSightMusicPresentation();
@@ -922,8 +938,8 @@ static void MiniSightUpdateMusic(void) {
     gMiniSightPet.musicPosition = MiniSightSnapshotMotionPosition(snapshot);
     gMiniSightPet.musicPlaying = motion && allowed && [snapshot[@"playing"] boolValue];
     gMiniSightPet.lyricsSuppressed = gMiniSightBubbleShown || gMiniSightConfirming || MiniSightChatPanel.existingPanel.isVisible || gMiniSightBurst;
-    MiniSightRhythmConfigurePet(gMiniSightPet, motion && allowed && [snapshot[@"playing"] boolValue],
-                               MiniSightSnapshotMusicToken(snapshot));
+    MiniSightRhythmConfigurePetWithPosition(gMiniSightPet, motion && allowed && [snapshot[@"playing"] boolValue],
+                               MiniSightSnapshotMusicToken(snapshot), MiniSightSnapshotMeasuredPosition(snapshot));
 }
 
 static BOOL MiniSightGravityEnabled(void) {

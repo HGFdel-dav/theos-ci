@@ -1,8 +1,8 @@
 TARGET = iphone:15.5:15.0
 SDKVERSION = 15.5
 FINALPACKAGE = 1
-# Local candidate stays inert until audio-feature transport is separately approved.
-MINISIGHT_ENABLE_RHYTHM_TRANSPORT ?= 0
+# Default stays source-only; explicit LIVE must be paired with the service.
+include ../MiniSightRhythmService/build/Flags.mk
 # Theos scheme chooses installation layout AND slice: RootHide keeps arm64e
 # (PAC), rootless ships plain arm64. Never label an arm64e slice as rootless.
 ifeq ($(THEOS_PACKAGE_SCHEME),rootless)
@@ -16,7 +16,7 @@ include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = MiniSight
 MiniSight_FILES = Tweak.xm MiniSightRhythmClient.m MiniSightPet.m MiniSightPetEffects.m MiniSightActionLibrary.m MiniSightLyrics.m MiniSightMusicMonitor.m MiniSightResources.m MiniSightPreferences.m MiniSightRecorder.m MiniSightAI.m MiniSightChatPanel.m MiniSightLog.m MiniSightBlip.m MiniSightRuntimeConfig.m tools/chat/ChatCore.c
-MiniSight_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -fvisibility=hidden -DMINISIGHT_STRIP_LOGS=1 -DMINISIGHT_ENABLE_RHYTHM_TRANSPORT=$(MINISIGHT_ENABLE_RHYTHM_TRANSPORT)
+MiniSight_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -fvisibility=hidden -DMINISIGHT_STRIP_LOGS=1 -DMINISIGHT_ENABLE_RHYTHM_TRANSPORT=$(MINISIGHT_ENABLE_RHYTHM_TRANSPORT) -DMINISIGHT_ENABLE_RHYTHM_CAPTURE=$(MINISIGHT_ENABLE_RHYTHM_CAPTURE) -DMINISIGHT_RHYTHM_LIVE_BUILD=$(MINISIGHT_RHYTHM_LIVE_BUILD)
 MiniSight_LDFLAGS = -Wl,-x -Wl,-dead_strip
 # UIKit/QuartzCore 需要显式链接（浮窗绘制 + CABasicAnimation）
 # AVFoundation：录屏保存后要读真实时长，确认文件真的生成了

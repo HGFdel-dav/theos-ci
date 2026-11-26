@@ -1,0 +1,191 @@
+{
+  "ass2_commit": "20d26f5061fa7db132da5148e18d814947f1905e",
+  "beatdetektor_commit": "85a662048e4a906ddb40a511f9fa2ab7a7712c80",
+  "count": 43,
+  "files": {
+    "ActiveSourceToken.h": {
+      "bytes": 1252,
+      "sha256": "df47ea214921121ea2a2a1fb2f21f8d3ea60ee4dd81e4b33af58385f5f379c8a"
+    },
+    "AudioActivityGate.h": {
+      "bytes": 5202,
+      "sha256": "904772ec1c99b5c615debb00d1a7b3c34b4195166445a9221f5b486ed796e211"
+    },
+    "CaptureAdmission.h": {
+      "bytes": 2765,
+      "sha256": "a0442322872dc8b42f85bbc04bdf65093f618f3dbb2c52a94a2963ea2d640a1b"
+    },
+    "CaptureConfig.h": {
+      "bytes": 583,
+      "sha256": "65aecd3318bf496329e4752f9548d2e2797c11a46553a8ad5ededf6ad0d70d77"
+    },
+    "CaptureEngine.cpp": {
+      "bytes": 31972,
+      "sha256": "88a3cce6af3cdff680a6a8af44bc68e0947a71ed27b13245cadcba3e0d3cc341"
+    },
+    "FeatureAnalyzer.cpp": {
+      "bytes": 10778,
+      "sha256": "ccd0fdd10f57a5a89a6e7ecf2b9127605078575a037a1b7ea26f37a86970007d"
+    },
+    "FeatureDSP.h": {
+      "bytes": 4478,
+      "sha256": "1487342493d2b5eddff300f6f7eb68b7066dec70b00ea1de63afeba33cddcfe2"
+    },
+    "FeaturePacing.h": {
+      "bytes": 2363,
+      "sha256": "7d523dd43f5292523b17b09bfb999d2a1c7157302a02668aebf74092457b8074"
+    },
+    "FeaturePayload.h": {
+      "bytes": 1450,
+      "sha256": "3012314ef0f7103e9d82e9c73cdb43e7e89c98b170f0026825233992aa02f561"
+    },
+    "FeatureServer.cpp": {
+      "bytes": 16038,
+      "sha256": "5f20707677be7359668537ad2885d8501d34ec24677bbb1eb0314d6cb14b168f"
+    },
+    "LICENSE": {
+      "bytes": 1056,
+      "sha256": "70dfb0bd73f5c96f0f17ea22a6c0b40fb27ce36d9f7db170b1697c2e5f1f432a"
+    },
+    "LifecyclePolicy.h": {
+      "bytes": 890,
+      "sha256": "03a7147bfa609e3077cdd401e3df99199939a63c3d9926ee8d3c2c4e725e575d"
+    },
+    "MSHFProtocol.h": {
+      "bytes": 6624,
+      "sha256": "a5bd150c1d2e101562ad1d0d19e4ccd63d652d750a1e42a692cf9c81ee27336e"
+    },
+    "Makefile": {
+      "bytes": 2011,
+      "sha256": "16978e3d4f92a97d3582c4f26250ad7359ebe065b93f70c231dd25a842b4aa71"
+    },
+    "MiniSightRhythmFrame.h": {
+      "bytes": 937,
+      "sha256": "bedd83d4a5c0df17d4025ac7681b01d7eb664d4892cf02390ecdd67a1ce92bd9"
+    },
+    "MiniSightRhythmService.plist": {
+      "bytes": 45,
+      "sha256": "8dfcfca5abd64081cd466a9655e5c977b6dd33a47802ae09e8e2ebdcc032f8aa"
+    },
+    "MiniSightRhythmWire.h": {
+      "bytes": 4719,
+      "sha256": "94c7a90f9811a92561962d981e37a0a5532b242447300f24371f742f93b9831d"
+    },
+    "PROVENANCE.md": {
+      "bytes": 2167,
+      "sha256": "fc818293d805b21a6bc7abf739b031554f012d3ead9a044ac98b3e2daceaa92c"
+    },
+    "README.md": {
+      "bytes": 5234,
+      "sha256": "31053111780ea07d9edc8ac12693058cac4caf8722538e5ed6aaa429b7545c3b"
+    },
+    "RequestPolicy.h": {
+      "bytes": 1009,
+      "sha256": "17528bf8abc143bc7980332fa27b5b710a03bea70d211f624aee2f0550b3c6c8"
+    },
+    "RhythmBridge.inc": {
+      "bytes": 3015,
+      "sha256": "25e25d024cf5aea6ee1ab0534adfc7ab8961bb36702c130d772a7eb7fe138555"
+    },
+    "RhythmInput.h": {
+      "bytes": 2337,
+      "sha256": "a3410e914295a198fdd71def84bb950741455b2e59e0c013ff0f656002161e55"
+    },
+    "ServerInternal.h": {
+      "bytes": 9524,
+      "sha256": "174ad2eb2629056127fc17080c26d5634f2058a59cfa4789920e516df2fc55a4"
+    },
+    "Tweak.cpp": {
+      "bytes": 10333,
+      "sha256": "4f5dac4cc859f05c3823a44aa1412ed702e653162f21f25568f8162a3693f272"
+    },
+    "build/Flags.mk": {
+      "bytes": 1075,
+      "sha256": "982c993d0f1809b5455b8ac51a862ecc324046e48ee227bfd8ccc0cb8ff52d4e"
+    },
+    "build/Pair.mk": {
+      "bytes": 1083,
+      "sha256": "2db80907f33851bfff37a87a2e00ebb02421229519a8dac6d482466abaea5a20"
+    },
+    "control": {
+      "bytes": 381,
+      "sha256": "d2e99d003034290f4b1dd9796814fa61a0324172a4c4eb98b5b476b07b20851a"
+    },
+    "scripts/check_contract.py": {
+      "bytes": 3918,
+      "sha256": "c7b207ec7f9c3b811ae0532e2d1d25fef2ae7f99fe6d0f2fb10732ab286414ee"
+    },
+    "scripts/check_local.py": {
+      "bytes": 3894,
+      "sha256": "7007e119c237750bcfc6fdcea0d914d08b585d1910a06bc8837699a51fbd9b21"
+    },
+    "scripts/check_pipeline.py": {
+      "bytes": 6138,
+      "sha256": "8d162a3947fbd97622f2f2a3706498f94caf236f3c14bea6600bd840291c9b7e"
+    },
+    "scripts/package_pair.py": {
+      "bytes": 6024,
+      "sha256": "ee5a0a1390e92c472bb0fe4616b3cadd7c11502992814eb067013083431b492d"
+    },
+    "scripts/sync_source.py": {
+      "bytes": 2945,
+      "sha256": "d63fdce848ace8e195912e0db9751f55d3b430c669c270e33cb4ec4d7894b9ae"
+    },
+    "scripts/test_release_pair.py": {
+      "bytes": 6476,
+      "sha256": "866bb281528a1ec0c501d86de039358718f19fcc752dd39d8ba626bf292dbc9e"
+    },
+    "shared/MiniSightRhythmAnalyzer.cpp": {
+      "bytes": 9601,
+      "sha256": "1cfcadc65bcc9db84e88bdd14a55fe75455cc05959cbce3e12e84c6a7d9225b0"
+    },
+    "shared/MiniSightRhythmAnalyzer.h": {
+      "bytes": 2517,
+      "sha256": "c220a0cee65149b92af9cf5cd28a286f8962c2130c0e29718050f32fb1d47990"
+    },
+    "shared/MiniSightRhythmFrame.h": {
+      "bytes": 937,
+      "sha256": "bedd83d4a5c0df17d4025ac7681b01d7eb664d4892cf02390ecdd67a1ce92bd9"
+    },
+    "shared/MiniSightRhythmReceivePolicy.h": {
+      "bytes": 2407,
+      "sha256": "aa3d4057d70bdd59e2ba1ff1fdc05ed36b464ff4d423091970dbf97adcf947d6"
+    },
+    "shared/MiniSightRhythmWire.h": {
+      "bytes": 4719,
+      "sha256": "94c7a90f9811a92561962d981e37a0a5532b242447300f24371f742f93b9831d"
+    },
+    "shared/vendor/BeatDetektor/BeatDetektor.cpp": {
+      "bytes": 13126,
+      "sha256": "b7c5f347941baf4e09314ae1f4ddbd380e8c5f89a36ee642aed4733a17db9d6b"
+    },
+    "shared/vendor/BeatDetektor/BeatDetektor.h": {
+      "bytes": 8345,
+      "sha256": "aca16316f11a8d53d75cf34bd56fece6775b7b2e1bb1ecb3b4e5e84998d84418"
+    },
+    "tests/AdmissionTests.cpp": {
+      "bytes": 3495,
+      "sha256": "e7fc3ea41da78adbcb7a1eceaf9fca1eeb9b10be0727d81c22e289ca56b52c15"
+    },
+    "tests/BridgeTests.cpp": {
+      "bytes": 5827,
+      "sha256": "8941ec41de78dc5abdab5eb4c11c4e6016074b824ae335efb2ff405a2e2b88a9"
+    },
+    "tests/RealWrapperSmoke.cpp": {
+      "bytes": 1729,
+      "sha256": "692d2679b4ff2a2af1eaac71743d1c0139c41872ecc7c970af4778bb71716215"
+    }
+  },
+  "format": 1,
+  "scope": "identical capture source and standalone plugin service; no artifacts",
+  "shared_imports": {
+    "MiniSightRhythmAnalyzer.cpp": "1cfcadc65bcc9db84e88bdd14a55fe75455cc05959cbce3e12e84c6a7d9225b0",
+    "MiniSightRhythmAnalyzer.h": "c220a0cee65149b92af9cf5cd28a286f8962c2130c0e29718050f32fb1d47990",
+    "MiniSightRhythmFrame.h": "bedd83d4a5c0df17d4025ac7681b01d7eb664d4892cf02390ecdd67a1ce92bd9",
+    "MiniSightRhythmReceivePolicy.h": "aa3d4057d70bdd59e2ba1ff1fdc05ed36b464ff4d423091970dbf97adcf947d6",
+    "MiniSightRhythmWire.h": "94c7a90f9811a92561962d981e37a0a5532b242447300f24371f742f93b9831d",
+    "vendor/BeatDetektor/BeatDetektor.cpp": "b7c5f347941baf4e09314ae1f4ddbd380e8c5f89a36ee642aed4733a17db9d6b",
+    "vendor/BeatDetektor/BeatDetektor.h": "aca16316f11a8d53d75cf34bd56fece6775b7b2e1bb1ecb3b4e5e84998d84418"
+  },
+  "spdx": "MIT for ASS2/BeatDetektor; local adapter changes marked in PROVENANCE.md"
+}

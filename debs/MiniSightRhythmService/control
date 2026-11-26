@@ -1,0 +1,9 @@
+Package: com.niubiprass.minisight.rhythmservice
+Name: MiniSight Rhythm Service
+Version: 0.1.0
+Architecture: iphoneos-arm64e
+Depends: mobilesubstrate, firmware (>= 15.5)
+Description: Local output-mix rhythm features for MiniSight; no microphone input or remote audio transfer
+Maintainer: MiniSight local adaptation
+Author: Ryan Nair; MiniSight local adaptation
+Section: Development

@@ -5,6 +5,7 @@ on:
     branches: [minisight-0.4.0-chat-freeze, minisight-0.7.0-unified-20261105, minisight-0.8.0-20261105, minisight-0.8.1-20261106, minisight-0.8.2-20261107, minisight-0.8.3-20261107, minisight-0.8.5-20261108, minisight-0.8.6-20261108, minisight-0.8.7-20261108, minisight-0.8.8-20261108, minisight-0.8.9-20261108, minisight-0.8.10-20261108, minisight-0.8.11-20261108, minisight-0.8.12-20261108, minisight-0.8.13-20261108, minisight-0.8.14-20261108, minisight-0.8.15-20261108, minisight-0.8.16-20261108, minisight-0.8.17-20261108, minisight-0.8.18-20261108, minisight-0.8.19-20261108, minisight-0.8.20-20261108, minisight-0.8.21-20261108, minisight-0.8.22-20261108, minisight-0.8.23-20261108, minisight-0.8.24-20261108, minisight-0.8.25-20261108, minisight-0.8.26-20261108, minisight-0.8.27-20261108, minisight-0.8.28-20261108, minisight-0.8.29-20261108, minisight-0.8.30-20261108, minisight-0.8.31-20261108, minisight-0.8.32-20261108, minisight-0.8.33-20261108, minisight-0.8.34-20261108, minisight-0.8.35-20261108, minisight-0.8.36-20261108, minisight-0.8.37-20261108, minisight-0.8.38-20261108, minisight-0.8.39-20261108, minisight-0.8.40-20261110, minisight-0.8.42-20261111, minisight-0.8.44-20261116, minisight-0.8.45-20261116, minisight-0.8.47-20261118, minisight-0.8.48-20261119, minisight-0.8.49-20261119, minisight-0.8.50-20261121, minisight-0.8.51-20261123, minisight-0.8.52-lyrics-qq-20261124, minisight-0.8.55-complete-local-20261125]
     paths:
       - 'debs/MiniSight/**'
+      - 'debs/MiniSightRhythmService/**'
       - '.github/workflows/build-minisight.yml'
   workflow_dispatch:
 
@@ -24,11 +25,15 @@ jobs:
           filter: blob:none
           sparse-checkout: |
             debs/MiniSight
+            debs/MiniSightRhythmService
       - name: Portable regression checks
         working-directory: debs/MiniSight
         run: |
           set -euo pipefail
-          test "$(sed -n 's/^Version: //p' control)" = "0.8.56"
+          test "$(sed -n 's/^Version: //p' control)" = "0.8.57"
+          python3 ../MiniSightRhythmService/scripts/test_release_pair.py
+          make -f ../MiniSightRhythmService/build/Pair.mk source-check
+          make -f ../MiniSightRhythmService/build/Pair.mk live-check
           python3 tools/check_host.py
           python3 tools/check_repairs_20261107.py
           python3 scripts/test_minisight_pet_paths_20261122.py --mutations
@@ -87,20 +92,26 @@ jobs:
           cp -R "$SDK_PATH" "$HOME/theos/sdks/"
           checks_status=0
           python3 tools/check_music_actions_20261116.py --ci --ios-sdk "$SDK_PATH" || checks_status=$?
-          make clean
-          build_status=0
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=${{ matrix.scheme }} || build_status=$?
-          if [ "$checks_status" -ne 0 ] || [ "$build_status" -ne 0 ]; then
-            echo "FAIL closed: native_checks=$checks_status theos_build=$build_status; no release artifact"
+          # Original required native gate remains ahead of any uploadable output.
+          if [ "$checks_status" -ne 0 ]; then
+            echo "FAIL closed: native_checks=$checks_status; no paired build/output"
             exit 1
           fi
-          mkdir -p out
-          cp packages/*.deb out/
-          (cd out && shasum -a 256 *.deb > SHA256SUMS)
+          build_status=0
+          MINISIGHT_RHYTHM_CI_BUILD_APPROVED=1 make -f ../MiniSightRhythmService/build/Pair.mk \
+            live-package THEOS_PACKAGE_SCHEME=${{ matrix.scheme }} \
+            RHYTHM_PAIR_OUTPUT="$GITHUB_WORKSPACE/debs/MiniSight/out" || build_status=$?
+          if [ "$checks_status" -ne 0 ] || [ "$build_status" -ne 0 ]; then
+            echo "FAIL closed: native_checks=$checks_status paired_theos_build=$build_status; no release artifact"
+            exit 1
+          fi
+          test -s out/PAIR-ARTIFACTS.json
+          test -s out/SHA256SUMS
+          (cd out && shasum -a 256 -c SHA256SUMS)
           ls -la out
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: success()
         with:
           name: minisight-${{ matrix.scheme }}
           path: debs/MiniSight/out/
-          if-no-files-found: warn
+          if-no-files-found: error
