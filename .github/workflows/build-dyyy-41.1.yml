@@ -1,6 +1,9 @@
 name: DYYY 41.1 Build
 
 on:
+  push:
+    branches:
+      - dyyy-41.1-local-20261127
   workflow_dispatch:
 
 permissions:
