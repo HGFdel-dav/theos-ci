@@ -26,6 +26,7 @@ jobs:
           sparse-checkout: |
             debs/MiniSight
             debs/MiniSightRhythmService
+            .github/workflows
       - name: Portable regression checks
         working-directory: debs/MiniSight
         run: |
