@@ -124,16 +124,16 @@
       "sha256": "8d162a3947fbd97622f2f2a3706498f94caf236f3c14bea6600bd840291c9b7e"
     },
     "scripts/package_pair.py": {
-      "bytes": 6024,
-      "sha256": "ee5a0a1390e92c472bb0fe4616b3cadd7c11502992814eb067013083431b492d"
+      "bytes": 6870,
+      "sha256": "1407db089085264153a3d74c7e2bebe04af5afc8a64966b701abc8bc25025a9b"
     },
     "scripts/sync_source.py": {
       "bytes": 2945,
       "sha256": "d63fdce848ace8e195912e0db9751f55d3b430c669c270e33cb4ec4d7894b9ae"
     },
     "scripts/test_release_pair.py": {
-      "bytes": 6486,
-      "sha256": "7bb7d73f6f174bf67007776d82ed88a49285a01dd036a42745e81152ed4eeb10"
+      "bytes": 8729,
+      "sha256": "b719366981791b83ab29ca10912f1ee2854198680a3d980d877a2a12a71b21fa"
     },
     "shared/MiniSightRhythmAnalyzer.cpp": {
       "bytes": 9601,

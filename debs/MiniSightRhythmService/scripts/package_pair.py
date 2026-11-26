@@ -4,7 +4,7 @@
 No workflow, install, service load or respring operation is performed here.
 """
 from pathlib import Path
-import argparse,hashlib,json,os,re,shutil,subprocess,sys,tempfile
+import argparse,hashlib,json,os,plistlib,re,shutil,subprocess,sys,tempfile
 if not __debug__:sys.exit('REFUSED: Python assertion checks must not be disabled')
 
 def identity(root):
@@ -13,6 +13,22 @@ def identity(root):
  assert re.fullmatch(r'[a-z0-9][a-z0-9+.-]+',package),'final package identity required'
  assert version and not any(x in (package+' '+version).lower() for x in ['local-candidate','source-only','placeholder']),'parent must finalize service control/version before release build'
  return package,version
+
+def verify_filter(source_bytes,packaged_bytes,dylib):
+ # Theos emits binary/XML plists from these two pinned OpenStep source files.
+ # Do not parse an arbitrary source dialect or accept a broader injection scope.
+ expected={
+  'MiniSight':(b'{ Filter = { Bundles = ( "com.apple.springboard" ); }; }',
+               {'Filter':{'Bundles':['com.apple.springboard']}}),
+  'MiniSightRhythmService':(b'Filter = { Executables = ("mediaserverd"); };',
+               {'Filter':{'Executables':['mediaserverd']}})}
+ assert dylib in expected,'unknown injection target'
+ source,scope=expected[dylib]
+ assert source_bytes.strip()==source,'source filter scope changed'
+ try:actual=plistlib.loads(packaged_bytes)
+ except Exception as error:raise AssertionError('invalid packaged filter plist') from error
+ assert actual==scope,'packaged filter scope changed'
+
 
 def verify_deb(deb,root,dylib,scheme,expected_identity):
  arch='iphoneos-arm64e' if scheme=='roothide' else 'iphoneos-arm64'
@@ -28,7 +44,7 @@ def verify_deb(deb,root,dylib,scheme,expected_identity):
   binary=payload/(dylib+'.dylib');filter_file=payload/(dylib+'.plist')
   assert binary.is_file() and not binary.is_symlink(),'required native payload/layout missing'
   assert filter_file.is_file() and not filter_file.is_symlink(),'required filter/layout missing'
-  assert filter_file.read_bytes()==(root/(dylib+'.plist')).read_bytes(),'filter bytes changed'
+  verify_filter((root/(dylib+'.plist')).read_bytes(),filter_file.read_bytes(),dylib)
   assert len(list(tree.rglob(dylib+'.dylib')))==len(list(tree.rglob(dylib+'.plist')))==1,'duplicate payload'
   if scheme=='roothide': assert not (tree/'var/jb').exists(),'RootHide must not use rootless layout'
   actual_cpu=subprocess.check_output(['xcrun','lipo','-archs',str(binary)],text=True).strip()
