@@ -1,7 +1,7 @@
 {
   "ass2_commit": "20d26f5061fa7db132da5148e18d814947f1905e",
   "beatdetektor_commit": "85a662048e4a906ddb40a511f9fa2ab7a7712c80",
-  "count": 43,
+  "count": 47,
   "files": {
     "ActiveSourceToken.h": {
       "bytes": 1252,
@@ -72,12 +72,12 @@
       "sha256": "94c7a90f9811a92561962d981e37a0a5532b242447300f24371f742f93b9831d"
     },
     "PROVENANCE.md": {
-      "bytes": 2167,
-      "sha256": "fc818293d805b21a6bc7abf739b031554f012d3ead9a044ac98b3e2daceaa92c"
+      "bytes": 3113,
+      "sha256": "b411126385b5e238b03a6ac7f5a23783659bb7353c0dc708154446fe19a2a98e"
     },
     "README.md": {
-      "bytes": 5234,
-      "sha256": "31053111780ea07d9edc8ac12693058cac4caf8722538e5ed6aaa429b7545c3b"
+      "bytes": 6563,
+      "sha256": "ebdd06940b28ce6e8989834a0be244f1e3d790b2ba6193d8084f0205cc03a9b7"
     },
     "RequestPolicy.h": {
       "bytes": 1009,
@@ -100,40 +100,56 @@
       "sha256": "4f5dac4cc859f05c3823a44aa1412ed702e653162f21f25568f8162a3693f272"
     },
     "build/Flags.mk": {
-      "bytes": 1075,
-      "sha256": "982c993d0f1809b5455b8ac51a862ecc324046e48ee227bfd8ccc0cb8ff52d4e"
+      "bytes": 1351,
+      "sha256": "b90273d3ecfb3e14b4d9bd1ab0fa73886584840651ee4f67913a635253dac9fa"
     },
     "build/Pair.mk": {
-      "bytes": 1083,
-      "sha256": "2db80907f33851bfff37a87a2e00ebb02421229519a8dac6d482466abaea5a20"
+      "bytes": 1089,
+      "sha256": "8faf98b98d1f4f97573e01dc199c62e1742e51acf059f910527959eda27a9fed"
     },
     "control": {
       "bytes": 381,
       "sha256": "d2e99d003034290f4b1dd9796814fa61a0324172a4c4eb98b5b476b07b20851a"
     },
     "scripts/check_contract.py": {
-      "bytes": 3918,
-      "sha256": "c7b207ec7f9c3b811ae0532e2d1d25fef2ae7f99fe6d0f2fb10732ab286414ee"
+      "bytes": 4840,
+      "sha256": "dc6086b5b780b356729cb6f1059b5b9356c56511840dc92dd65b80cba77ff04c"
     },
     "scripts/check_local.py": {
       "bytes": 3894,
       "sha256": "7007e119c237750bcfc6fdcea0d914d08b585d1910a06bc8837699a51fbd9b21"
     },
+    "scripts/check_manifest.py": {
+      "bytes": 2344,
+      "sha256": "082da4cd114b89e6963f7cd56145351fd9bf437514b29fbc2bde9135afe81a17"
+    },
     "scripts/check_pipeline.py": {
       "bytes": 6138,
       "sha256": "8d162a3947fbd97622f2f2a3706498f94caf236f3c14bea6600bd840291c9b7e"
     },
+    "scripts/macho_audit.py": {
+      "bytes": 5273,
+      "sha256": "ed752670570296e2793325c559df2a3a75840e95801025c48d32b11d575de57c"
+    },
     "scripts/package_pair.py": {
-      "bytes": 6870,
-      "sha256": "1407db089085264153a3d74c7e2bebe04af5afc8a64966b701abc8bc25025a9b"
+      "bytes": 8931,
+      "sha256": "39d81d73414c935e3a06525db42a5325f5902380ddd90a29a85a8b5ace6edd32"
     },
     "scripts/sync_source.py": {
       "bytes": 2945,
       "sha256": "d63fdce848ace8e195912e0db9751f55d3b430c669c270e33cb4ec4d7894b9ae"
     },
     "scripts/test_release_pair.py": {
-      "bytes": 8729,
-      "sha256": "b719366981791b83ab29ca10912f1ee2854198680a3d980d877a2a12a71b21fa"
+      "bytes": 4599,
+      "sha256": "af0402644eb28e7352c726f2f63a5ac1b26b4d3be9d8ff9fb304fc1ef9ebd147"
+    },
+    "scripts/test_single_source.py": {
+      "bytes": 4721,
+      "sha256": "712804d22391cf98a1079e70fc7f982e822ae19b318478695b9262fbc521acb9"
+    },
+    "scripts/test_single_support.py": {
+      "bytes": 12709,
+      "sha256": "04af35b2973ed682e22f8cacc6e50e90117f170fbced0da46d0b29ef1aaddc6a"
     },
     "shared/MiniSightRhythmAnalyzer.cpp": {
       "bytes": 9601,
@@ -177,7 +193,7 @@
     }
   },
   "format": 1,
-  "scope": "identical capture source and standalone plugin service; no artifacts",
+  "scope": "plugin-only unified package build/test adapter; unchanged .57 runtime and shared imports; no artifacts",
   "shared_imports": {
     "MiniSightRhythmAnalyzer.cpp": "1cfcadc65bcc9db84e88bdd14a55fe75455cc05959cbce3e12e84c6a7d9225b0",
     "MiniSightRhythmAnalyzer.h": "c220a0cee65149b92af9cf5cd28a286f8962c2130c0e29718050f32fb1d47990",

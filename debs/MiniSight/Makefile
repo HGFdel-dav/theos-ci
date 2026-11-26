@@ -1,14 +1,17 @@
 TARGET = iphone:15.5:15.0
 SDKVERSION = 15.5
 FINALPACKAGE = 1
-# Default stays source-only; explicit LIVE must be paired with the service.
+# Default stays source-only; LIVE builds both independent injection targets.
+THEOS_PACKAGE_SCHEME ?= roothide
 include ../MiniSightRhythmService/build/Flags.mk
 # Theos scheme chooses installation layout AND slice: RootHide keeps arm64e
 # (PAC), rootless ships plain arm64. Never label an arm64e slice as rootless.
 ifeq ($(THEOS_PACKAGE_SCHEME),rootless)
 ARCHS = arm64
-else
+else ifeq ($(THEOS_PACKAGE_SCHEME),roothide)
 ARCHS = arm64e
+else
+$(error MiniSight requires roothide or rootless scheme)
 endif
 INSTALL_TARGET_PROCESSES = SpringBoard
 
@@ -23,3 +26,9 @@ MiniSight_LDFLAGS = -Wl,-x -Wl,-dead_strip
 MiniSight_FRAMEWORKS = UIKit Foundation QuartzCore CoreMotion ReplayKit AVFoundation ImageIO
 
 include $(THEOS_MAKE_PATH)/tweak.mk
+
+# Standard Theos aggregate: the service remains an independent subproject with
+# its own SDK/minimum, flags and mediaserverd filter. all/clean/internal-stage
+# recurse into it; ONLY this top-level control is packaged. No DEB merging.
+SUBPROJECTS = ../MiniSightRhythmService
+include $(THEOS_MAKE_PATH)/aggregate.mk

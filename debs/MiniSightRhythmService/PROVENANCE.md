@@ -24,8 +24,23 @@
   from ASS2; see MANIFEST.json and the review's baseline for exact local hashes.
 
 `MANIFEST.json` enumerates every source path/hash/size except itself (count field)
-plus seven shared-import hashes. `scripts/sync_source.py --workspace D --check`
-requires byte-identical copies in capture and standalone plugin-service trees,
-including the manifest. Counts are generated, never described as a stale 46/47.
-No git submodule, network retrieval, app-relative include, or sibling App tree is
-required to build the plugin service.
+plus seven shared-import hashes. For this plugin-only .58 adapter, run
+`scripts/check_manifest.py` (read-only), or `--refresh` to rewrite ONLY this
+manifest after reviewed build/test/document changes. The exact path set is
+checked as well as hashes; counts are generated. Historical `sync_source.py`
+belongs to the original capture review: do NOT run it to overwrite this plugin
+adapter or the frozen capture/App trees. No git submodule, network retrieval,
+app-relative include, or sibling App tree is required to build the service.
+
+## .58 local build/test helpers
+
+- `check_manifest.py`, `test_single_source.py`, `test_single_support.py`: local
+  MiniSight-authored offline helpers, MIT (SPDX in each file). No third-party
+  runtime code or network dependency was introduced.
+- `macho_audit.py`: adapted from the existing local .57 static Mach-O auditor,
+  local MiniSight MIT changes; uses Python standard-library struct/hashlib only.
+  It checks integrity, not Apple trust or successful on-device loading.
+- Aggregate integration follows the already cached official RootHide Theos
+  `958fea4f779943505b15b93c88bb4db8d97b346d` master/aggregate.mk rules; no Theos
+  source is copied into this project or modified. Its existing upstream license
+  continues to apply in the externally pinned CI checkout.

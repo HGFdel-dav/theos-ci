@@ -13,34 +13,58 @@ The complete mirrored subtree is `source/plugin/debs/MiniSightRhythmService`.
 unmodified MIT BeatDetektor sources from both cores. No sibling App checkout is
 needed. `RHYTHM_CORE ?= shared` may be overridden only by an audited exact copy.
 `PROVENANCE.md`, full upstream MIT notices and `MANIFEST.json` travel with it.
-The capture tree is canonical; sync with `scripts/sync_source.py --workspace D`
-and verify with `--check`. The manifest reports exact current counts (not stale
-46/47-file claims). Neither original `/tmp` checkout nor release is touched.
+The runtime capture sources remain byte-identical to the .57 baseline. This
+.58 plugin-only build/test adapter must not be synced over the frozen capture
+review tree. The manifest reports the exact current files and unchanged shared
+imports. Neither original `/tmp` checkout nor old release is touched.
 
 Pure source checks, from the standalone service directory:
 
 ```
+python3 scripts/check_manifest.py
 make -f build/Pair.mk source-check
 make -f build/Pair.mk live-check
-python3 scripts/check_local.py --output /absolute/review/output
+python3 scripts/test_release_pair.py
+python3 scripts/test_single_source.py
 ```
 
-Future **separately approved CI runner only**, after parent finalizes the service
-control/package/version and App macro/PBX wiring (not changed here):
+The historical `sync_source.py` belongs to the frozen capture review; do not
+run it over this plugin-only packaging adapter. `check_manifest.py --refresh`
+changes only the local manifest, not shared imports or runtime bytes. Native
+Apple/Foundation/SDK gates remain required in future CI; missing Apple locally
+must reject strict mode, never be described as runtime PASS.
 
 ```
-CI=true MINISIGHT_RHYTHM_CI_BUILD_APPROVED=1 make -f build/Pair.mk live-package RHYTHM_PAIR_OUTPUT=/absolute/new/output
+# Historical broader host/SDK runner (NOT part of this local-only review):
+# python3 scripts/check_local.py --output /absolute/review/output
 ```
 
-That target selects BOTH flags=1 for service and plugin, runs the source contract,
-cleans both before build, and requires a fresh service DEB AND plugin DEB with
-RootHide `iphoneos-arm64e` payload/filter plus SHA256 manifest. It rejects an
-existing output directory and the current placeholder service control; no
-continue-on-error or old-artifact fallback. Workflows are intentionally unchanged.
-A future CI must require this target + both uploaded artifacts; plugin-only CI
-success is NOT a live-rhythm success. Service stays SDK15.5/arm64e/FINALPACKAGE=1,
-hidden/dead-stripped, bounded warnings, no broad Wno-error. It has no install,
-respring, launchctl or target-IP recipe. Default source-only packaging is inert.
+Future **separately approved CI runner only** (not authorized or run locally):
+
+```
+CI=true MINISIGHT_RHYTHM_CI_BUILD_APPROVED=1 make -f build/Pair.mk live-package MINISIGHT_PACKAGE_OUTPUT=/absolute/new/output
+```
+
+MiniSight 0.8.58 uses standard pinned Theos `aggregate.mk`: the top-level
+MiniSight project recurses `all`, `clean`, `internal-stage` into this independent
+service subproject, then makes exactly ONE DEB using MiniSight's control. The
+historical Pair.mk/package_pair.py filenames are entry compatibility, NOT a pair
+of packages. No binary concatenation, old-DEB unpack/repack, or service deletion.
+Both targets stay separate: SpringBoard/MiniSight min15.0 and
+mediaserverd/MiniSightRhythmService min15.5, SDK15.5, same per-file warning limits.
+RootHide is arm64e; rootless is arm64. No sibling App checkout is needed.
+
+The CI entry runs the source contract, aggregate clean/package, requires exactly
+one fresh DEB, and statically audits BOTH dylibs (ABI, minOS, SDK, every signed
+code page), BOTH exact filters (binary/XML plist encodings), paths, control,
+archive modes/owner encoding and absence of extra payload/maintainer scripts.
+Only then does it atomically publish one DEB, SINGLE-ARTIFACT.json and one-line
+SHA256SUMS. Existing output, member failure, missing/corrupt half, cancellation,
+or extra DEB rejects publication. SOURCE0 can never use this LIVE-only entry.
+No install, respring, launchctl or target-IP recipe was added. Main control
+Provides (=0.1.0), Conflicts and Replaces the old independent service; normal
+mobilesubstrate and firmware>=15.5 dependencies remain. Installer migration,
+RootHide owner-name resolution and audio behavior are NOT device-validated.
 
 ## Input safety and limits
 

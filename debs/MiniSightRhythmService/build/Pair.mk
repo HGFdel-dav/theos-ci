@@ -4,7 +4,7 @@ PLUGIN := $(abspath $(SERVICE)/../MiniSight)
 PAIR_MAKEFILE := $(SERVICE)/build/Pair.mk
 THEOS_PACKAGE_SCHEME ?= roothide
 include $(SERVICE)/build/Flags.mk
-.PHONY: contract source-check live-check live-package paired-package
+.PHONY: contract source-check live-check live-package single-package
 contract:
 	python3 $(SERVICE)/scripts/check_contract.py --service $(SERVICE) --mode $(MINISIGHT_RHYTHM_MODE) --capture $(MINISIGHT_ENABLE_RHYTHM_CAPTURE) --transport $(MINISIGHT_ENABLE_RHYTHM_TRANSPORT)
 source-check:
@@ -13,6 +13,6 @@ live-check:
 	$(MAKE) -f $(PAIR_MAKEFILE) MINISIGHT_RHYTHM_MODE=LIVE contract
 # Future separately approved CI runner ONLY; never install/respring.
 live-package:
-	$(MAKE) -f $(PAIR_MAKEFILE) MINISIGHT_RHYTHM_MODE=LIVE paired-package
-paired-package: contract
-	python3 $(SERVICE)/scripts/package_pair.py --service $(SERVICE) --output "$(RHYTHM_PAIR_OUTPUT)" --mode $(MINISIGHT_RHYTHM_MODE) --scheme "$(THEOS_PACKAGE_SCHEME)" --build
+	$(MAKE) -f $(PAIR_MAKEFILE) MINISIGHT_RHYTHM_MODE=LIVE single-package
+single-package: contract
+	python3 $(SERVICE)/scripts/package_pair.py --service $(SERVICE) --output "$(MINISIGHT_PACKAGE_OUTPUT)" --mode $(MINISIGHT_RHYTHM_MODE) --scheme "$(THEOS_PACKAGE_SCHEME)" --build

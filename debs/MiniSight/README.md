@@ -1,5 +1,9 @@
 # MiniSight
 
+## 0.8.58 单包本地候选（未构建、未安装）
+
+每个 scheme 只有一个 MiniSight DEB；内含原本独立的 SpringBoard 主库和 mediaserverd 节奏服务库及各自精确 plist。使用标准 Theos aggregate 暂存，不把服务源文件链接进主库，不合并已有 DEB。运行源码、歌词、两套动作、配置和权限不改。SDK15.5；主库 min15.0，服务 min15.5；RootHide arm64e/rootless arm64 保留。旧独立服务通过 Provides/Conflicts/Replaces 迁移，不再要求用户分别装两包；Sileo/文件归属迁移尚未实测。本地只做源码与模拟检查，不能当作 CI、验包或真机通过。
+
 ## 0.7.0 本地候选（未编译、未安装）
 
 当前配套 App 功能包独立编号 0.7.0-local.1。显示端按显式 renderer 选择；小输入条与跟随气泡、共用 AI 核心、人设读回、真实亮屏状态、基础事件日志和查看入口已本地接线。未完成 iOS 编译与真机功能验收。旧版章节仅保留历史记录，以本节和功能包 README 为准。

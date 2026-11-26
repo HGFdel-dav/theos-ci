@@ -1,9 +1,12 @@
 Package: com.niubiprass.minisight
 Name: MiniSight
-Version: 0.8.57
+Version: 0.8.58
 Architecture: iphoneos-arm64e
 Description: 显示 Minis 是否正在操作手机
 Maintainer: niubiprass
 Author: niubiprass
 Section: Tweaks
-Depends: mobilesubstrate, com.niubiprass.minisight.rhythmservice (>= 0.1.0)
+Depends: mobilesubstrate, firmware (>= 15.5)
+Provides: com.niubiprass.minisight.rhythmservice (= 0.1.0)
+Conflicts: com.niubiprass.minisight.rhythmservice
+Replaces: com.niubiprass.minisight.rhythmservice

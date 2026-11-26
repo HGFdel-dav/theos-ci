@@ -31,10 +31,12 @@ jobs:
         working-directory: debs/MiniSight
         run: |
           set -euo pipefail
-          test "$(sed -n 's/^Version: //p' control)" = "0.8.57"
-          python3 ../MiniSightRhythmService/scripts/test_release_pair.py
+          test "$(sed -n 's/^Version: //p' control)" = "0.8.58"
+          python3 ../MiniSightRhythmService/scripts/check_manifest.py
           make -f ../MiniSightRhythmService/build/Pair.mk source-check
           make -f ../MiniSightRhythmService/build/Pair.mk live-check
+          python3 ../MiniSightRhythmService/scripts/test_release_pair.py
+          python3 ../MiniSightRhythmService/scripts/test_single_source.py
           python3 tools/check_host.py
           python3 tools/check_repairs_20261107.py
           python3 scripts/test_minisight_pet_paths_20261122.py --mutations
@@ -95,18 +97,19 @@ jobs:
           python3 tools/check_music_actions_20261116.py --ci --ios-sdk "$SDK_PATH" || checks_status=$?
           # Original required native gate remains ahead of any uploadable output.
           if [ "$checks_status" -ne 0 ]; then
-            echo "FAIL closed: native_checks=$checks_status; no paired build/output"
+            echo "FAIL closed: native_checks=$checks_status; no single-package build/output"
             exit 1
           fi
           build_status=0
           MINISIGHT_RHYTHM_CI_BUILD_APPROVED=1 make -f ../MiniSightRhythmService/build/Pair.mk \
             live-package THEOS_PACKAGE_SCHEME=${{ matrix.scheme }} \
-            RHYTHM_PAIR_OUTPUT="$GITHUB_WORKSPACE/debs/MiniSight/out" || build_status=$?
+            MINISIGHT_PACKAGE_OUTPUT="$GITHUB_WORKSPACE/debs/MiniSight/out" || build_status=$?
           if [ "$checks_status" -ne 0 ] || [ "$build_status" -ne 0 ]; then
-            echo "FAIL closed: native_checks=$checks_status paired_theos_build=$build_status; no release artifact"
+            echo "FAIL closed: native_checks=$checks_status single_theos_aggregate_build=$build_status; no release artifact"
             exit 1
           fi
-          test -s out/PAIR-ARTIFACTS.json
+          test -s out/SINGLE-ARTIFACT.json
+          test "$(find out -type f -name '*.deb' | wc -l | tr -d ' ')" = 1
           test -s out/SHA256SUMS
           (cd out && shasum -a 256 -c SHA256SUMS)
           ls -la out
