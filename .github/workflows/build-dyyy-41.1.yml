@@ -42,6 +42,7 @@ jobs:
         run: |
           set -euo pipefail
           cd debs/DYYY
+          rm -f ../../packages/DYYY-${SCHEME}.dylib
           make clean || true
           make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME="$SCHEME" SCHEME="$SCHEME"
 
@@ -56,7 +57,7 @@ jobs:
           test -n "$DEB"
           dpkg-deb -I "$DEB"
           dpkg-deb -c "$DEB"
-          DYLIB=$(find ../../packages -maxdepth 1 -type f -name "DYYY-*-${SCHEME}.dylib" -print -quit)
+          DYLIB=$(find ../../packages -maxdepth 1 -type f -name "DYYY-${SCHEME}.dylib" -print -quit)
           test -n "$DYLIB"
           file "$DYLIB"
           ldid -e "$DYLIB" > /tmp/DYYY-entitlements.plist
