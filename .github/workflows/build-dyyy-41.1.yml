@@ -69,7 +69,7 @@ jobs:
           cp "$DEB" "$GITHUB_WORKSPACE/artifacts/$SCHEME/"
           cp "$DYLIB" "$GITHUB_WORKSPACE/artifacts/$SCHEME/"
           cp /tmp/DYYY-entitlements.plist "$GITHUB_WORKSPACE/artifacts/$SCHEME/"
-          ( cd "$GITHUB_WORKSPACE/artifacts/$SCHEME" && sha256sum * > SHA256SUMS )
+          ( cd "$GITHUB_WORKSPACE/artifacts/$SCHEME" && shasum -a 256 * > SHA256SUMS )
           cat "$GITHUB_WORKSPACE/artifacts/$SCHEME/SHA256SUMS"
 
       - name: Upload DYYY artifact
