@@ -46,29 +46,17 @@ jobs:
           make clean || true
           make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME="$SCHEME" SCHEME="$SCHEME"
 
-      - name: Verify and collect package
+      - name: Collect DYYY dylib
         shell: bash
         env:
           SCHEME: ${{ matrix.scheme }}
         run: |
           set -euo pipefail
           cd debs/DYYY
-          DEB=$(find packages -maxdepth 1 -type f -name '*.deb' -print -quit)
-          test -n "$DEB"
-          dpkg-deb -I "$DEB"
-          dpkg-deb -c "$DEB"
           DYLIB=$(find packages -maxdepth 1 -type f -name "DYYY-${SCHEME}.dylib" -print -quit)
           test -n "$DYLIB"
-          file "$DYLIB"
-          if ldid -e "$DYLIB" > /tmp/DYYY-entitlements.plist 2>/tmp/DYYY-ldid.err; then
-            :
-          else
-            printf '%s\n' 'ldid -e returned non-zero; no entitlements plist exposed' > /tmp/DYYY-entitlements.plist
-          fi
           mkdir -p "$GITHUB_WORKSPACE/artifacts/$SCHEME"
-          cp "$DEB" "$GITHUB_WORKSPACE/artifacts/$SCHEME/"
-          cp "$DYLIB" "$GITHUB_WORKSPACE/artifacts/$SCHEME/"
-          cp /tmp/DYYY-entitlements.plist "$GITHUB_WORKSPACE/artifacts/$SCHEME/"
+          cp "$DYLIB" "$GITHUB_WORKSPACE/artifacts/$SCHEME/DYYY.dylib"
           printf '%s\n' 'SHA256 is calculated after artifact download' > "$GITHUB_WORKSPACE/artifacts/$SCHEME/SHA256SUMS"
           cat "$GITHUB_WORKSPACE/artifacts/$SCHEME/SHA256SUMS"
 
