@@ -113,7 +113,7 @@
     },
     "scripts/check_contract.py": {
       "bytes": 4840,
-      "sha256": "dc6086b5b780b356729cb6f1059b5b9356c56511840dc92dd65b80cba77ff04c"
+      "sha256": "63694f41617ea5cda9f9039cbdad5b8446afaaa26ef37067292d6dc2a30918a0"
     },
     "scripts/check_local.py": {
       "bytes": 3894,
@@ -133,7 +133,7 @@
     },
     "scripts/package_pair.py": {
       "bytes": 8931,
-      "sha256": "39d81d73414c935e3a06525db42a5325f5902380ddd90a29a85a8b5ace6edd32"
+      "sha256": "369690a54840b9cd05ee96f97a100402e254d411fce17d0ab13523371af9ebe7"
     },
     "scripts/sync_source.py": {
       "bytes": 2945,
@@ -149,7 +149,7 @@
     },
     "scripts/test_single_support.py": {
       "bytes": 12709,
-      "sha256": "04af35b2973ed682e22f8cacc6e50e90117f170fbced0da46d0b29ef1aaddc6a"
+      "sha256": "044eac9298617f3c46a5604a851828d884227495937d9b97af669207278c84ea"
     },
     "shared/MiniSightRhythmAnalyzer.cpp": {
       "bytes": 9601,

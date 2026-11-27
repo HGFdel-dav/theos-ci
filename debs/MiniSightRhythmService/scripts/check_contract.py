@@ -33,7 +33,7 @@ plugin=s.parent/'MiniSight'
 if plugin.is_dir():
  fields=dict(line.split(':',1) for line in (plugin/'control').read_text().splitlines() if ':' in line)
  fields={k:v.strip() for k,v in fields.items()}
- assert fields['Package']=='com.niubiprass.minisight' and fields['Version']=='0.8.58'
+ assert fields['Package']=='com.niubiprass.minisight' and fields['Version']=='0.8.59'
  assert 'static NSString *const kMiniSightVersion   = @"'+fields['Version']+'";' in (plugin/'Tweak.xm').read_text(), 'runtime version marker drift'
  assert (plugin/'MiniSight.plist').read_bytes().strip()==b'{ Filter = { Bundles = ( "com.apple.springboard" ); }; }', 'main injection scope changed'
  assert fields['Depends']=='mobilesubstrate, firmware (>= 15.5)'

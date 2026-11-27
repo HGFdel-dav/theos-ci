@@ -43,6 +43,7 @@
 #import <notify.h>
 #import <signal.h>
 #include <unistd.h>
+#include <string.h>
 
 #ifdef MINISIGHT_STRIP_LOGS
 #define NSLog(...) ((void)0)
@@ -144,6 +145,7 @@ static void MiniSightStopGravity(void);
 static void MiniSightStartGravity(void);
 // 浮窗载体：定义在文件前部，呈现协调（MiniSightReconcileAppPresentation）要先用到它。
 static UIWindow *gMiniSightWindow = nil;
+static CGRect gMiniSightKeyboardScreenFrame;
 static MiniSightPetView *gMiniSightPet = nil; // Used by activity and prompt callbacks too.
 extern BOOL gMiniSightBurst;
 
@@ -157,6 +159,10 @@ static NSInteger MiniSightRenderer(void) {
 static CGFloat MiniSightPetSize(void) {
     id v = MiniSightPref(@"minisight.petSize");
     return v ? MSClamp([v doubleValue], 36., 140.) : 96.;
+}
+static BOOL MiniSightKeyboardAvoidanceEnabled(void) {
+    id value = MiniSightPref(@"minisight.keyboard.avoid");
+    return [value isKindOfClass:NSNumber.class] && CFGetTypeID((__bridge CFTypeRef)value) == CFBooleanGetTypeID() && [value boolValue];
 }
 static BOOL MiniSightAlwaysShow(void) { return [MiniSightPref(@"minisight.mode") integerValue] == 1; }
 static BOOL MiniSightShown(void) { return gMiniSightShown && !gMiniSightUserHidden; }
@@ -736,7 +742,7 @@ static NSString *const kMiniSightCenterY   = @"MiniSightCenterY";
 static NSString *const kMiniSightText      = @"Minis 操作中";
 // 版本号：与 DEBIAN/control 的 Version 同步。诊断日志会打印它，
 // 便于装机后确认跑的是哪一版（strings MiniSight.dylib | grep 也能看到）。
-static NSString *const kMiniSightVersion   = @"0.8.58";
+static NSString *const kMiniSightVersion   = @"0.8.59";
 
 #pragma mark - 全局状态
 
@@ -773,6 +779,7 @@ static CGPoint   gMiniSightAnchor = {0, 0};   // 身体中心（整屏窗口坐�
 static BOOL      gMiniSightAnchorValid = NO;
 static CGPoint   gMiniSightDragOrigin = {0, 0}; // 本次 pan 开始时的身体中心
 static BOOL      gMiniSightDragOriginValid = NO;
+static BOOL gMiniSightKeyboardInterruptedDrag = NO;
 static BOOL gMiniSightDragging = NO;     // 拖动中：气泡不再让位移动身体
 
 // 重力输入只存在于桌宠、可见且开启时；manager 本身不跨线程碰 UI。
@@ -1424,6 +1431,13 @@ static MSLayout MiniSightLayoutNow(void) {
     return layout;
 }
 
+static CGRect MiniSightCurrentKeyboardIntersection(void) {
+    if (!gMiniSightWindow || !MiniSightKeyboardAvoidanceEnabled() || CGRectIsEmpty(gMiniSightKeyboardScreenFrame)) return CGRectNull;
+    CGRect local = [gMiniSightWindow convertRect:gMiniSightKeyboardScreenFrame
+                              fromCoordinateSpace:gMiniSightWindow.screen.coordinateSpace];
+    return CGRectIntersection(gMiniSightWindow.bounds, local);
+}
+
 /// 默认落点：没记住位置时随机撒在上半屏（范围来自同一套边界）
 static CGPoint MiniSightDefaultAnchor(void) {
     MSLayout L = MiniSightLayoutNow();
@@ -1489,6 +1503,25 @@ static void MiniSightRefreshChatAnchor(void) {
 static void MiniSightSetAnchor(CGPoint want, BOOL save) {
     if (!gMiniSightWindow) return;
     MSLayout L = MiniSightLayoutNow();
+    if (gMiniSightPet) {
+        CGRect keyboard = MiniSightCurrentKeyboardIntersection();
+        BOOL active = !CGRectIsNull(keyboard) && !CGRectIsEmpty(keyboard);
+        if (active) {
+            if (gMiniSightDragging) gMiniSightKeyboardInterruptedDrag = YES;
+            L.centers = MSPetKeyboardCenters(L.centers, L.body,
+                (MSRect){keyboard.origin.x, keyboard.origin.y, keyboard.size.width, keyboard.size.height});
+        }
+        BOOL noRoom = L.centers.h < 0.;
+        gMiniSightPet.keyboardAvoidanceOccluded = noRoom;
+        if (gMiniSightPet.hidden != noRoom) gMiniSightPet.hidden = noRoom;
+        static NSInteger lastKeyboardState = 0;
+        NSInteger state = noRoom ? 2 : active ? 1 : 0;
+        if (state != lastKeyboardState) {
+            lastKeyboardState = state;
+            MSDiagEvent(@"pet", @"keyboard", @"ok", @{ @"source": @"plugin", @"keyboard": @(active), @"visible": @(!noRoom) });
+        }
+        if (noRoom) { MiniSightFollowBubble(); return; }
+    }
     MSPoint fixed = MSLayoutClamp(L, (MSPoint){want.x, want.y});
     CGPoint center = CGPointMake(fixed.x, fixed.y);
 
@@ -1621,6 +1654,8 @@ static void MiniSightRunGesture(NSString *action, BOOL allowSecondTap) {
 - (void)handleLongPress:(UILongPressGestureRecognizer *)press;
 - (void)handlePowerStateChange:(NSNotification *)notification;
 - (void)handleOrientationChange:(NSNotification *)notification;
+- (void)handleKeyboardChanged:(NSNotification *)note;
+- (void)handleKeyboardCleared:(NSNotification *)note;
 @end
 
 @implementation MiniSightGestureHandler
@@ -1645,6 +1680,7 @@ static void MiniSightRunGesture(NSString *action, BOOL allowSecondTap) {
             if (host.superview && reference) {
                 origin = [host.superview convertPoint:host.center toView:reference];
             }
+            gMiniSightKeyboardInterruptedDrag = !CGRectIsEmpty(MiniSightCurrentKeyboardIntersection());
             gMiniSightDragOrigin = origin;
             gMiniSightDragOriginValid = YES;
             gMiniSightDragging = YES;
@@ -1674,7 +1710,7 @@ static void MiniSightRunGesture(NSString *action, BOOL allowSecondTap) {
                 // Sample the final pointer target but preserve the real damped position.
                 // Save the actual damped position, never snap to the pointer on release.
                 if (!gMiniSightPet) MiniSightSetAnchor(want, YES);
-                else {
+                else if (!gMiniSightKeyboardInterruptedDrag && CGRectIsEmpty(MiniSightCurrentKeyboardIntersection())) {
                     MSMiniSightSetPreference(kMiniSightCenterX, @(gMiniSightPet.center.x));
                     MSMiniSightSetPreference(kMiniSightCenterY, @(gMiniSightPet.center.y));
                 }
@@ -1756,6 +1792,30 @@ static void MiniSightRunGesture(NSString *action, BOOL allowSecondTap) {
         BOOL low = [NSProcessInfo processInfo].lowPowerModeEnabled;
         gMiniSightPet.reducedWork = low; // Extend idle roaming delay; keep enabled sensor input.
         if (!low && gMiniSightWindow && !gMiniSightWindow.hidden) MiniSightStartGravity();
+    });
+}
+
+- (void)handleKeyboardChanged:(NSNotification *)note {
+    NSValue *value = note.userInfo[UIKeyboardFrameEndUserInfoKey];
+    if (![value isKindOfClass:NSValue.class] || strcmp(value.objCType, @encode(CGRect)) != 0) return;
+    CGRect frame = value.CGRectValue;
+    if (!isfinite(frame.origin.x) || !isfinite(frame.origin.y) ||
+        !isfinite(frame.size.width) || !isfinite(frame.size.height)) return;
+    UIScreen *screen = [note.object isKindOfClass:UIScreen.class] ? (UIScreen *)note.object : nil;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (screen && screen != (gMiniSightWindow.screen ?: UIScreen.mainScreen)) return;
+        if (CGRectEqualToRect(gMiniSightKeyboardScreenFrame, frame)) return;
+        gMiniSightKeyboardScreenFrame = frame;
+        if (gMiniSightPet && MiniSightKeyboardAvoidanceEnabled()) MiniSightUpdateGeometry();
+    });
+}
+
+- (void)handleKeyboardCleared:(NSNotification *)note {
+    (void)note;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (CGRectIsEmpty(gMiniSightKeyboardScreenFrame)) return;
+        gMiniSightKeyboardScreenFrame = CGRectZero;
+        if (gMiniSightPet && MiniSightKeyboardAvoidanceEnabled()) MiniSightUpdateGeometry();
     });
 }
 
@@ -2457,6 +2517,11 @@ static void MiniSightPlaceBubble(CGFloat w, CGFloat h) {
     UIView *host = gMiniSightPet ?: gMiniSightPill;
     UIView *root = gMiniSightWindow.rootViewController.view;
     if (!host || !root || !gMiniSightBubble) return;
+    if (gMiniSightPet.hidden && !gMiniSightConfirming) {
+        gMiniSightBubble.alpha = 0.;
+        gMiniSightBubble.userInteractionEnabled = NO;
+        return;
+    }
 
     static BOOL placing = NO;
     if (placing) return;    // 让位动作会再回调一次，防重入
@@ -2469,7 +2534,7 @@ static void MiniSightPlaceBubble(CGFloat w, CGFloat h) {
         // Capsule/approval keep the legacy relocation; ordinary pet movement
         // is independent from a bubble's available headroom.
         CGPoint moved = CGPointMake(wanted.x, wanted.y);
-        host.center = moved;
+        if (!host.hidden) host.center = moved;
         anchor = (MSPoint){host.center.x, host.center.y};
         gMiniSightAnchor = host.center;
     }
@@ -2922,6 +2987,8 @@ static void MiniSightDarwinCallback(CFNotificationCenterRef center,
             MiniSightUpdateMusic();
             MSDiagEvent(@"screen", @"state", gMiniSightScreenKnown ? @"ok" : @"failed", @{ @"source": @"plugin", @"enabled": @(!gMiniSightScreenBlanked), @"valid": @(gMiniSightScreenKnown) });
             if (!gMiniSightScreenKnown || gMiniSightScreenBlanked) {
+                gMiniSightKeyboardScreenFrame = CGRectZero;
+                if (gMiniSightPet && MiniSightKeyboardAvoidanceEnabled()) MiniSightUpdateGeometry();
                 [[MiniSightChatPanel existingPanel] hideWithoutKey];
                 MiniSightStopGravity();
             }
@@ -3128,6 +3195,10 @@ static void MiniSightBringMinisFront(void) {
                                                      selector:@selector(handleOrientationChange:)
                                                          name:UIDeviceOrientationDidChangeNotification
                                                        object:nil];
+            [NSNotificationCenter.defaultCenter addObserver:gMiniSightGestureTarget
+                selector:@selector(handleKeyboardChanged:) name:UIKeyboardWillChangeFrameNotification object:nil];
+            [NSNotificationCenter.defaultCenter addObserver:gMiniSightGestureTarget
+                selector:@selector(handleKeyboardCleared:) name:UIKeyboardWillHideNotification object:nil];
             // 低电量变化：桌宠立刻降档（不再按帧播放/大幅走动），省电但不能看不出效果
             [[NSNotificationCenter defaultCenter] addObserver:gMiniSightGestureTarget
                                                      selector:@selector(handlePowerStateChange:)

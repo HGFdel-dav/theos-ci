@@ -1245,7 +1245,9 @@ static void MiniSightVoiceResult(CFNotificationCenterRef center, void *observer,
     // Never instantiate/reopen from geometry or a queued display-link callback.
     if (!self.visible || !self.built) return;
     UIView *anchor = self.anchorView;
-    if (!anchor || !anchor.window || anchor.hidden || anchor.alpha < .01 ||
+    BOOL keyboardOccluded = [anchor isKindOfClass:MiniSightPetView.class] &&
+        ((MiniSightPetView *)anchor).keyboardAvoidanceOccluded;
+    if (!anchor || !anchor.window || (anchor.hidden && !keyboardOccluded) || anchor.alpha < .01 ||
         anchor.window.hidden || anchor.window.windowScene != self.window.windowScene) {
         [self hideWithoutKey];
         return;

@@ -65,7 +65,7 @@ def run_cases(S, source_filters, filter_scopes):
         with tempfile.TemporaryDirectory() as td:
             base = Path(td).resolve(); service = base/'MiniSightRhythmService'; plugin = base/'MiniSight'
             out = base/'out'; calls = []; built = {}
-            for root, name, package, ver in [(service, 'MiniSightRhythmService', 'com.niubiprass.minisight.rhythmservice', '0.1.0'), (plugin, 'MiniSight', 'com.niubiprass.minisight', '0.8.58')]:
+            for root, name, package, ver in [(service, 'MiniSightRhythmService', 'com.niubiprass.minisight.rhythmservice', '0.1.0'), (plugin, 'MiniSight', 'com.niubiprass.minisight', '0.8.59')]:
                 root.mkdir(); (root/'Makefile').write_text('# mock only\n')
                 (root/'control').write_text('Package: '+package+'\nVersion: '+ver+'\n')
                 (root/(name+'.plist')).write_bytes(source_filters[name])
@@ -121,7 +121,7 @@ def run_cases(S, source_filters, filter_scopes):
                 assert not out.exists(), 'output exposed during archive/native audits'
                 calls.append(cmd)
                 if cmd[:2] == ['dpkg-deb', '-f']:
-                    fields = {'Package': 'com.niubiprass.minisight', 'Version': '0.8.58',
+                    fields = {'Package': 'com.niubiprass.minisight', 'Version': '0.8.59',
                       'Architecture': 'iphoneos-'+cpu, 'Depends': 'mobilesubstrate, firmware (>= 15.5)',
                       'Provides': 'com.niubiprass.minisight.rhythmservice (= 0.1.0)',
                       'Conflicts': 'com.niubiprass.minisight.rhythmservice', 'Replaces': 'com.niubiprass.minisight.rhythmservice'}

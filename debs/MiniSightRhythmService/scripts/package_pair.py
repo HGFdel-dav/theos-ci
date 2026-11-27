@@ -90,7 +90,7 @@ assert a.output.is_absolute() and not a.output.is_symlink(),'explicit absolute f
 assert not out.exists(),'refuse stale artifacts/output directory'
 for root in [s,plugin]:assert (root/'Makefile').is_file() and (root/'control').is_file(),root
 expected_identity=identity(plugin)
-assert expected_identity==('com.niubiprass.minisight','0.8.58'),'reviewed unified package identity required'
+assert expected_identity==('com.niubiprass.minisight','0.8.59'),'reviewed unified package identity required'
 assert identity(s)==('com.niubiprass.minisight.rhythmservice','0.1.0'),'reviewed bundled service identity required'
 subprocess.run([sys.executable,str(s/'scripts/check_contract.py'),'--service',str(s),'--mode','LIVE','--capture','1','--transport','1'],check=True)
 out.parent.mkdir(parents=True,exist_ok=True)
