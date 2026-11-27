@@ -26,6 +26,13 @@ def describe(event):
    e['interpretation']='legacy_bounds_ratio_not_display_scale; clip/scaleMismatch alone are not failure evidence'
   elif not s.get('measured',False):e['interpretation']='unmeasured; no successful display geometry conclusion'
   else:e['interpretation']='converted_content_rectangle; model evidence, not pixel/video proof'
+ if s.get('inputSchema'):
+  e['interpretation']='host_side_observation_only; no remote receipt or app responsiveness proof'
+  phases=['began','moved','stationary','ended','cancelled']; receivers=['none','hosted_app_view','canvas_other','keyboard_overlay','window_other']
+  e['phases']=[name for bit,name in enumerate(phases) if int(s.get('phaseMask',0)) & (1<<bit)]
+  e['receivers']=[name for bit,name in enumerate(receivers) if int(s.get('receiverMask',0)) & (1<<bit)]
+  e['ordinaryNativeOpen']=s.get('launchToken')==0
+  e['remoteReceipt']='not_measured';e['applicationResponsiveness']='not_measured'
  if e.get('event')=='first_frame_boundary':
   e['boundaryPath']={1:'bind',2:'prepare',3:'settle'}.get(s.get('path'),'unknown')
   e['boundaryPhase']={0:'before',1:'after'}.get(s.get('phase'),'unknown')
@@ -49,6 +56,7 @@ def summarize(recent,archive=None):
   if item.get('lastOutcome'):add(item['lastOutcome'],'incident_outcome')
   incidents.append({'window':key(item['trigger']),'triggerTime':item['trigger'].get('time'),
    'beforeCount':len(item['before']),'afterCount':len(item['after']),
+   'kind':'input_observation' if item['trigger'].get('state',{}).get('inputSchema') else 'geometry',
    'contentRecovered':bool(item.get('recovered',False)),'closed':bool(item.get('closed',False))})
  result=[]
  for k,events in groups.items():

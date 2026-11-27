@@ -334,7 +334,7 @@ class LaunchDiagnosticProductionTests(unittest.TestCase):
         self.assertLess(finish.index('@"switcherRemovedApplication:"'),finish.index('record:@"failed"'))
         self.assertLess(finish.index('record:@"failed"'),finish.index('showError:error.localizedDescription'))
         self.assertIn('PXCloneTrace writeEvents:snapshot completion:',LAUNCH)
-        writer_tail=LAUNCH.split('PXCloneTrace writeEvents:snapshot completion:',1)[1].split('    }];',1)[0]
+        writer_tail=LAUNCH.split('PXCloneTrace writeEvents:snapshot completion:',1)[1].split('    } transactions:_transactions];',1)[0]
         self.assertIn('self->_reportedTraceState = state;',writer_tail)
         self.assertNotIn('showError:',writer_tail)
         self.assertNotIn('_pendingErrorNotices',LAUNCH)

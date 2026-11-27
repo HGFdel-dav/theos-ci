@@ -37,6 +37,7 @@ ParallelXClone_FILES = Tweak.xm \
 	Common/PXCloneTrace.m \
 	Common/PXCloneRuntime.m \
 	Common/PXWindowMemory.m \
+	Common/PXWindowInputDiagnostics.m \
 	Common/PXWindowMemoryStore.m
 ParallelXClone_CFLAGS = -fobjc-arc -I$(THEOS_PROJECT_DIR) -Wno-unused-parameter -fvisibility=hidden -DPXCLONE_STRIP_LOGS=1
 ParallelXClone_LDFLAGS = -Wl,-x -Wl,-dead_strip

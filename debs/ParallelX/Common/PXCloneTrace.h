@@ -24,6 +24,10 @@ typedef NS_ENUM(NSUInteger, PXCloneTraceState) {
 + (NSString *)descriptionForState:(PXCloneTraceState)state;
 + (void)writeEvents:(NSArray<NSDictionary *> *)events
         completion:(void (^ _Nullable)(PXCloneTraceState state, NSError * _Nullable error))completion;
+// Same pinned atomic writer and state channel; old callers preserve this archive.
++ (void)writeEvents:(NSArray<NSDictionary *> *)events
+        completion:(void (^ _Nullable)(PXCloneTraceState state, NSError * _Nullable error))completion
+      transactions:(NSArray<NSDictionary *> * _Nullable)transactions;
 @end
 NS_ASSUME_NONNULL_END
 

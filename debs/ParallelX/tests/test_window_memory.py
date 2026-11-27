@@ -602,6 +602,6 @@ class WindowMemoryAppleStorage(unittest.TestCase):
         self.assertLessEqual(len(logs),256)
         self.assertGreater(len(logs),200)
         self.assertTrue(any(event['event']=='fixture' for event in logs))
-        self.assertTrue(all(event['build']=='clone0.116' for event in logs))
+        self.assertTrue(all(event['build']=='clone0.117' for event in logs))
 
 if __name__ == '__main__': unittest.main(verbosity=2)

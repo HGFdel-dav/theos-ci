@@ -61,6 +61,8 @@ static inline NSDictionary *PXWMDiagnosticMerge(NSDictionary *previous,NSArray *
         NSUInteger i=cursor-1;
         NSDictionary *old=incidents[i], *trigger=old[@"trigger"];
         if (!PXWMDiagnosticSameWindow(trigger,event)) continue;
+        if (([trigger[@"state"][@"inputSchema"] unsignedIntegerValue]>0) !=
+            ([event[@"state"][@"inputSchema"] unsignedIntegerValue]>0)) continue;
         BOOL newFault=[event[@"state"][@"diagIncident"] boolValue] &&
             ![trigger[@"sequence"] isEqual:event[@"sequence"]] &&
             ([old[@"recovered"] boolValue] || [old[@"closed"] boolValue] ||
@@ -76,12 +78,15 @@ static inline NSDictionary *PXWMDiagnosticMerge(NSDictionary *previous,NSArray *
             next[@"after"]=after; incidents[i]=next;
         }
         NSString *name=event[@"event"];
-        BOOL contentRecovered=[name isEqual:@"content_geometry_probe"] &&
+        BOOL inputIncident=[trigger[@"state"][@"inputSchema"] unsignedIntegerValue]>0;
+        BOOL contentRecovered=!inputIncident && [name isEqual:@"content_geometry_probe"] &&
             [event[@"state"][@"measured"] boolValue] && ![event[@"state"][@"diagIncident"] boolValue] &&
             [event[@"state"][@"bundleMatch"] boolValue] && [event[@"state"][@"canvasMatch"] boolValue] &&
             [event[@"state"][@"cardMatch"] boolValue];
-        BOOL closed=[name isEqual:@"native_close_no_transient_save"];
-        BOOL outcome=[name isEqual:@"restore_postlayout_geometry_verified"] || closed || contentRecovered;
+        BOOL closed=[name isEqual:@"native_close_no_transient_save"] ||
+            (inputIncident && ([name isEqual:@"input_closed"] || [name isEqual:@"input_superseded"]));
+        BOOL outcome=closed || (inputIncident ? [name hasPrefix:@"input_"] :
+            ([name isEqual:@"restore_postlayout_geometry_verified"] || contentRecovered));
         double age=[event[@"time"] doubleValue]-[trigger[@"time"] doubleValue];
         if (outcome && age>=0 && age<=120) {
             NSMutableDictionary *next=[incidents[i] mutableCopy];

@@ -5,6 +5,8 @@
 #import "PXClonePaths.h"
 #import "PXCloneTrace.h"
 #import "PXCloneLaunchDiagnostics.h"
+#import "PXCloneTransactionDiagnostics.h"
+#import "PXWindowInputDiagnostics.h"
 #import "PXCloneURLRouter.h"
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
@@ -261,6 +263,9 @@ static pid_t PXProcessPID(id process) {
     NSUInteger _attempt;
     NSUInteger _splitRetries;
     CFAbsoluteTime _flowStart;
+    NSString *_transactionSession;
+    NSArray *_transactions;
+    NSNumber *_observedProcessPID;
     PXCloneTraceState _reportedTraceState;
     NSMutableArray *_trace;
     NSDictionary *_lastOpenDiagnostic;
@@ -298,6 +303,7 @@ static void PXHostedOpen(id self, SEL command, id bundle, id canvas, id overlay,
     PXCloneLaunchController *controller = PXCloneLaunchController.shared;
     if ([bundle isKindOfClass:NSString.class]) [controller trackBridge:self bundle:bundle];
     uint64_t token = [controller tokenForOpeningBundle:bundle];
+    PXWindowInputDiagnosticsLinkTransaction(self,token);
     if (!token) {
         if (PXOriginalHostedOpen) PXOriginalHostedOpen(self, command, bundle, canvas, overlay, completion);
         return;
@@ -351,6 +357,8 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     _hostedContainers = [NSMutableDictionary dictionary];
     _hostedPIDs = [NSMutableDictionary dictionary];
     _trace = [NSMutableArray array];
+    _transactionSession = NSUUID.UUID.UUIDString;
+    _transactions = @[];
     _reportedTraceState = PXCloneTraceStateUnknown;
     return self;
 }
@@ -541,6 +549,8 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
         if (pid > 1 && pid != getpid()) [pids addObject:@(pid)];
     }
     _oldPIDs = pids;
+    _observedProcessPID = pids.count == 1 ? pids.firstObject : @0;
+    [self record:@"old_process_observed" code:0];
     NSString *active = [PXCloneCrane activeContainerForBundle:_bundle];
     BOOL windowGone = YES;
     for (id bridge in _bridges[_bundle].allObjects)
@@ -596,6 +606,7 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     }
     if (closed) {
         if (!PXCloneFlowAdvance(&_flow, token, PXCloneFlowClosing, PXCloneFlowTerminating)) return;
+        [self record:@"closing_complete" code:0];
         _attempt = 0;
         [self pollTerminated:token];
         return;
@@ -681,6 +692,7 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
 
 - (void)verify:(uint64_t)token {
     if (!PXCloneFlowIsCurrent(&_flow, token) || _flow.phase != PXCloneFlowVerifying) return;
+    if (_attempt == 0) [self record:@"verification_started" code:0];
     if (_pending) { [self finish:token error:nil]; return; }
     NSString *active = [PXCloneCrane activeContainerForBundle:_bundle];
     BOOL verified = [active isEqual:_container];
@@ -741,6 +753,7 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
         }
         Class target = PXLaunchClass(@"PXPanelEntry");
         SEL open = NSSelectorFromString(@"externalOpenApplication:");
+        [self record:@"native_retry_requested" code:0];
         @try { ((void (*)(id, SEL, id))objc_msgSend)((id)target, open, self->_bundle); }
         @catch (__unused NSException *exception) {
             [self finish:token error:PXLaunchError(16, @"原生分屏打开发生异常")]; return;
@@ -808,6 +821,7 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
         _hostedContainers[_bundle] = _container;
         NSArray *processes = PXRunningProcesses(_bundle, NULL);
         _hostedPIDs[_bundle] = @(processes.count == 1 ? PXProcessPID(processes.firstObject) : 0);
+        _observedProcessPID = _hostedPIDs[_bundle];
         [self record:@"split_visible_verified" code:0];
         [self record:[NSString stringWithFormat:@"done ms=%d ok=1 reuse=%d",
                       (int)((CFAbsoluteTimeGetCurrent() - _flowStart) * 1000.0), (int)_reuse] code:0];
@@ -854,7 +868,9 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     } else if (_flow.phase != PXCloneFlowOpening) {
         [self record:@"superseded_without_open" code:0];
     }
+    [self record:@"transaction_finished" code:error ? error.code : 0];
     PXCloneFlowRelease(&_flow, token);
+    _observedProcessPID = nil;
     _openingBridge = nil;
     _oldProcesses = nil;
     _oldPIDs = nil;
@@ -867,10 +883,18 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
     // A bounded, content-free event ring survives a missed live log capture.
     // No account display names, credentials, messages or app content.
     NSDictionary *event = @{ @"time": @(NSDate.date.timeIntervalSince1970),
-                             @"build": @"clone0.116", @"token": @(_flow.token),
+                             @"build": @"clone0.117", @"token": @(_flow.token),
                              @"stage": stage, @"code": @(code),
                              @"bundle": _bundle ?: @"", @"targetHash": @(_container.hash) };
     NSMutableDictionary *entry = [event mutableCopy];
+    entry[@"session"] = _transactionSession;
+    entry[@"monotonic"] = @(CACurrentMediaTime());
+    entry[@"phase"] = @(_flow.phase);
+    entry[@"retry"] = @(_splitRetries);
+    if (_observedProcessPID) entry[@"processPID"] = _observedProcessPID;
+    _observedProcessPID = nil; // One-shot observation; never imply a later liveness query.
+    @try { _transactions = PXCloneTransactionObserve(_transactions, entry); }
+    @catch (__unused NSException *exception) { /* Diagnostics must not interrupt a launch. */ }
     if (_recordDetail) entry[@"detail"] = _recordDetail;
     if ([stage isEqual:@"failed"]) {
         NSString *failureID = NSUUID.UUID.UUIDString;
@@ -887,7 +911,7 @@ static BOOL PXFullscreenOpen(id self, SEL command, id bundle) {
         // Saving and readback stay in the diagnostic channel. The user should
         // never have to read a toast ID or wait for logging to see an error.
         self->_reportedTraceState = state;
-    }];
+    } transactions:_transactions];
 }
 
 - (void)showError:(NSString *)message {

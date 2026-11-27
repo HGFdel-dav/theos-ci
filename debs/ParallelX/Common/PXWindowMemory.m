@@ -1,5 +1,6 @@
 #import "PXWindowMemory.h"
 #import "PXWindowMemoryStore.h"
+#import "PXWindowInputDiagnostics.h"
 #import "PXWindowContinuity.h"
 #import "PXWindowDiagnosticPolicy.h"
 #import "PXCloneRuntime.h"
@@ -1664,6 +1665,7 @@ static void PXWMOpen(id self,SEL command,id bundle,id canvas,id overlay,void (^c
                 PXWMLog(ticket, @"restore_initial_geometry_exception", @{});
             }
             nativeCompletion(ok);
+            PXWindowInputDiagnosticsObserve(self,6);
         };
     }
     BOOL returnedNormally = NO;
@@ -1679,6 +1681,7 @@ static void PXWMOpen(id self,SEL command,id bundle,id canvas,id overlay,void (^c
             if (PXWMNativeReturned(&ticket->native, current, matches, returnedNormally)) {
                 objc_setAssociatedObject(self, PXWMContextKey, ticket, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 [PXWMContexts addObject:ticket];
+                PXWindowInputDiagnosticsBind(self,ticket.canvas,ticket.bundle,ticket->native.serial,ticket.openedAt);
                 /* Remember the card while canvas and bundle still match exactly. */
                 if (!ticket.card) ticket.card = PXWMFindCard(ticket.canvas);
                 if (!ticket.card) {
@@ -1785,6 +1788,7 @@ static void PXWMLayout(id self,SEL command) {
         PXWMReconcileRuntimeFrame(context);
         PXWMQueueContentSync(context);
         PXWMProbeContentGeometry(context,3);
+        PXWindowInputDiagnosticsObserve(self,8);
         // Native layout establishes hostCard's default geometry and sourceSize.
         // Apply saved geometry now, before the original returns to its reveal/centering
         // completion; otherwise the first visible frame can still be the default.
@@ -1795,6 +1799,7 @@ static void PXWMLayout(id self,SEL command) {
     }
 }
 static void PXWMClose(id self,SEL command) {
+    PXWindowInputDiagnosticsClose(self);
     if (NSThread.isMainThread) {
         PXWMContext *ticket = objc_getAssociatedObject(self, PXWMOpenTicketKey);
         PXWMContext *context = PXWMDetachBinding(self);
@@ -1811,6 +1816,7 @@ static void PXWMControllerLayout(id self,SEL command) {
     UIWindow *window = [self isKindOfClass:UIViewController.class] ? [(UIViewController *)self view].window : nil;
     for (PXWMContext *context in PXWMContexts.allObjects) {
         if (!window || context.canvas.window != window) continue;
+        PXWindowInputDiagnosticsObserve(context.bridge,9);
         PXWMReconcileRuntimeFrame(context);
         PXWMQueueContentSync(context);
         if (context->native.entering && !context.resolved)
@@ -1863,6 +1869,7 @@ BOOL PXWindowMemoryInstall(Class panel,Class bridge,Class hostController) {
         !PXCloneClassInstanceMethodMatches(bridge,close,@encode(void),@[]) ||
         !PXCloneClassInstanceMethodMatches(hostController,controllerLayout,@encode(void),@[])) return NO;
     if (!PXWMContexts) PXWMContexts = [NSHashTable weakObjectsHashTable];
+    (void)PXWindowInputDiagnosticsInstall(bridge); // Optional observer never gates original startup.
 #define PXWM_HOOK(klass,selector,replacement,target,type) \
     do { if (!(target)) { IMP saved = NULL; \
         if (PXCloneHookMessage(klass,selector,(IMP)replacement,&saved)) target = (type)saved; } } while(0)

@@ -46,7 +46,7 @@ static BOOL barrier(PXWindowMemoryStore *store) {
  return drain(store);
 }
 static NSDictionary *event(unsigned sequence,unsigned serial,BOOL fault,NSString *session) {
- return @{@"event":@"fixture",@"build":@"clone0.116",@"pid":@7,@"session":session,@"sequence":@(sequence),
+ return @{@"event":@"fixture",@"build":@"clone0.117",@"pid":@7,@"session":session,@"sequence":@(sequence),
   @"time":@(1000+sequence*.1),@"state":@{@"appHash":@10,@"openSerial":@(serial),@"diagIncident":@(fault)}};
 }
 static int history(void) {
@@ -87,6 +87,18 @@ static int history(void) {
  CHECK(!PXWMDiagnosticValidArchive(@{@"schema":@1,@"incidents":@[@42]}));
  CHECK(!PXWMDiagnosticValidRecent(@[@42]));
  CHECK(!PXWMDiagnosticValidEvent(@{@"event":@"bad",@"state":@{@"token":@"secret"}}));
+ NSMutableDictionary *input=[event(500,100,YES,session) mutableCopy];
+ input[@"event"]=@"input_host_arrived";
+ input[@"state"]=@{@"appHash":@10,@"openSerial":@100,@"diagIncident":@YES,@"inputSchema":@1,@"observationOnly":@YES};
+ NSDictionary *inputArchive=PXWMDiagnosticMerge(@{@"schema":@1,@"incidents":@[]},@[],input);
+ NSMutableDictionary *healthy=[event(501,100,NO,session) mutableCopy];healthy[@"event"]=@"content_geometry_probe";
+ healthy[@"state"]=@{@"appHash":@10,@"openSerial":@100,@"diagIncident":@NO,@"measured":@YES,@"bundleMatch":@YES,@"canvasMatch":@YES,@"cardMatch":@YES};
+ inputArchive=PXWMDiagnosticMerge(inputArchive,@[],healthy);
+ CHECK(![inputArchive[@"incidents"][0][@"recovered"] boolValue]);
+ input[@"event"]=@"input_host_dispatch";input[@"sequence"]=@502;
+ inputArchive=PXWMDiagnosticMerge(inputArchive,@[],[input copy]);
+ CHECK([inputArchive[@"incidents"][0][@"lastOutcome"][@"event"] isEqual:@"input_host_dispatch"]);
+ CHECK(![inputArchive[@"incidents"][0][@"recovered"] boolValue]);
  printf("PASS history checks=%u\n",checks);return 0;
 }
 int main(int argc,const char **argv) { @autoreleasepool {

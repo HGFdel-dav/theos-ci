@@ -19,4 +19,10 @@ class WindowDiagnosticReader(unittest.TestCase):
   self.assertEqual(len(x['groups'][0]['events']),2)
   self.assertEqual(x['groups'][0]['events'][0]['reasonName'],'budget_exhausted')
   self.assertFalse(x['incidents'][0]['contentRecovered'])
+ def test_host_dispatch_never_claims_remote_input_processed(self):
+  e=self.event();e['event']='input_host_dispatch';e['state'].update(inputSchema=1,launchToken=0,phaseMask=10,receiverMask=2,dispatchReturned=True)
+  x=r.describe(e)
+  self.assertEqual(x['phases'],['moved','ended']);self.assertEqual(x['receivers'],['hosted_app_view'])
+  self.assertTrue(x['ordinaryNativeOpen']);self.assertEqual(x['remoteReceipt'],'not_measured')
+  self.assertEqual(x['applicationResponsiveness'],'not_measured')
 if __name__=='__main__':unittest.main(verbosity=2)

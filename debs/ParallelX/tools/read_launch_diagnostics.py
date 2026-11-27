@@ -50,7 +50,22 @@ def summarize(document):
                     else None if observation else 'not recorded in this saved event'),
             })
     failures.sort(key=lambda row: row['time'] if isinstance(row.get('time'), (int, float)) else 0)
+    transactions=document.get('CXLaunchTransactions',[])
+    if not isinstance(transactions,list) or len(transactions)>4:
+        raise ValueError('invalid transaction archive')
+    stages={0:'idle',1:'closing',2:'terminating',3:'authenticating',4:'verifying',5:'opening',6:'failed',7:'quarantined'}
+    summarized=[]
+    for row in transactions:
+        if not isinstance(row,dict) or not isinstance(row.get('stages'),list) or len(row['stages'])>40 or not isinstance(row.get('phaseDurationsMS'),dict):
+            raise ValueError('malformed transaction summary')
+        item=dict(row)
+        item['phaseNames']={stages.get(int(k),'unknown'):v for k,v in row['phaseDurationsMS'].items()}
+        item['timingBasis']='monotonic observed phase boundaries; not remote input acknowledgement'
+        item['appResponsiveness']='not_measured'
+        summarized.append(item)
     return {
+        'transactions':summarized,
+        'transaction_count':len(summarized),
         'timeline_count': len(timeline),
         'archive_count': len(archive),
         'failures': failures,

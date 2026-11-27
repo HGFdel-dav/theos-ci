@@ -3,6 +3,7 @@
 #import "PXCloneRootPolicy.h"
 #import "PXCloneTraceIO.h"
 #import "PXCloneTraceHistory.h"
+#import "PXCloneTransactionDiagnostics.h"
 #import <notify.h>
 #include <limits.h>
 #include <stdlib.h>
@@ -78,6 +79,13 @@ static BOOL PXTraceDirectoryIsCurrent(NSString *root, NSString *parent, int dire
 
 + (void)writeEvents:(NSArray<NSDictionary *> *)events
         completion:(void (^)(PXCloneTraceState, NSError *))completion {
+    [self writeEvents:events completion:completion transactions:nil];
+}
+
++ (void)writeEvents:(NSArray<NSDictionary *> *)events
+        completion:(void (^)(PXCloneTraceState, NSError *))completion
+      transactions:(NSArray<NSDictionary *> *)transactions {
+    static NSArray *savedTransactions;
     static dispatch_queue_t worker;
     static NSString *tracePath;
     static NSString *rootPath;
@@ -88,6 +96,7 @@ static BOOL PXTraceDirectoryIsCurrent(NSString *root, NSString *parent, int dire
     static dispatch_once_t once;
     dispatch_once(&once, ^{ worker = dispatch_queue_create("com.niubiprass.parallelxclone.trace-writer", DISPATCH_QUEUE_SERIAL); });
     NSArray *snapshot = [events copy];
+    NSArray *transactionSnapshot = [transactions copy];
     void (^done)(PXCloneTraceState, NSError *) = [completion copy];
     dispatch_async(worker, ^{
         NSError *error = nil;
@@ -134,6 +143,12 @@ static BOOL PXTraceDirectoryIsCurrent(NSString *root, NSString *parent, int dire
                 if ([value isKindOfClass:NSDictionary.class]) old = value;
             }
             id archive = old[@"CXLaunchFailures"];
+            id transactionArchive = old[@"CXLaunchTransactions"];
+            if (transactionArchive && !PXCloneTransactionsValid(transactionArchive)) {
+                PXPublishTraceState(PXCloneTraceStateReadbackFailure,
+                    PXTraceError(PXCloneTraceStateReadbackFailure, @"已有事务记录无法安全读回，未覆盖原文件", nil), done);
+                return;
+            }
             if (read == PXCloneTraceReadFailed || (read == PXCloneTraceReadOK &&
                 (!old || ![old[@"CXLaunchTrace"] isKindOfClass:NSArray.class] ||
                  (archive && (![archive isKindOfClass:NSArray.class] || [archive count] > PXCloneFailureLimit))))) {
@@ -146,6 +161,7 @@ static BOOL PXTraceDirectoryIsCurrent(NSString *root, NSString *parent, int dire
             }
             failures = PXCloneTraceMergeFailures(archive ?: @[],
                 PXCloneTraceImportLegacyEvents(old[@"CXLaunchTrace"] ?: @[]));
+            savedTransactions = transactionArchive ?: @[];
             failuresLoaded = YES;
         }
         NSArray *limited = snapshot.count > 32 ?
@@ -153,7 +169,14 @@ static BOOL PXTraceDirectoryIsCurrent(NSString *root, NSString *parent, int dire
         NSArray *mergedFailures = PXCloneTraceMergeFailures(failures, limited ?: @[]);
         // CXLaunchTrace remains the same <=32 event array for old readers.
         // The independent archive is not displaced by successful transactions.
-        NSDictionary *document = @{ @"CXLaunchTrace": limited ?: @[], @"CXLaunchFailures": mergedFailures };
+        if (transactionSnapshot && !PXCloneTransactionsValid(transactionSnapshot)) {
+            PXPublishTraceState(PXCloneTraceStateSerializationFailure,
+                PXTraceError(PXCloneTraceStateSerializationFailure, @"事务摘要格式无效", nil), done);
+            return;
+        }
+        NSArray *mergedTransactions = PXCloneTransactionsMerge(savedTransactions, transactionSnapshot ?: @[]);
+        NSDictionary *document = @{ @"CXLaunchTrace": limited ?: @[], @"CXLaunchFailures": mergedFailures,
+                                     @"CXLaunchTransactions": mergedTransactions };
         NSData *data = [NSPropertyListSerialization dataWithPropertyList:document
                          format:NSPropertyListBinaryFormat_v1_0 options:0 error:&error];
         if (!data || data.length > PXCloneTraceReadLimit) {
@@ -177,6 +200,7 @@ static BOOL PXTraceDirectoryIsCurrent(NSString *root, NSString *parent, int dire
             return;
         }
         failures = mergedFailures;
+        savedTransactions = mergedTransactions;
         PXPublishTraceState(PXCloneTraceStatePersisted, nil, done);
     });
 }
