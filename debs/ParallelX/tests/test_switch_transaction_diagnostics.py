@@ -11,7 +11,87 @@ ROOT = Path(__file__).resolve().parents[1]
 FIX = ROOT / 'tests/fixtures'
 
 
+def _fixture_root(temp):
+    # Match the existing writer tests: macOS /var may alias /private/var.
+    # Normalize only the synthetic fixture root; keep production checks strict.
+    return Path(temp).resolve() / 'Containers/Shared/AppGroup/.jbroot-switch-fixture'
+
+
+def _fixture_output(value):
+    if isinstance(value, bytes):
+        return value.decode('utf-8', errors='replace')
+    return value or ''
+
+
+def _run_native(command, label, *, env=None, timeout=15):
+    try:
+        result = subprocess.run(command, env=env, check=False,
+                                capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired as error:
+        raise AssertionError(
+            f'SWITCH_NATIVE {label}: timeout after {timeout}s\n'
+            f'stdout:\n{_fixture_output(error.stdout)}\n'
+            f'stderr:\n{_fixture_output(error.stderr)}') from None
+    if result.returncode != 0:
+        raise AssertionError(
+            f'SWITCH_NATIVE {label}: returncode={result.returncode}\n'
+            f'stdout:\n{_fixture_output(result.stdout)}\n'
+            f'stderr:\n{_fixture_output(result.stderr)}')
+    print(f'SWITCH_NATIVE {label}: returncode=0', flush=True)
+    if result.stdout:
+        print(result.stdout, end='', flush=True)
+    if result.stderr:
+        print(result.stderr, end='', file=sys.stderr, flush=True)
+    return result
+
+
 class SwitchTransactionDiagnosticsTests(unittest.TestCase):
+    def test_fixture_root_resolves_temporary_directory_alias(self):
+        with tempfile.TemporaryDirectory() as temp:
+            actual = Path(temp) / 'actual'
+            actual.mkdir()
+            alias = Path(temp) / 'alias'
+            alias.symlink_to(actual, target_is_directory=True)
+            root = _fixture_root(alias)
+            root.mkdir(parents=True)
+            unresolved = alias / 'Containers/Shared/AppGroup/.jbroot-switch-fixture'
+            self.assertEqual(root, root.resolve())
+            self.assertEqual(root, _fixture_root(actual))
+            self.assertNotEqual(root, unresolved)
+            self.assertTrue(root.samefile(unresolved))
+
+    def test_native_runner_rejects_exit_and_signal_with_full_diagnostics(self):
+        from unittest import mock
+        for code in (23, -6):
+            with self.subTest(returncode=code):
+                result = subprocess.CompletedProcess(['fixture'], code,
+                                                     'stdout-marker\n', 'assertion-marker\n')
+                with mock.patch.object(subprocess, 'run', return_value=result) as run:
+                    with self.assertRaises(AssertionError) as failure:
+                        _run_native(['fixture'], 'full')
+                message = str(failure.exception)
+                self.assertIn(f'returncode={code}', message)
+                self.assertIn('stdout-marker', message)
+                self.assertIn('assertion-marker', message)
+                self.assertEqual(run.call_count, 1)
+                self.assertEqual(run.call_args.kwargs['timeout'], 15)
+                self.assertTrue(run.call_args.kwargs['capture_output'])
+                self.assertTrue(run.call_args.kwargs['text'])
+
+    def test_native_runner_timeout_preserves_partial_output(self):
+        from unittest import mock
+        error = subprocess.TimeoutExpired(['fixture'], 15,
+                                          output=b'partial-output\n', stderr=b'partial-error\n')
+        with mock.patch.object(subprocess, 'run', side_effect=error) as run:
+            with self.assertRaises(AssertionError) as failure:
+                _run_native(['fixture'], 'restart')
+        message = str(failure.exception)
+        self.assertIn('timeout after 15s', message)
+        self.assertIn('partial-output', message)
+        self.assertIn('partial-error', message)
+        self.assertEqual(run.call_count, 1)
+        self.assertEqual(run.call_args.kwargs['timeout'], 15)
+
     def test_production_portable_policy(self):
         cc = shutil.which('cc') or shutil.which('clang')
         self.assertIsNotNone(cc)
@@ -55,15 +135,15 @@ class SwitchTransactionDiagnosticsTests(unittest.TestCase):
                 self.fail('native switch transaction fixture REQUIRED: missing macOS/xcrun')
             self.skipTest('macOS Foundation runtime unavailable; set PXSWITCH_REQUIRE_NATIVE=1 to fail closed')
         with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)/'Containers/Shared/AppGroup/.jbroot-switch-fixture'
+            root = _fixture_root(temp)
             root.mkdir(parents=True)
             exe = Path(temp)/'switch-host'
-            subprocess.run([xcrun,'clang','-fobjc-arc','-fblocks','-Werror',
+            _run_native([xcrun,'clang','-fobjc-arc','-fblocks','-Werror',
                 str(FIX/'switch_transaction_host.m'),str(ROOT/'Common/PXCloneTrace.m'),
-                '-framework','Foundation','-o',str(exe)],check=True,capture_output=True,text=True)
+                '-framework','Foundation','-o',str(exe)], 'compile', timeout=90)
             env = dict(os.environ, PXTRACE_TEST_ROOT=str(root))
             def run(action):
-                return subprocess.run([str(exe),action],env=env,check=True,capture_output=True,text=True)
+                return _run_native([str(exe),action], action, env=env, timeout=15)
             run('full')
             path=root/'var/mobile/Library/Preferences/fixture.launch-trace.plist'
             doc=plistlib.loads(path.read_bytes())
