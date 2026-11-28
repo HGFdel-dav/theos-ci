@@ -33,6 +33,8 @@ typedef NS_ENUM(unsigned, PXWMGeometryGate) {
 @property(nonatomic) PXWMRect initialTarget;
 @property(nonatomic) PXWMRect initialNativeFrame;
 @property(nonatomic) BOOL initialTargetAppliedAtBind;
+/* A rebind of a parked card is not a request to expand it. */
+@property(nonatomic) BOOL deferredDockFrame;
 @property(nonatomic, copy) NSString *probeSignature;
 @property(nonatomic) CFTimeInterval diagnosticProbeTime;
 @property(nonatomic) unsigned diagnosticProbeFlags;
@@ -169,6 +171,44 @@ static UIView *PXWMFindCard(UIView *canvas) {
     return nil;
 }
 
+/* Normal frames are never assigned in native parked/animation coordinates.
+ * Do not require visibility or enabled input for an ordinary, unscaled first
+ * frame: the vendor intentionally reveals that host only after binding. */
+static BOOL PXWMCardInNormalSpace(UIView *card) {
+    UIWindow *window = card.window;
+    UIScreen *screen = UIScreen.mainScreen;
+    if (!card || !card.superview || !window || window.screen != screen) return NO;
+    CGSize ws = window.bounds.size, ss = screen.bounds.size;
+    return PXWMNormalFrameSpace(YES, CGAffineTransformIsIdentity(card.transform),
+                                ws.width, ws.height, ss.width, ss.height);
+}
+
+/* Host-side observations, not proof that remote input or a corner handle was
+ * rendered. Only emitted at an ownership transition with diagnostics enabled. */
+static void PXWMDockSpaceNote(PXWMContext *c, NSString *event, unsigned stage) {
+    @try {
+        if (![PXWindowMemoryStore.shared.snapshot[@"diagnostics"] boolValue]) return;
+        UIView *card=c.card, *canvas=c.canvas; if (!card || !canvas) return;
+        CALayer *layer=card.layer, *present=layer.presentationLayer;
+        PXWMLog(c,event,@{@"stage":@(stage), @"cardScaleX":@(card.transform.a),
+            @"cardScaleY":@(card.transform.d), @"cardBoundsW":@(card.bounds.size.width),
+            @"windowPresent":@(card.window!=nil), @"canvasInteractive":@(canvas.userInteractionEnabled),
+            @"cardRadius":@(layer.cornerRadius), @"shownCardRadius":@(present ? present.cornerRadius : -1),
+            @"cardCorners":@(layer.maskedCorners), @"cardClips":@(layer.masksToBounds),
+            @"canvasRadius":@(canvas.layer.cornerRadius), @"canvasClips":@(canvas.clipsToBounds)});
+    } @catch (__unused NSException *e) { /* Optional evidence cannot control the handoff. */ }
+}
+static void PXWMDeferDockFrame(PXWMContext *context, unsigned stage) {
+    BOOL first = !context.deferredDockFrame;
+    context.deferredDockFrame = YES;
+    context.initialTargetActive = NO;
+    context.initialTargetAppliedAtBind = NO;
+    context.continuityActive = NO;
+    context.continuityMove = NO;
+    context.resolved = NO;
+    if (first) PXWMDockSpaceNote(context,@"restore_frame_deferred_to_native",stage);
+}
+
 static BOOL PXWMOpeningTicketOwnsCanvas(PXWMContext *context, UIView *canvas) {
     return context && canvas && context.bridge && context.canvas == canvas &&
            context->native.entering && context->native.initialCleanupSeen &&
@@ -183,7 +223,7 @@ static BOOL PXWMOpeningTicketOwnsCanvas(PXWMContext *context, UIView *canvas) {
  * the first PXHostCard frame is written just afterwards. It is deliberately
  * limited to generation zero and never applies to an ordinary resize/layout. */
 static BOOL PXWMInitialFrameMayPrepare(PXWMContext *context) {
-    return context && PXWMInitialHandoffEligible((uint64_t)context->native.serial,
+    return context && !context.deferredDockFrame && PXWMInitialHandoffEligible((uint64_t)context->native.serial,
         context->native.initialCleanupSeen, context->native.cancelled,
         (uint64_t)context.generation, context.resolved, context.interacting,
         context.savePending, context->native.entering, context->native.bound);
@@ -696,6 +736,10 @@ static BOOL PXWMExpansionTarget(PXWMContext *context, CGRect incoming, CGRect *r
     }
     if (!PXWMRestore(saved, geometry.reference, nativeFrame, &restored)) return NO;
     event.applied = YES;
+    if (context.deferredDockFrame) {
+        context.deferredDockFrame = NO;
+        PXWMDockSpaceNote(context,@"restore_frame_native_expansion",3);
+    }
     context.key = key; context.keyKnown = YES; context.resolved = YES;
     *result = PXWMToRect(restored);
     PXWMArmContinuity(context,(PXWMGeometry){restored,geometry.reference},key,event.epoch,NO);
@@ -975,7 +1019,7 @@ static void PXWMCardSetFrame(id self, SEL command, CGRect frame) {
                 !context.interacting && !context.savePending;
             PXWMRect pendingDefault = PXWMFromRect(frame);
             if (preflightReady) context.card = (UIView *)self;
-            if (preflightReady && !context.initialTargetActive) {
+            if (preflightReady && !context.initialTargetActive && PXWMCardInNormalSpace((UIView *)self)) {
                 if (context.card != (UIView *)self || context.initialNativeFrame.width < 1 || context.initialNativeFrame.height < 1)
                     context.initialNativeFrame = pendingDefault;
                 context.card = (UIView *)self;
@@ -1013,10 +1057,10 @@ static void PXWMCardSetFrame(id self, SEL command, CGRect frame) {
              * later and would otherwise snap the window back to its default size. */
             BOOL holding = context.initialTargetAppliedAtBind ||
                 CACurrentMediaTime() < context.initialTargetDeadline;
-            BOOL transformed = !CGAffineTransformIsIdentity(((UIView *)self).transform);
             BOOL fullscreen = context.bridge && PXWMBool(context.bridge, @"fullscreenHandoff");
             NSDictionary *holdSnapshot=PXWindowMemoryStore.shared.snapshot;
-            BOOL holdBlocked = (context.initialTargetAppliedAtBind && (transformed || fullscreen)) ||
+            BOOL holdBlocked = context.deferredDockFrame || fullscreen ||
+                (context.initialTargetActive && !PXWMCardInNormalSpace((UIView *)self)) ||
                 ![holdSnapshot[@"enabled"] boolValue] ||
                 context.initialTargetEpoch != [holdSnapshot[@"epoch"] unsignedLongLongValue] ||
                 PXWMBool(context.bridge,@"isHostedKeyboardVisible");
@@ -1057,6 +1101,8 @@ static void PXWMScheduleInitialSettle(PXWMContext *context) {
     unsigned key = context.initialTargetKey;
     uint64_t epoch = context.initialTargetEpoch;
     NSUInteger generation=context.generation;
+    __weak UIView *scheduledCard=context.card;
+    __weak UIWindow *scheduledWindow=scheduledCard.window;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,900*NSEC_PER_MSEC),dispatch_get_main_queue(), ^{
         PXWMContext *current = weakContext;
         if (!current || !current.initialTargetActive || current.generation!=generation) {
@@ -1071,10 +1117,18 @@ static void PXWMScheduleInitialSettle(PXWMContext *context) {
                 current.interacting ? PXWMReasonInteracting : current.savePending ? PXWMReasonSavePending :
                 !current.card ? PXWMReasonNoCard : PXWMReasonDirection,NO); return;
         }
-        if ([PXWindowMemoryStore.shared.snapshot[@"epoch"] unsignedLongLongValue] != epoch) {
-            PXWMDiagnosticReasonLog(current,PXWMLaneFirstFrame,PXWMReasonEpoch,NO); return;
+        NSDictionary *live=PXWindowMemoryStore.shared.snapshot;
+        if (![live[@"enabled"] boolValue] || [live[@"epoch"] unsignedLongLongValue] != epoch) {
+            PXWMDiagnosticReasonLog(current,PXWMLaneFirstFrame,
+                [live[@"enabled"] boolValue] ? PXWMReasonEpoch : PXWMReasonDisabled,NO); return;
         }
         UIView *card = current.card;
+        if (!scheduledCard || card!=scheduledCard || !scheduledWindow || card.window!=scheduledWindow ||
+            PXWMFindCard(current.canvas)!=card || PXWMObject(current.bridge,@"canvas")!=current.canvas ||
+            ![PXWMObject(current.bridge,@"bundleID") isEqual:current.bundle]) return;
+        if (!PXWMCardInNormalSpace(card)) { PXWMDeferDockFrame(current,2); return; }
+        if (current.deferredDockFrame || PXWMBool(current.bridge,@"fullscreenHandoff") ||
+            PXWMBool(current.bridge,@"isHostedKeyboardVisible")) return;
         CGRect target = PXWMToRect(current.initialTarget);
         CGRect native = PXWMToRect(current.initialNativeFrame);
         PXWMFirstFrameSnapshot(current,current.initialTarget,3,0);
@@ -1120,7 +1174,7 @@ static void PXWMScheduleInitialSettle(PXWMContext *context) {
 static BOOL PXWMPrepareInitialLayoutWithNativeFrame(PXWMContext *context,
                                                    const PXWMRect *nativeFrameOverride,
                                                    BOOL allowingVisibleTicket) {
-    if (!context || context.restoring) return NO;
+    if (!context || context.deferredDockFrame || context.restoring) return NO;
     id bridge = context.bridge;
     BOOL currentTicket = bridge && objc_getAssociatedObject(bridge, PXWMOpenTicketKey) == context;
     id bridgeBundle = PXWMObject(bridge, @"bundleID");
@@ -1206,7 +1260,8 @@ static void PXWMSetSourceSize(id self, SEL command, CGSize size) {
     if (size.width > 0 && size.height > 0 && PXWMOriginalLayout) {
         for (PXWMContext *candidate in PXWMContexts.allObjects) {
             if (candidate.bridge != self || !candidate.keyKnown) continue;
-            if (!PXWMBindingIsActive(candidate) || candidate.interacting || candidate.savePending) continue;
+            if (!PXWMBindingIsActive(candidate) || candidate.deferredDockFrame || candidate.interacting || candidate.savePending ||
+                !PXWMCardInNormalSpace(candidate.card)) continue;
             if (candidate.sourceSizeSeen) continue;
             candidate.sourceSizeSeen = YES;
             PXWMOriginalLayout(self, NSSelectorFromString(@"layoutHost"));
@@ -1233,6 +1288,16 @@ static void PXWMTryRestore(PXWMContext *context) {
     PXWMGeometry native;
     unsigned key = 0;
     if (!PXWMNormalGeometry(context, &native, &key)) return;
+    if (context.deferredDockFrame) {
+        /* Native may return to normal layout without the dock-tap selector.
+         * Only accept a visible, interactive, exact current surface (the normal
+         * geometry gate above); read the record afresh, not a pre-lock target. */
+        if (PXWMObject(context.bridge,@"canvas")!=context.canvas ||
+            ![PXWMObject(context.bridge,@"bundleID") isEqual:context.bundle] ||
+            !PXWMCardInNormalSpace(context.card)) return;
+        context.deferredDockFrame = NO;
+        PXWMDockSpaceNote(context,@"restore_frame_native_ready",4);
+    }
     BOOL shouldRestore = PXWMMayRestoreLayout(context.resolved, context.keyKnown,
                                             context.key, key, context.interacting, context.savePending);
     context.keyKnown = YES; context.key = key;
@@ -1653,19 +1718,22 @@ static void PXWMOpen(id self,SEL command,id bundle,id canvas,id overlay,void (^c
     void (^forwardCompletion)(BOOL) = completion;
     if (ticket && completion) {
         void (^nativeCompletion)(BOOL) = [completion copy];
+        NSUInteger openingGeneration=ticket.generation;
         forwardCompletion = ^(BOOL ok) {
             @try {
-                PXWMContext *current = objc_getAssociatedObject(self, PXWMContextKey) ?: ticket;
-                if (NSThread.isMainThread) {
-                    PXWMPrepareInitialLayout(current);
-                } else {
-                    dispatch_sync(dispatch_get_main_queue(), ^{ PXWMPrepareInitialLayout(current); });
-                }
+                void (^prepareOwnTicket)(void) = ^{
+                    if (ok && ticket.generation==openingGeneration && !ticket->native.cancelled &&
+                        (objc_getAssociatedObject(self,PXWMOpenTicketKey)==ticket || PXWMBindingIsActive(ticket)))
+                        PXWMPrepareInitialLayout(ticket);
+                };
+                if (NSThread.isMainThread) prepareOwnTicket();
+                else dispatch_sync(dispatch_get_main_queue(),prepareOwnTicket);
             } @catch (__unused NSException *exception) {
                 PXWMLog(ticket, @"restore_initial_geometry_exception", @{});
             }
             nativeCompletion(ok);
-            PXWindowInputDiagnosticsObserve(self,6);
+            if (NSThread.isMainThread && ticket.generation==openingGeneration && PXWMBindingIsActive(ticket))
+                PXWindowInputDiagnosticsObserve(self,6);
         };
     }
     BOOL returnedNormally = NO;
@@ -1703,7 +1771,15 @@ static void PXWMOpen(id self,SEL command,id bundle,id canvas,id overlay,void (^c
                                 @{@"serial":@(ticket->native.serial)});
                     }
                 }
-                if (bindRecord && ticket.card) {
+                /* A wake refresh may reopen the very same still-parked canvas.
+                 * The saved frame belongs to the expanded coordinate space. */
+                if (bindRecord && ticket.card && !ticket.card.window && CGAffineTransformIsIdentity(ticket.card.transform)) {
+                    /* A fresh unattached card is not proof of parking. Leave its
+                     * initial ticket eligible for the next native layout. */
+                    PXWMLog(ticket,@"first_frame_waiting_for_window",@{});
+                } else if (bindRecord && ticket.card && !PXWMCardInNormalSpace(ticket.card))
+                    PXWMDeferDockFrame(ticket,1);
+                else if (bindRecord && ticket.card) {
                     UIView *card = ticket.card;
                     PXWMRect nativeFrame = PXWMFromRect(card.frame);
                     ticket.initialNativeFrame = nativeFrame;
@@ -1769,7 +1845,7 @@ static void PXWMOpen(id self,SEL command,id bundle,id canvas,id overlay,void (^c
     __weak PXWMContext *weakContext = ticket;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,3*NSEC_PER_SEC),dispatch_get_main_queue(), ^{
         PXWMContext *pending = weakContext;
-        if (PXWMBindingIsActive(pending) && !pending.resolved && !pending.interacting)
+        if (PXWMBindingIsActive(pending) && !pending.resolved && !pending.deferredDockFrame && !pending.interacting)
             PXWMLog(pending, @"restore_waiting_native_geometry", @{@"gate":@(pending.geometryGate),
                      @"attempts":@(pending.restoreRetryAttempts), @"loaded":@(PXWindowMemoryStore.shared.isLoaded)});
     });
@@ -1947,7 +2023,7 @@ BOOL PXWindowMemoryInstall(Class panel,Class bridge,Class hostController) {
 static void PXWMScheduleRestore(PXWMContext *context) {
     const NSUInteger maxAttempts = 100;
     if (!context || !PXWMBindingIsActive(context) || context.resolved || context.interacting ||
-        context.restoreRetryScheduled || context.restoreRetryAttempts >= maxAttempts ||
+        context.deferredDockFrame || context.restoreRetryScheduled || context.restoreRetryAttempts >= maxAttempts ||
         !PXWindowMemoryStore.shared.isLoaded) return;
     context.restoreRetryAttempts++;
     NSUInteger attempt = context.restoreRetryAttempts;

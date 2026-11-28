@@ -82,7 +82,7 @@ static void PXIFakeValidateLogs(void) {
 static void PXIFakeCaseScope(void) {
     PXIFakeRig *wx=PXIFakeMake(@"com.tencent.xin");
     PXIFakeRig *qq=PXIFakeMake(@"com.tencent.mqq");
-    PXIFakeRig *other=PXIFakeMake(@"example.other.app");
+    PXIFakeRig *other=PXIFakeMake(@"com.crossutility.quantumult-x.beta");
     PXIFakeEvent *event=PXIFakeEventFor(wx,wx.host,UITouchPhaseBegan);
     CHECK(PXIFakeSend(wx.window,event)==nil); CHECK(PXIFakeDetails.count==0); CHECK(event.reads==0);
     PXIFakeBind(other,9); CHECK(PXIFakeJobs.count==0); CHECK(PXIFakeDetails.count==0);
@@ -96,7 +96,25 @@ static void PXIFakeCaseScope(void) {
     CHECK(PXIFakeSend(qq.window,PXIFakeEventFor(qq,qq.host,UITouchPhaseBegan))==nil);
     CHECK(PXIFakeDetails.count==4);
     CHECK([PXIFakeLastDispatch()[@"openSerial"] unsignedLongLongValue]==12);
-    PXIFakeValidateLogs();
+    PXIFakeValidateLogs(); PXIFakeClearLogs();
+
+    PXIFakeRig *qx=PXIFakeMake(@"com.crossutility.quantumult-x");
+    PXIFakeWrites=0;
+    PXIFakeBind(qx,13); PXIFakeBind(qx,13);
+    CHECK(PXIFakeJobs.count==15); // Five per target; a same-generation rebind adds none.
+    CHECK(([PXIFakeEvents isEqual:@[@"input_state"]]));
+    CHECK([PXIFakeDetails.lastObject[@"currentBinding"] isEqual:@YES]);
+    PXIFakeEvent *qxEvent=PXIFakeEventFor(qx,qx.host,UITouchPhaseBegan);
+    PXIFakeStore.shared.snapshot=@{@"diagnostics":@NO};
+    CHECK(PXIFakeSend(qx.window,qxEvent)==nil); CHECK(qxEvent.reads==0); CHECK(PXIFakeDetails.count==1);
+    PXIFakeStore.shared.snapshot=@{@"diagnostics":@YES};
+    CHECK(PXIFakeSend(qx.window,qxEvent)==nil);
+    CHECK(([PXIFakeEvents isEqual:@[@"input_state",@"input_host_arrived",@"input_host_dispatch"]]));
+    NSDictionary *note=PXIFakeLastDispatch();
+    CHECK([note[@"openSerial"] isEqual:@13]); CHECK([note[@"dispatchReturned"] isEqual:@YES]);
+    CHECK([note[@"phaseMask"] unsignedIntValue]==(1u<<UITouchPhaseBegan));
+    CHECK([note[@"receiverMask"] unsignedIntValue]==2); CHECK([note[@"receiverAfterMask"] unsignedIntValue]==2);
+    CHECK(PXIFakeWrites==0); PXIFakeValidateLogs();
 }
 
 static void PXIFakeCaseForwardExceptions(void) {

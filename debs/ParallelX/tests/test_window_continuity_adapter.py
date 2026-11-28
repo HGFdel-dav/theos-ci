@@ -23,15 +23,17 @@ FUNCTIONS = (
     'PXWMObject', 'PXWMBool', 'PXWMAppHash', 'PXWMFromRect', 'PXWMToRect', 'PXWMFindCard',
     'PXWMOpeningTicketOwnsCanvas', 'PXWMInitialFrameMayPrepare',
     'PXWMInitialHandoffOwnsCard', 'PXWMTicketMayUseIncomingAssociation',
-    'PXWMBindingIsActive', 'PXWMReadGeometry', 'PXWMNormalGeometry',
+    'PXWMBindingIsActive', 'PXWMCardInNormalSpace', 'PXWMDeferDockFrame',
+    'PXWMReadGeometry', 'PXWMNormalGeometry',
     'PXWMDiagnosticReasonLog', 'PXWMFirstFrameSnapshot',
     'PXWMArmContinuity', 'PXWMContinuityReady', 'PXWMContentGeometry',
     'PXWMReconcileRuntimeFrame', 'PXWMQueueContentSync',
     'PXWMCaptureGestureOrientation', 'PXWMCaptureGestureFrame',
     'PXWMContextForGesture', 'PXWMSettleSave', 'PXWMGestureAction',
-    'PXWMMove', 'PXWMResize', 'PXWMCardSetFrame',
+    'PXWMMove', 'PXWMResize', 'PXWMCardSetFrame', 'PXWMScheduleInitialSettle',
 )
-CASES = ('begin', 'move_cancel', 'queue', 'content', 'reconcile_resize', 'frame_failure', 'diagnostics')
+CASES = ('begin', 'move_cancel', 'queue', 'content', 'reconcile_resize', 'frame_failure', 'diagnostics',
+         'normal_settle', 'dock_settle', 'expanded_settle', 'stale_settle')
 
 
 def extract_function(source, name):
@@ -95,6 +97,12 @@ static BOOL PXWMPrepareInitialLayoutWithNativeFrame(PXWMContext *context,const P
 static unsigned PXWMLinkState(id a,id b) { return !a ? 0 : a==b ? 1 : 2; }
 static unsigned PXWMIdentityState(id a,id b) { return !a ? 0 : [a isEqual:b] ? 1 : 2; }
 static void PXWMQueueContentSync(PXWMContext *context);
+static void PXWMScheduleInitialSettle(PXWMContext *context);
+// Observation boundary only. Preserve production note names and their order
+// among the host events. There is no QX receipt or app-response source here.
+static void PXWMDockSpaceNote(PXWMContext *context, NSString *name, unsigned stage) {
+    (void)context; [ADEvents addObject:name]; [ADDetails addObject:@{@"stage":@(stage)}];
+}
 static void PXWMLog(PXWMContext *context, NSString *event, NSDictionary *details) {
     (void)context; [ADEvents addObject:event]; [ADDetails addObject:details ?: @{}];
 }

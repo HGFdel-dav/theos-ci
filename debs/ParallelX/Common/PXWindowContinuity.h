@@ -1,6 +1,16 @@
 #pragma once
 #include "PXWindowMemoryPolicy.h"
 
+/* A saved card frame is in the normal host window's coordinates. The dock
+ * owns its own coordinate system (including while the UI is hidden on wake).
+ * Rotation may exchange the axes; do not use a particular app or pixel size. */
+static inline bool PXWMNormalFrameSpace(bool attachedToMainScreen, bool identityTransform,
+                                       double ww, double wh, double sw, double sh) {
+    if (!attachedToMainScreen || !identityTransform || !isfinite(ww) || !isfinite(wh) ||
+        !isfinite(sw) || !isfinite(sh) || ww<=0 || wh<=0 || sw<=0 || sh<=0) return false;
+    return fabs(fmin(ww,wh)-fmin(sw,sh))<=3 && fabs(fmax(ww,wh)-fmax(sw,sh))<=3;
+}
+
 /* Move requests own their centre, not their size. Reuse the existing storage
  * centre mapping so runtime and saved position cannot disagree. */
 static inline bool PXWMKeepMoveSize(PXWMGeometry anchor, PXWMGeometry requested,

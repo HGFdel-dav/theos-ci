@@ -48,7 +48,8 @@ static BOOL PXInputEnabled(void) {
     return [PXWindowMemoryStore.shared.snapshot[@"diagnostics"] boolValue];
 }
 static BOOL PXInputTarget(NSString *bundle) {
-    return [bundle isEqual:@"com.tencent.xin"] || [bundle isEqual:@"com.tencent.mqq"];
+    return [bundle isEqual:@"com.tencent.xin"] || [bundle isEqual:@"com.tencent.mqq"] ||
+        [bundle isEqual:@"com.crossutility.quantumult-x"];
 }
 static id PXInputObject(id object,NSString *name) {
     SEL sel=NSSelectorFromString(name);

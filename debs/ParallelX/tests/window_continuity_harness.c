@@ -67,6 +67,21 @@ int main(void) {
     CHECK(fabs(fit.height-500)<1e-9 && fabs(scale-500.0/844)<1e-12);
     CHECK(fabs(fit.x-(5+(300-390*500.0/844)/2))<1e-9);
     CHECK(!PXWMRectNear((PXWMRect){NAN,0,100,100},fit,1));
+    /* QX #5371/#5383: both the bind and the later settle saw the native
+     * dock transform, not the expanded card coordinate space. */
+    const double dockScale=56.0/312.0, targetWidth=279.87756694775624;
+    CHECK(fabs(targetWidth/dockScale-1559.317872994642)<1e-5);
+    CHECK(!PXWMNormalFrameSpace(true,false,390,844,390,844));
+    CHECK(!PXWMNormalFrameSpace(true,true,56,121.1897,390,844));
+    CHECK(!PXWMNormalFrameSpace(false,true,390,844,390,844));
+    CHECK(!PXWMNormalFrameSpace(true,true,NAN,844,390,844));
+    CHECK(!PXWMNormalFrameSpace(true,true,390,INFINITY,390,844));
+    CHECK(!PXWMNormalFrameSpace(true,true,390,844,0,0));
+    CHECK(!PXWMNormalFrameSpace(true,true,0,0,0,0));
+    CHECK(!PXWMNormalFrameSpace(true,true,390,840,390,844));
+    CHECK(PXWMNormalFrameSpace(true,true,390,844,390,844));
+    CHECK(PXWMNormalFrameSpace(true,true,844,390,390,844));
+    CHECK(PXWMNormalFrameSpace(true,true,389,842,390,844));
     puts("WINDOW_CONTINUITY_PASS");printf("checks=%u\n",checks);
     return 0;
 }

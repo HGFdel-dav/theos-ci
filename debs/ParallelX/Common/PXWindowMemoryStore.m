@@ -366,7 +366,7 @@ static BOOL PXWMValidState(id value) {
             if ([key isKindOfClass:NSString.class] && key.length<=64 &&
                 [values[key] isKindOfClass:NSNumber.class] && isfinite([values[key] doubleValue])) safe[key]=values[key];
         }
-        NSDictionary *entry=@{@"time":@(observed),@"build":@"clone0.117",@"pid":@(getpid()),
+        NSDictionary *entry=@{@"time":@(observed),@"build":@"clone0.118",@"pid":@(getpid()),
             @"session":self->_diagnosticSession,@"sequence":@(++self->_diagnosticSequence),
             @"event":name.length && name.length<=96 ? name : @"invalid_event",@"state":safe};
         NSError *error=nil;

@@ -87,6 +87,9 @@ static NSMutableArray<dispatch_block_t> *ADJobs;
 static NSMutableArray<NSString *> *ADEvents;
 static NSMutableArray<NSDictionary *> *ADDetails;
 static NSUInteger ADOriginalCalls, ADLayoutCalls, ADProbeCalls;
+// Observe *attempts*, including a write of the same rect or a layout request
+// that the fake would otherwise ignore. No observer changes geometry or queues work.
+static NSUInteger ADFrameWrites, ADLayoutRequests, ADLayoutPasses;
 static BOOL ADMutateOriginal, ADOriginalSawInteraction;
 static UIView *ADOriginalCard;
 static BOOL PXCloneInstanceMethodMatches(id target, SEL selector, const char *ret, NSArray *args) {
@@ -109,7 +112,7 @@ static void ADDispatchAfter(dispatch_time_t time, dispatch_queue_t queue, dispat
 @implementation UIView
 - (instancetype)init { if ((self=[super init])) { _transform=CGAffineTransformIdentity; _alpha=1; _userInteractionEnabled=YES; _subviews=[NSMutableArray array]; _layer=[CALayer new]; } return self; }
 - (CGRect)frame { return [self convertRect:self.bounds toView:self.superview]; }
-- (void)setFrame:(CGRect)frame { _bounds.size=frame.size; _center=CGPointMake(CGRectGetMidX(frame),CGRectGetMidY(frame)); _layer.frame=frame; }
+- (void)setFrame:(CGRect)frame { ADFrameWrites++; _bounds.size=frame.size; _center=CGPointMake(CGRectGetMidX(frame),CGRectGetMidY(frame)); _layer.frame=frame; }
 - (UIWindow *)window { for (UIView *v=self;v;v=v.superview) if ([v isKindOfClass:UIWindow.class]) return (UIWindow *)v; return nil; }
 - (void)addSubview:(UIView *)view { view.superview=self; [self.subviews addObject:view]; }
 - (BOOL)isDescendantOfView:(UIView *)view { for (UIView *v=self;v;v=v.superview) if(v==view) return YES; return NO; }
@@ -128,8 +131,8 @@ static void ADDispatchAfter(dispatch_time_t time, dispatch_queue_t queue, dispat
  if(view) t=CGAffineTransformConcat(t,CGAffineTransformInvert([view toRoot]));
  return CGRectApplyAffineTransform(rect,t);
 }
-- (void)setNeedsLayout {}
-- (void)layoutIfNeeded { self.layoutCalls++; }
+- (void)setNeedsLayout { ADLayoutRequests++; }
+- (void)layoutIfNeeded { ADLayoutPasses++; self.layoutCalls++; }
 + (void)performWithoutAnimation:(void (^)(void))block { block(); }
 @end
 @implementation UIScreen

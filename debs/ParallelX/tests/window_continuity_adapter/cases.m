@@ -246,6 +246,52 @@ static void ADDiagnosticCases(void) {
  PXWMDiagnosticReasonLog(f.context,PXWMLaneQueue,PXWMReasonBudget,YES);
  CHECK(ADEvents.count==count);
 }
+static void ADArmInitial(ADFixture *f) {
+ PXWMContext *c=f.context;
+ c.initialTargetActive=YES; c.initialTargetAppliedAtBind=YES;
+ c.initialTargetKey=c.key=0; c.keyKnown=YES; c.initialTargetEpoch=7;
+ c.initialNativeFrame=PXWMFromRect(f.card.frame);
+ c.initialTarget=(PXWMRect){52,90,279.87757,605.68376};
+ c.resolved=YES;
+}
+static void ADSettleCase(const char *mode) {
+ BOOL normal=!strcmp(mode,"normal_settle"), expanded=!strcmp(mode,"expanded_settle");
+ BOOL stale=!strcmp(mode,"stale_settle");
+ for(unsigned variant=0;variant<(stale?7u:(normal||expanded?1u:2u));variant++) {
+  ADFixture *f=ADNew(); ADArmInitial(f); PXWMScheduleInitialSettle(f.context);
+  if(normal) { f.window.hidden=YES; f.canvas.userInteractionEnabled=NO; } // early frame remains legal
+  else if(expanded) { f.card.transform=CGAffineTransformMakeScale(56.0/312,56.0/312);
+   CHECK(!PXWMCardInNormalSpace(f.card)); f.card.transform=CGAffineTransformIdentity;
+   CHECK(PXWMCardInNormalSpace(f.card)); }
+  else if(stale) {
+   if(variant==0) f.context.generation++;
+   if(variant==1) PXWMNativeClose(&f.context->native);
+   if(variant==2) f.bridge.canvas=[UIView new];
+   if(variant==3) f.bridge.bundleID=@"different.app";
+   if(variant==4) { objc_setAssociatedObject(f.bridge,PXWMContextKey,[PXWMContext new],OBJC_ASSOCIATION_RETAIN_NONATOMIC); }
+   if(variant==5) PXWindowMemoryStore.shared.snapshot=@{@"enabled":@NO,@"epoch":@7};
+   if(variant==6) PXWindowMemoryStore.shared.snapshot=@{@"enabled":@YES,@"epoch":@8};
+  } else {
+   if(!variant) f.card.transform=CGAffineTransformMakeScale(56.0/312,56.0/312);
+   else f.window.bounds=CGRectMake(0,0,56,121.19);
+   f.canvas.userInteractionEnabled=NO;
+   f.context.initialNativeFrame=PXWMFromRect(f.card.frame); // old native-default match would write
+  }
+  CGRect before=f.card.bounds;
+  ADFrameWrites=ADLayoutPasses=ADLayoutRequests=0;
+  ADDrain();
+  if(normal||expanded) {
+   CHECK(PXWMRectNear(PXWMFromRect(f.card.frame),f.context.initialTarget,.001));
+   CHECK(ADLayoutCalls==1 && ADLayoutPasses==1 && ADFrameWrites>0);
+   if(normal) CHECK(!f.canvas.userInteractionEnabled);
+  } else {
+   CHECK(CGRectEqualToRect(before,f.card.bounds));
+   CHECK(!ADFrameWrites && !ADLayoutRequests && !ADLayoutPasses && !ADLayoutCalls);
+   if(!stale) CHECK(f.context.deferredDockFrame && !f.context.initialTargetActive && !f.canvas.userInteractionEnabled);
+  }
+  CHECK(!PXWindowMemoryStore.shared.positionSaves && !PXWindowMemoryStore.shared.geometrySaves);
+ }
+}
 int main(int argc,const char *argv[]) {
  @autoreleasepool {
   if(argc!=2) return 2;
@@ -256,6 +302,8 @@ int main(int argc,const char *argv[]) {
   else if(!strcmp(argv[1],"reconcile_resize")) ADReconcileResize();
   else if(!strcmp(argv[1],"frame_failure")) ADFrameAndFailure();
   else if(!strcmp(argv[1],"diagnostics")) ADDiagnosticCases();
+  else if(!strcmp(argv[1],"normal_settle") || !strcmp(argv[1],"dock_settle") ||
+          !strcmp(argv[1],"expanded_settle") || !strcmp(argv[1],"stale_settle")) ADSettleCase(argv[1]);
   else return 2;
   printf("PASS %s checks=%lu\n",argv[1],(unsigned long)ADChecks);
  }
