@@ -29,7 +29,7 @@ jobs:
           set -euo pipefail
           TEST_ROOT=$(mktemp -d "$RUNNER_TEMP/dyyy-test.XXXXXX")
           BASE_ROOT=$(mktemp -d "$RUNNER_TEMP/dyyy-base.XXXXXX")
-          git archive --format=tar HEAD^ debs/DYYY | tar -xf - -C "$BASE_ROOT"
+          git archive --format=tar 191fdc3a319f08739a15417cceebbf4f4acc6a51 debs/DYYY | tar -xf - -C "$BASE_ROOT"
           mkdir -p "$TEST_ROOT/source/debs" "$TEST_ROOT/evidence" "$TEST_ROOT/tests"
           cp -R debs/DYYY "$TEST_ROOT/source/debs/DYYY"
           cp ci/dyyy-speed-label-sync/tests/test_speed_label_sync.py ci/dyyy-speed-label-sync/tests/native_speed_label.m "$TEST_ROOT/tests/"
@@ -67,7 +67,7 @@ jobs:
         env:
           SCHEME: ${{ matrix.scheme }}
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           cd debs/DYYY
           PACKAGE_VERSION='2.3-1+niubi41.1.1'
           DEB=$(find packages -maxdepth 1 -type f -name '*.deb' -print -quit)
@@ -75,7 +75,7 @@ jobs:
           test "$(dpkg-deb -f "$DEB" Version)" = "$PACKAGE_VERSION"
           dpkg-deb -I "$DEB"
           dpkg-deb -c "$DEB"
-          BUILT_DYLIB="../../packages/DYYY-${SCHEME}.dylib"
+          BUILT_DYLIB="../../packages/DYYY-${PACKAGE_VERSION}-${SCHEME}.dylib"
           test -s "$BUILT_DYLIB"
           TMP=$(mktemp -d "$RUNNER_TEMP/dyyy-package.XXXXXX")
           trap 'rm -rf "$TMP"' EXIT
@@ -126,6 +126,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          brew install dpkg
           for scheme in rootless roothide; do
             DIR="artifacts/$scheme"
             ( cd "$DIR" && shasum -a 256 -c SHA256SUMS )
