@@ -11312,7 +11312,8 @@ static Class tabBarButtonClass = nil;
     // 离屏和复用中的互动层保留原生尺寸，避免回退布局与原生回收布局反复改高。
     if (!self.viewIfLoaded.window) return;
 
-    [DYYYFloatingButtonCoordinator registerInteractionController:self];
+    // Reused feed pages must synchronize the speed index and title as well as visibility.
+    DYYYEnsureFloatSpeedButton(self);
 
     UIViewController *directParentVC = self.parentViewController;
     for (UIViewController *parent = directParentVC; parent; parent = parent.parentViewController) {

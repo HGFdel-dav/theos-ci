@@ -23,6 +23,22 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Run required native speed-label regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          TEST_ROOT=$(mktemp -d "$RUNNER_TEMP/dyyy-test.XXXXXX")
+          BASE_ROOT=$(mktemp -d "$RUNNER_TEMP/dyyy-base.XXXXXX")
+          git archive --format=tar HEAD^ debs/DYYY | tar -xf - -C "$BASE_ROOT"
+          mkdir -p "$TEST_ROOT/source/debs" "$TEST_ROOT/evidence" "$TEST_ROOT/tests"
+          cp -R debs/DYYY "$TEST_ROOT/source/debs/DYYY"
+          cp ci/dyyy-speed-label-sync/tests/test_speed_label_sync.py ci/dyyy-speed-label-sync/tests/native_speed_label.m "$TEST_ROOT/tests/"
+          cp ci/dyyy-speed-label-sync/BASELINE.json "$TEST_ROOT/evidence/BASELINE.json"
+          python3 -c 'import json,sys; from pathlib import Path; p=Path(sys.argv[1]); d=json.loads(p.read_text()); d["source"]=sys.argv[2]; p.write_text(json.dumps(d,indent=2)+"\n")' "$TEST_ROOT/evidence/BASELINE.json" "$BASE_ROOT/debs/DYYY"
+          export DYYY_TEST_ROOT="$TEST_ROOT"
+          export DYYY_BASELINE_JSON="$TEST_ROOT/evidence/BASELINE.json"
+          python3 -S "$TEST_ROOT/tests/test_speed_label_sync.py" --require-native
+
       - name: Setup Theos and iPhoneOS 15.5 SDK
         shell: bash
         run: |
@@ -46,23 +62,91 @@ jobs:
           make clean || true
           make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME="$SCHEME" SCHEME="$SCHEME"
 
-      - name: Collect DYYY dylib
+      - name: Verify package and collect dylib from built DEB
         shell: bash
         env:
           SCHEME: ${{ matrix.scheme }}
         run: |
           set -euo pipefail
           cd debs/DYYY
-          DYLIB="packages/DYYY-${SCHEME}.dylib"
-          test -f "$DYLIB"
-          mkdir -p "$GITHUB_WORKSPACE/artifacts/$SCHEME"
-          cp "$DYLIB" "$GITHUB_WORKSPACE/artifacts/$SCHEME/DYYY.dylib"
-          printf '%s\n' 'SHA256 is calculated after artifact download' > "$GITHUB_WORKSPACE/artifacts/$SCHEME/SHA256SUMS"
-          cat "$GITHUB_WORKSPACE/artifacts/$SCHEME/SHA256SUMS"
+          PACKAGE_VERSION='2.3-1+niubi41.1.1'
+          DEB=$(find packages -maxdepth 1 -type f -name '*.deb' -print -quit)
+          test -n "$DEB"
+          test "$(dpkg-deb -f "$DEB" Version)" = "$PACKAGE_VERSION"
+          dpkg-deb -I "$DEB"
+          dpkg-deb -c "$DEB"
+          BUILT_DYLIB="../../packages/DYYY-${SCHEME}.dylib"
+          test -s "$BUILT_DYLIB"
+          TMP=$(mktemp -d "$RUNNER_TEMP/dyyy-package.XXXXXX")
+          trap 'rm -rf "$TMP"' EXIT
+          dpkg-deb -e "$DEB" "$TMP/control"
+          dpkg-deb -x "$DEB" "$TMP/root"
+          PAYLOAD_COUNT=$(find "$TMP/root" -type f -name DYYY.dylib | wc -l | tr -d ' ')
+          test "$PAYLOAD_COUNT" = 1
+          PAYLOAD=$(find "$TMP/root" -type f -name DYYY.dylib -print -quit)
+          cmp "$BUILT_DYLIB" "$PAYLOAD"
+          OUT="$GITHUB_WORKSPACE/artifacts/$SCHEME"
+          mkdir -p "$OUT"
+          cp "$PAYLOAD" "$OUT/DYYY.dylib"
+          cp "$DEB" "$OUT/"
+          ( cd "$OUT" && shasum -a 256 DYYY.dylib "$(basename "$DEB")" > SHA256SUMS && shasum -a 256 -c SHA256SUMS )
+          file "$OUT/DYYY.dylib"
+          lipo -info "$OUT/DYYY.dylib"
+          for script in preinst postinst prerm postrm; do
+            if test -f "$TMP/control/$script"; then
+              test -x "$TMP/control/$script"
+              sh -n "$TMP/control/$script"
+              echo "Maintainer script present and shell-syntax checked: $script"
+            fi
+          done
 
-      - name: Upload DYYY artifact
+      - name: Upload package-backed DYYY artifact
         uses: actions/upload-artifact@v4
         with:
-          name: DYYY-41.1-${{ matrix.scheme }}
+          name: DYYY-41.1.1-${{ matrix.scheme }}
           if-no-files-found: error
           path: artifacts/${{ matrix.scheme }}/
+
+  verify:
+    name: Verify both package-backed dylibs
+    runs-on: macos-15-intel
+    needs: build
+    steps:
+      - name: Download rootless artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: DYYY-41.1.1-rootless
+          path: artifacts/rootless
+      - name: Download roothide artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: DYYY-41.1.1-roothide
+          path: artifacts/roothide
+      - name: Recheck hashes, architectures, version and DEB payload identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          for scheme in rootless roothide; do
+            DIR="artifacts/$scheme"
+            ( cd "$DIR" && shasum -a 256 -c SHA256SUMS )
+            test -s "$DIR/DYYY.dylib"
+            file "$DIR/DYYY.dylib"
+            lipo -verify_arch arm64 arm64e "$DIR/DYYY.dylib"
+            DEB=$(find "$DIR" -maxdepth 1 -type f -name '*.deb' -print -quit)
+            test -n "$DEB"
+            test "$(dpkg-deb -f "$DEB" Version)" = '2.3-1+niubi41.1.1'
+            TMP=$(mktemp -d "$RUNNER_TEMP/dyyy-final.XXXXXX")
+            trap 'rm -rf "$TMP"' EXIT
+            dpkg-deb -x "$DEB" "$TMP/root"
+            PAYLOAD=$(find "$TMP/root" -type f -name DYYY.dylib -print -quit)
+            test -n "$PAYLOAD"
+            cmp "$DIR/DYYY.dylib" "$PAYLOAD"
+            rm -rf "$TMP"
+            echo "PASS: $scheme versioned DEB, dual-slice dylib, SHA256, and payload identity"
+          done
+      - name: Record verified build summary
+        if: always()
+        shell: bash
+        run: |
+          echo 'This job verifies downloaded artifacts from both scheme builds.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No device installation or injection is performed.' >> "$GITHUB_STEP_SUMMARY"
